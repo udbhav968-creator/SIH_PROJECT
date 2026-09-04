@@ -173,6 +173,21 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         path = full_path.split("?")[0]
         t0 = time.time()
 
+        # Web Frontend Dashboard & UI
+        accept_header = self.headers.get("Accept", "")
+        if path in ["/dashboard", "/frontend", "/gui", "/app"] or (path == "/" and "text/html" in accept_header):
+            frontend_path = os.path.join(ENGINE_ROOT, "road_shield_frontend.html")
+            if os.path.exists(frontend_path):
+                with open(frontend_path, "rb") as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(content)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(content)
+                return
+
         # 1. Health & Status
         if path in ["/", "/api/v1/health"]:
             self._send_json(200, {
