@@ -6,5 +6,7 @@ echo   ROAD-SHIELD AI Intelligence Gateway - MoRTH / NHAI SIH2026
 echo   Starting high-throughput Python API Server on http://127.0.0.1:8000
 echo =========================================================================
 cd /d "%~dp0"
-python api\server.py 8000
+timeout /t 2 /nobreak >nul
+start "" "http://127.0.0.1:8000/dashboard"
+python -u api\server.py 8000
 pause
