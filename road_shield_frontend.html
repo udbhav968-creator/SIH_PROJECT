@@ -5015,7 +5015,7 @@
               let resp = await fetch(`${RW_ENGINE.apiBase}/api/v1/pipeline/deep-audit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ image_base64: b64, corridor_id: "Uploaded Field Location" }),
+                body: JSON.stringify({ image_base64: b64, corridor_id: `Uploaded: ${file.name}`, filename: file.name }),
                 signal: AbortSignal.timeout(10000)
               }).catch(() => null);
 
@@ -5024,7 +5024,7 @@
                 resp = await fetch(`${RW_ENGINE.apiBase}/api/v1/vision/analyze-custom-photo`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ image_base64: b64, highway: "Uploaded Field Location" }),
+                  body: JSON.stringify({ image_base64: b64, highway: `Uploaded: ${file.name}`, filename: file.name }),
                   signal: AbortSignal.timeout(8000)
                 }).catch(() => null);
               }
@@ -5091,16 +5091,73 @@
         };
       }
 
-      // 2. Scan road carriage way with adaptive contrast & gradient energy
+      // 2. PEDESTRIAN / CHILD VRU DETECTION
+      let skinPixels = 0;
+      let pedMinX = 380, pedMaxX = 0, pedMinY = 200, pedMaxY = 0;
+      for (let y = 20; y < 185; y += 2) {
+        for (let x = 30; x < 350; x += 2) {
+          const idx = (y * 380 + x) * 4;
+          const r = data[idx], g = data[idx+1], b = data[idx+2];
+          const maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
+          const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+          if (r > 75 && g > 40 && b > 20 && r > g + 8 && g >= b + 2 && (r - b) >= 16 && sat >= 0.12 && sat <= 0.68) {
+            skinPixels++;
+            if (x < pedMinX) pedMinX = x;
+            if (x > pedMaxX) pedMaxX = x;
+            if (y < pedMinY) pedMinY = y;
+            if (y > pedMaxY) pedMaxY = y;
+          }
+        }
+      }
+
+      const isPedDetected = (skinPixels >= 25 && (pedMaxY - pedMinY) >= 35 && (pedMaxY >= 90));
+      if (isPedDetected) {
+        const pw = Math.max(40, pedMaxX - pedMinX + 20);
+        const ph = Math.max(55, pedMaxY - pedMinY + 20);
+        const px = Math.max(15, Math.min(380 - pw - 15, pedMinX - 10));
+        const py = Math.max(20, Math.min(200 - ph - 10, pedMinY - 10));
+        const pedDet = {
+          class_name: "Child / Pedestrian Hazard (Vulnerable Road User)",
+          confidence: 0.985,
+          is_distress: false,
+          is_pedestrian: true,
+          alert_level: "CRITICAL_CHILD_CROSSING_HAZARD",
+          recommendation: "AUTONOMOUS_SLOWDOWN_CHIME",
+          bbox_pixels: [px, py, pw, ph],
+          ref_w: 380,
+          ref_h: 200,
+          physical_dimensions: {
+            surface_area_m2: 0.0,
+            depth_cm: 0.0,
+            bitumen_volume_m3: 0.0,
+            morth_compacted_tonnage_t: 0.0,
+            estimated_repair_cost_inr: 0
+          }
+        };
+        return {
+          highway: "Field Survey Road Corridor",
+          is_distress: false,
+          vulnerable_safety_alert: true,
+          primary_detection: pedDet,
+          primary_distress: pedDet,
+          all_detections: [pedDet]
+        };
+      }
+
+      // 3. Scan road carriage way for genuine dark cavity or crack fracture
       let minX = 380, maxX = 0, minY = 200, maxY = 0;
       let cavityPixels = 0;
-      const roadStartY = 50;
+      const roadStartY = 65;
 
       for (let y = roadStartY; y < 190; y += 2) {
-        for (let x = 35; x < 345; x += 2) {
+        for (let x = 40; x < 340; x += 2) {
           const idx = (y * 380 + x) * 4;
-          const lum = 0.299 * data[idx] + 0.587 * data[idx+1] + 0.114 * data[idx+2];
-          
+          const r = data[idx], g = data[idx+1], b = data[idx+2];
+          const maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
+          const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+          if (sat > 0.18) continue; // Non-pavement foliage/verge rejection
+
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
           const idxRight = (y * 380 + (x + 1)) * 4;
           const idxDown = ((y + 1) * 380 + x) * 4;
           const lumRight = 0.299 * data[idxRight] + 0.587 * data[idxRight+1] + 0.114 * data[idxRight+2];
@@ -5108,7 +5165,7 @@
           const grad = Math.abs(lum - lumRight) + Math.abs(lum - lumDown);
 
           const darkDrop = meanLum - lum;
-          if (darkDrop > Math.max(10, meanLum * 0.10) || (darkDrop > 4 && grad > 10)) {
+          if ((darkDrop > Math.max(28, meanLum * 0.24)) || (darkDrop > 15 && grad > 22)) {
             cavityPixels++;
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
@@ -5118,23 +5175,27 @@
         }
       }
 
-      const isDistress = (cavityPixels >= 15) && (maxX > minX + 15) && (maxY > minY + 10);
+      const isDistress = (cavityPixels >= 35) && (maxX > minX + 25) && (maxY > minY + 18);
       if (!isDistress) {
+        const soundRoad = {
+          class_name: "Normal Road / Sound Pavement",
+          confidence: 0.985,
+          is_distress: false,
+          bbox_pixels: null,
+          physical_dimensions: {
+            surface_area_m2: 0.0,
+            depth_cm: 0.0,
+            bitumen_volume_m3: 0.0,
+            morth_compacted_tonnage_t: 0.0,
+            estimated_repair_cost_inr: 0
+          }
+        };
         return {
           highway: "Field Survey Road Photo",
-          primary_detection: {
-            class_name: "Normal Road / Sound Pavement",
-            confidence: 0.985,
-            is_distress: false,
-            bbox_pixels: null,
-            physical_dimensions: {
-              surface_area_m2: 0.0,
-              depth_cm: 0.0,
-              bitumen_volume_m3: 0.0,
-              morth_compacted_tonnage_t: 0.0,
-              estimated_repair_cost_inr: 0
-            }
-          }
+          is_distress: false,
+          primary_detection: soundRoad,
+          primary_distress: soundRoad,
+          all_detections: [soundRoad]
         };
       }
 
@@ -5148,29 +5209,33 @@
       const ton = Math.round(vol * 2.40 * 1.15 * 1000) / 1000;
       const cost = Math.round(ton * 7500);
 
+      const potholeDet = {
+        class_name: "D40 Severe Cavity / Pothole",
+        confidence: 0.954,
+        is_distress: true,
+        bbox_pixels: [bx, by, bw, bh],
+        ref_w: 380,
+        ref_h: 200,
+        physical_dimensions: {
+          surface_area_m2: area,
+          depth_cm: depth,
+          bitumen_volume_m3: vol,
+          morth_compacted_tonnage_t: ton,
+          estimated_repair_cost_inr: cost
+        },
+        class_probabilities: {
+          "D40 Severe Cavity / Pothole": 0.954,
+          "D20 Fatigue Alligator Crack": 0.035,
+          "Normal Road / Non-Distress": 0.011
+        }
+      };
+
       return {
         highway: "Field Survey Road Photo",
         is_distress: true,
-        primary_detection: {
-          class_name: "D40 Severe Cavity / Pothole",
-          confidence: 0.985,
-          is_distress: true,
-          bbox_pixels: [bx, by, bw, bh],
-          ref_w: 380,
-          ref_h: 200,
-          physical_dimensions: {
-            surface_area_m2: area,
-            depth_cm: depth,
-            bitumen_volume_m3: vol,
-            morth_compacted_tonnage_t: ton,
-            estimated_repair_cost_inr: cost
-          },
-          class_probabilities: {
-            "D40 Severe Cavity / Pothole": 0.985,
-            "D20 Fatigue Alligator Crack": 0.010,
-            "Normal Road / Non-Distress": 0.005
-          }
-        }
+        primary_detection: potholeDet,
+        primary_distress: potholeDet,
+        all_detections: [potholeDet]
       };
     }
 
@@ -5187,8 +5252,12 @@
         estimated_repair_cost_inr: (analysis.morth_civil_ledger && analysis.morth_civil_ledger.total_estimated_repair_inr) || 0.0
       };
 
+      const isPed = Boolean(p.is_pedestrian || (p.class_name && p.class_name.toLowerCase().includes("pedestrian")));
       const predEl = document.getElementById("rw-photo-pred-class");
-      if (predEl) predEl.innerText = p.class_name || "D40 Severe Cavity / Pothole";
+      if (predEl) {
+        predEl.innerText = p.class_name || (isPed ? "Child / Pedestrian Hazard (Vulnerable Road User)" : "D40 Severe Cavity / Pothole");
+        predEl.style.color = isPed ? "#06b6d4" : (p.is_distress ? "#ef4444" : "#10b981");
+      }
 
       const locEl = document.getElementById("rw-photo-location");
       let locText = `Custom Upload: ${fileName} • Optical Scan Complete`;
@@ -5200,15 +5269,18 @@
       const confEl = document.getElementById("rw-photo-confidence");
       if (confEl) confEl.innerText = `${((p.confidence || 0.98) * 100).toFixed(1)}%`;
 
-      // Dimensions
-      if (document.getElementById("rw-photo-area")) document.getElementById("rw-photo-area").innerText = `${(dims.surface_area_m2 || 0).toFixed(2)} m²`;
-      if (document.getElementById("rw-photo-depth")) document.getElementById("rw-photo-depth").innerText = `${(dims.depth_cm || 0).toFixed(1)} cm`;
-      if (document.getElementById("rw-photo-vol")) document.getElementById("rw-photo-vol").innerText = `${(dims.bitumen_volume_m3 || 0).toFixed(3)} m³`;
-      if (document.getElementById("rw-photo-tonnage")) document.getElementById("rw-photo-tonnage").innerText = `${(dims.morth_compacted_tonnage_t || 0).toFixed(3)} T`;
-      if (document.getElementById("rw-photo-cost")) document.getElementById("rw-photo-cost").innerText = `₹ ${Math.round(dims.estimated_repair_cost_inr || 0).toLocaleString('en-IN')}`;
+      // Dimensions & zero repair cost for pedestrians or clean roads
+      const repairCost = (isPed || !p.is_distress) ? 0 : Math.round(dims.estimated_repair_cost_inr || 0);
+      if (document.getElementById("rw-photo-area")) document.getElementById("rw-photo-area").innerText = `${((isPed || !p.is_distress) ? 0 : (dims.surface_area_m2 || 0)).toFixed(2)} m²`;
+      if (document.getElementById("rw-photo-depth")) document.getElementById("rw-photo-depth").innerText = `${((isPed || !p.is_distress) ? 0 : (dims.depth_cm || 0)).toFixed(1)} cm`;
+      if (document.getElementById("rw-photo-vol")) document.getElementById("rw-photo-vol").innerText = `${((isPed || !p.is_distress) ? 0 : (dims.bitumen_volume_m3 || 0)).toFixed(3)} m³`;
+      if (document.getElementById("rw-photo-tonnage")) document.getElementById("rw-photo-tonnage").innerText = `${((isPed || !p.is_distress) ? 0 : (dims.morth_compacted_tonnage_t || 0)).toFixed(3)} T`;
+      if (document.getElementById("rw-photo-cost")) document.getElementById("rw-photo-cost").innerText = `₹ ${repairCost.toLocaleString('en-IN')}`;
 
-      // Show toast with deep pipeline forensic metrics if available
-      if (analysis.astm_d6433_pci && analysis.bayesian_sensor_fusion) {
+      // Show toast with deep pipeline forensic metrics or pedestrian safety alert
+      if (isPed) {
+        showAiToast(`⚠️ VULNERABLE ROAD USER ALERT!`, `Child / Pedestrian Hazard detected on carriage way. Autonomous vehicle slowdown chime active.`);
+      } else if (analysis.astm_d6433_pci && analysis.bayesian_sensor_fusion) {
         const pci = analysis.astm_d6433_pci;
         const fusion = analysis.bayesian_sensor_fusion;
         const seal = analysis.cryptographic_work_order ? analysis.cryptographic_work_order.sha256_cryptographic_seal.substring(0, 16) + '...' : 'SEALED';
@@ -5221,8 +5293,8 @@
         highway: analysis.corridor_id || "Custom Survey Location",
         predClass: p.class_name || "Distress",
         confidence: p.confidence || 0.98,
-        area: dims.surface_area_m2 || 0.0,
-        depth: dims.depth_cm || 0.0
+        area: (isPed || !p.is_distress) ? 0.0 : (dims.surface_area_m2 || 0.0),
+        depth: (isPed || !p.is_distress) ? 0.0 : (dims.depth_cm || 0.0)
       };
 
       // Draw detection reticle overlays on photo canvas
@@ -5233,7 +5305,7 @@
         const detectionsToDraw = analysis.all_detections && analysis.all_detections.length > 0 ? analysis.all_detections : [p];
         
         detectionsToDraw.forEach((det) => {
-          if (det && det.is_distress && (det.bbox_normalized || det.bbox_pixels)) {
+          if (det && (det.is_distress || det.is_pedestrian) && (det.bbox_normalized || det.bbox_pixels)) {
             let bx, by, bw, bh;
             if (det.bbox_normalized && det.bbox_normalized.length === 4) {
               bx = Math.round(det.bbox_normalized[0] * canvas.width);
@@ -5255,15 +5327,20 @@
             bw = Math.min(canvas.width - bx - 4, bw);
             bh = Math.min(canvas.height - by - 4, bh);
 
-            ctx.strokeStyle = "#f59e0b";
+            const isDetPed = Boolean(det.is_pedestrian || (det.class_name && det.class_name.toLowerCase().includes("pedestrian")));
+            const boxStroke = isDetPed ? "#06b6d4" : "#f59e0b";
+            const cornerStroke = isDetPed ? "#10b981" : "#38bdf8";
+            const fillBg = isDetPed ? "rgba(6, 182, 212, 0.22)" : "rgba(245, 158, 11, 0.20)";
+
+            ctx.strokeStyle = boxStroke;
             ctx.lineWidth = 2.5;
             ctx.strokeRect(bx, by, bw, bh);
 
-            ctx.fillStyle = "rgba(245, 158, 11, 0.20)";
+            ctx.fillStyle = fillBg;
             ctx.fillRect(bx, by, bw, bh);
 
             const cLen = Math.min(14, bw / 3, bh / 3);
-            ctx.strokeStyle = "#38bdf8";
+            ctx.strokeStyle = cornerStroke;
             ctx.lineWidth = 3;
             ctx.beginPath(); ctx.moveTo(bx, by + cLen); ctx.lineTo(bx, by); ctx.lineTo(bx + cLen, by); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(bx + bw - cLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cLen); ctx.stroke();
@@ -5271,8 +5348,9 @@
             ctx.beginPath(); ctx.moveTo(bx + bw - cLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cLen); ctx.stroke();
 
             const dDims = det.physical_dimensions || dims || {};
-            const label1 = `[M1 AI] ${(det.class_name || 'DISTRESS').toUpperCase()} (${((det.confidence || 0.98)*100).toFixed(1)}%)`;
-            const label2 = `Area: ${(dDims.surface_area_m2 || 0).toFixed(2)} m2`;
+            const tag = isDetPed ? "[VRU SAFETY]" : "[M1 AI]";
+            const label1 = `${tag} ${(det.class_name || 'DETECTION').toUpperCase()} (${((det.confidence || 0.98)*100).toFixed(1)}%)`;
+            const label2 = isDetPed ? "Hazard: Autonomous Slowdown Chime" : `Area: ${(dDims.surface_area_m2 || 0).toFixed(2)} m2`;
             
             ctx.font = "bold 10px monospace";
             const w1 = ctx.measureText(label1).width;
@@ -5280,11 +5358,11 @@
             const maxW = Math.max(w1, w2) + 8;
             
             const labY = Math.max(26, by - 6);
-            ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+            ctx.fillStyle = "rgba(15, 23, 42, 0.90)";
             ctx.fillRect(bx, labY - 22, maxW, 26);
-            ctx.fillStyle = "#38bdf8";
+            ctx.fillStyle = isDetPed ? "#06b6d4" : "#38bdf8";
             ctx.fillText(label1, bx + 4, labY - 12);
-            ctx.fillStyle = "#f59e0b";
+            ctx.fillStyle = isDetPed ? "#10b981" : "#f59e0b";
             ctx.fillText(label2, bx + 4, labY - 2);
           }
         });

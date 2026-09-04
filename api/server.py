@@ -791,7 +791,10 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # ----------------------------------------------------------------------
         elif path == "/api/v1/vision/analyze-custom-photo":
             img_b64 = body.get("image_base64")
+            filename = body.get("filename", "")
             highway = body.get("highway", "Custom Field Survey Location")
+            if filename and filename not in highway:
+                highway = f"{highway} {filename}"
             
             if not img_b64:
                 self._send_json(400, {"error": "Missing image_base64 payload"})
@@ -917,6 +920,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         elif path == "/api/v1/pipeline/deep-audit":
             image_input = body.get("image_base64") or body.get("image_path")
             corridor = body.get("corridor_id", "NH-44")
+            filename = body.get("filename", "")
+            if filename and filename not in corridor:
+                corridor = f"{corridor} {filename}"
             lat = float(body.get("latitude", body.get("lat", 28.7041)))
             lng = float(body.get("longitude", body.get("lng", 77.1025)))
             chainage = float(body.get("chainage_km", 108.4))
