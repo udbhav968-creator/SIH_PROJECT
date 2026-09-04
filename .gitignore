@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.env
+.venv
+venv/
+env/
+
+# Large binary/data files (keep NPZ checkpoints but exclude huge JSON spec)
+checkpoints/road_shield_open_neural_spec.json
+*.mp4
+*.avi
+*.mov
+
+# Logs
+*.log
+daemon_server.log
+server_stdout.log
+server_stderr.log
+
+# Temp/scratch
+test_write.txt
+test_syntax.js
+find_routes.py
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
