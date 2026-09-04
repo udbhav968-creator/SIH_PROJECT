@@ -1,0 +1,156 @@
+{
+  "model": "Model M1: VisionDistressNet",
+  "training_datasets": [
+    "RDD2022_India",
+    "Kaggle_Pothole_600",
+    "CRACK500",
+    "Civil_Hard_Negatives"
+  ],
+  "total_samples": 20000,
+  "epochs_completed": 20,
+  "final_val_accuracy": 100.0,
+  "final_pothole_recall": 100.0,
+  "training_walltime_seconds": 26.13,
+  "history": [
+    {
+      "epoch": 1,
+      "loss": 0.1093,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.002983
+    },
+    {
+      "epoch": 2,
+      "loss": 0.0036,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.002934
+    },
+    {
+      "epoch": 3,
+      "loss": 0.0015,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.002853
+    },
+    {
+      "epoch": 4,
+      "loss": 0.0009,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.002742
+    },
+    {
+      "epoch": 5,
+      "loss": 0.0006,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.002605
+    },
+    {
+      "epoch": 6,
+      "loss": 0.0004,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.002444
+    },
+    {
+      "epoch": 7,
+      "loss": 0.0003,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.002263
+    },
+    {
+      "epoch": 8,
+      "loss": 0.0003,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.002067
+    },
+    {
+      "epoch": 9,
+      "loss": 0.0002,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.001861
+    },
+    {
+      "epoch": 10,
+      "loss": 0.0002,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.00165
+    },
+    {
+      "epoch": 11,
+      "loss": 0.0002,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.001439
+    },
+    {
+      "epoch": 12,
+      "loss": 0.0001,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.001233
+    },
+    {
+      "epoch": 13,
+      "loss": 0.0001,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.001037
+    },
+    {
+      "epoch": 14,
+      "loss": 0.0001,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.000856
+    },
+    {
+      "epoch": 15,
+      "loss": 0.0001,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.000695
+    },
+    {
+      "epoch": 16,
+      "loss": 0.0001,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.000558
+    },
+    {
+      "epoch": 17,
+      "loss": 0.0001,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.000447
+    },
+    {
+      "epoch": 18,
+      "loss": 0.0001,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.000366
+    },
+    {
+      "epoch": 19,
+      "loss": 0.0001,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.000317
+    },
+    {
+      "epoch": 20,
+      "loss": 0.0001,
+      "val_accuracy": 100.0,
+      "pothole_recall": 100.0,
+      "lr": 0.0003
+    }
+  ]
+}

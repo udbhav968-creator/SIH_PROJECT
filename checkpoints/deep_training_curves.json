@@ -1,0 +1,501 @@
+{
+  "metadata": {
+    "total_samples": 100000,
+    "timestamp_utc": 1788500557,
+    "status": "CONVERGED_OPTIMAL",
+    "total_walltime_seconds": 70.24
+  },
+  "models": {
+    "model_m_pci": {
+      "task": "ASTM_D6433_PCI_Continuous_Regression",
+      "training_samples": 20000,
+      "epochs": 20,
+      "final_val_mae": 1.34,
+      "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\pci_regressor_weights.npz",
+      "elapsed_seconds": 10.69,
+      "history": [
+        {
+          "epoch": 1,
+          "loss": 7.3746,
+          "val_mae": 3.05,
+          "lr": 0.003977
+        },
+        {
+          "epoch": 2,
+          "loss": 1.8629,
+          "val_mae": 1.79,
+          "lr": 0.003907
+        },
+        {
+          "epoch": 3,
+          "loss": 1.204,
+          "val_mae": 1.5,
+          "lr": 0.003793
+        },
+        {
+          "epoch": 4,
+          "loss": 1.0709,
+          "val_mae": 1.44,
+          "lr": 0.003637
+        },
+        {
+          "epoch": 5,
+          "loss": 1.0429,
+          "val_mae": 1.43,
+          "lr": 0.003444
+        },
+        {
+          "epoch": 6,
+          "loss": 1.0113,
+          "val_mae": 1.42,
+          "lr": 0.003217
+        },
+        {
+          "epoch": 7,
+          "loss": 0.989,
+          "val_mae": 1.4,
+          "lr": 0.002963
+        },
+        {
+          "epoch": 8,
+          "loss": 0.9769,
+          "val_mae": 1.41,
+          "lr": 0.002687
+        },
+        {
+          "epoch": 9,
+          "loss": 0.9749,
+          "val_mae": 1.36,
+          "lr": 0.002397
+        },
+        {
+          "epoch": 10,
+          "loss": 0.9497,
+          "val_mae": 1.36,
+          "lr": 0.0021
+        },
+        {
+          "epoch": 11,
+          "loss": 0.9514,
+          "val_mae": 1.36,
+          "lr": 0.001803
+        },
+        {
+          "epoch": 12,
+          "loss": 0.9306,
+          "val_mae": 1.35,
+          "lr": 0.001513
+        },
+        {
+          "epoch": 13,
+          "loss": 0.9272,
+          "val_mae": 1.36,
+          "lr": 0.001237
+        },
+        {
+          "epoch": 14,
+          "loss": 0.9178,
+          "val_mae": 1.35,
+          "lr": 0.000983
+        },
+        {
+          "epoch": 15,
+          "loss": 0.9127,
+          "val_mae": 1.34,
+          "lr": 0.000756
+        },
+        {
+          "epoch": 16,
+          "loss": 0.9102,
+          "val_mae": 1.36,
+          "lr": 0.000563
+        },
+        {
+          "epoch": 17,
+          "loss": 0.9049,
+          "val_mae": 1.36,
+          "lr": 0.000407
+        },
+        {
+          "epoch": 18,
+          "loss": 0.9029,
+          "val_mae": 1.34,
+          "lr": 0.000293
+        },
+        {
+          "epoch": 19,
+          "loss": 0.8987,
+          "val_mae": 1.34,
+          "lr": 0.000223
+        },
+        {
+          "epoch": 20,
+          "loss": 0.8993,
+          "val_mae": 1.34,
+          "lr": 0.0002
+        }
+      ]
+    },
+    "model_m_degrade": {
+      "task": "Pavement_Lifecycle_180_Day_Growth_Forecast",
+      "training_samples": 10000,
+      "epochs": 20,
+      "final_val_rel_error_pct": 253.3,
+      "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\deterioration_forecaster_weights.npz",
+      "elapsed_seconds": 4.46,
+      "history": [
+        {
+          "epoch": 1,
+          "loss": 956451076.7792,
+          "val_rel_error_pct": 93.53,
+          "lr": 0.003479
+        },
+        {
+          "epoch": 2,
+          "loss": 948618166.1051,
+          "val_rel_error_pct": 195.33,
+          "lr": 0.003417
+        },
+        {
+          "epoch": 3,
+          "loss": 938885735.4148,
+          "val_rel_error_pct": 367.51,
+          "lr": 0.003315
+        },
+        {
+          "epoch": 4,
+          "loss": 916598743.9601,
+          "val_rel_error_pct": 387.12,
+          "lr": 0.003175
+        },
+        {
+          "epoch": 5,
+          "loss": 879029315.4665,
+          "val_rel_error_pct": 383.19,
+          "lr": 0.003002
+        },
+        {
+          "epoch": 6,
+          "loss": 819449465.7788,
+          "val_rel_error_pct": 397.52,
+          "lr": 0.002799
+        },
+        {
+          "epoch": 7,
+          "loss": 773928559.5842,
+          "val_rel_error_pct": 380.6,
+          "lr": 0.002572
+        },
+        {
+          "epoch": 8,
+          "loss": 720220040.7726,
+          "val_rel_error_pct": 307.47,
+          "lr": 0.002325
+        },
+        {
+          "epoch": 9,
+          "loss": 681729953.5725,
+          "val_rel_error_pct": 291.52,
+          "lr": 0.002066
+        },
+        {
+          "epoch": 10,
+          "loss": 641861433.5766,
+          "val_rel_error_pct": 284.6,
+          "lr": 0.0018
+        },
+        {
+          "epoch": 11,
+          "loss": 621652514.5382,
+          "val_rel_error_pct": 278.5,
+          "lr": 0.001534
+        },
+        {
+          "epoch": 12,
+          "loss": 602139247.5106,
+          "val_rel_error_pct": 272.23,
+          "lr": 0.001275
+        },
+        {
+          "epoch": 13,
+          "loss": 589824392.5776,
+          "val_rel_error_pct": 262.97,
+          "lr": 0.001028
+        },
+        {
+          "epoch": 14,
+          "loss": 582877866.0689,
+          "val_rel_error_pct": 258.12,
+          "lr": 0.000801
+        },
+        {
+          "epoch": 15,
+          "loss": 574775313.7797,
+          "val_rel_error_pct": 263.51,
+          "lr": 0.000598
+        },
+        {
+          "epoch": 16,
+          "loss": 570036141.8483,
+          "val_rel_error_pct": 256.58,
+          "lr": 0.000425
+        },
+        {
+          "epoch": 17,
+          "loss": 571518649.7216,
+          "val_rel_error_pct": 254.31,
+          "lr": 0.000285
+        },
+        {
+          "epoch": 18,
+          "loss": 567351733.4902,
+          "val_rel_error_pct": 254.14,
+          "lr": 0.000183
+        },
+        {
+          "epoch": 19,
+          "loss": 569647765.419,
+          "val_rel_error_pct": 254.02,
+          "lr": 0.000121
+        },
+        {
+          "epoch": 20,
+          "loss": 596834296.8121,
+          "val_rel_error_pct": 253.3,
+          "lr": 0.0001
+        }
+      ]
+    },
+    "deep_vision_net": {
+      "task": "Hard_Negative_Vision_Distress_Segmentation",
+      "training_samples": 40000,
+      "epochs": 15,
+      "final_val_acc": 100.0,
+      "hard_neg_suppression": 100.0,
+      "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\deep_vision_weights.npz",
+      "elapsed_seconds": 38.02,
+      "history": [
+        {
+          "epoch": 1,
+          "loss": 0.1537,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 2,
+          "loss": 0.0039,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 3,
+          "loss": 0.0024,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 4,
+          "loss": 0.002,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 5,
+          "loss": 0.0018,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 6,
+          "loss": 0.0017,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 7,
+          "loss": 0.0016,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 8,
+          "loss": 0.0015,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 9,
+          "loss": 0.0015,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 10,
+          "loss": 0.0014,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 11,
+          "loss": 0.0014,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 12,
+          "loss": 0.0014,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 13,
+          "loss": 0.0014,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 14,
+          "loss": 0.0014,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        },
+        {
+          "epoch": 15,
+          "loss": 0.0014,
+          "val_acc": 100.0,
+          "hard_neg_suppression": 100.0
+        }
+      ]
+    },
+    "deep_imu_net": {
+      "task": "Massive_100Hz_IMU_Shock_Dynamics",
+      "training_samples": 30000,
+      "epochs": 20,
+      "final_val_acc": 100.0,
+      "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\deep_imu_weights.npz",
+      "elapsed_seconds": 17.07,
+      "history": [
+        {
+          "epoch": 1,
+          "loss": 0.1451,
+          "val_acc": 99.91,
+          "lr": 0.002983
+        },
+        {
+          "epoch": 2,
+          "loss": 0.0019,
+          "val_acc": 99.98,
+          "lr": 0.002931
+        },
+        {
+          "epoch": 3,
+          "loss": 0.0008,
+          "val_acc": 99.98,
+          "lr": 0.002847
+        },
+        {
+          "epoch": 4,
+          "loss": 0.0005,
+          "val_acc": 99.98,
+          "lr": 0.002733
+        },
+        {
+          "epoch": 5,
+          "loss": 0.0003,
+          "val_acc": 99.98,
+          "lr": 0.00259
+        },
+        {
+          "epoch": 6,
+          "loss": 0.0002,
+          "val_acc": 99.98,
+          "lr": 0.002423
+        },
+        {
+          "epoch": 7,
+          "loss": 0.0002,
+          "val_acc": 99.98,
+          "lr": 0.002236
+        },
+        {
+          "epoch": 8,
+          "loss": 0.0001,
+          "val_acc": 99.98,
+          "lr": 0.002033
+        },
+        {
+          "epoch": 9,
+          "loss": 0.0001,
+          "val_acc": 99.98,
+          "lr": 0.001819
+        },
+        {
+          "epoch": 10,
+          "loss": 0.0001,
+          "val_acc": 99.98,
+          "lr": 0.0016
+        },
+        {
+          "epoch": 11,
+          "loss": 0.0001,
+          "val_acc": 99.98,
+          "lr": 0.001381
+        },
+        {
+          "epoch": 12,
+          "loss": 0.0001,
+          "val_acc": 99.98,
+          "lr": 0.001167
+        },
+        {
+          "epoch": 13,
+          "loss": 0.0001,
+          "val_acc": 100.0,
+          "lr": 0.000964
+        },
+        {
+          "epoch": 14,
+          "loss": 0.0001,
+          "val_acc": 100.0,
+          "lr": 0.000777
+        },
+        {
+          "epoch": 15,
+          "loss": 0.0001,
+          "val_acc": 100.0,
+          "lr": 0.00061
+        },
+        {
+          "epoch": 16,
+          "loss": 0.0001,
+          "val_acc": 99.98,
+          "lr": 0.000467
+        },
+        {
+          "epoch": 17,
+          "loss": 0.0001,
+          "val_acc": 100.0,
+          "lr": 0.000353
+        },
+        {
+          "epoch": 18,
+          "loss": 0.0001,
+          "val_acc": 100.0,
+          "lr": 0.000269
+        },
+        {
+          "epoch": 19,
+          "loss": 0.0001,
+          "val_acc": 100.0,
+          "lr": 0.000217
+        },
+        {
+          "epoch": 20,
+          "loss": 0.0001,
+          "val_acc": 100.0,
+          "lr": 0.0002
+        }
+      ]
+    }
+  }
+}

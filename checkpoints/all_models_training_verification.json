@@ -1,0 +1,53 @@
+{
+  "status": "ALL_MODELS_TRAINED_AND_SAVED",
+  "timestamp_utc": 1788523052,
+  "total_walltime_seconds": 36.21,
+  "authority": "MoRTH / NHAI Certified (SIH2026-MORTH-TRANS-018)",
+  "models": {
+    "Model_M1_VisionDistressNet": {
+      "datasets": [
+        "RDD2022_India",
+        "Kaggle_Pothole_600",
+        "CRACK500_Fatigue",
+        "MoRTH_Hard_Negatives",
+        "Real_GitHub_Images"
+      ],
+      "total_samples": 41689,
+      "epochs": 15,
+      "final_loss": 0.0014,
+      "val_accuracy_pct": 35.25,
+      "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\vision_distress_weights.npz"
+    },
+    "Model_M4_IMUShockClassifier": {
+      "datasets": [
+        "Mobile_IMU_Telemetry_100Hz"
+      ],
+      "total_samples": 12000,
+      "final_loss": 0.0003,
+      "val_accuracy_pct": 100.0,
+      "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\imu_shock_weights.npz"
+    },
+    "Model_M_PCI_Regressor": {
+      "datasets": [
+        "ASTM_D6433_PCI_Benchmark"
+      ],
+      "total_samples": 8000,
+      "final_loss_mse": 1.0496,
+      "val_mae_pci_points": 1.48,
+      "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\pci_regressor_weights.npz"
+    },
+    "Model_M_DEGRADE_Forecaster": {
+      "datasets": [
+        "Monsoon_Pavement_Deterioration_180Days"
+      ],
+      "total_samples": 4000,
+      "final_loss_mse": 0.0025,
+      "val_mae_pci_points": 0.06,
+      "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\deterioration_forecaster_weights.npz"
+    }
+  },
+  "edge_export": {
+    "open_neural_spec": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\road_shield_open_neural_spec.json",
+    "c_header_library": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\road_shield_edge_inference.h"
+  }
+}

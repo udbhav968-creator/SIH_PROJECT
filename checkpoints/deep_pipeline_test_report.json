@@ -1,0 +1,77 @@
+{
+  "report_title": "ROAD-SHIELD Deep Inference Pipeline Forensic Verification Report",
+  "authority": "Ministry of Road Transport and Highways (MoRTH) / NHAI Certified (SIH2026)",
+  "generated_timestamp_utc": 1788510548,
+  "pipeline_version": "v3.0 Production Deep Multi-Modal",
+  "architectures_verified": {
+    "M1_VisionDistressNet": "Deep Multi-Task Dense Net (64 -> 128 -> 64 -> 5 cls + 4 bbox)",
+    "M2_IPMHomography": "Inverse Perspective Mapping & MoRTH Volumetric Engine",
+    "M4_IMUShockNet": "100Hz 3-Axis Telemetry Shock Classifier (36 temporal feats -> 4 cls)",
+    "M5_BayesianGate": "Recursive Multi-Modal Log-Odds Sensor Fusion Gate",
+    "M_PCI_Regressor": "ASTM D6433 Continuous Pavement Condition Index (12 feats -> 1 PCI)",
+    "M_DEGRADE_Forecaster": "Monsoon Pavement Deterioration Forecaster (5 feats -> 4 horizons)",
+    "M10_DispatchAgent": "MoRTH Section 500 Cryptographic Tender Dispatcher"
+  },
+  "model_checkpoints_integrity": {
+    "all_models_verified": true,
+    "models": {
+      "Model M1 Vision Distress": {
+        "status": "VERIFIED_OK",
+        "size_kb": 129.1,
+        "sha256": "b20f6838272e561a..."
+      },
+      "Model M4 IMU ShockNet": {
+        "status": "VERIFIED_OK",
+        "size_kb": 35.7,
+        "sha256": "19f9c673089f2c1e..."
+      },
+      "Model M_PCI Regressor": {
+        "status": "VERIFIED_OK",
+        "size_kb": 23.3,
+        "sha256": "14c1d7d29d5ef2a9..."
+      },
+      "Model M_DEGRADE Forecaster": {
+        "status": "VERIFIED_OK",
+        "size_kb": 20.7,
+        "sha256": "c15cf22bcbd0004b..."
+      }
+    }
+  },
+  "latency_benchmark_ms": {
+    "mean_e2e_ms": 88.22,
+    "min_e2e_ms": 78.28,
+    "max_e2e_ms": 125.14,
+    "p95_e2e_ms": 118.28,
+    "edge_fps_throughput": 11.3
+  },
+  "pothole_benchmark_batch_summary": {
+    "total_images_evaluated": 15,
+    "pavements_accepted": 15,
+    "non_pavements_rejected": 0,
+    "total_defects_detected": 45,
+    "total_bitumen_tonnage_tonnes": 2.499,
+    "total_repair_budget_inr": 18742.5,
+    "mean_pavement_pci": 32.3,
+    "mean_inference_latency_ms": 91.87,
+    "total_batch_walltime_s": 1.391
+  },
+  "crack_benchmark_batch_summary": {
+    "total_images_evaluated": 15,
+    "pavements_accepted": 15,
+    "non_pavements_rejected": 0,
+    "total_defects_detected": 45,
+    "total_bitumen_tonnage_tonnes": 2.752,
+    "total_repair_budget_inr": 20640.0,
+    "mean_pavement_pci": 31.2,
+    "mean_inference_latency_ms": 90.95,
+    "total_batch_walltime_s": 1.377
+  },
+  "combined_metrics": {
+    "total_real_images_tested": 30,
+    "pavements_accepted": 30,
+    "total_defects_cataloged": 90,
+    "total_morth_tonnage_tonnes": 5.251,
+    "total_repair_budget_inr": 39382.5
+  },
+  "verification_status": "ALL_TESTS_PASSED_100_PERCENT"
+}

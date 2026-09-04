@@ -1,0 +1,53 @@
+{
+  "timestamp_iso": "2026-09-04T12:15:58Z",
+  "test_results": {
+    "M1_VisionDistressNet": {
+      "status": "PASS",
+      "latency_ms": 0.618,
+      "classes": 9,
+      "mean_conf": "62.9%"
+    },
+    "M4_IMUShockClassifier": {
+      "status": "PASS",
+      "accuracy_pct": 100.0
+    },
+    "M_PCI_Regressor": {
+      "status": "PASS",
+      "mae_points": 1.42,
+      "r2": 0.9908
+    },
+    "M_DEGRADE_Forecaster": {
+      "status": "PASS",
+      "projection_valid": true
+    },
+    "M5_UrbanTrafficNet": {
+      "status": "PASS",
+      "pcu": 75.0,
+      "delay_mins": 18.5
+    },
+    "M6_ALPRIncidentTracker": {
+      "status": "PASS",
+      "plate": "WB 48 GU 6789",
+      "anomaly": "EXCESSIVE_APPROACH_VELOCITY",
+      "conf": "98.9%"
+    },
+    "FleetDeduplicationEngine": {
+      "status": "PASS",
+      "dedup_action": "DEDUPLICATED_AND_UPDATED",
+      "redundancy_cut_pct": 33.3
+    },
+    "CV_MultiDefectIsolation": {
+      "status": "PASS",
+      "detections": 15
+    },
+    "REST_API_Gateway": {
+      "status": "PASS",
+      "passed": "8/8"
+    },
+    "Edge_Export_Integrity": {
+      "status": "PASS",
+      "header_size_bytes": 1253
+    }
+  },
+  "all_subsystems_pass": true
+}

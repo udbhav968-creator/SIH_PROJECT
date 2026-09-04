@@ -1,0 +1,33 @@
+{
+  "vision_distress_net": {
+    "model": "VisionDistressNet",
+    "final_loss": 0.0017,
+    "val_accuracy": 100.0,
+    "pothole_recall": 100.0,
+    "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\vision_distress_weights.npz",
+    "training_time_seconds": 6.28
+  },
+  "imu_shock_classifier": {
+    "model": "IMUShockClassifier",
+    "final_loss": 0.0001,
+    "val_accuracy": 100.0,
+    "shock_detection_rate": 100.0,
+    "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\imu_shock_weights.npz",
+    "training_time_seconds": 2.86
+  },
+  "forensic_embedder": {
+    "model": "ForensicMetricEmbedder",
+    "final_loss": 0.0037,
+    "sim_positive": 0.8608,
+    "sim_negative": 0.4159,
+    "margin_gap": 0.4449,
+    "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\forensic_embedder_weights.npz",
+    "training_time_seconds": 0.45
+  },
+  "master_training_summary": {
+    "status": "ALL_MODELS_TRAINED_SUCCESSFULLY",
+    "total_training_walltime_seconds": 9.59,
+    "timestamp_utc": 1788499997,
+    "verified_framework": "Pure Vectorized NumPy Engine (Python 3.14 Compatible)"
+  }
+}
