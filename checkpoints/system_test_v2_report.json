@@ -1,5 +1,5 @@
 {
-  "timestamp_utc": 1788525788,
+  "timestamp_utc": 1788537630,
   "system": "ROAD-SHIELD AI Engine v3.0",
   "test_results": {
     "1_model_imports": "PASS - 10 modules imported successfully",
@@ -7,9 +7,9 @@
     "3_imu_shock": "PASS - shock_pred=2 (Rumble Strip), conf=0.000",
     "4_pci_astm": "PASS - Good=100.0, Bad=6.6 (FAILED), ordering correct",
     "5_urban_traffic": "PASS - 7-class pred=0, UCI=59.5 PCU",
-    "6_alpr_tracker": "PASS - RECKLESS_LANE_CUTTING conf=0.984 SHA256=18fce135ec54d0fe...",
+    "6_alpr_tracker": "PASS - RECKLESS_LANE_CUTTING conf=0.984 SHA256=bf0ddb37a567b573...",
     "7_fleet_dedup": "PASS - 2 unique defects (hotspots=1) from 3 reports",
-    "8_pipeline_real_images": "PASS - 10 images, avg_lat=207.1ms, avg_pci=92.1, statuses={'ANALYSIS_COMPLETE': 10}",
+    "8_pipeline_real_images": "PASS - 10 images, avg_lat=208.0ms, avg_pci=86.2, statuses={'ANALYSIS_COMPLETE': 10}",
     "9_rest_api": "PASS - 7/7 OK: ['200', '200', '200', '200', '200', '200', '200']",
     "10_checkpoints": "PASS - all 5 weight files verified"
   },

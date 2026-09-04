@@ -23,10 +23,13 @@ class VisionDistressNet:
         "Waterlogging", "Missing Zebra Crossing", "Missing Road Divider", "Damaged Traffic Sign"
     ]
     
-    def __init__(self, in_features=64, hidden_dims=[512, 256, 128], num_classes=9, lr=0.002, seed=42):
+    def __init__(self, in_features=64, hidden_dims=[512, 256, 128], num_classes=9, lr=0.002, seed=42, in_dim=None):
+        if in_dim is not None:
+            in_features = in_dim
         np.random.seed(seed)
         self.lr = lr
         self.num_classes = num_classes
+        self.has_transformer = True
         
         # --- DEEP CNN EMBEDDED BLOCK (Simulated 1D Conv over features) ---
         # Converts 64 flat features into richer local patterns
@@ -39,57 +42,54 @@ class VisionDistressNet:
         self.W_k = np.random.randn(hidden_dims[0], self.d_k).astype(np.float32) * 0.1
         self.W_v = np.random.randn(hidden_dims[0], self.d_k).astype(np.float32) * 0.1
         
-        # --- DEEP FFN ARCHITECTURE ---
-        dims = hidden_dims
+        # --- DENSE DEEP LAYERS ---
         self.weights = []
         self.biases = []
-        
-        for i in range(len(dims) - 1):
-            w = np.random.randn(dims[i], dims[i+1]).astype(np.float32) * np.sqrt(2.0 / dims[i])
-            b = np.zeros((1, dims[i+1]), dtype=np.float32)
-            self.weights.append(w)
-            self.biases.append(b)
+        curr = hidden_dims[0]
+        for h in hidden_dims[1:]:
+            self.weights.append(np.random.randn(curr, h).astype(np.float32) * np.sqrt(2.0 / curr))
+            self.biases.append(np.zeros((1, h), dtype=np.float32))
+            curr = h
             
-        # Head 1: Classification
-        self.w_cls = np.random.randn(hidden_dims[-1], num_classes).astype(np.float32) * np.sqrt(2.0 / hidden_dims[-1])
+        # Heads
+        self.w_cls = np.random.randn(curr, num_classes).astype(np.float32) * 0.05
         self.b_cls = np.zeros((1, num_classes), dtype=np.float32)
         
-        # Head 2: Bounding Box Regressor (4 outputs: x_min, y_min, w, h)
-        self.w_geo = np.random.randn(hidden_dims[-1], 4).astype(np.float32) * np.sqrt(2.0 / hidden_dims[-1])
+        self.w_geo = np.random.randn(curr, 4).astype(np.float32) * 0.05
         self.b_geo = np.zeros((1, 4), dtype=np.float32)
         
-        self.eps = 1e-8
-
     def forward(self, X):
-        # 1. Embedded Deep CNN Layer
-        cnn_out = X @ self.conv_w + self.conv_b
-        cnn_out = gelu(cnn_out)
-        
-        # 2. Embedded Transformer Self-Attention Layer
-        Q = cnn_out @ self.W_q
-        K = cnn_out @ self.W_k
-        V = cnn_out @ self.W_v
-        
-        # Attention scores (Q * K^T / sqrt(d_k))
-        scores = (Q @ K.T) / np.sqrt(self.d_k)
-        attn_weights = softmax(scores)
-        attn_out = attn_weights @ V
-        
-        # Residual Connection
-        x_trans = cnn_out + attn_out
-        
-        activations = [x_trans]
-        pre_activations = []
-        for i in range(len(self.weights)):
-            z = activations[-1] @ self.weights[i] + self.biases[i]
-            pre_activations.append(z)
-            a = gelu(z)
-            activations.append(a)
+        if self.has_transformer and self.conv_w is not None:
+            # 1. 1D CNN Local Feature Projection
+            cnn_out = X @ self.conv_w + self.conv_b
+            cnn_act = gelu(cnn_out)
             
-        feat = activations[-1]
-        cls_logits = feat @ self.w_cls + self.b_cls
-        geo_preds = feat @ self.w_geo + self.b_geo
-        return activations, pre_activations, cls_logits, geo_preds
+            # 2. Transformer Multi-Head Self-Attention
+            Q = cnn_act @ self.W_q
+            K = cnn_act @ self.W_k
+            V = cnn_act @ self.W_v
+            
+            scores = (Q @ K.T) / np.sqrt(self.d_k)
+            attn_weights = softmax(scores)
+            attn_out = attn_weights @ V
+            
+            # Residual connection & layer norm simulation
+            h = cnn_act + attn_out
+            h = (h - np.mean(h, axis=-1, keepdims=True)) / (np.std(h, axis=-1, keepdims=True) + 1e-6)
+        else:
+            h = X
+            
+        activations = [h]
+        pre_acts = []
+        for w, b in zip(self.weights, self.biases):
+            z = h @ w + b
+            pre_acts.append(z)
+            h = gelu(z)
+            activations.append(h)
+            
+        cls_logits = h @ self.w_cls + self.b_cls
+        geo_preds = h @ self.w_geo + self.b_geo
+        return activations, pre_acts, cls_logits, geo_preds
 
     def predict(self, X):
         _, _, cls_logits, geo_preds = self.forward(X)
@@ -147,11 +147,35 @@ class VisionDistressNet:
 
     def load_weights(self, path):
         data = np.load(path)
-        try:
+        if "conv_w" in data and "W_q" in data:
+            self.has_transformer = True
             self.conv_w = data["conv_w"]
+            self.conv_b = data["conv_b"] if "conv_b" in data else np.zeros((1, self.conv_w.shape[1]), dtype=np.float32)
             self.W_q = data["W_q"]
-            self.weights[0] = data["w0"]
-            self.weights[1] = data["w1"]
+            self.W_k = data["W_k"] if "W_k" in data else np.random.randn(*self.W_q.shape).astype(np.float32) * 0.1
+            self.W_v = data["W_v"] if "W_v" in data else np.random.randn(*self.W_q.shape).astype(np.float32) * 0.1
+            self.d_k = self.conv_w.shape[1]
+        else:
+            self.has_transformer = False
+
+        if "w0" in data:
+            if len(self.weights) == 0:
+                self.weights = [data["w0"]]
+                self.biases = [data["b0"] if "b0" in data else np.zeros((1, data["w0"].shape[1]), dtype=np.float32)]
+            else:
+                self.weights[0] = data["w0"]
+                if "b0" in data: self.biases[0] = data["b0"]
+        if "w1" in data:
+            if len(self.weights) < 2:
+                self.weights.append(data["w1"])
+                self.biases.append(data["b1"] if "b1" in data else np.zeros((1, data["w1"].shape[1]), dtype=np.float32))
+            else:
+                self.weights[1] = data["w1"]
+                if "b1" in data: self.biases[1] = data["b1"]
+        if "w_cls" in data:
             self.w_cls = data["w_cls"]
-        except:
-            pass # Use randomized if checkpoint is old format
+            self.b_cls = data["b_cls"] if "b_cls" in data else np.zeros((1, self.w_cls.shape[1]), dtype=np.float32)
+            self.num_classes = self.w_cls.shape[1]
+        if "w_geo" in data:
+            self.w_geo = data["w_geo"]
+            self.b_geo = data["b_geo"] if "b_geo" in data else np.zeros((1, 4), dtype=np.float32)
