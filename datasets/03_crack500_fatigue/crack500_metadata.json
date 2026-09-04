@@ -1,0 +1,11 @@
+{
+  "dataset_name": "CRACK500 Pavement Structural Fatigue Cracking Benchmark",
+  "source_citation": "Yang et al., High-Resolution Pavement Crack Dataset",
+  "total_samples": 8000,
+  "categories": {
+    "1": "Longitudinal Wheelpath Structural Cracking (D00)",
+    "2": "Transverse Joint Thermal Fatigue Cracking (D10)",
+    "3": "Alligator Crocodile Pattern Mesh Cracking (D20)"
+  },
+  "resolution": "High-Resolution Pavement Surface Texture (2000x1500 native)"
+}

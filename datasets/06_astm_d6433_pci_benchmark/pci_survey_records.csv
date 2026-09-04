@@ -1,0 +1,301 @@
+survey_section_id,highway,chainage_start_km,chainage_end_km,calculated_pci,condition_rating,recommended_morth_treatment
+PCI-SEC-0001,NH-44 Section 1,0.0,1.5,66.7,Fair,Micro-Surfacing Patch
+PCI-SEC-0002,NH-44 Section 2,1.5,3.0,18.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0003,NH-44 Section 3,3.0,4.5,33.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0004,NH-44 Section 4,4.5,6.0,23.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0005,NH-44 Section 5,6.0,7.5,32.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0006,NH-44 Section 6,7.5,9.0,31.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0007,NH-44 Section 7,9.0,10.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0008,NH-44 Section 8,10.5,12.0,14.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0009,NH-44 Section 9,12.0,13.5,42.4,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0010,NH-44 Section 10,13.5,15.0,50.9,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0011,NH-44 Section 1,15.0,16.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0012,NH-44 Section 2,16.5,18.0,51.4,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0013,NH-44 Section 3,18.0,19.5,10.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0014,NH-44 Section 4,19.5,21.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0015,NH-44 Section 5,21.0,22.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0016,NH-44 Section 6,22.5,24.0,31.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0017,NH-44 Section 7,24.0,25.5,30.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0018,NH-44 Section 8,25.5,27.0,26.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0019,NH-44 Section 9,27.0,28.5,42.0,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0020,NH-44 Section 10,28.5,30.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0021,NH-44 Section 1,30.0,31.5,25.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0022,NH-44 Section 2,31.5,33.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0023,NH-44 Section 3,33.0,34.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0024,NH-44 Section 4,34.5,36.0,53.1,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0025,NH-44 Section 5,36.0,37.5,43.5,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0026,NH-44 Section 6,37.5,39.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0027,NH-44 Section 7,39.0,40.5,17.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0028,NH-44 Section 8,40.5,42.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0029,NH-44 Section 9,42.0,43.5,26.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0030,NH-44 Section 10,43.5,45.0,51.0,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0031,NH-44 Section 1,45.0,46.5,28.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0032,NH-44 Section 2,46.5,48.0,55.6,Fair,Micro-Surfacing Patch
+PCI-SEC-0033,NH-44 Section 3,48.0,49.5,17.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0034,NH-44 Section 4,49.5,51.0,55.9,Fair,Micro-Surfacing Patch
+PCI-SEC-0035,NH-44 Section 5,51.0,52.5,38.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0036,NH-44 Section 6,52.5,54.0,44.1,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0037,NH-44 Section 7,54.0,55.5,34.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0038,NH-44 Section 8,55.5,57.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0039,NH-44 Section 9,57.0,58.5,44.8,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0040,NH-44 Section 10,58.5,60.0,17.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0041,NH-44 Section 1,60.0,61.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0042,NH-44 Section 2,61.5,63.0,33.1,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0043,NH-44 Section 3,63.0,64.5,15.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0044,NH-44 Section 4,64.5,66.0,30.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0045,NH-44 Section 5,66.0,67.5,22.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0046,NH-44 Section 6,67.5,69.0,60.6,Fair,Micro-Surfacing Patch
+PCI-SEC-0047,NH-44 Section 7,69.0,70.5,68.4,Fair,Micro-Surfacing Patch
+PCI-SEC-0048,NH-44 Section 8,70.5,72.0,44.6,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0049,NH-44 Section 9,72.0,73.5,11.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0050,NH-44 Section 10,73.5,75.0,49.2,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0051,NH-44 Section 1,75.0,76.5,39.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0052,NH-44 Section 2,76.5,78.0,60.7,Fair,Micro-Surfacing Patch
+PCI-SEC-0053,NH-44 Section 3,78.0,79.5,27.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0054,NH-44 Section 4,79.5,81.0,15.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0055,NH-44 Section 5,81.0,82.5,34.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0056,NH-44 Section 6,82.5,84.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0057,NH-44 Section 7,84.0,85.5,38.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0058,NH-44 Section 8,85.5,87.0,25.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0059,NH-44 Section 9,87.0,88.5,44.8,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0060,NH-44 Section 10,88.5,90.0,18.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0061,NH-44 Section 1,90.0,91.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0062,NH-44 Section 2,91.5,93.0,15.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0063,NH-44 Section 3,93.0,94.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0064,NH-44 Section 4,94.5,96.0,20.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0065,NH-44 Section 5,96.0,97.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0066,NH-44 Section 6,97.5,99.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0067,NH-44 Section 7,99.0,100.5,26.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0068,NH-44 Section 8,100.5,102.0,50.1,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0069,NH-44 Section 9,102.0,103.5,49.0,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0070,NH-44 Section 10,103.5,105.0,23.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0071,NH-44 Section 1,105.0,106.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0072,NH-44 Section 2,106.5,108.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0073,NH-44 Section 3,108.0,109.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0074,NH-44 Section 4,109.5,111.0,54.7,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0075,NH-44 Section 5,111.0,112.5,11.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0076,NH-44 Section 6,112.5,114.0,17.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0077,NH-44 Section 7,114.0,115.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0078,NH-44 Section 8,115.5,117.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0079,NH-44 Section 9,117.0,118.5,40.2,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0080,NH-44 Section 10,118.5,120.0,8.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0081,NH-44 Section 1,120.0,121.5,26.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0082,NH-44 Section 2,121.5,123.0,27.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0083,NH-44 Section 3,123.0,124.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0084,NH-44 Section 4,124.5,126.0,25.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0085,NH-44 Section 5,126.0,127.5,68.7,Fair,Micro-Surfacing Patch
+PCI-SEC-0086,NH-44 Section 6,127.5,129.0,46.0,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0087,NH-44 Section 7,129.0,130.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0088,NH-44 Section 8,130.5,132.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0089,NH-44 Section 9,132.0,133.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0090,NH-44 Section 10,133.5,135.0,31.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0091,NH-44 Section 1,135.0,136.5,43.7,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0092,NH-44 Section 2,136.5,138.0,32.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0093,NH-44 Section 3,138.0,139.5,33.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0094,NH-44 Section 4,139.5,141.0,8.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0095,NH-44 Section 5,141.0,142.5,81.3,Satisfactory,Crack Sealing
+PCI-SEC-0096,NH-44 Section 6,142.5,144.0,52.4,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0097,NH-44 Section 7,144.0,145.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0098,NH-44 Section 8,145.5,147.0,16.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0099,NH-44 Section 9,147.0,148.5,18.1,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0100,NH-44 Section 10,148.5,150.0,31.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0101,NH-44 Section 1,150.0,151.5,73.3,Satisfactory,Crack Sealing
+PCI-SEC-0102,NH-44 Section 2,151.5,153.0,57.8,Fair,Micro-Surfacing Patch
+PCI-SEC-0103,NH-44 Section 3,153.0,154.5,19.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0104,NH-44 Section 4,154.5,156.0,54.7,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0105,NH-44 Section 5,156.0,157.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0106,NH-44 Section 6,157.5,159.0,41.9,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0107,NH-44 Section 7,159.0,160.5,18.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0108,NH-44 Section 8,160.5,162.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0109,NH-44 Section 9,162.0,163.5,24.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0110,NH-44 Section 10,163.5,165.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0111,NH-44 Section 1,165.0,166.5,24.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0112,NH-44 Section 2,166.5,168.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0113,NH-44 Section 3,168.0,169.5,37.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0114,NH-44 Section 4,169.5,171.0,16.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0115,NH-44 Section 5,171.0,172.5,25.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0116,NH-44 Section 6,172.5,174.0,26.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0117,NH-44 Section 7,174.0,175.5,54.1,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0118,NH-44 Section 8,175.5,177.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0119,NH-44 Section 9,177.0,178.5,37.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0120,NH-44 Section 10,178.5,180.0,67.2,Fair,Micro-Surfacing Patch
+PCI-SEC-0121,NH-44 Section 1,180.0,181.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0122,NH-44 Section 2,181.5,183.0,42.7,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0123,NH-44 Section 3,183.0,184.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0124,NH-44 Section 4,184.5,186.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0125,NH-44 Section 5,186.0,187.5,32.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0126,NH-44 Section 6,187.5,189.0,38.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0127,NH-44 Section 7,189.0,190.5,23.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0128,NH-44 Section 8,190.5,192.0,37.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0129,NH-44 Section 9,192.0,193.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0130,NH-44 Section 10,193.5,195.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0131,NH-44 Section 1,195.0,196.5,18.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0132,NH-44 Section 2,196.5,198.0,12.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0133,NH-44 Section 3,198.0,199.5,70.5,Satisfactory,Crack Sealing
+PCI-SEC-0134,NH-44 Section 4,199.5,201.0,17.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0135,NH-44 Section 5,201.0,202.5,57.1,Fair,Micro-Surfacing Patch
+PCI-SEC-0136,NH-44 Section 6,202.5,204.0,44.1,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0137,NH-44 Section 7,204.0,205.5,38.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0138,NH-44 Section 8,205.5,207.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0139,NH-44 Section 9,207.0,208.5,53.0,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0140,NH-44 Section 10,208.5,210.0,41.5,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0141,NH-44 Section 1,210.0,211.5,19.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0142,NH-44 Section 2,211.5,213.0,26.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0143,NH-44 Section 3,213.0,214.5,51.9,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0144,NH-44 Section 4,214.5,216.0,46.2,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0145,NH-44 Section 5,216.0,217.5,31.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0146,NH-44 Section 6,217.5,219.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0147,NH-44 Section 7,219.0,220.5,30.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0148,NH-44 Section 8,220.5,222.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0149,NH-44 Section 9,222.0,223.5,52.8,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0150,NH-44 Section 10,223.5,225.0,71.1,Satisfactory,Crack Sealing
+PCI-SEC-0151,NH-44 Section 1,225.0,226.5,32.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0152,NH-44 Section 2,226.5,228.0,23.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0153,NH-44 Section 3,228.0,229.5,26.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0154,NH-44 Section 4,229.5,231.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0155,NH-44 Section 5,231.0,232.5,10.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0156,NH-44 Section 6,232.5,234.0,17.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0157,NH-44 Section 7,234.0,235.5,44.1,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0158,NH-44 Section 8,235.5,237.0,37.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0159,NH-44 Section 9,237.0,238.5,28.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0160,NH-44 Section 10,238.5,240.0,31.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0161,NH-44 Section 1,240.0,241.5,17.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0162,NH-44 Section 2,241.5,243.0,25.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0163,NH-44 Section 3,243.0,244.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0164,NH-44 Section 4,244.5,246.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0165,NH-44 Section 5,246.0,247.5,68.9,Fair,Micro-Surfacing Patch
+PCI-SEC-0166,NH-44 Section 6,247.5,249.0,43.8,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0167,NH-44 Section 7,249.0,250.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0168,NH-44 Section 8,250.5,252.0,66.0,Fair,Micro-Surfacing Patch
+PCI-SEC-0169,NH-44 Section 9,252.0,253.5,43.8,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0170,NH-44 Section 10,253.5,255.0,14.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0171,NH-44 Section 1,255.0,256.5,56.9,Fair,Micro-Surfacing Patch
+PCI-SEC-0172,NH-44 Section 2,256.5,258.0,15.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0173,NH-44 Section 3,258.0,259.5,37.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0174,NH-44 Section 4,259.5,261.0,23.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0175,NH-44 Section 5,261.0,262.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0176,NH-44 Section 6,262.5,264.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0177,NH-44 Section 7,264.0,265.5,30.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0178,NH-44 Section 8,265.5,267.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0179,NH-44 Section 9,267.0,268.5,33.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0180,NH-44 Section 10,268.5,270.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0181,NH-44 Section 1,270.0,271.5,14.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0182,NH-44 Section 2,271.5,273.0,31.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0183,NH-44 Section 3,273.0,274.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0184,NH-44 Section 4,274.5,276.0,24.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0185,NH-44 Section 5,276.0,277.5,32.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0186,NH-44 Section 6,277.5,279.0,52.3,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0187,NH-44 Section 7,279.0,280.5,24.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0188,NH-44 Section 8,280.5,282.0,23.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0189,NH-44 Section 9,282.0,283.5,70.9,Satisfactory,Crack Sealing
+PCI-SEC-0190,NH-44 Section 10,283.5,285.0,34.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0191,NH-44 Section 1,285.0,286.5,22.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0192,NH-44 Section 2,286.5,288.0,39.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0193,NH-44 Section 3,288.0,289.5,65.8,Fair,Micro-Surfacing Patch
+PCI-SEC-0194,NH-44 Section 4,289.5,291.0,41.1,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0195,NH-44 Section 5,291.0,292.5,10.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0196,NH-44 Section 6,292.5,294.0,20.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0197,NH-44 Section 7,294.0,295.5,38.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0198,NH-44 Section 8,295.5,297.0,43.5,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0199,NH-44 Section 9,297.0,298.5,14.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0200,NH-44 Section 10,298.5,300.0,30.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0201,NH-44 Section 1,300.0,301.5,28.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0202,NH-44 Section 2,301.5,303.0,11.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0203,NH-44 Section 3,303.0,304.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0204,NH-44 Section 4,304.5,306.0,44.4,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0205,NH-44 Section 5,306.0,307.5,18.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0206,NH-44 Section 6,307.5,309.0,30.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0207,NH-44 Section 7,309.0,310.5,17.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0208,NH-44 Section 8,310.5,312.0,23.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0209,NH-44 Section 9,312.0,313.5,48.8,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0210,NH-44 Section 10,313.5,315.0,15.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0211,NH-44 Section 1,315.0,316.5,33.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0212,NH-44 Section 2,316.5,318.0,12.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0213,NH-44 Section 3,318.0,319.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0214,NH-44 Section 4,319.5,321.0,25.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0215,NH-44 Section 5,321.0,322.5,39.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0216,NH-44 Section 6,322.5,324.0,19.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0217,NH-44 Section 7,324.0,325.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0218,NH-44 Section 8,325.5,327.0,23.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0219,NH-44 Section 9,327.0,328.5,32.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0220,NH-44 Section 10,328.5,330.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0221,NH-44 Section 1,330.0,331.5,22.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0222,NH-44 Section 2,331.5,333.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0223,NH-44 Section 3,333.0,334.5,24.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0224,NH-44 Section 4,334.5,336.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0225,NH-44 Section 5,336.0,337.5,31.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0226,NH-44 Section 6,337.5,339.0,29.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0227,NH-44 Section 7,339.0,340.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0228,NH-44 Section 8,340.5,342.0,30.1,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0229,NH-44 Section 9,342.0,343.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0230,NH-44 Section 10,343.5,345.0,73.8,Satisfactory,Crack Sealing
+PCI-SEC-0231,NH-44 Section 1,345.0,346.5,23.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0232,NH-44 Section 2,346.5,348.0,22.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0233,NH-44 Section 3,348.0,349.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0234,NH-44 Section 4,349.5,351.0,11.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0235,NH-44 Section 5,351.0,352.5,17.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0236,NH-44 Section 6,352.5,354.0,48.4,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0237,NH-44 Section 7,354.0,355.5,35.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0238,NH-44 Section 8,355.5,357.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0239,NH-44 Section 9,357.0,358.5,64.8,Fair,Micro-Surfacing Patch
+PCI-SEC-0240,NH-44 Section 10,358.5,360.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0241,NH-44 Section 1,360.0,361.5,10.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0242,NH-44 Section 2,361.5,363.0,17.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0243,NH-44 Section 3,363.0,364.5,11.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0244,NH-44 Section 4,364.5,366.0,8.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0245,NH-44 Section 5,366.0,367.5,5.1,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0246,NH-44 Section 6,367.5,369.0,24.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0247,NH-44 Section 7,369.0,370.5,11.1,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0248,NH-44 Section 8,370.5,372.0,31.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0249,NH-44 Section 9,372.0,373.5,39.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0250,NH-44 Section 10,373.5,375.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0251,NH-44 Section 1,375.0,376.5,45.8,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0252,NH-44 Section 2,376.5,378.0,66.2,Fair,Micro-Surfacing Patch
+PCI-SEC-0253,NH-44 Section 3,378.0,379.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0254,NH-44 Section 4,379.5,381.0,33.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0255,NH-44 Section 5,381.0,382.5,21.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0256,NH-44 Section 6,382.5,384.0,31.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0257,NH-44 Section 7,384.0,385.5,37.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0258,NH-44 Section 8,385.5,387.0,28.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0259,NH-44 Section 9,387.0,388.5,9.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0260,NH-44 Section 10,388.5,390.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0261,NH-44 Section 1,390.0,391.5,41.9,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0262,NH-44 Section 2,391.5,393.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0263,NH-44 Section 3,393.0,394.5,7.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0264,NH-44 Section 4,394.5,396.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0265,NH-44 Section 5,396.0,397.5,10.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0266,NH-44 Section 6,397.5,399.0,53.5,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0267,NH-44 Section 7,399.0,400.5,39.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0268,NH-44 Section 8,400.5,402.0,45.0,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0269,NH-44 Section 9,402.0,403.5,43.4,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0270,NH-44 Section 10,403.5,405.0,11.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0271,NH-44 Section 1,405.0,406.5,18.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0272,NH-44 Section 2,406.5,408.0,31.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0273,NH-44 Section 3,408.0,409.5,29.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0274,NH-44 Section 4,409.5,411.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0275,NH-44 Section 5,411.0,412.5,28.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0276,NH-44 Section 6,412.5,414.0,23.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0277,NH-44 Section 7,414.0,415.5,16.3,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0278,NH-44 Section 8,415.5,417.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0279,NH-44 Section 9,417.0,418.5,70.3,Satisfactory,Crack Sealing
+PCI-SEC-0280,NH-44 Section 10,418.5,420.0,6.7,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0281,NH-44 Section 1,420.0,421.5,8.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0282,NH-44 Section 2,421.5,423.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0283,NH-44 Section 3,423.0,424.5,46.5,Poor,Milling & 40mm Bituminous Overlay
+PCI-SEC-0284,NH-44 Section 4,424.5,426.0,21.9,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0285,NH-44 Section 5,426.0,427.5,28.1,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0286,NH-44 Section 6,427.5,429.0,35.6,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0287,NH-44 Section 7,429.0,430.5,74.0,Satisfactory,Crack Sealing
+PCI-SEC-0288,NH-44 Section 8,430.5,432.0,21.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0289,NH-44 Section 9,432.0,433.5,39.4,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0290,NH-44 Section 10,433.5,435.0,25.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0291,NH-44 Section 1,435.0,436.5,56.0,Fair,Micro-Surfacing Patch
+PCI-SEC-0292,NH-44 Section 2,436.5,438.0,33.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0293,NH-44 Section 3,438.0,439.5,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0294,NH-44 Section 4,439.5,441.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0295,NH-44 Section 5,441.0,442.5,24.5,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0296,NH-44 Section 6,442.5,444.0,14.1,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0297,NH-44 Section 7,444.0,445.5,32.2,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0298,NH-44 Section 8,445.5,447.0,5.0,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0299,NH-44 Section 9,447.0,448.5,16.8,Serious / Failed,Full-Depth Reconstruction
+PCI-SEC-0300,NH-44 Section 10,448.5,450.0,28.9,Serious / Failed,Full-Depth Reconstruction

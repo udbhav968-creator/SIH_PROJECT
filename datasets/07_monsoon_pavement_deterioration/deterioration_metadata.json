@@ -1,0 +1,19 @@
+{
+  "dataset_name": "MoRTH Monsoon 180-Day Pavement Degradation Time-Series Benchmark",
+  "total_trajectories": 5000,
+  "input_features": [
+    "Initial PCI",
+    "Subgrade CBR %",
+    "Monsoon Monthly Rainfall mm",
+    "Daily ESAL Traffic (Axles/Day)",
+    "Drainage Efficiency %"
+  ],
+  "output_checkpoints": [
+    "Day 30 PCI",
+    "Day 60 PCI",
+    "Day 90 PCI",
+    "Day 180 PCI"
+  ],
+  "forecast_horizon_days": 180,
+  "physics_governing_equation": "dPCI/dt = -alpha * ESAL * (1 + beta * Rainfall) / (CBR * Drainage)"
+}

@@ -1,0 +1,247 @@
+{
+  "benchmark_category": "Kaggle & GitHub Raw Optical Pothole Photographs",
+  "total_downloaded_images": 30,
+  "source": "GitHub Raw / Kaggle Road Distress Open Repository",
+  "images": [
+    {
+      "filename": "1014628_RS_386_386RS124739_30065_RAW.jpg",
+      "size_bytes": 99256,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "a6826543e5de4bca",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1014639_RS_386_386RS124739_30121_RAW.jpg",
+      "size_bytes": 101809,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "cac8c485cfe07356",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1014730_RS_386_386RS124739_30575_RAW.jpg",
+      "size_bytes": 76260,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "a8b5717170749670",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1014776_RS_386_386RS124739_30806_RAW.jpg",
+      "size_bytes": 85164,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "0b7f1e7e23085d1e",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1014777_RS_386_386RS124739_30811_RAW.jpg",
+      "size_bytes": 85591,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "7408c6e099ce2142",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1014788_RS_386_386RS124739_30865_RAW.jpg",
+      "size_bytes": 84565,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "7a156af96888db7c",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1014798_RS_386_386RS124739_30915_RAW.jpg",
+      "size_bytes": 86048,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "8bb615e001c3de51",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1014842_RS_386_386RS124739_31135_RAW.jpg",
+      "size_bytes": 86777,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "887271c074d33de6",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1051767_DF_020_020BDF0070_01678_RAW.jpg",
+      "size_bytes": 85797,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "6c122016deaa169c",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1051790_DF_020_020BDF0070_01724_RAW.jpg",
+      "size_bytes": 78457,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "6c723be4c8accb7e",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1053828_DF_020_020BDF0070_05973_RAW.jpg",
+      "size_bytes": 77119,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "ea8173c7c0527ade",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1053954_DF_020_020BDF0070_06194_RAW.jpg",
+      "size_bytes": 76899,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "67b293ce0d77acbf",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1053962_DF_020_020BDF0070_06208_RAW.jpg",
+      "size_bytes": 83615,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "6cd0f435d7044c23",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1068350_DF_010_010BDF0018_04909_RAW.jpg",
+      "size_bytes": 85130,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "335adb2ad0c815de",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1078404_DF_010_010BDF0030_1_00191_RAW.jpg",
+      "size_bytes": 72481,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "02341d77d9779de1",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1080089_DF_010_010BDF0030_1_03336_RAW.jpg",
+      "size_bytes": 64076,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "95338ccc66b077c7",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1093534_DF_251_251BDF0052_01931_RAW.jpg",
+      "size_bytes": 134184,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "1a47490591cb4a2e",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "1093968_DF_251_251BDF0052_02694_RAW.jpg",
+      "size_bytes": 146339,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "eae121c9172205d6",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "820313_ES_259_259ES000000_03050_RAW.jpg",
+      "size_bytes": 104098,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "dd66f5f339d94314",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "883045_RS_290_290RS150131_15955_RAW.jpg",
+      "size_bytes": 90018,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "e2ee9efa0df8fd69",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "883046_RS_290_290RS150131_15960_RAW.jpg",
+      "size_bytes": 89315,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "cdaeb49c1ed0cf66",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "883239_RS_290_290RS150131_16926_RAW.jpg",
+      "size_bytes": 87739,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "d6a0090b216d7b85",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "883243_RS_290_290RS150131_16945_RAW.jpg",
+      "size_bytes": 84238,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "de1e31ed78ab295e",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "883272_RS_290_290RS150131_17090_RAW.jpg",
+      "size_bytes": 86909,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "3f971039e3ce9ed6",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "883275_RS_290_290RS150131_17105_RAW.jpg",
+      "size_bytes": 87395,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "ea679d8196149760",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "917427_RS_290_290RS294095_20585_RAW.jpg",
+      "size_bytes": 92731,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "8bbf136ddda82341",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "917699_RS_290_290RS294095_21945_RAW.jpg",
+      "size_bytes": 92445,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "015a46c21008dae4",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "918232_RS_290_290RS294095_24610_RAW.jpg",
+      "size_bytes": 93599,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "d6b358bd77e34e84",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "941555_RS_290_290RS070691_00680_RAW.jpg",
+      "size_bytes": 74911,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "bb5ecb84d89ba0de",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    },
+    {
+      "filename": "941636_RS_290_290RS070691_01085_RAW.jpg",
+      "size_bytes": 74373,
+      "format": "JPEG",
+      "resolution": "1024x640",
+      "sha256_prefix": "0ef7ca7f72bdc6ba",
+      "source_repo": "https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset"
+    }
+  ]
+}

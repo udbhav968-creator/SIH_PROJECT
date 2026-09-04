@@ -1,0 +1,112 @@
+{
+  "manifest_version": "ROAD-SHIELD-DATASETS-v2.5",
+  "created_timestamp_utc": 1788508927,
+  "total_datasets": 7,
+  "total_training_samples": 73000,
+  "storage_root": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\datasets",
+  "datasets": [
+    {
+      "id": "01_rdd2022_india",
+      "name": "RDD2022 India Highway Benchmark",
+      "samples": 20000,
+      "classes": [
+        "Normal",
+        "D00_Longitudinal",
+        "D10_Lateral",
+        "D20_Alligator",
+        "D40_Pothole"
+      ],
+      "files": [
+        "rdd2022_train.npz",
+        "rdd2022_val.npz",
+        "rdd2022_metadata.json",
+        "rdd2022_sample_annotations.csv"
+      ]
+    },
+    {
+      "id": "02_kaggle_pothole_600",
+      "name": "Kaggle Pothole-600 Optical Distress",
+      "samples": 10000,
+      "classes": [
+        "Clean_Asphalt",
+        "Pothole"
+      ],
+      "files": [
+        "kaggle_potholes.npz",
+        "kaggle_pothole_metadata.json",
+        "kaggle_annotations.csv"
+      ]
+    },
+    {
+      "id": "03_crack500_fatigue",
+      "name": "CRACK500 Structural Fatigue Cracking",
+      "samples": 8000,
+      "classes": [
+        "D00_Longitudinal",
+        "D10_Transverse",
+        "D20_Alligator"
+      ],
+      "files": [
+        "crack500_train.npz",
+        "crack500_metadata.json",
+        "crack500_measurements.csv"
+      ]
+    },
+    {
+      "id": "04_mobile_imu_telemetry_100hz",
+      "name": "Mobile IMU 100Hz Telemetry & Dynamic Shock",
+      "samples": 15000,
+      "classes": [
+        "Smooth_Pavement",
+        "Bridge_Expansion_Joint",
+        "Rumble_Strip",
+        "Pothole_Shock"
+      ],
+      "files": [
+        "imu_shock_100hz_train.npz",
+        "imu_shock_100hz_val.npz",
+        "imu_metadata.json",
+        "imu_telemetry_sample.csv"
+      ]
+    },
+    {
+      "id": "05_morth_civil_hard_negatives",
+      "name": "MoRTH Civil Hard-Negatives Repository",
+      "samples": 5000,
+      "classes": [
+        "Cast_Iron_Manhole",
+        "Tar_Bitumen_Snake",
+        "Bridge_Expansion_Joint",
+        "Puddle_Specular",
+        "Overhead_Shadow"
+      ],
+      "files": [
+        "hard_negatives.npz",
+        "hard_negatives_metadata.json",
+        "rejection_rules.csv"
+      ]
+    },
+    {
+      "id": "06_astm_d6433_pci_benchmark",
+      "name": "ASTM D6433 Pavement Condition Index (PCI)",
+      "samples": 10000,
+      "target": "Continuous PCI Score (0 - 100)",
+      "files": [
+        "pci_dataset.npz",
+        "pci_metadata.json",
+        "pci_survey_records.csv"
+      ]
+    },
+    {
+      "id": "07_monsoon_pavement_deterioration",
+      "name": "Monsoon 180-Day Pavement Degradation Trajectories",
+      "samples": 5000,
+      "target": "180-Day PCI Decay Vectors",
+      "files": [
+        "deterioration_trajectories.npz",
+        "deterioration_metadata.json",
+        "180day_forecast_sample.csv"
+      ]
+    }
+  ]
+}

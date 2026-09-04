@@ -1,0 +1,5 @@
+artifact_type,optical_appearance,imu_response,bayesian_verdict,repair_cost_inr
+Cast Iron Manhole,"Circular dark boundary, metallic specular",Mild ring vibration (< 4 m/s²),REJECTED_FALSE_ALARM,0.0
+Tar Crack Sealant,Narrow snaking black line,No vertical shock (Delta Z = 0),REJECTED_FALSE_ALARM,0.0
+Bridge Expansion Joint,Continuous perpendicular groove,Symmetric high-freq spike,REJECTED_EXPANSION_JOINT,0.0
+Tree Shadow,High contrast dark foliage silhouette,Zero IMU acceleration,REJECTED_SHADOW_ARTIFACT,0.0

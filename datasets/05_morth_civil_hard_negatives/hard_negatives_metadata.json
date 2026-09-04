@@ -1,0 +1,13 @@
+{
+  "dataset_name": "MoRTH Civil Hard-Negative Mining & False-Alarm Suppression Repository",
+  "total_samples": 5000,
+  "classes": [
+    "Cast_Iron_Manhole",
+    "Tar_Bitumen_Snake",
+    "Bridge_Expansion_Joint",
+    "Puddle_Specular_Reflection",
+    "Overhead_Tree_Shadow"
+  ],
+  "purpose": "OHEM (Online Hard Example Mining) to drive optical false positive rate under 0.2%",
+  "suppression_rule": "Dual-sensor validation: optical candidate without IMU vertical shock rebound is rejected as benign"
+}

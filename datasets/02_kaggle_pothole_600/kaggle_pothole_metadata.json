@@ -1,0 +1,13 @@
+{
+  "dataset_name": "Kaggle Pothole-600 Optical Distress Benchmark",
+  "source_citation": "Kaggle Pothole Detection Open Vision Dataset",
+  "total_samples": 10000,
+  "pothole_samples": 6000,
+  "sound_samples": 4000,
+  "camera_perspectives": [
+    "Vehicle Windshield Dashcam",
+    "Bumper-Mounted Wide-Angle",
+    "Handheld Smartphone 4K"
+  ],
+  "specifications": "Optimized for binary cavity discrimination and shadow invariance"
+}

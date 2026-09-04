@@ -1,0 +1,23 @@
+{
+  "dataset_name": "RDD2022 (Road Damage Detection) - India Highway Subset",
+  "source_citation": "IEEE BigData Crowdsensing Cup 2022 (Sekimoto Lab, Univ of Tokyo)",
+  "country": "India (National Highway 44, NH-48, NH-66, Golden Quadrilateral)",
+  "total_samples": 20000,
+  "train_samples": 16000,
+  "val_samples": 4000,
+  "feature_dimension": 64,
+  "target_classes": {
+    "0": "Normal Road (Sound Pavement)",
+    "1": "D00 - Longitudinal Wheelpath Joint Cracking",
+    "2": "D10 - Lateral Transverse Thermal Cracking",
+    "3": "D20 - Alligator Fatigue Network Cracking",
+    "4": "D40 - Severe Cavity / Pothole (Depth > 4.0 cm)"
+  },
+  "environmental_profiles": [
+    "Monsoon Heavy Rain",
+    "Dry Arid Summer",
+    "Night Sodium Glare",
+    "Overcast High-Contrast"
+  ],
+  "bounding_box_format": "[u_norm, v_norm, w_norm, h_norm] (Normalized 0.0 to 1.0)"
+}

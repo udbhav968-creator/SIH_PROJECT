@@ -1,0 +1,19 @@
+{
+  "dataset_name": "Mobile IMU 100Hz Pavement Vibration & Dynamic Shockwave Benchmark",
+  "source_citation": "ROAD-SHIELD MoRTH Patrol Fleet Sensor Logs (NH-44 & NH-48 Surveys)",
+  "sampling_frequency_hz": 100,
+  "window_size_timesteps": 100,
+  "window_duration_seconds": 1.0,
+  "channels": [
+    "Ax (Lateral m/s\u00b2)",
+    "Ay (Longitudinal m/s\u00b2)",
+    "Az (Vertical Shock m/s\u00b2)"
+  ],
+  "total_sequences": 15000,
+  "classes": {
+    "0": "Smooth Highway Pavement (Baseline Vibration)",
+    "1": "Bridge Expansion Joint (High-frequency harmonic impulse)",
+    "2": "Rumble Strip / Speed Mitigation (Cyclic sinusoidal oscillation)",
+    "3": "Severe Pothole Wheel-Drop Shock (Delta Az >= 12.0 m/s\u00b2, sharp rebound)"
+  }
+}

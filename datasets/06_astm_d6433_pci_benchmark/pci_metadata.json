@@ -1,0 +1,15 @@
+{
+  "dataset_name": "ASTM D6433 Standard Practice for Roads & Parking Lots Pavement Condition Index",
+  "total_samples": 10000,
+  "input_features": "20 Standard ASTM Distress Types (Alligator, Bleeding, Block, Corrugation, Potholes, Rutting, etc.)",
+  "output_target": "Continuous PCI Score (0 = Failed, 100 = Good/Excellent)",
+  "pci_rating_scale": {
+    "Good": "85 to 100",
+    "Satisfactory": "70 to 85",
+    "Fair": "55 to 70",
+    "Poor": "40 to 55",
+    "Very Poor": "25 to 40",
+    "Serious": "10 to 25",
+    "Failed": "0 to 10"
+  }
+}
