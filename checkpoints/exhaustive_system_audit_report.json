@@ -1,0 +1,357 @@
+{
+  "timestamp": "2026-09-04T16:07:28Z",
+  "scans": {
+    "checkpoints": {
+      "total": 8,
+      "healthy": true,
+      "details": [
+        {
+          "file": "deep_imu_weights.npz",
+          "size_kb": 35.8,
+          "tensors": 8,
+          "params": 4652,
+          "has_nan": false,
+          "has_inf": false,
+          "status": "HEALTHY"
+        },
+        {
+          "file": "deep_vision_weights.npz",
+          "size_kb": 129.1,
+          "tensors": 8,
+          "params": 17161,
+          "has_nan": false,
+          "has_inf": false,
+          "status": "HEALTHY"
+        },
+        {
+          "file": "deterioration_forecaster_weights.npz",
+          "size_kb": 20.7,
+          "tensors": 8,
+          "params": 2606,
+          "has_nan": false,
+          "has_inf": false,
+          "status": "HEALTHY"
+        },
+        {
+          "file": "forensic_embedder_weights.npz",
+          "size_kb": 39.1,
+          "tensors": 4,
+          "params": 5216,
+          "has_nan": false,
+          "has_inf": false,
+          "status": "HEALTHY"
+        },
+        {
+          "file": "imu_shock_weights.npz",
+          "size_kb": 35.7,
+          "tensors": 8,
+          "params": 4652,
+          "has_nan": false,
+          "has_inf": false,
+          "status": "HEALTHY"
+        },
+        {
+          "file": "pci_regressor_weights.npz",
+          "size_kb": 23.3,
+          "tensors": 8,
+          "params": 2969,
+          "has_nan": false,
+          "has_inf": false,
+          "status": "HEALTHY"
+        },
+        {
+          "file": "urban_traffic_net_weights.npz",
+          "size_kb": 344.3,
+          "tensors": 6,
+          "params": 46343,
+          "has_nan": false,
+          "has_inf": false,
+          "status": "HEALTHY"
+        },
+        {
+          "file": "vision_distress_weights.npz",
+          "size_kb": 3904.7,
+          "tensors": 13,
+          "params": 985613,
+          "has_nan": false,
+          "has_inf": false,
+          "status": "HEALTHY"
+        }
+      ]
+    },
+    "datasets": {
+      "directories": 14,
+      "total_images": 6158,
+      "corrupt_images": 0,
+      "details": [
+        {
+          "dataset": "01_rdd2022_india",
+          "image_count": 1015,
+          "npz_count": 2,
+          "sample_res": "1024x640",
+          "corrupt": 0
+        },
+        {
+          "dataset": "02_kaggle_pothole_600",
+          "image_count": 1030,
+          "npz_count": 1,
+          "sample_res": "1024x640",
+          "corrupt": 0
+        },
+        {
+          "dataset": "03_crack500_fatigue",
+          "image_count": 1030,
+          "npz_count": 1,
+          "sample_res": "1024x640",
+          "corrupt": 0
+        },
+        {
+          "dataset": "04_mobile_imu_telemetry_100hz",
+          "image_count": 0,
+          "npz_count": 2,
+          "sample_res": "N/A",
+          "corrupt": 0
+        },
+        {
+          "dataset": "05_morth_civil_hard_negatives",
+          "image_count": 1000,
+          "npz_count": 1,
+          "sample_res": "1024x640",
+          "corrupt": 0
+        },
+        {
+          "dataset": "06_astm_d6433_pci_benchmark",
+          "image_count": 1000,
+          "npz_count": 1,
+          "sample_res": "1024x640",
+          "corrupt": 0
+        },
+        {
+          "dataset": "07_monsoon_pavement_deterioration",
+          "image_count": 1000,
+          "npz_count": 1,
+          "sample_res": "1024x640",
+          "corrupt": 0
+        },
+        {
+          "dataset": "08_dashcam_video_streams",
+          "image_count": 10,
+          "npz_count": 0,
+          "sample_res": "960x540",
+          "corrupt": 0
+        },
+        {
+          "dataset": "09_waterlogging_hazard",
+          "image_count": 14,
+          "npz_count": 2,
+          "sample_res": "960x1707",
+          "corrupt": 0
+        },
+        {
+          "dataset": "10_missing_zebra_crossing",
+          "image_count": 19,
+          "npz_count": 2,
+          "sample_res": "960x540",
+          "corrupt": 0
+        },
+        {
+          "dataset": "11_missing_road_divider",
+          "image_count": 20,
+          "npz_count": 2,
+          "sample_res": "960x720",
+          "corrupt": 0
+        },
+        {
+          "dataset": "12_damaged_traffic_signs",
+          "image_count": 14,
+          "npz_count": 1,
+          "sample_res": "960x1706",
+          "corrupt": 0
+        },
+        {
+          "dataset": "13_urban_traffic_vehicles",
+          "image_count": 4,
+          "npz_count": 1,
+          "sample_res": "960x720",
+          "corrupt": 0
+        },
+        {
+          "dataset": "14_pedestrian_safety",
+          "image_count": 2,
+          "npz_count": 0,
+          "sample_res": "960x364",
+          "corrupt": 0
+        }
+      ]
+    },
+    "models": {
+      "count": 8,
+      "profiles": [
+        [
+          "Model M1: VisionDistressNet (9-class)",
+          "4.97 ms",
+          "Softmax(9) -> sum=1.0000"
+        ],
+        [
+          "Model M4: IMUShockClassifier (4-class)",
+          "1.29 ms",
+          "Class=2 (Rumble Strip)"
+        ],
+        [
+          "Model M_PCI: ASTM D6433 Regressor",
+          "0.25 ms",
+          "Clean Road PCI = 100.0 / 100.0"
+        ],
+        [
+          "Model M_DEGRADE: Lifecycle Forecaster",
+          "0.22 ms",
+          "180d: 2.19m\u00b2 | Net Savings: \u20b94,128.6"
+        ],
+        [
+          "Model M5: UrbanTrafficNet (PCU/UCI)",
+          "0.09 ms",
+          "UCI Index = 59.5 PCU (7 classes)"
+        ],
+        [
+          "Model M6: ALPR Incident Tracker",
+          "0.47 ms",
+          "RECKLESS_LANE_CUTTING | SHA256=c861211a2be5..."
+        ],
+        [
+          "Model M7: Bayesian Fusion Gate",
+          "0.12 ms",
+          "CONFIRMED_POTHOLE (P=0.9200)"
+        ],
+        [
+          "Model M2: IPM Homography Engine",
+          "0.48 ms",
+          "Ground Area=0.127m\u00b2 | Mass=0.018T (\u20b9131.84)"
+        ]
+      ]
+    },
+    "deduplication": {
+      "total_reports": 4,
+      "unique_defects": 2,
+      "hotspots": 1
+    },
+    "api": {
+      "all_passed": true,
+      "tests": [
+        {
+          "endpoint": "/api/v1/gis/map-data",
+          "method": "GET",
+          "status": 200,
+          "lat_ms": 2144.9
+        },
+        {
+          "endpoint": "/api/v1/fleet/telemetry",
+          "method": "GET",
+          "status": 200,
+          "lat_ms": 2049.8
+        },
+        {
+          "endpoint": "/api/v1/training/metrics",
+          "method": "GET",
+          "status": 200,
+          "lat_ms": 2068.1
+        },
+        {
+          "endpoint": "/api/v1/models/registry",
+          "method": "GET",
+          "status": 200,
+          "lat_ms": 2043.3
+        },
+        {
+          "endpoint": "/api/v1/training/status",
+          "method": "GET",
+          "status": 200,
+          "lat_ms": 2027.6
+        },
+        {
+          "endpoint": "/api/v1/ledger/defects",
+          "method": "GET",
+          "status": 200,
+          "lat_ms": 2043.7
+        },
+        {
+          "endpoint": "/api/v1/datasets/benchmarks",
+          "method": "GET",
+          "status": 200,
+          "lat_ms": 2034.2
+        },
+        {
+          "endpoint": "/api/v1/incidents/alpr",
+          "method": "POST",
+          "status": 200,
+          "lat_ms": 2050.1
+        },
+        {
+          "endpoint": "/api/v1/fleet/ingest-detection",
+          "method": "POST",
+          "status": 200,
+          "lat_ms": 2019.7
+        },
+        {
+          "endpoint": "/api/v1/traffic/analyze",
+          "method": "POST",
+          "status": 200,
+          "lat_ms": 2029.7
+        },
+        {
+          "endpoint": "/api/v1/pedestrian/detect",
+          "method": "POST",
+          "status": 200,
+          "lat_ms": 2063.7
+        }
+      ]
+    },
+    "frontend": {
+      "file_size_kb": 303.9,
+      "all_passed": true,
+      "checks": [
+        [
+          "Leaflet Library Included",
+          true
+        ],
+        [
+          "SIH Leaflet Map Container",
+          true
+        ],
+        [
+          "API Polling Functionality",
+          true
+        ],
+        [
+          "ALPR Incident Simulator",
+          true
+        ],
+        [
+          "Urban Traffic Analysis",
+          true
+        ],
+        [
+          "9-Class Probability Bars",
+          true
+        ],
+        [
+          "Deduplication Ledger Table",
+          true
+        ],
+        [
+          "Tailwind Dark Mode CSS",
+          true
+        ]
+      ]
+    },
+    "pipeline_stress": {
+      "images_tested": 15,
+      "avg_latency_ms": 196.2,
+      "avg_pci": 81.4,
+      "statuses": {
+        "ANALYSIS_COMPLETE": 15
+      }
+    }
+  },
+  "tests": {},
+  "overall_status": "PASSED_100_PERCENT"
+}
