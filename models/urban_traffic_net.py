@@ -8,6 +8,12 @@ import numpy as np
 def gelu(x):
     return 0.5 * x * (1.0 + np.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3.0))))
 
+def gelu_grad(x):
+    s = np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3.0))
+    t = np.tanh(s)
+    ds = np.sqrt(2.0 / np.pi) * (1.0 + 3.0 * 0.044715 * np.power(x, 2.0))
+    return 0.5 * (1.0 + t) + 0.5 * x * (1.0 - t**2) * ds
+
 def softmax(x):
     e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
     return e_x / np.sum(e_x, axis=-1, keepdims=True)
@@ -17,6 +23,16 @@ class UrbanTrafficNet:
         "Car", "City Bus", "Heavy Truck", "Two-Wheeler", 
         "Pedestrian", "Vulnerable Child Crossing", "Clear Roadway"
     ]
+
+    IRC_STANDARDS = {
+        0: "IRC:106-1990: Guidelines for Capacity of Urban Roads in Plain Areas - Passenger Car Unit (1.0 PCU)",
+        1: "IRC:106-1990 Section 4: Public Transport Dedicated Bus Lane & Bus Rapid Transit Priority (2.0 PCU)",
+        2: "IRC:37-2018 / IRC:106: Commercial Heavy Vehicle Axle Load Enforcement & Route Restrictions (2.5 PCU)",
+        3: "IRC:86-1983 / IRC:106: Segregated Non-Motorized & Two-Wheeler Exclusive Lane Standard (0.5 PCU)",
+        4: "IRC:103-2012 Clause 6: Pedestrian Facilities - At-Grade Signalized Pelican Crossing & Raised Table",
+        5: "IRC:103-2012 Clause 7.4: School Safety Zone Speed Calming, Flashing Amber Beacon & High-Vis Crosswalk",
+        6: "IRC:73-1980 / MoRTH Standard Roadway Section: Nominal Free-Flow Paved Carriageway"
+    }
     
     def __init__(self, in_features=48, hidden_dims=[256, 128], num_classes=7, lr=0.002, seed=42):
         np.random.seed(seed)
@@ -40,18 +56,103 @@ class UrbanTrafficNet:
         
     def forward(self, X):
         a = X
+        activations = [a]
+        pre_acts = []
         for i in range(len(self.weights)):
             z = a @ self.weights[i] + self.biases[i]
+            pre_acts.append(z)
             a = gelu(z)
+            activations.append(a)
         logits = a @ self.w_cls + self.b_cls
-        return logits
+        return logits, activations, pre_acts
         
     def predict(self, X):
-        logits = self.forward(X)
+        logits, _, _ = self.forward(X)
         probs = softmax(logits)
         preds = np.argmax(probs, axis=-1)
         conf = np.max(probs, axis=-1)
         return preds, conf, probs
+
+    def predict_deep(self, X):
+        """Deep multi-task urban traffic & pedestrian safety forensic inference."""
+        logits, _, _ = self.forward(X)
+        probs = softmax(logits)
+        B = len(X)
+        results = []
+
+        for i in range(B):
+            p_vec = probs[i]
+            pred_id = int(np.argmax(p_vec))
+            conf = float(p_vec[pred_id])
+
+            entropy = float(-np.sum(p_vec * np.log2(p_vec + 1e-10)))
+            uncertainty_rating = "LOW_UNCERTAINTY" if entropy < 1.0 else ("MODERATE_UNCERTAINTY" if entropy < 1.8 else "HIGH_UNCERTAINTY_OOD")
+
+            sorted_indices = np.argsort(p_vec)[::-1][:3]
+            top3 = [
+                {
+                    "rank": rank + 1,
+                    "class_id": int(idx),
+                    "class_name": self.CLASS_NAMES[idx],
+                    "probability": round(float(p_vec[idx]), 4)
+                }
+                for rank, idx in enumerate(sorted_indices)
+            ]
+
+            if pred_id == 5:
+                safety_alert = "CRITICAL_CHILD_CROSSING_HAZARD"
+            elif pred_id == 4:
+                safety_alert = "VULNERABLE_PEDESTRIAN_IN_TRANSIT"
+            elif pred_id == 2:
+                safety_alert = "HEAVY_FREIGHT_AXLE_LOAD"
+            elif pred_id == 1:
+                safety_alert = "TRANSIT_BUS_BOTTLENECK"
+            else:
+                safety_alert = "NOMINAL_URBAN_CORRIDOR"
+
+            results.append({
+                "class_id": pred_id,
+                "class_name": self.CLASS_NAMES[pred_id],
+                "confidence": round(conf, 4),
+                "shannon_entropy_bits": round(entropy, 3),
+                "uncertainty_rating": uncertainty_rating,
+                "safety_alert_code": safety_alert,
+                "irc_standard_specification": self.IRC_STANDARDS.get(pred_id, "MoRTH Urban Guideline"),
+                "top3_ranked_predictions": top3,
+                "all_class_probabilities": {self.CLASS_NAMES[k]: round(float(p_vec[k]), 4) for k in range(len(p_vec))}
+            })
+
+        return results
+
+    def train_step(self, X, y):
+        """Full deep end-to-end backpropagation across all layers and heads."""
+        B = len(X)
+        logits, activations, pre_acts = self.forward(X)
+        probs = softmax(logits)
+        loss = -np.mean(np.log(probs[np.arange(B), y] + 1e-8))
+
+        d_logits = probs.copy()
+        d_logits[np.arange(B), y] -= 1.0
+        d_logits /= B
+
+        feat = activations[-1]
+        d_w_cls = feat.T @ d_logits
+        d_b_cls = np.sum(d_logits, axis=0, keepdims=True)
+
+        self.w_cls -= self.lr * d_w_cls
+        self.b_cls -= self.lr * d_b_cls
+
+        d_h = d_logits @ self.w_cls.T
+        for l_idx in reversed(range(len(self.weights))):
+            d_z = d_h * gelu_grad(pre_acts[l_idx])
+            d_w = activations[l_idx].T @ d_z
+            d_b = np.sum(d_z, axis=0, keepdims=True)
+            d_h = d_z @ self.weights[l_idx].T
+
+            self.weights[l_idx] -= self.lr * d_w
+            self.biases[l_idx] -= self.lr * d_b
+
+        return float(loss)
 
     def calculate_congestion_index(self, vehicle_counts, road_capacity=40):
         """

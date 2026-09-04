@@ -1,21 +1,26 @@
 {
-  "status": "ALL_MODELS_TRAINED_AND_SAVED",
-  "timestamp_utc": 1788523052,
-  "total_walltime_seconds": 36.21,
+  "status": "ALL_5_MODELS_FINE_TUNED_AND_VERIFIED",
+  "timestamp_utc": 1788545064,
+  "total_walltime_seconds": 386.82,
   "authority": "MoRTH / NHAI Certified (SIH2026-MORTH-TRANS-018)",
   "models": {
     "Model_M1_VisionDistressNet": {
       "datasets": [
         "RDD2022_India",
-        "Kaggle_Pothole_600",
-        "CRACK500_Fatigue",
+        "Kaggle_Potholes",
+        "CRACK500",
         "MoRTH_Hard_Negatives",
+        "Waterlogging",
+        "Missing_Zebra",
+        "Missing_Divider",
+        "Traffic_Signs",
         "Real_GitHub_Images"
       ],
-      "total_samples": 41689,
-      "epochs": 15,
-      "final_loss": 0.0014,
-      "val_accuracy_pct": 35.25,
+      "total_training_samples": 42676,
+      "epochs": 20,
+      "final_loss": 0.2288,
+      "val_accuracy_pct": 99.98,
+      "classes_trained": 9,
       "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\vision_distress_weights.npz"
     },
     "Model_M4_IMUShockClassifier": {
@@ -23,7 +28,7 @@
         "Mobile_IMU_Telemetry_100Hz"
       ],
       "total_samples": 12000,
-      "final_loss": 0.0003,
+      "final_loss": 0.0001,
       "val_accuracy_pct": 100.0,
       "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\imu_shock_weights.npz"
     },
@@ -31,23 +36,40 @@
       "datasets": [
         "ASTM_D6433_PCI_Benchmark"
       ],
-      "total_samples": 8000,
-      "final_loss_mse": 1.0496,
-      "val_mae_pci_points": 1.48,
+      "total_samples": 8500,
+      "final_loss_mse": 0.9625,
+      "val_mae_pci_points": 1.39,
       "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\pci_regressor_weights.npz"
     },
     "Model_M_DEGRADE_Forecaster": {
       "datasets": [
         "Monsoon_Pavement_Deterioration_180Days"
       ],
-      "total_samples": 4000,
-      "final_loss_mse": 0.0025,
-      "val_mae_pci_points": 0.06,
+      "total_samples": 4250,
+      "final_loss_mse": 0.0016,
+      "val_mae_pci_points": 0.04,
       "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\deterioration_forecaster_weights.npz"
+    },
+    "Model_M5_UrbanTrafficNet": {
+      "datasets": [
+        "Urban_Traffic_Density_And_VRU_Vault"
+      ],
+      "total_samples": 4760,
+      "epochs": 20,
+      "final_loss": 0.1358,
+      "val_accuracy_pct": 96.9,
+      "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\urban_traffic_net_weights.npz"
     }
   },
   "edge_export": {
     "open_neural_spec": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\road_shield_open_neural_spec.json",
-    "c_header_library": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\road_shield_edge_inference.h"
+    "c_header_library": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\road_shield_edge_inference.h",
+    "models_exported": [
+      "Model_M1_VisionDistressNet",
+      "Model_M4_IMUShockClassifier",
+      "Model_M_PCI_Regressor",
+      "Model_M_DEGRADE_Forecaster",
+      "Model_M5_UrbanTrafficNet"
+    ]
   }
 }

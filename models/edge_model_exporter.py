@@ -31,13 +31,19 @@ class EdgeModelExporter:
         m1_path = os.path.join(self.ckpt_dir, "vision_distress_weights.npz")
         if os.path.exists(m1_path):
             data = np.load(m1_path)
+            num_cls = data["w_cls"].shape[1] if "w_cls" in data else 9
+            cls_names = [
+                "Normal Road", "D00 Longitudinal", "D10 Transverse", "D20 Alligator", "D40 Pothole",
+                "Waterlogging", "Missing Zebra Crossing", "Missing Road Divider", "Damaged Traffic Sign"
+            ][:num_cls]
             specs["Model_M1_VisionDistressNet"] = {
-                "architecture": "Deep Multi-Task Dense ConvNet",
-                "input_dim": 64,
-                "hidden_layers": [128, 64],
-                "output_classes": 5,
-                "class_names": ["Normal Road", "D00 Joint", "D10 Transverse", "D20 Alligator", "D40 Pothole"],
-                "activations": ["ReLU", "ReLU", "Softmax (Cls) / Linear (BBox)"],
+                "architecture": "CNN-Transformer Hybrid Multi-Task Distress Net",
+                "input_dim": int(data["conv_w"].shape[0]) if "conv_w" in data else 64,
+                "hidden_layers": [512, 256, 128],
+                "output_classes": num_cls,
+                "class_names": cls_names,
+                "has_transformer_attention": "W_q" in data,
+                "activations": ["GELU (CNN)", "MultiHeadAttention (Transformer)", "GELU (MLP)", "Softmax (Cls) / Linear (BBox)"],
                 "total_parameters": sum(arr.size for arr in data.values()),
                 "layers": {k: data[k].tolist() for k in data.files}
             }
@@ -51,7 +57,7 @@ class EdgeModelExporter:
                 "input_features": 36,
                 "hidden_layers": [64, 32],
                 "output_classes": 4,
-                "class_names": ["Smooth Pavement", "Pothole Shock", "Speed Bump", "Manhole Cover"],
+                "class_names": ["Smooth Asphalt", "Expansion Joint", "Rumble Strip", "Pothole Impact"],
                 "total_parameters": sum(arr.size for arr in data.values()),
                 "layers": {k: data[k].tolist() for k in data.files}
             }
@@ -80,6 +86,23 @@ class EdgeModelExporter:
                 "hidden_layers": [64, 32],
                 "output_dim": 4,
                 "horizons_days": [30, 60, 90, 180],
+                "total_parameters": sum(arr.size for arr in data.values()),
+                "layers": {k: data[k].tolist() for k in data.files}
+            }
+
+        # 5. Model M5 Urban Traffic & Pedestrian Safety Net
+        m5_path = os.path.join(self.ckpt_dir, "urban_traffic_net_weights.npz")
+        if os.path.exists(m5_path):
+            data = np.load(m5_path)
+            specs["Model_M5_UrbanTrafficNet"] = {
+                "architecture": "Deep Multi-Class Urban Traffic Density & VRU Net",
+                "input_features": 48,
+                "hidden_layers": [256, 128],
+                "output_classes": 7,
+                "class_names": [
+                    "Car", "City Bus", "Heavy Truck", "Two-Wheeler", 
+                    "Pedestrian", "Vulnerable Child Crossing", "Clear Roadway"
+                ],
                 "total_parameters": sum(arr.size for arr in data.values()),
                 "layers": {k: data[k].tolist() for k in data.files}
             }

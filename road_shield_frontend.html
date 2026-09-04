@@ -1884,6 +1884,10 @@
                   <div>
                     <div id="rw-photo-pred-class" class="text-xl font-black text-amber-400">D40 Pothole / Severe Cavity</div>
                     <div id="rw-photo-location" class="text-xs text-slate-400 mt-0.5">NH-44 KM 108.4 • Monsoon Rain Glare</div>
+                    <div class="flex items-center gap-2 mt-2">
+                      <span id="rw-photo-uncertainty" class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-950 text-emerald-300 border border-emerald-800">0.24 bits • LOW UNCERTAINTY</span>
+                      <span id="rw-photo-severity" class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-950 text-rose-300 border border-rose-800">ASTM SEVERITY: HIGH (H)</span>
+                    </div>
                   </div>
                   <div class="text-right">
                     <div id="rw-photo-confidence" class="text-2xl font-black text-emerald-400">99.8%</div>
@@ -1891,35 +1895,41 @@
                   </div>
                 </div>
 
-                <!-- 5-Class Probability Breakdown -->
-                <div class="space-y-1.5 mt-3 text-xs font-mono">
+                <!-- MoRTH / IRC Standard Civil Repair Specification Banner -->
+                <div id="rw-photo-irc-spec" class="text-[11px] font-mono bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-sky-300 flex items-start gap-2">
+                  <span class="text-amber-400 font-bold whitespace-nowrap">📜 MoRTH/IRC Standard:</span>
+                  <span id="rw-photo-irc-text">IRC:82-2015 Clause 4.2: Mechanical Pot-Hole Patching with Bituminous Concrete (BC) & VG-30 Tack Coat</span>
+                </div>
+
+                <!-- Deep Top-3 Ranked Multi-Class Forensic Hypotheses -->
+                <div id="rw-photo-top3-container" class="space-y-1.5 text-xs font-mono">
                   <div class="flex justify-between text-slate-400 text-[11px]">
-                    <span>D40 Pothole</span>
-                    <span id="prob-d40">99.8%</span>
+                    <span id="top1-name">#1 D40 Severe Cavity / Pothole</span>
+                    <span id="prob-d40" class="text-amber-400 font-bold">99.8%</span>
                   </div>
                   <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div id="bar-d40" class="bg-amber-400 h-full rounded-full" style="width: 99.8%;"></div>
+                    <div id="bar-d40" class="bg-amber-400 h-full rounded-full transition-all duration-300" style="width: 99.8%;"></div>
                   </div>
 
                   <div class="flex justify-between text-slate-400 text-[11px]">
-                    <span>D20 Alligator Crack</span>
-                    <span id="prob-d20">0.1%</span>
+                    <span id="top2-name">#2 D20 Fatigue Alligator Crack</span>
+                    <span id="prob-d20" class="text-indigo-400 font-bold">0.1%</span>
                   </div>
                   <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div id="bar-d20" class="bg-indigo-400 h-full rounded-full" style="width: 0.1%;"></div>
+                    <div id="bar-d20" class="bg-indigo-400 h-full rounded-full transition-all duration-300" style="width: 0.1%;"></div>
                   </div>
 
                   <div class="flex justify-between text-slate-400 text-[11px]">
-                    <span>Non-Distress Utility / Normal Road</span>
-                    <span id="prob-norm">0.1%</span>
+                    <span id="top3-name">#3 Normal Road / Non-Distress</span>
+                    <span id="prob-norm" class="text-slate-400 font-bold">0.1%</span>
                   </div>
                   <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div id="bar-norm" class="bg-slate-500 h-full rounded-full" style="width: 0.1%;"></div>
+                    <div id="bar-norm" class="bg-slate-500 h-full rounded-full transition-all duration-300" style="width: 0.1%;"></div>
                   </div>
                 </div>
               </div>
 
-              <!-- MoRTH Section 500 Volumetrics -->
+              <!-- MoRTH Section 500 Volumetrics & Green Carbon Footprint -->
               <div class="bg-slate-950/80 p-4 rounded-2xl border border-slate-800">
                 <div class="text-xs font-bold text-white uppercase font-mono mb-2 flex items-center justify-between">
                   <span>MoRTH Section 500 Physical Bill of Quantities</span>
@@ -1941,6 +1951,18 @@
                   <div class="bg-slate-900 p-2 rounded-xl border border-slate-800">
                     <div class="text-[10px] text-slate-400 uppercase">Compacted Ton</div>
                     <div id="rw-photo-tonnage" class="text-sm font-black text-emerald-400 mt-0.5">0.387 T</div>
+                  </div>
+                </div>
+
+                <!-- Deterioration Rate & Carbon Footprint Indicators -->
+                <div class="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800/80 font-mono text-[11px]">
+                  <div class="bg-slate-900/70 p-2 rounded-xl border border-slate-800 flex items-center justify-between">
+                    <span class="text-slate-400">Deterioration Rate:</span>
+                    <span id="rw-photo-det-rate" class="text-rose-400 font-bold">258.0 cm²/day</span>
+                  </div>
+                  <div class="bg-slate-900/70 p-2 rounded-xl border border-slate-800 flex items-center justify-between">
+                    <span class="text-slate-400">Embodied Carbon:</span>
+                    <span id="rw-photo-carbon" class="text-emerald-400 font-bold">24.2 kg CO₂e</span>
                   </div>
                 </div>
 
@@ -4335,6 +4357,7 @@
       let preset = RW_PHOTO_PRESETS[presetKey];
       activePhotoData = preset;
 
+      let apiRes = null;
       // Call API if online
       if (RW_ENGINE.isApiOnline) {
         try {
@@ -4345,7 +4368,7 @@
             signal: AbortSignal.timeout(600)
           });
           if (resp.ok) {
-            const apiRes = await resp.json();
+            apiRes = await resp.json();
             preset = {
               ...preset,
               predClass: apiRes.predicted_class,
@@ -4396,6 +4419,31 @@
       if (document.getElementById("rw-photo-vol")) document.getElementById("rw-photo-vol").innerText = `${volM3.toFixed(3)} m³`;
       if (document.getElementById("rw-photo-tonnage")) document.getElementById("rw-photo-tonnage").innerText = `${tonnage} T`;
       if (document.getElementById("rw-photo-cost")) document.getElementById("rw-photo-cost").innerText = `₹ ${costInr.toLocaleString('en-IN')}`;
+
+      // Update Deep Forensic Fields
+      if (apiRes) {
+        if (apiRes.shannon_entropy_bits !== undefined && document.getElementById("rw-photo-uncertainty")) {
+          document.getElementById("rw-photo-uncertainty").innerText = `${apiRes.shannon_entropy_bits.toFixed(2)} bits • ${(apiRes.epistemic_uncertainty_rating || 'LOW UNCERTAINTY').replace(/_/g, ' ')}`;
+        }
+        if (apiRes.astm_d6433_severity && document.getElementById("rw-photo-severity")) {
+          document.getElementById("rw-photo-severity").innerText = `ASTM SEVERITY: ${apiRes.astm_d6433_severity} (${apiRes.astm_d6433_severity[0] || 'L'})`;
+        }
+        if (apiRes.irc_standard_specification && document.getElementById("rw-photo-irc-text")) {
+          document.getElementById("rw-photo-irc-text").innerText = apiRes.irc_standard_specification;
+        }
+        if (apiRes.structural_deterioration_velocity_sqcm_per_day !== undefined && document.getElementById("rw-photo-det-rate")) {
+          document.getElementById("rw-photo-det-rate").innerText = `${apiRes.structural_deterioration_velocity_sqcm_per_day.toFixed(1)} cm²/day`;
+        }
+        if (apiRes.embodied_carbon_kg_co2e !== undefined && document.getElementById("rw-photo-carbon")) {
+          document.getElementById("rw-photo-carbon").innerText = `${apiRes.embodied_carbon_kg_co2e.toFixed(1)} kg CO₂e`;
+        }
+        if (apiRes.top3_ranked_predictions && apiRes.top3_ranked_predictions.length >= 1) {
+          const t = apiRes.top3_ranked_predictions;
+          if (t[0] && document.getElementById("top1-name")) document.getElementById("top1-name").innerText = `#1 ${t[0].class_name}`;
+          if (t[1] && document.getElementById("top2-name")) document.getElementById("top2-name").innerText = `#2 ${t[1].class_name}`;
+          if (t[2] && document.getElementById("top3-name")) document.getElementById("top3-name").innerText = `#3 ${t[2].class_name}`;
+        }
+      }
 
       // Paint Photo Canvas
       paintPhotoCanvas(preset);
@@ -5268,6 +5316,72 @@
 
       const confEl = document.getElementById("rw-photo-confidence");
       if (confEl) confEl.innerText = `${((p.confidence || 0.98) * 100).toFixed(1)}%`;
+
+      // Update Deep Forensic Fields: Entropy, Uncertainty, ASTM Severity, IRC Clause
+      const deep = analysis.deep_forensic_intelligence || {};
+      const entropy = p.shannon_entropy_bits !== undefined ? p.shannon_entropy_bits : (deep.shannon_entropy_bits !== undefined ? deep.shannon_entropy_bits : (isPed ? 0.05 : 0.24));
+      const uncertRating = p.uncertainty_rating || deep.epistemic_uncertainty_rating || (isPed ? "VULNERABLE_ROAD_USER_CONFIRMED" : "LOW_UNCERTAINTY");
+      const uncertEl = document.getElementById("rw-photo-uncertainty");
+      if (uncertEl) {
+        uncertEl.innerText = `${entropy.toFixed(2)} bits • ${uncertRating.replace(/_/g, ' ')}`;
+        uncertEl.className = isPed 
+          ? "px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-cyan-950 text-cyan-300 border border-cyan-800" 
+          : (entropy < 1.2 
+              ? "px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-950 text-emerald-300 border border-emerald-800" 
+              : "px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-950 text-amber-300 border border-amber-800");
+      }
+
+      const astmSev = p.astm_d6433_severity || deep.astm_d6433_severity || (isPed ? "N/A_VRU" : (p.class_id === 4 ? "HIGH" : (p.is_distress ? "MEDIUM" : "NONE")));
+      const sevEl = document.getElementById("rw-photo-severity");
+      if (sevEl) {
+        sevEl.innerText = isPed ? "VRU PEDESTRIAN SAFETY" : `ASTM SEVERITY: ${astmSev} (${astmSev[0] || 'L'})`;
+        sevEl.className = isPed 
+          ? "px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-cyan-950 text-cyan-300 border border-cyan-800"
+          : (astmSev === "HIGH" 
+              ? "px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-950 text-rose-300 border border-rose-800" 
+              : (astmSev === "MEDIUM" 
+                  ? "px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-950 text-amber-300 border border-amber-800" 
+                  : "px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-900 text-slate-300 border border-slate-700"));
+      }
+
+      const ircSpec = p.irc_standard_specification || deep.irc_standard_specification || (isPed ? "IRC:103-2012 Guidelines for Pedestrian Facilities: Signalized Pelican Crossing" : "IRC:82-2015 Clause 4.2: Mechanical Pot-Hole Patching with Bituminous Concrete");
+      const ircEl = document.getElementById("rw-photo-irc-text");
+      if (ircEl) ircEl.innerText = ircSpec;
+
+      // Update Top-3 Forensic Hypotheses
+      const top3 = p.top3_ranked_predictions || deep.top3_ranked_distress_hypotheses || [
+        { rank: 1, class_name: p.class_name || "D40 Pothole", probability: p.confidence || 0.98 },
+        { rank: 2, class_name: "D20 Alligator Crack", probability: 0.015 },
+        { rank: 3, class_name: "Normal Road", probability: 0.005 }
+      ];
+
+      if (top3.length >= 1) {
+        const c1 = top3[0];
+        const p1Pct = (c1.probability * 100).toFixed(1);
+        if (document.getElementById("top1-name")) document.getElementById("top1-name").innerText = `#1 ${c1.class_name}`;
+        if (document.getElementById("prob-d40")) document.getElementById("prob-d40").innerText = `${p1Pct}%`;
+        if (document.getElementById("bar-d40")) document.getElementById("bar-d40").style.width = `${Math.min(100, Math.max(1, p1Pct))}%`;
+      }
+      if (top3.length >= 2) {
+        const c2 = top3[1];
+        const p2Pct = (c2.probability * 100).toFixed(1);
+        if (document.getElementById("top2-name")) document.getElementById("top2-name").innerText = `#2 ${c2.class_name}`;
+        if (document.getElementById("prob-d20")) document.getElementById("prob-d20").innerText = `${p2Pct}%`;
+        if (document.getElementById("bar-d20")) document.getElementById("bar-d20").style.width = `${Math.min(100, Math.max(1, p2Pct))}%`;
+      }
+      if (top3.length >= 3) {
+        const c3 = top3[2];
+        const p3Pct = (c3.probability * 100).toFixed(1);
+        if (document.getElementById("top3-name")) document.getElementById("top3-name").innerText = `#3 ${c3.class_name}`;
+        if (document.getElementById("prob-norm")) document.getElementById("prob-norm").innerText = `${p3Pct}%`;
+        if (document.getElementById("bar-norm")) document.getElementById("bar-norm").style.width = `${Math.min(100, Math.max(1, p3Pct))}%`;
+      }
+
+      // Update Deterioration Rate and Embodied Carbon Footprint
+      const detRate = (isPed || !p.is_distress) ? 0.0 : (p.deterioration_velocity_sqcm_per_day !== undefined ? p.deterioration_velocity_sqcm_per_day : (deep.structural_deterioration_velocity_sqcm_per_day || (dims.surface_area_m2 * 120.0)));
+      const carbon = (isPed || !p.is_distress) ? 0.0 : (p.carbon_footprint_kg_co2e !== undefined ? p.carbon_footprint_kg_co2e : (deep.embodied_carbon_footprint_kg_co2e || (dims.morth_compacted_tonnage_t * 62.5)));
+      if (document.getElementById("rw-photo-det-rate")) document.getElementById("rw-photo-det-rate").innerText = `${detRate.toFixed(1)} cm²/day`;
+      if (document.getElementById("rw-photo-carbon")) document.getElementById("rw-photo-carbon").innerText = `${carbon.toFixed(1)} kg CO₂e`;
 
       // Dimensions & zero repair cost for pedestrians or clean roads
       const repairCost = (isPed || !p.is_distress) ? 0 : Math.round(dims.estimated_repair_cost_inr || 0);

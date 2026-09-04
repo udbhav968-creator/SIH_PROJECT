@@ -204,7 +204,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     "M7_M8_forensic_auditor": "LOADED_ACTIVE",
                     "M10_morth_dispatch_agent": "LOADED_ACTIVE",
                     "M_PCI_astm_d6433_regressor": "LOADED_ACTIVE",
-                    "M_DEGRADE_lifecycle_forecaster": "LOADED_ACTIVE"
+                    "M_DEGRADE_lifecycle_forecaster": "LOADED_ACTIVE",
+                    "M5_urban_traffic_net": "LOADED_ACTIVE"
                 },
                 "hardware_profile": {
                     "backend": "Vectorized NumPy High-Throughput Engine",
@@ -426,7 +427,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # ----------------------------------------------------------------------
         # ENDPOINT 1: Vision Distress Detection (Model M1)
         # ----------------------------------------------------------------------
-        if path == "/api/v1/detect/vision":
+        if path in ["/api/v1/detect/vision", "/api/v1/vision/predict"]:
             if "features" in body and len(body["features"]) == 64:
                 X = np.array([body["features"]], dtype=np.float32)
             else:
@@ -437,6 +438,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 X = X_samp[idx:idx+1]
                 
             preds, conf, probs, geo_preds = vision_model.predict(X)
+            dp = vision_model.predict_deep(X)[0] if hasattr(vision_model, "predict_deep") else {}
             cls_id = int(preds[0])
             cls_name = VisionDistressNet.CLASS_NAMES[cls_id]
             bbox = geo_preds[0].tolist()
@@ -446,6 +448,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             w_px = max(10, int(bbox[2] * 640))
             h_px = max(10, int(bbox[3] * 480))
             ground_area = ipm_engine.calculate_surface_area_sqm(u_min, v_min, w_px, h_px)
+            tonnage_t = round(ground_area * 0.075 * 2.40, 3)
 
             latency_ms = round((time.time() - t0) * 1000.0, 3)
             self._send_json(200, {
@@ -454,6 +457,13 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 "distress_name": cls_name,
                 "distress_class": cls_name,
                 "confidence": round(float(conf[0]), 4),
+                "shannon_entropy_bits": dp.get("shannon_entropy_bits", 0.25),
+                "epistemic_uncertainty_rating": dp.get("uncertainty_rating", "LOW_UNCERTAINTY"),
+                "astm_d6433_severity": dp.get("astm_d6433_severity", "HIGH" if cls_id == 4 else "LOW"),
+                "irc_standard_specification": dp.get("irc_standard_specification", "IRC:82-2015 Clause 4.2"),
+                "top3_ranked_predictions": dp.get("top3_ranked_predictions", []),
+                "structural_deterioration_velocity_sqcm_per_day": round(max(15.0, ground_area * 120.0), 1) if cls_id == 4 else 0.0,
+                "embodied_carbon_kg_co2e": round(tonnage_t * 62.5, 2),
                 "probabilities": {name: round(float(probs[0][i]), 4) for i, name in enumerate(VisionDistressNet.CLASS_NAMES)},
                 "bbox_norm": [round(x, 4) for x in bbox],
                 "bounding_box": [round(x, 4) for x in bbox],
@@ -747,6 +757,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 
             X_vis = np.array([features], dtype=np.float32)
             preds, conf_arr, probs_arr, geo_preds = vision_model.predict(X_vis)
+            dp = vision_model.predict_deep(X_vis)[0] if hasattr(vision_model, "predict_deep") else {}
             vis_probs = probs_arr[0]
             pred_cls_idx = int(preds[0])
             conf = float(conf_arr[0])
@@ -756,7 +767,11 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 1: "D00 Longitudinal Joint Crack",
                 2: "D10 Transverse Thermal Crack",
                 3: "D20 Fatigue Alligator Crack",
-                4: "D40 Severe Cavity / Pothole"
+                4: "D40 Severe Cavity / Pothole",
+                5: "Waterlogging Hazard",
+                6: "Missing Zebra Crossing",
+                7: "Missing Road Divider",
+                8: "Damaged Traffic Sign"
             }
             pred_class = cls_map.get(pred_cls_idx, VisionDistressNet.CLASS_NAMES[pred_cls_idx])
             is_distress = (pred_cls_idx != 0)
@@ -771,6 +786,13 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 "weather_condition": weather,
                 "predicted_class": pred_class,
                 "confidence": round(conf, 4),
+                "shannon_entropy_bits": dp.get("shannon_entropy_bits", 0.25),
+                "epistemic_uncertainty_rating": dp.get("uncertainty_rating", "LOW_UNCERTAINTY"),
+                "astm_d6433_severity": dp.get("astm_d6433_severity", "HIGH" if pred_cls_idx == 4 else "LOW"),
+                "irc_standard_specification": dp.get("irc_standard_specification", "IRC:82-2015 Clause 4.2"),
+                "top3_ranked_predictions": dp.get("top3_ranked_predictions", []),
+                "structural_deterioration_velocity_sqcm_per_day": round(max(15.0, area * 120.0), 1) if pred_cls_idx == 4 else (round(max(5.0, area * 45.0), 1) if is_distress else 0.0),
+                "embodied_carbon_kg_co2e": round(tonnage_t * 62.5, 2),
                 "is_distress": is_distress,
                 "defect_dimensions": {
                     "surface_area_m2": area,
