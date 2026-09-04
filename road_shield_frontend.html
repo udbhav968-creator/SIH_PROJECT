@@ -5230,7 +5230,7 @@
       if (canvas) {
         const ctx = canvas.getContext("2d");
         
-        const detectionsToDraw = data.all_detections && data.all_detections.length > 0 ? data.all_detections : [p];
+        const detectionsToDraw = analysis.all_detections && analysis.all_detections.length > 0 ? analysis.all_detections : [p];
         
         detectionsToDraw.forEach((det) => {
           if (det && det.is_distress && (det.bbox_normalized || det.bbox_pixels)) {
@@ -5288,8 +5288,6 @@
             ctx.fillText(label2, bx + 4, labY - 2);
           }
         });
-      }
-
       }
     }
 
