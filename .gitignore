@@ -33,3 +33,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+datasets/*.zip
+datasets/ivcnz_potholes.zip
