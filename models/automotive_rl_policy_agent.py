@@ -109,9 +109,39 @@ class AutomotiveRLPolicyAgent:
         self.W_adv2 = np.random.randn(32, num_actions) * scale_a2
         self.b_adv2 = np.zeros(num_actions)
 
+        # Target Network Weights (for Polyak Soft Updates in Double-DQN)
+        self._init_target_network()
+
         # Replay Buffer
         self.buffer = []
         self.buffer_capacity = 25000
+
+    def _init_target_network(self):
+        self.W1_tgt = self.W1.copy()
+        self.b1_tgt = self.b1.copy()
+        self.W2_tgt = self.W2.copy()
+        self.b2_tgt = self.b2.copy()
+        self.W_val1_tgt = self.W_val1.copy()
+        self.b_val1_tgt = self.b_val1.copy()
+        self.W_val2_tgt = self.W_val2.copy()
+        self.b_val2_tgt = self.b_val2.copy()
+        self.W_adv1_tgt = self.W_adv1.copy()
+        self.b_adv1_tgt = self.b_adv1.copy()
+        self.W_adv2_tgt = self.W_adv2.copy()
+        self.b_adv2_tgt = self.b_adv2.copy()
+
+    def update_target_network(self, tau=0.02):
+        """Soft Polyak update: theta_target = tau * theta_online + (1 - tau) * theta_target"""
+        for p_tgt, p_on in [
+            (self.W1_tgt, self.W1), (self.b1_tgt, self.b1),
+            (self.W2_tgt, self.W2), (self.b2_tgt, self.b2),
+            (self.W_val1_tgt, self.W_val1), (self.b_val1_tgt, self.b_val1),
+            (self.W_val2_tgt, self.W_val2), (self.b_val2_tgt, self.b_val2),
+            (self.W_adv1_tgt, self.W_adv1), (self.b_adv1_tgt, self.b_adv1),
+            (self.W_adv2_tgt, self.W_adv2), (self.b_adv2_tgt, self.b_adv2)
+        ]:
+            p_tgt *= (1.0 - tau)
+            p_tgt += tau * p_on
 
     def _relu(self, x):
         return np.maximum(0.0, x)
@@ -142,6 +172,109 @@ class AutomotiveRLPolicyAgent:
         if is_single:
             return q_values[0]
         return q_values
+
+    def target_forward(self, state):
+        """Target network forward computation for stable temporal difference learning."""
+        is_single = (state.ndim == 1)
+        if is_single:
+            state = state[np.newaxis, :]
+
+        h1 = self._relu(np.dot(state, self.W1_tgt) + self.b1_tgt)
+        h2 = self._relu(np.dot(h1, self.W2_tgt) + self.b2_tgt)
+
+        v_h = self._relu(np.dot(h2, self.W_val1_tgt) + self.b_val1_tgt)
+        value = np.dot(v_h, self.W_val2_tgt) + self.b_val2_tgt
+
+        a_h = self._relu(np.dot(h2, self.W_adv1_tgt) + self.b_adv1_tgt)
+        advantage = np.dot(a_h, self.W_adv2_tgt) + self.b_adv2_tgt
+
+        q_values = value + (advantage - np.mean(advantage, axis=-1, keepdims=True))
+        if is_single:
+            return q_values[0]
+        return q_values
+
+    def train_step(self, states, actions, targets, lr=0.001, l2_reg=1e-4):
+        """
+        Exact vectorized backpropagation through Dueling-DQN network with Huber TD loss.
+        """
+        B = len(states)
+        if B == 0:
+            return 0.0
+
+        z1 = np.dot(states, self.W1) + self.b1
+        h1 = self._relu(z1)
+
+        z2 = np.dot(h1, self.W2) + self.b2
+        h2 = self._relu(z2)
+
+        zv1 = np.dot(h2, self.W_val1) + self.b_val1
+        v_h = self._relu(zv1)
+        value = np.dot(v_h, self.W_val2) + self.b_val2 # (B, 1)
+
+        za1 = np.dot(h2, self.W_adv1) + self.b_adv1
+        a_h = self._relu(za1)
+        advantage = np.dot(a_h, self.W_adv2) + self.b_adv2 # (B, num_actions)
+
+        mean_adv = np.mean(advantage, axis=-1, keepdims=True)
+        q_values = value + (advantage - mean_adv) # (B, num_actions)
+
+        current_q = q_values[np.arange(B), actions]
+        td_error = current_q - targets
+        loss = np.mean(np.where(np.abs(td_error) < 1.0, 0.5 * td_error**2, np.abs(td_error) - 0.5))
+
+        # Huber gradient
+        clipped_grad = np.clip(td_error, -1.0, 1.0) / float(B)
+        dq = np.zeros_like(q_values)
+        dq[np.arange(B), actions] = clipped_grad
+
+        # Backward through Dueling combination:
+        # Q = V + (A - mean(A))
+        # dV = sum(dQ)
+        # dA = dQ - mean(dQ)
+        d_val = np.sum(dq, axis=-1, keepdims=True) # (B, 1)
+        d_adv = dq - np.mean(dq, axis=-1, keepdims=True) # (B, num_actions)
+
+        # Value stream backward:
+        dW_val2 = np.dot(v_h.T, d_val) + l2_reg * self.W_val2
+        db_val2 = np.sum(d_val, axis=0)
+        dv_h = np.dot(d_val, self.W_val2.T)
+        dzv1 = dv_h * (zv1 > 0)
+        dW_val1 = np.dot(h2.T, dzv1) + l2_reg * self.W_val1
+        db_val1 = np.sum(dzv1, axis=0)
+        dh2_v = np.dot(dzv1, self.W_val1.T)
+
+        # Advantage stream backward:
+        dW_adv2 = np.dot(a_h.T, d_adv) + l2_reg * self.W_adv2
+        db_adv2 = np.sum(d_adv, axis=0)
+        da_h = np.dot(d_adv, self.W_adv2.T)
+        dza1 = da_h * (za1 > 0)
+        dW_adv1 = np.dot(h2.T, dza1) + l2_reg * self.W_adv1
+        db_adv1 = np.sum(dza1, axis=0)
+        dh2_a = np.dot(dza1, self.W_adv1.T)
+
+        # Shared representation backward:
+        dh2 = dh2_v + dh2_a
+        dz2 = dh2 * (z2 > 0)
+        dW2 = np.dot(h1.T, dz2) + l2_reg * self.W_2 if hasattr(self, 'W_2') else np.dot(h1.T, dz2) + l2_reg * self.W2
+        db2 = np.sum(dz2, axis=0)
+
+        dh1 = np.dot(dz2, self.W2.T)
+        dz1 = dh1 * (z1 > 0)
+        dW1 = np.dot(states.T, dz1) + l2_reg * self.W1
+        db1 = np.sum(dz1, axis=0)
+
+        # Parameter updates with clipping
+        for p, g in [
+            (self.W_val2, dW_val2), (self.b_val2, db_val2),
+            (self.W_val1, dW_val1), (self.b_val1, db_val1),
+            (self.W_adv2, dW_adv2), (self.b_adv2, db_adv2),
+            (self.W_adv1, dW_adv1), (self.b_adv1, db_adv1),
+            (self.W2, dW2), (self.b2, db2),
+            (self.W1, dW1), (self.b1, db1)
+        ]:
+            p -= lr * np.clip(g, -3.0, 3.0)
+
+        return float(loss)
 
     def act(self, state, explore=False):
         """Select action via epsilon-greedy policy."""

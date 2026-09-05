@@ -20,7 +20,7 @@ def test_vision_model():
     ckpt_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints", "vision_distress_weights.npz"))
     assert os.path.exists(ckpt_path), f"Checkpoint not found: {ckpt_path}"
     
-    model = VisionDistressNet(in_dim=64, hidden_dims=[128, 64], num_classes=5)
+    model = VisionDistressNet(in_features=64, hidden_dims=[512, 256, 128], num_classes=10)
     model.load_weights(ckpt_path)
     
     # Test 1: Inference shape & probabilities

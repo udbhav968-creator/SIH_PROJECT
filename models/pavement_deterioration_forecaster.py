@@ -66,6 +66,8 @@ class PavementDeteriorationForecaster:
         pred_areas = np.maximum(X[:, 0:1], out)
         return pred_areas
 
+    predict = forecast
+
     def predict_lifecycle_roi(self, init_area_m2, depth_cm, esal_trucks, rain_mm, age_yr=3.5):
         """
         Calculates the financial ROI of immediate preventive patching vs 180-day delayed monsoon repair.

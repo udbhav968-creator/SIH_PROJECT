@@ -21,6 +21,7 @@ from tests.test_morth_dispatch import test_morth_dispatch
 from tests.test_deep_models import test_deep_models
 from tests.test_mega_pipeline import main as test_mega_pipeline
 from tests.test_deep_pipeline_e2e import run_deep_pipeline_tests
+from tests.test_deep_model_accuracies import run_deep_model_benchmarks
 
 def run_all_tests():
     start_time = time.time()
@@ -37,7 +38,8 @@ def run_all_tests():
         ("Model M10: MoRTH Cryptographic Dispatch Agent", test_morth_dispatch),
         ("Models M_PCI & M_DEGRADE: Deep Quality & Forecaster Suite", test_deep_models),
         ("Mega-Pipeline: Benchmark Dataset Hub & Augmentation Suite", test_mega_pipeline),
-        ("11-Stage Deep Inference Pipeline E2E (Real Images & Gate)", run_deep_pipeline_tests)
+        ("11-Stage Deep Inference Pipeline E2E (Real Images & Gate)", run_deep_pipeline_tests),
+        ("Deep Pipeline: All-Model Train & Test Accuracy Benchmark", run_deep_model_benchmarks)
     ]
     
     results = []

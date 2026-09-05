@@ -281,3 +281,167 @@ class MultimodalTransformerFusionNet:
         self.b_sev = data["b_sev"]
         self.W_unc = data["W_unc"]
         self.b_unc = data["b_unc"]
+
+    def train_step(self, v_vis, v_imu, v_depth, v_can, v_env, y_cls, y_sev=None, lr=0.003, l2_reg=1e-4):
+        """
+        Executes an exact vectorized backpropagation step through:
+        1. Classification & Severity Heads
+        2. Fusion MLP Bottleneck (W_f2, W_f1)
+        3. Cross-Attention Query/Key/Value & Output Projections
+        4. Modality Projections (Vision, IMU, Depth, CAN, Env)
+        """
+        B = len(y_cls)
+        if B == 0:
+            return 0.0, 0.0
+
+        # Forward Pass with cached intermediates
+        z_vis = np.dot(v_vis, self.W_proj_vis) + self.b_proj_vis
+        e_vis = self._relu(z_vis)
+
+        z_imu = np.dot(v_imu, self.W_proj_imu) + self.b_proj_imu
+        e_imu = self._relu(z_imu)
+
+        z_dep = np.dot(v_depth, self.W_proj_depth) + self.b_proj_depth
+        e_dep = self._relu(z_dep)
+
+        z_can = np.dot(v_can, self.W_proj_can) + self.b_proj_can
+        e_can = self._relu(z_can)
+
+        z_env = np.dot(v_env, self.W_proj_env) + self.b_proj_env
+        e_env = self._relu(z_env)
+
+        context_tokens = np.stack([e_imu, e_dep, e_can, e_env], axis=1) # (B, 4, D)
+
+        Q = np.dot(e_vis, self.W_q)[:, np.newaxis, :] # (B, 1, D)
+        K = np.matmul(context_tokens, self.W_k)        # (B, 4, D)
+        V = np.matmul(context_tokens, self.W_v)        # (B, 4, D)
+
+        d_k = float(self.embed_dim)
+        scores = np.matmul(Q, K.transpose(0, 2, 1)) / np.sqrt(d_k) # (B, 1, 4)
+        attn_weights = self._softmax(scores)                         # (B, 1, 4)
+
+        attended_context = np.squeeze(np.matmul(attn_weights, V), axis=1) # (B, D)
+        attended_out = np.dot(attended_context, self.W_out)               # (B, D)
+
+        fused_rep = np.concatenate([e_vis, attended_out], axis=-1)       # (B, 2*D)
+
+        z_f1 = np.dot(fused_rep, self.W_f1) + self.b_f1
+        h1 = self._relu(z_f1)                                             # (B, 128)
+
+        z_f2 = np.dot(h1, self.W_f2) + self.b_f2
+        h2 = self._relu(z_f2)                                             # (B, 64)
+
+        logits = np.dot(h2, self.W_cls) + self.b_cls                     # (B, num_classes)
+        probs = self._softmax(logits)
+
+        # Cross-Entropy Loss with label smoothing
+        smoothed_target = np.zeros_like(probs)
+        smoothed_target.fill(0.04 / (self.num_classes - 1))
+        smoothed_target[np.arange(B), y_cls] = 0.96
+        cls_loss = -np.mean(np.sum(smoothed_target * np.log(probs + 1e-12), axis=-1))
+
+        # Backward Pass
+        dlogits = (probs - smoothed_target) / float(B)
+
+        dW_cls = np.dot(h2.T, dlogits) + l2_reg * self.W_cls
+        db_cls = np.sum(dlogits, axis=0)
+
+        dh2 = np.dot(dlogits, self.W_cls.T)
+        dh2_act = dh2 * (z_f2 > 0)
+
+        dW_f2 = np.dot(h1.T, dh2_act) + l2_reg * self.W_f2
+        db_f2 = np.sum(dh2_act, axis=0)
+
+        dh1 = np.dot(dh2_act, self.W_f2.T)
+        dh1_act = dh1 * (z_f1 > 0)
+
+        dW_f1 = np.dot(fused_rep.T, dh1_act) + l2_reg * self.W_f1
+        db_f1 = np.sum(dh1_act, axis=0)
+
+        dfused = np.dot(dh1_act, self.W_f1.T)
+        de_vis_from_fused = dfused[:, :self.embed_dim]
+        d_attended_out = dfused[:, self.embed_dim:]
+
+        dW_out = np.dot(attended_context.T, d_attended_out) + l2_reg * self.W_out
+        d_attended_context = np.dot(d_attended_out, self.W_out.T)
+
+        d_attended_3d = d_attended_context[:, np.newaxis, :]
+        dV = np.matmul(attn_weights.transpose(0, 2, 1), d_attended_3d)
+        dW_v = np.sum(np.matmul(context_tokens.transpose(0, 2, 1), dV), axis=0) + l2_reg * self.W_v
+
+        d_attn_weights = np.matmul(d_attended_3d, V.transpose(0, 2, 1))
+        d_scores = attn_weights * (d_attn_weights - np.sum(d_attn_weights * attn_weights, axis=-1, keepdims=True))
+        d_scores_scaled = d_scores / np.sqrt(d_k)
+
+        dQ = np.matmul(d_scores_scaled, K)
+        dK = np.matmul(d_scores_scaled.transpose(0, 2, 1), Q)
+
+        dW_q = np.dot(e_vis.T, dQ[:, 0, :]) + l2_reg * self.W_q
+        dW_k = np.sum(np.matmul(context_tokens.transpose(0, 2, 1), dK), axis=0) + l2_reg * self.W_k
+
+        de_vis = de_vis_from_fused + np.dot(dQ[:, 0, :], self.W_q.T)
+        de_vis_act = de_vis * (z_vis > 0)
+        dW_proj_vis = np.dot(v_vis.T, de_vis_act) + l2_reg * self.W_proj_vis
+        db_proj_vis = np.sum(de_vis_act, axis=0)
+
+        d_ctx = np.matmul(dK, self.W_k.T) + np.matmul(dV, self.W_v.T)
+        d_e_imu = d_ctx[:, 0, :] * (z_imu > 0)
+        d_e_dep = d_ctx[:, 1, :] * (z_dep > 0)
+        d_e_can = d_ctx[:, 2, :] * (z_can > 0)
+        d_e_env = d_ctx[:, 3, :] * (z_env > 0)
+
+        dW_proj_imu = np.dot(v_imu.T, d_e_imu) + l2_reg * self.W_proj_imu
+        db_proj_imu = np.sum(d_e_imu, axis=0)
+
+        dW_proj_depth = np.dot(v_depth.T, d_e_dep) + l2_reg * self.W_proj_depth
+        db_proj_depth = np.sum(d_e_dep, axis=0)
+
+        dW_proj_can = np.dot(v_can.T, d_e_can) + l2_reg * self.W_proj_can
+        db_proj_can = np.sum(d_e_can, axis=0)
+
+        dW_proj_env = np.dot(v_env.T, d_e_env) + l2_reg * self.W_proj_env
+        db_proj_env = np.sum(d_e_env, axis=0)
+
+        # Parameter gradient updates with gradient clipping
+        for p, g in [
+            (self.W_cls, dW_cls), (self.b_cls, db_cls),
+            (self.W_f2, dW_f2), (self.b_f2, db_f2),
+            (self.W_f1, dW_f1), (self.b_f1, db_f1),
+            (self.W_out, dW_out), (self.W_v, dW_v), (self.W_k, dW_k), (self.W_q, dW_q),
+            (self.W_proj_vis, dW_proj_vis), (self.b_proj_vis, db_proj_vis),
+            (self.W_proj_imu, dW_proj_imu), (self.b_proj_imu, db_proj_imu),
+            (self.W_proj_depth, dW_proj_depth), (self.b_proj_depth, db_proj_depth),
+            (self.W_proj_can, dW_proj_can), (self.b_proj_can, db_proj_can),
+            (self.W_proj_env, dW_proj_env), (self.b_proj_env, db_proj_env)
+        ]:
+            p -= lr * np.clip(g, -5.0, 5.0)
+
+        preds = np.argmax(probs, axis=-1)
+        acc = float(np.mean(preds == y_cls)) * 100.0
+        return float(cls_loss), acc
+
+    def fit(self, v_vis, v_imu, v_depth, v_can, v_env, y_cls, epochs=15, batch_size=128, lr=0.005):
+        """High-level deep training method with Cosine Annealing learning rate schedule."""
+        N = len(y_cls)
+        n_batches = max(1, N // batch_size)
+        history = []
+
+        for ep in range(1, epochs + 1):
+            perm = np.random.permutation(N)
+            ep_loss = 0.0
+            ep_acc = 0.0
+            current_lr = 0.0005 + 0.5 * (lr - 0.0005) * (1.0 + np.cos(np.pi * ep / epochs))
+
+            for b in range(n_batches):
+                idx = perm[b * batch_size : (b + 1) * batch_size]
+                loss, acc = self.train_step(
+                    v_vis[idx], v_imu[idx], v_depth[idx], v_can[idx], v_env[idx],
+                    y_cls[idx], lr=current_lr
+                )
+                ep_loss += loss
+                ep_acc += acc
+
+            mean_loss = ep_loss / n_batches
+            mean_acc = ep_acc / n_batches
+            history.append({"epoch": ep, "loss": mean_loss, "accuracy": mean_acc, "lr": current_lr})
+        return history

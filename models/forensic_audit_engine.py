@@ -25,6 +25,53 @@ class ForensicMetricEmbedder:
         embeddings = z2 / norms
         return embeddings
 
+    def train_step(self, anchors, positives, negatives, margin=0.35, lr=None):
+        """Vectorized triplet margin loss step with exact gradient backpropagation."""
+        if lr is None:
+            lr = self.lr
+        B = len(anchors)
+
+        # Forward pass with cache
+        z1_a = anchors @ self.w1 + self.b1; a1_a = np.maximum(0, z1_a); z2_a = a1_a @ self.w2 + self.b2
+        z1_p = positives @ self.w1 + self.b1; a1_p = np.maximum(0, z1_p); z2_p = a1_p @ self.w2 + self.b2
+        z1_n = negatives @ self.w1 + self.b1; a1_n = np.maximum(0, z1_n); z2_n = a1_n @ self.w2 + self.b2
+
+        norm_a = np.linalg.norm(z2_a, axis=-1, keepdims=True) + 1e-8; e_a = z2_a / norm_a
+        norm_p = np.linalg.norm(z2_p, axis=-1, keepdims=True) + 1e-8; e_p = z2_p / norm_p
+        norm_n = np.linalg.norm(z2_n, axis=-1, keepdims=True) + 1e-8; e_n = z2_n / norm_n
+
+        d_pos = np.sum((e_a - e_p)**2, axis=-1)
+        d_neg = np.sum((e_a - e_n)**2, axis=-1)
+        loss_vec = np.maximum(0.0, d_pos - d_neg + margin)
+        loss = float(np.mean(loss_vec))
+
+        active = (loss_vec > 0).astype(np.float32)[:, None]
+        if np.sum(active) > 0:
+            g_ea = (2.0 * (e_n - e_p) * active) / B
+            g_ep = (-2.0 * (e_a - e_p) * active) / B
+            g_en = (2.0 * (e_a - e_n) * active) / B
+
+            g_z2_a = g_ea / norm_a
+            g_z2_p = g_ep / norm_p
+            g_z2_n = g_en / norm_n
+
+            dw2 = (a1_a.T @ g_z2_a + a1_p.T @ g_z2_p + a1_n.T @ g_z2_n)
+            db2 = np.sum(g_z2_a + g_z2_p + g_z2_n, axis=0, keepdims=True)
+
+            g_a1_a = (g_z2_a @ self.w2.T) * (z1_a > 0)
+            g_a1_p = (g_z2_p @ self.w2.T) * (z1_p > 0)
+            g_a1_n = (g_z2_n @ self.w2.T) * (z1_n > 0)
+
+            dw1 = (anchors.T @ g_a1_a + positives.T @ g_a1_p + negatives.T @ g_a1_n)
+            db1 = np.sum(g_a1_a + g_a1_p + g_a1_n, axis=0, keepdims=True)
+
+            self.w2 -= lr * np.clip(dw2, -5.0, 5.0)
+            self.b2 -= lr * np.clip(db2, -5.0, 5.0)
+            self.w1 -= lr * np.clip(dw1, -5.0, 5.0)
+            self.b1 -= lr * np.clip(db1, -5.0, 5.0)
+
+        return loss
+
     @staticmethod
     def cosine_similarity(emb1, emb2):
         if emb1.ndim == 1:

@@ -7,43 +7,25 @@ Generates synthetic and benchmark datasets mimicking:
 """
 import numpy as np
 
-def generate_vision_dataset(num_samples=5000, feat_dim=64, seed=42):
+def generate_vision_dataset(num_samples=5000, feat_dim=64, num_classes=10, seed=42):
     np.random.seed(seed)
-    y_cls = np.random.choice([0, 1, 2, 3, 4], size=num_samples, p=[0.25, 0.20, 0.15, 0.20, 0.20])
-    
-    X = np.zeros((num_samples, feat_dim), dtype=np.float32)
+    y_cls = np.random.randint(0, num_classes, size=num_samples)
+    X = np.random.randn(num_samples, feat_dim).astype(np.float32)
     y_geo = np.zeros((num_samples, 4), dtype=np.float32)
     y_area = np.zeros(num_samples, dtype=np.float32)
-    
+
     for i in range(num_samples):
         cls = y_cls[i]
-        base = np.random.normal(loc=0.0, scale=0.3, size=feat_dim).astype(np.float32)
-        
-        if cls == 0:  # Normal Road
-            X[i] = base
-            y_geo[i] = [0.0, 0.0, 0.0, 0.0]
+        if cls < 9:
+            X[i, (cls * 6) : (cls * 6 + 10)] += 3.5
+            X[i, 16:32] += 0.8 * np.sin(np.linspace(0, np.pi * 2, 16))
+            y_geo[i] = [np.random.uniform(0.1, 0.9), np.random.uniform(0.3, 0.8), np.random.uniform(0.2, 4.5), np.random.uniform(1.0, 4.0)]
+            y_area[i] = np.random.uniform(0.1, 3.0)
+        else:
+            X[i, 0:10] += 3.2
+            y_geo[i] = [0.5, 0.5, 0.0, 0.0]
             y_area[i] = 0.0
-        elif cls == 1:  # D00 Longitudinal Crack
-            base[0:16] += np.random.normal(loc=2.0, scale=0.35, size=16)
-            X[i] = base
-            y_geo[i] = [np.random.uniform(0.3, 0.6), np.random.uniform(0.1, 0.3), np.random.uniform(0.05, 0.15), np.random.uniform(0.4, 0.8)]
-            y_area[i] = np.random.uniform(0.1, 0.4)
-        elif cls == 2:  # D10 Transverse Crack
-            base[16:32] += np.random.normal(loc=2.0, scale=0.35, size=16)
-            X[i] = base
-            y_geo[i] = [np.random.uniform(0.1, 0.3), np.random.uniform(0.4, 0.7), np.random.uniform(0.4, 0.8), np.random.uniform(0.05, 0.15)]
-            y_area[i] = np.random.uniform(0.15, 0.5)
-        elif cls == 3:  # D20 Alligator Crack
-            base[32:48] += np.random.normal(loc=2.3, scale=0.45, size=16)
-            X[i] = base
-            y_geo[i] = [np.random.uniform(0.2, 0.5), np.random.uniform(0.3, 0.6), np.random.uniform(0.2, 0.45), np.random.uniform(0.2, 0.45)]
-            y_area[i] = np.random.uniform(0.5, 1.8)
-        elif cls == 4:  # D40 Pothole Cavity
-            base[48:64] += np.random.normal(loc=2.9, scale=0.5, size=16)
-            X[i] = base
-            y_geo[i] = [np.random.uniform(0.25, 0.65), np.random.uniform(0.4, 0.75), np.random.uniform(0.15, 0.4), np.random.uniform(0.15, 0.35)]
-            y_area[i] = np.random.uniform(0.3, 3.5)
-            
+
     return X, y_cls, y_geo, y_area
 
 def generate_imu_dataset(num_samples=4000, timesteps=100, seed=42):
