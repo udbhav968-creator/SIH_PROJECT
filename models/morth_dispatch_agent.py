@@ -32,20 +32,27 @@ class MoRTHDispatchAgent:
         timestamp_utc = int(time.time())
         order_uuid = f"MORTH-WO-{timestamp_utc % 1000000:06d}-{corridor_id[:4]}"
         
+        # Cast inputs to native Python types
+        area_sqm = float(area_sqm)
+        depth_cm = float(depth_cm)
+        latitude = float(latitude)
+        longitude = float(longitude)
+        pci_score = int(pci_score)
+
         # Calculate materials
         density = 2.40 if mix == "DBM_SECTION_500" else (2.35 if mix == "BC_SECTION_508" else 2.20)
-        volume_m3 = area_sqm * (depth_cm / 100.0)
-        tonnage = volume_m3 * density * 1.15
+        volume_m3 = float(area_sqm * (depth_cm / 100.0))
+        tonnage = float(volume_m3 * density * 1.15)
         rate = 7500.0 if mix == "DBM_SECTION_500" else (8200.0 if mix == "BC_SECTION_508" else 6800.0)
-        allocated_budget_inr = tonnage * rate
+        allocated_budget_inr = float(tonnage * rate)
         
         # Canonical dictionary for cryptographic hashing
         canonical_data = {
-            "work_order_id": order_uuid,
-            "issuing_authority": self.authority,
-            "corridor": corridor_id,
+            "work_order_id": str(order_uuid),
+            "issuing_authority": str(self.authority),
+            "corridor": str(corridor_id),
             "coordinates": {"lat": round(latitude, 6), "lon": round(longitude, 6)},
-            "distress_type": distress_class,
+            "distress_type": str(distress_class),
             "pavement_pci": pci_score,
             "surface_area_sqm": round(area_sqm, 2),
             "depth_cm": round(depth_cm, 1),
@@ -53,12 +60,12 @@ class MoRTHDispatchAgent:
             "required_mass_tonnes": round(tonnage, 3),
             "allocated_budget_inr": round(allocated_budget_inr, 2),
             "priority": priority,
-            "sla_resolution_hours": sla_hours,
+            "sla_resolution_hours": int(sla_hours),
             "timestamp_created": timestamp_utc
         }
         
         # Compute SHA-256 cryptographic seal
-        serialized = json.dumps(canonical_data, sort_keys=True)
+        serialized = json.dumps(canonical_data, sort_keys=True, default=lambda o: o.item() if hasattr(o, 'item') else str(o))
         sha256_seal = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
         canonical_data["sha256_cryptographic_seal"] = sha256_seal
         
@@ -76,6 +83,6 @@ class MoRTHDispatchAgent:
         # Remove any ephemeral server response wrappers
         order_copy.pop("model", None)
         order_copy.pop("latency_ms", None)
-        serialized = json.dumps(order_copy, sort_keys=True)
+        serialized = json.dumps(order_copy, sort_keys=True, default=lambda o: o.item() if hasattr(o, 'item') else str(o))
         computed_seal = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
         return computed_seal == original_seal

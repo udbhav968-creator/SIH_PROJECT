@@ -243,6 +243,7 @@ class CVCavityDetector:
 
                 dark_diff = max(0.0, mean_intensity - sub_mean)
                 grad_energy = float(np.mean(sub_mag))
+                g_peak = float(np.percentile(sub_mag, 90)) if sub_mag.size > 0 else 0.0
 
                 col_weight = 1.0
                 if c < 2 or c > 21:
@@ -250,8 +251,8 @@ class CVCavityDetector:
                 elif 5 <= c <= 18:
                     col_weight = 1.30
 
-                cavity_score = dark_diff * 2.5 if dark_diff > 18.0 else 0.0
-                crack_score = grad_energy * 3.5 if grad_energy > 16.0 else 0.0
+                cavity_score = dark_diff * 2.5 if dark_diff > 14.0 else 0.0
+                crack_score = g_peak * 2.2 if g_peak > 18.0 else 0.0
 
                 if cavity_score >= crack_score and cavity_score > 0:
                     cell_scores[r, c] = cavity_score * col_weight
@@ -261,7 +262,7 @@ class CVCavityDetector:
                     cell_types[r, c] = 3
 
         # Fixed absolute threshold - eliminates hallucinated candidates on clean roads
-        active = cell_scores >= 40.0
+        active = cell_scores >= 30.0
 
         if not np.any(active) or np.sum(active) < 2:
             return []

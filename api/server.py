@@ -171,11 +171,27 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _send_json(self, status_code, data):
+        def _json_serial(obj):
+            if isinstance(obj, (np.floating, float)):
+                return float(obj)
+            if isinstance(obj, (np.integer, int)):
+                return int(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            if hasattr(obj, "item"):
+                return obj.item()
+            return str(obj)
+
+        try:
+            payload = json.dumps(data, indent=2, default=_json_serial)
+        except Exception as e:
+            payload = json.dumps({"error": f"Serialization error: {str(e)}"}, indent=2)
+            status_code = 500
+
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
         self._send_cors_headers()
         self.end_headers()
-        payload = json.dumps(data, indent=2)
         self.wfile.write(payload.encode("utf-8"))
 
     def _read_json_body(self):

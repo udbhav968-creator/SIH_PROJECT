@@ -49,7 +49,8 @@ class TestActiveLearningAndEdgeExport(unittest.TestCase):
         y_cls = np.array([4], dtype=np.int64) # Class 4: Pothole
         y_geo = np.array([[0.0, 3.5, 1.5, 6.0]], dtype=np.float32) # [x, y, area, depth]
 
-        _, _, logits_before, _ = self.vision_model.forward(X_sample)
+        out_before = self.vision_model.forward(X_sample)
+        logits_before = out_before[2]
         prob_before = np.exp(logits_before - np.max(logits_before))
         prob_before /= np.sum(prob_before)
         pothole_prob_before = prob_before[0, 4]
@@ -58,7 +59,8 @@ class TestActiveLearningAndEdgeExport(unittest.TestCase):
         loss_val = float(loss[0]) if isinstance(loss, (tuple, list)) else float(loss)
         self.assertGreater(loss_val, 0.0)
 
-        _, _, logits_after, _ = self.vision_model.forward(X_sample)
+        out_after = self.vision_model.forward(X_sample)
+        logits_after = out_after[2]
         prob_after = np.exp(logits_after - np.max(logits_after))
         prob_after /= np.sum(prob_after)
         pothole_prob_after = prob_after[0, 4]

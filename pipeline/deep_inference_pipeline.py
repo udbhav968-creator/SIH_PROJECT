@@ -532,8 +532,8 @@ class DeepInferencePipeline:
         # ----------------------------------------------------------------------
         # STAGE 10: MoRTH Section 500 Civil Volumetric Ledger
         # ----------------------------------------------------------------------
-        total_tonnage = round(sum(d["morth_tonnage_t"] for d in detections), 3)
-        total_repair_inr = round(sum(d["repair_cost_inr"] for d in detections), 2)
+        total_tonnage = round(float(sum(d["morth_tonnage_t"] for d in detections)), 3)
+        total_repair_inr = round(float(sum(d["repair_cost_inr"] for d in detections)), 2)
 
         # ----------------------------------------------------------------------
         # STAGE 11: Model M10 MoRTH Cryptographic Work Order Dispatch Agent
@@ -683,8 +683,8 @@ class DeepInferencePipeline:
                 "pavements_accepted": total_pavement_accepted,
                 "non_pavements_rejected": total_non_pavement_rejected,
                 "total_defects_detected": total_defects_count,
-                "total_bitumen_tonnage_tonnes": round(total_tonnage, 3),
-                "total_repair_budget_inr": round(total_cost_inr, 2),
+                "total_bitumen_tonnage_tonnes": round(float(total_tonnage), 3),
+                "total_repair_budget_inr": round(float(total_cost_inr), 2),
                 "mean_pavement_pci": mean_pci,
                 "mean_inference_latency_ms": avg_latency,
                 "total_batch_walltime_s": walltime_s

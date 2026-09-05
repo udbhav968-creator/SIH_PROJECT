@@ -61,7 +61,7 @@ class TestCustomVisionUpload(unittest.TestCase):
         img_np = self.detector.decode_image(b64_str)
         boxes = self.detector.extract_salient_regions(img_np)
         self.assertGreater(len(boxes), 0)
-        bx, by, bw, bh = boxes[0]
+        bx, by, bw, bh = boxes[0][:4]
         # Verify box is inside road region of interest
         self.assertGreaterEqual(by, 160)
         print(f"  ✓ Test 2: Salient region contour detected bounding box: [{bx}, {by}, {bw}, {bh}].")

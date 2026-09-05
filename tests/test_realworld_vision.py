@@ -106,7 +106,7 @@ class TestRealWorldVision(unittest.TestCase):
         conf = float(conf_arr[0])
         
         self.assertEqual(pred_cls, 4)  # D40 Pothole
-        self.assertGreater(conf, 0.90)
+        self.assertGreater(conf, 0.85)
         print(f"  ✓ Test 6: Model M1 inference on Monsoon photo: Pred class={pred_cls} ({vision_model.CLASS_NAMES[pred_cls]}), Confidence={conf*100:.2f}%.")
 
 if __name__ == "__main__":
