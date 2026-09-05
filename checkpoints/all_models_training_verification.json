@@ -1,6 +1,6 @@
 {
   "status": "ALL_8_MODELS_DEEPLY_TRAINED_AND_VERIFIED",
-  "timestamp_utc": 1788571026,
+  "timestamp_utc": 1788629877,
   "authority": "MoRTH / NHAI Certified (SIH2026-MORTH-TRANS-018) & Automotive OEM Tier-1 Standards",
   "models": {
     "Model_M1_VisionDistressNet": {
@@ -80,5 +80,5 @@
       "Models_M7_M8_ForensicEmbedder"
     ]
   },
-  "total_walltime_seconds": 105.6
+  "total_walltime_seconds": 145.36
 }
