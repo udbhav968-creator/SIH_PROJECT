@@ -31,10 +31,11 @@ class EdgeModelExporter:
         m1_path = os.path.join(self.ckpt_dir, "vision_distress_weights.npz")
         if os.path.exists(m1_path):
             data = np.load(m1_path)
-            num_cls = data["w_cls"].shape[1] if "w_cls" in data else 9
+            num_cls = data["w_cls"].shape[1] if "w_cls" in data else 10
             cls_names = [
-                "Normal Road", "D00 Longitudinal", "D10 Transverse", "D20 Alligator", "D40 Pothole",
-                "Waterlogging", "Missing Zebra Crossing", "Missing Road Divider", "Damaged Traffic Sign"
+                "Normal Road", "D00 Longitudinal Crack", "D10 Transverse Crack", "D20 Alligator Crack", "D40 Pothole Cavity",
+                "Waterlogging", "Missing Zebra Crossing", "Missing Road Divider", "Damaged Traffic Sign",
+                "Child / Pedestrian Hazard (Vulnerable Road User)"
             ][:num_cls]
             specs["Model_M1_VisionDistressNet"] = {
                 "architecture": "CNN-Transformer Hybrid Multi-Task Distress Net",

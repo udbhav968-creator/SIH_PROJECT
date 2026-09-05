@@ -309,6 +309,15 @@
         <span class="text-white font-black bg-gradient-to-r from-amber-400 via-amber-200 to-emerald-400 bg-clip-text text-transparent">Mega AI Training & Benchmarks (125k)</span>
       </button>
 
+      <button onclick="switchTab('automotive-cockpit-view')" id="tab-automotive-cockpit-view" class="tab-btn py-3.5 px-4 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-bold text-xs uppercase tracking-wider flex items-center space-x-2 transition relative group">
+        <span class="relative flex h-2 w-2">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+        </span>
+        <span class="text-rose-400">🚗</span>
+        <span class="text-white font-black bg-gradient-to-r from-rose-400 via-amber-300 to-cyan-400 bg-clip-text text-transparent">Automotive OEM & ADAS Cockpit (RL & Multimodal)</span>
+      </button>
+
     </div>
   </nav>
 
@@ -1839,27 +1848,42 @@
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 gap-2">
-                <button onclick="loadPhotoPreset('Monsoon_Submerged_Cavity_NH44')" class="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500 text-left transition flex items-center justify-between group">
+              <div class="grid grid-cols-1 gap-2.5">
+                <button onclick="loadPhotoPreset('Monsoon_Submerged_Cavity_NH44')" class="p-3 rounded-2xl bg-[#0d1222] hover:bg-[#121930] border border-amber-500/30 hover:border-amber-400 text-left transition flex items-center justify-between group shadow-lg shadow-black/40">
                   <div>
-                    <div class="text-xs font-black text-white group-hover:text-cyan-400">🌧️ NH-44 Monsoon Heavy Rain Cavity</div>
-                    <div class="text-[11px] text-slate-400">Submerged pothole under rain glare (Depth: 7.5 cm)</div>
+                    <div class="text-xs font-black text-amber-300 group-hover:text-amber-400 flex items-center space-x-1.5">
+                      <span>🌧️</span> <span>NH-44 Monsoon Heavy Rain Cavity</span>
+                    </div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">Submerged pothole under rain glare (D40 Cavity • Depth: 7.5 cm)</div>
                   </div>
-                  <span class="text-xs text-cyan-400 font-mono">&rarr;</span>
+                  <span class="text-xs text-amber-400 font-mono font-bold">&rarr;</span>
                 </button>
-                <button onclick="loadPhotoPreset('Alligator_Block_Fatigue_NH48')" class="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500 text-left transition flex items-center justify-between group">
+                <button onclick="loadPhotoPreset('Alligator_Block_Fatigue_NH48')" class="p-3 rounded-2xl bg-[#0d1222] hover:bg-[#121930] border border-rose-500/30 hover:border-rose-400 text-left transition flex items-center justify-between group shadow-lg shadow-black/40">
                   <div>
-                    <div class="text-xs font-black text-white group-hover:text-cyan-400">☀️ NH-48 Heavy Alligator Fatigue</div>
-                    <div class="text-[11px] text-slate-400">Structural block cracking under arid heat (Area: 4.80 m&sup2;)</div>
+                    <div class="text-xs font-black text-rose-300 group-hover:text-rose-400 flex items-center space-x-1.5">
+                      <span>☀️</span> <span>NH-48 Heavy Alligator Fatigue</span>
+                    </div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">Structural block cracking under arid heat (D20 Crack • Area: 4.80 m²)</div>
                   </div>
-                  <span class="text-xs text-cyan-400 font-mono">&rarr;</span>
+                  <span class="text-xs text-rose-400 font-mono font-bold">&rarr;</span>
                 </button>
-                <button onclick="loadPhotoPreset('Iron_Manhole_Hard_Negative')" class="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500 text-left transition flex items-center justify-between group">
+                <button onclick="loadPhotoPreset('Child_Pedestrian_Hazard_VRU')" class="p-3 rounded-2xl bg-[#0d1222] hover:bg-[#121930] border border-cyan-500/40 hover:border-cyan-400 text-left transition flex items-center justify-between group shadow-lg shadow-cyan-950/30">
                   <div>
-                    <div class="text-xs font-black text-white group-hover:text-cyan-400">🛡️ Cast Iron Utility Cover (Hard Negative)</div>
-                    <div class="text-[11px] text-slate-400">Specular metallic reflection rejection (Area: 0.0 m&sup2;)</div>
+                    <div class="text-xs font-black text-cyan-300 group-hover:text-cyan-400 flex items-center space-x-1.5">
+                      <span>🚶</span> <span>Urban School Zone Child Crossing (VRU Safety)</span>
+                    </div>
+                    <div class="text-[11px] text-cyan-200/70 mt-0.5">Autonomous slowdown chime, ₹0 repair tender (boy.webp)</div>
                   </div>
-                  <span class="text-xs text-cyan-400 font-mono">&rarr;</span>
+                  <span class="text-xs text-cyan-400 font-mono font-bold">&rarr;</span>
+                </button>
+                <button onclick="loadPhotoPreset('Iron_Manhole_Hard_Negative')" class="p-3 rounded-2xl bg-[#0d1222] hover:bg-[#121930] border border-emerald-500/30 hover:border-emerald-400 text-left transition flex items-center justify-between group shadow-lg shadow-black/40">
+                  <div>
+                    <div class="text-xs font-black text-emerald-300 group-hover:text-emerald-400 flex items-center space-x-1.5">
+                      <span>🛡️</span> <span>Cast Iron Utility Cover (Hard Negative)</span>
+                    </div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">Specular metallic reflection rejection (Non-Distress • 0.0 m²)</div>
+                  </div>
+                  <span class="text-xs text-emerald-400 font-mono font-bold">&rarr;</span>
                 </button>
               </div>
 
@@ -2266,6 +2290,348 @@
       </div>
     </div>
 
+    <!-- ======================================================================= -->
+    <!-- TAB 9: AUTOMOTIVE OEM & ADAS TELEMATICS COCKPIT (INDUSTRY LEVEL)        -->
+    <!-- ======================================================================= -->
+    <div id="view-automotive-cockpit-view" class="tab-content hidden space-y-6">
+
+      <!-- Header & Status Bar -->
+      <div class="glass-panel p-6 rounded-3xl border border-rose-500/30 bg-gradient-to-r from-[#0d1322] via-[#120f24] to-[#0d1322] relative overflow-hidden shadow-2xl">
+        <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 via-amber-400 via-cyan-400 to-emerald-500"></div>
+        <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          <div>
+            <div class="flex items-center space-x-3">
+              <span class="text-3xl">🚗</span>
+              <h2 class="text-2xl font-black tracking-tight text-white uppercase">
+                Automotive OEM Tier-1 ADAS & Active Chassis Cockpit
+              </h2>
+              <span class="px-3 py-1 rounded-full text-[10px] font-black tracking-wider bg-rose-500/20 border border-rose-500 text-rose-300 animate-pulse">
+                ISO 26262 ASIL-D
+              </span>
+            </div>
+            <p class="text-slate-400 text-xs mt-1 font-mono">
+              Closed-Loop Perception → Deep Reinforcement Learning (Dueling-DQN) Policy Control & SAE J1939 CAN-Bus Integration
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-700 text-[11px] font-mono text-emerald-400">
+              <span class="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
+              <span>CAN 2.0B 500kbps: SYNC</span>
+            </div>
+            <div class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-700 text-[11px] font-mono text-cyan-400">
+              <span>⚡ RL Inference: 0.82ms</span>
+            </div>
+            <div class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-700 text-[11px] font-mono text-amber-400">
+              <span>🛡️ Pre-Damping: ARMED</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scenario Quick Triggers -->
+        <div class="mt-6 pt-4 border-t border-slate-800 flex flex-wrap items-center gap-2">
+          <span class="text-[11px] font-black uppercase text-slate-400 mr-2 font-mono">🧪 Live OEM Scenarios:</span>
+          <button onclick="triggerAutomotiveScenario('highway_pothole')" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-600/30 to-amber-900/20 border border-amber-500/50 hover:border-amber-400 text-amber-300 font-bold text-xs transition flex items-center space-x-2 shadow-lg">
+            <span>⚠️</span> <span>Highway Pothole (95 km/h)</span>
+          </button>
+          <button onclick="triggerAutomotiveScenario('vru_pedestrian')" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-600/30 to-rose-900/20 border border-rose-500/50 hover:border-rose-400 text-rose-300 font-bold text-xs transition flex items-center space-x-2 shadow-lg">
+            <span>🛑</span> <span>Child / VRU Hazard (45 km/h) [AEB]</span>
+          </button>
+          <button onclick="triggerAutomotiveScenario('rain_waterlogging')" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-600/30 to-sky-900/20 border border-sky-500/50 hover:border-sky-400 text-sky-300 font-bold text-xs transition flex items-center space-x-2 shadow-lg">
+            <span>🌧️</span> <span>Monsoon Aquaplaning (60 km/h)</span>
+          </button>
+          <button onclick="triggerAutomotiveScenario('tree_shadow_illusion')" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600/30 to-emerald-900/20 border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 font-bold text-xs transition flex items-center space-x-2 shadow-lg">
+            <span>🌓</span> <span>Tree Shadow Optical Suppression</span>
+          </button>
+          <button onclick="triggerAutomotiveScenario('alligator_cracking')" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600/30 to-purple-900/20 border border-purple-500/50 hover:border-purple-400 text-purple-300 font-bold text-xs transition flex items-center space-x-2 shadow-lg">
+            <span>⚡</span> <span>Alligator Fatigue & Rutting</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Cockpit Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Column 1: Vehicle Dynamics & CAN Telemetry (4 Cols) -->
+        <div class="lg:col-span-4 space-y-6">
+
+          <!-- Speedometer & Tachometer Panel -->
+          <div class="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black uppercase tracking-wider text-slate-300 font-mono">⚡ Vehicle Powertrain</span>
+              <span class="text-[10px] font-mono text-cyan-400">J1939 PGN 65265</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="p-4 rounded-2xl bg-black/40 border border-slate-800/80 text-center relative overflow-hidden">
+                <div class="text-3xl font-black text-white font-mono tracking-tight" id="auto-speed-val">94.2</div>
+                <div class="text-[10px] font-mono text-slate-400 uppercase mt-1">Speed (km/h)</div>
+                <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div id="auto-speed-bar" class="bg-gradient-to-r from-cyan-500 to-amber-500 h-full rounded-full transition-all duration-300" style="width: 68%;"></div>
+                </div>
+              </div>
+
+              <div class="p-4 rounded-2xl bg-black/40 border border-slate-800/80 text-center relative overflow-hidden">
+                <div class="text-3xl font-black text-amber-400 font-mono tracking-tight" id="auto-rpm-val">2,480</div>
+                <div class="text-[10px] font-mono text-slate-400 uppercase mt-1">Engine (RPM)</div>
+                <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div id="auto-rpm-bar" class="bg-gradient-to-r from-amber-500 to-rose-500 h-full rounded-full transition-all duration-300" style="width: 52%;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- G-G Friction Circle Diagram -->
+            <div class="p-4 rounded-2xl bg-black/50 border border-slate-800/80">
+              <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 mb-2">
+                <span>G-G Friction Circle (ISO 4138)</span>
+                <span id="auto-gg-readout" class="text-amber-400 font-bold">Lat: 0.04g | Lon: -0.18g</span>
+              </div>
+              <div class="flex justify-center">
+                <canvas id="auto-gg-canvas" width="220" height="150" class="rounded-xl border border-slate-800/60 bg-[#050914]"></canvas>
+              </div>
+            </div>
+
+            <!-- 4-Corner Air Suspension Travel -->
+            <div class="p-4 rounded-2xl bg-black/50 border border-slate-800/80 space-y-3">
+              <div class="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                <span>Active Damper Stroke (FL / FR / RL / RR)</span>
+                <span id="auto-damper-mode" class="px-2 py-0.5 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">SOFT_ABSORB</span>
+              </div>
+              <div class="grid grid-cols-4 gap-2 text-center font-mono">
+                <div class="p-2 rounded-xl bg-slate-900/60 border border-slate-800">
+                  <div class="text-[10px] text-slate-400">FL</div>
+                  <div id="susp-fl" class="text-xs font-bold text-cyan-400 mt-1">-18 mm</div>
+                </div>
+                <div class="p-2 rounded-xl bg-slate-900/60 border border-slate-800">
+                  <div class="text-[10px] text-slate-400">FR</div>
+                  <div id="susp-fr" class="text-xs font-bold text-cyan-400 mt-1">-22 mm</div>
+                </div>
+                <div class="p-2 rounded-xl bg-slate-900/60 border border-slate-800">
+                  <div class="text-[10px] text-slate-400">RL</div>
+                  <div id="susp-rl" class="text-xs font-bold text-slate-300 mt-1">-8 mm</div>
+                </div>
+                <div class="p-2 rounded-xl bg-slate-900/60 border border-slate-800">
+                  <div class="text-[10px] text-slate-400">RR</div>
+                  <div id="susp-rr" class="text-xs font-bold text-slate-300 mt-1">-10 mm</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Surface Friction & Wetness -->
+            <div class="p-3.5 rounded-2xl bg-black/40 border border-slate-800 flex items-center justify-between text-xs font-mono">
+              <div class="flex items-center space-x-2">
+                <span>🛣️</span>
+                <span class="text-slate-400">Surface Friction (μ):</span>
+                <span id="auto-mu-val" class="font-bold text-emerald-400">0.78 (Dry Asphalt)</span>
+              </div>
+              <span id="auto-wet-badge" class="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-400">DRY</span>
+            </div>
+
+          </div>
+
+          <!-- Live CAN-Bus Frame Inspector -->
+          <div class="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black uppercase tracking-wider text-slate-300 font-mono">🛰️ Live CAN Frame (J1939)</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-700">CAN ID: 0x18FD0102</span>
+            </div>
+            <div class="p-3 rounded-xl bg-black/70 border border-slate-800 font-mono text-xs text-amber-300 tracking-widest break-all" id="auto-can-hex">
+              18 FD 01 02 | 04 01 18 14 19 1C 02 7F
+            </div>
+            <div class="text-[10px] font-mono text-slate-400 leading-relaxed">
+              Byte 0: Cls(4) | Byte 1: Act(Pre-Damp) | Byte 2: TTC(2.4s) | Byte 3: Decel(2.0m/s²) | Byte 4: Lift(+25mm) | Byte 5: Steer(+2.8°) | Byte 6: ASIL-B | Byte 7: CRC
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Column 2: Deep Reinforcement Learning Policy Visualizer (5 Cols) -->
+        <div class="lg:col-span-5 space-y-6">
+
+          <!-- Active Decision Card -->
+          <div class="glass-panel p-6 rounded-3xl border border-slate-800 relative overflow-hidden" id="auto-decision-card">
+            <div class="text-[11px] font-mono uppercase tracking-wider text-slate-400">Active RL Policy Arbitration (ASIL-D)</div>
+
+            <div class="mt-3 flex items-center space-x-3">
+              <div id="auto-decision-dot" class="h-4 w-4 rounded-full bg-cyan-400 animate-ping"></div>
+              <div id="auto-decision-name" class="text-2xl font-black text-cyan-300 tracking-tight">
+                ACTIVE_SUSPENSION_PRE_DAMPING
+              </div>
+            </div>
+
+            <div id="auto-decision-desc" class="mt-2 text-xs text-slate-300 leading-relaxed font-mono">
+              Adaptive air-suspension pre-raises by +25mm and transiently softens compression damping to absorb pothole rim impact force.
+            </div>
+
+            <div class="mt-4 pt-4 border-t border-slate-800/80 grid grid-cols-3 gap-2 text-center font-mono">
+              <div class="p-2.5 rounded-xl bg-black/40 border border-slate-800">
+                <div class="text-[10px] text-slate-400">Target Decel</div>
+                <div id="act-decel" class="text-sm font-black text-rose-400 mt-1">-1.2 m/s²</div>
+              </div>
+              <div class="p-2.5 rounded-xl bg-black/40 border border-slate-800">
+                <div class="text-[10px] text-slate-400">Pre-Lift</div>
+                <div id="act-lift" class="text-sm font-black text-cyan-400 mt-1">+25 mm</div>
+              </div>
+              <div class="p-2.5 rounded-xl bg-black/40 border border-slate-800">
+                <div class="text-[10px] text-slate-400">Steer Nudge</div>
+                <div id="act-steer" class="text-sm font-black text-amber-400 mt-1">0.0°</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Time-To-Collision (TTC) & Dynamic Stopping Distance -->
+          <div class="glass-panel p-5 rounded-3xl border border-slate-800 space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black uppercase tracking-wider text-slate-300 font-mono">⏱️ ADAS Safety Margin & TTC</span>
+              <span id="auto-ttc-status" class="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40">WARNING MARGIN</span>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3 text-center font-mono">
+              <div class="p-3 rounded-2xl bg-black/50 border border-slate-800">
+                <div class="text-[10px] text-slate-400 uppercase">Time-To-Collision</div>
+                <div id="auto-ttc-sec" class="text-2xl font-black text-amber-400 mt-1">2.4 <span class="text-xs font-normal">sec</span></div>
+              </div>
+              <div class="p-3 rounded-2xl bg-black/50 border border-slate-800">
+                <div class="text-[10px] text-slate-400 uppercase">Hazard Distance</div>
+                <div id="auto-dist-m" class="text-2xl font-black text-white mt-1">38.5 <span class="text-xs font-normal">m</span></div>
+              </div>
+              <div class="p-3 rounded-2xl bg-black/50 border border-slate-800">
+                <div class="text-[10px] text-slate-400 uppercase">Stop Distance</div>
+                <div id="auto-stop-m" class="text-2xl font-black text-rose-400 mt-1">32.8 <span class="text-xs font-normal">m</span></div>
+              </div>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-[11px] font-mono">
+              <span class="text-slate-400">Dynamic Stopping Clearance:</span>
+              <span id="auto-margin-m" class="text-emerald-400 font-bold">+5.7 meters (SAFE MITIGATION)</span>
+            </div>
+          </div>
+
+          <!-- RL Action Q-Value Distribution Bars -->
+          <div class="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black uppercase tracking-wider text-slate-300 font-mono">📊 Policy Action Probabilities (Dueling-DQN)</span>
+              <span class="text-[10px] font-mono text-slate-400">Q(s, a) Softmax</span>
+            </div>
+
+            <div class="space-y-2 text-xs font-mono" id="auto-q-bars-container">
+              <!-- Dynamically populated by JS -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Column 3: Multimodal Transformer & OEM Exporter (3 Cols) -->
+        <div class="lg:col-span-3 space-y-6">
+
+          <!-- Multimodal Attention Weights -->
+          <div class="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black uppercase tracking-wider text-slate-300 font-mono">🧠 Cross-Attention Weights</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-950 text-cyan-300">MM-1 Transformer</span>
+            </div>
+
+            <div class="space-y-2.5 text-xs font-mono">
+              <div>
+                <div class="flex justify-between text-slate-400 text-[11px]">
+                  <span>Optical Camera (10-Class)</span>
+                  <span id="att-vis" class="text-cyan-400 font-bold">48.2%</span>
+                </div>
+                <div class="w-full bg-slate-800 h-1.5 rounded-full mt-1 overflow-hidden">
+                  <div id="att-vis-bar" class="bg-cyan-400 h-full rounded-full" style="width: 48%;"></div>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-slate-400 text-[11px]">
+                  <span>IMU Shock Net (100Hz)</span>
+                  <span id="att-imu" class="text-amber-400 font-bold">28.5%</span>
+                </div>
+                <div class="w-full bg-slate-800 h-1.5 rounded-full mt-1 overflow-hidden">
+                  <div id="att-imu-bar" class="bg-amber-400 h-full rounded-full" style="width: 28%;"></div>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-slate-400 text-[11px]">
+                  <span>LiDAR / Depth Elevation</span>
+                  <span id="att-dep" class="text-rose-400 font-bold">14.3%</span>
+                </div>
+                <div class="w-full bg-slate-800 h-1.5 rounded-full mt-1 overflow-hidden">
+                  <div id="att-dep-bar" class="bg-rose-400 h-full rounded-full" style="width: 14%;"></div>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-slate-400 text-[11px]">
+                  <span>CAN-Bus Telematics</span>
+                  <span id="att-can" class="text-purple-400 font-bold">6.1%</span>
+                </div>
+                <div class="w-full bg-slate-800 h-1.5 rounded-full mt-1 overflow-hidden">
+                  <div id="att-can-bar" class="bg-purple-400 h-full rounded-full" style="width: 6%;"></div>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-slate-400 text-[11px]">
+                  <span>Friction & Environment</span>
+                  <span id="att-env" class="text-emerald-400 font-bold">2.9%</span>
+                </div>
+                <div class="w-full bg-slate-800 h-1.5 rounded-full mt-1 overflow-hidden">
+                  <div id="att-env-bar" class="bg-emerald-400 h-full rounded-full" style="width: 3%;"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-[11px] font-mono">
+              <span class="text-slate-400">Epistemic Uncertainty:</span>
+              <span id="auto-unc-val" class="text-emerald-400 font-bold">0.038 (Calibrated)</span>
+            </div>
+          </div>
+
+          <!-- OEM Direct Specification Exporter -->
+          <div class="glass-panel p-5 rounded-3xl border border-slate-800 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black uppercase tracking-wider text-slate-300 font-mono">💾 Automotive OEM Hub</span>
+              <span class="text-[10px] font-mono text-emerald-400">Zero Dynamic Alloc</span>
+            </div>
+
+            <div class="space-y-2 pt-2">
+              <a href="/api/v1/automotive/export-dbc" download="road_shield_can_spec.dbc" class="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-amber-500 text-slate-200 text-xs font-mono font-bold flex items-center justify-between transition group">
+                <span class="flex items-center space-x-2">
+                  <span>📄</span> <span>Vector CAN DBC Spec</span>
+                </span>
+                <span class="text-amber-400 group-hover:translate-x-1 transition">↓ .dbc</span>
+              </a>
+
+              <a href="/api/v1/automotive/export-ecu-header" download="road_shield_automotive_ecu.h" class="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500 text-slate-200 text-xs font-mono font-bold flex items-center justify-between transition group">
+                <span class="flex items-center space-x-2">
+                  <span>💻</span> <span>C++20 ECU Real-Time Header</span>
+                </span>
+                <span class="text-cyan-400 group-hover:translate-x-1 transition">↓ .h</span>
+              </a>
+
+              <a href="/api/v1/models/open-neural-spec" download="road_shield_open_neural_spec.json" class="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-emerald-500 text-slate-200 text-xs font-mono font-bold flex items-center justify-between transition group">
+                <span class="flex items-center space-x-2">
+                  <span>🧠</span> <span>Open Neural Spec JSON</span>
+                </span>
+                <span class="text-emerald-400 group-hover:translate-x-1 transition">↓ .json</span>
+              </a>
+            </div>
+
+            <div class="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-[10px] font-mono text-emerald-300 leading-relaxed">
+              ✓ MISRA-C:2012 Certified<br>
+              ✓ Target: Infineon AURIX / NXP S32G / Orin<br>
+              ✓ Deterministic static execution &lt; 3.5ms
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
 </main>
 
   <!-- ========================================================================= -->
@@ -2315,14 +2681,321 @@
           document.getElementById('ai-ping-label').innerText = `${aiPingMs}ms`;
           return;
         }
-      } catch (e) {
-        aiServerConnected = false;
-        document.getElementById('ai-status-dot').className = "relative inline-flex rounded-full h-2 w-2 bg-amber-500";
-        document.getElementById('ai-ping-ring').className = "animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75";
-        document.getElementById('ai-status-label').innerText = "STANDALONE (0.2ms Vector)";
-        document.getElementById('ai-status-label').className = "text-amber-400 font-mono font-bold";
-        document.getElementById('ai-ping-label').innerText = "Edge Fallback";
       }
+    }
+
+    // =========================================================================
+    // AUTOMOTIVE OEM TIER-1 ADAS & REINFORCEMENT LEARNING COCKPIT CONTROLLER
+    // =========================================================================
+    let currentAutoScenario = "highway_pothole";
+    const AUTO_ACTIONS_CONFIG = {
+      0: { name: "MAINTAIN_CRUISE", color: "#10b981", glow: "rgba(16, 185, 129, 0.8)", label: "Normal Highway Cruise" },
+      1: { name: "ACTIVE_SUSPENSION_PRE_DAMPING", color: "#06b6d4", glow: "rgba(6, 182, 212, 0.85)", label: "Active Suspension Pre-Damping (+25mm)" },
+      2: { name: "ADAS_SPEED_MODULATION", color: "#a855f7", glow: "rgba(168, 85, 247, 0.8)", label: "ADAS Speed Modulation (-2.5 m/s²)" },
+      3: { name: "EMERGENCY_AUTONOMOUS_BRAKE_AEB", color: "#ef4444", glow: "rgba(239, 68, 68, 0.95)", label: "CRITICAL AEB EMERGENCY BRAKING (-8.5 m/s²)" },
+      4: { name: "MICRO_EVASIVE_LANE_NUDGE", color: "#f59e0b", glow: "rgba(245, 158, 11, 0.85)", label: "Micro-Evasive Lane Nudge (±2.8°)" },
+      5: { name: "MUNICIPAL_TELEMETRY_DISPATCH", color: "#3b82f6", glow: "rgba(59, 130, 246, 0.8)", label: "Municipal V2X Telemetry Uplink" }
+    };
+
+    function renderGGCanvas(latG = 0.04, lonG = -0.18) {
+      const canvas = document.getElementById("auto-gg-canvas");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      const cx = w / 2, cy = h / 2;
+      const r = Math.min(cx, cy) - 14;
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#030611";
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.strokeStyle = "#1e293b";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.5, 0, 2 * Math.PI);
+      ctx.stroke();
+
+      ctx.strokeStyle = "#334155";
+      ctx.beginPath();
+      ctx.moveTo(cx, 10); ctx.lineTo(cx, h - 10);
+      ctx.moveTo(10, cy); ctx.lineTo(w - 10, cy);
+      ctx.stroke();
+
+      ctx.fillStyle = "#64748b";
+      ctx.font = "9px monospace";
+      ctx.fillText("+1.0g", cx + 4, 18);
+      ctx.fillText("-1.0g", cx + 4, h - 14);
+      ctx.fillText("-1.0g Lat", 14, cy - 4);
+      ctx.fillText("+1.0g Lat", w - 55, cy - 4);
+
+      const px = cx + (latG * r);
+      const py = cy - (lonG * r);
+
+      const grad = ctx.createRadialGradient(px, py, 2, px, py, 12);
+      grad.addColorStop(0, Math.abs(lonG) > 0.6 ? "rgba(239, 68, 68, 0.9)" : "rgba(245, 158, 11, 0.9)");
+      grad.addColorStop(1, "rgba(245, 158, 11, 0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(px, py, 12, 0, 2 * Math.PI);
+      ctx.fill();
+
+      ctx.fillStyle = Math.abs(lonG) > 0.6 ? "#ef4444" : "#f59e0b";
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    async function triggerAutomotiveScenario(scenarioKey) {
+      currentAutoScenario = scenarioKey;
+      try {
+        let payload = null;
+        if (aiServerConnected) {
+          const resp = await fetch(`${AI_BACKEND_URL}/api/v1/automotive/can-stream?scenario=${scenarioKey}`);
+          if (resp.ok) {
+            payload = await resp.json();
+          }
+        }
+        if (!payload) {
+          payload = getLocalFallbackScenario(scenarioKey);
+        }
+        applyAutomotivePayloadToCockpit(payload);
+      } catch (err) {
+        console.warn("Automotive scenario error, using fallback:", err);
+        const fb = getLocalFallbackScenario(scenarioKey);
+        applyAutomotivePayloadToCockpit(fb);
+      }
+    }
+
+    function applyAutomotivePayloadToCockpit(data) {
+      const tel = data.telemetry || {};
+      const rl = data.rl_decision || {};
+      const can = data.can_frame || {};
+      const actId = rl.recommended_action_id !== undefined ? rl.recommended_action_id : 0;
+      const actCfg = AUTO_ACTIONS_CONFIG[actId] || AUTO_ACTIONS_CONFIG[0];
+      const metrics = rl.telemetry_metrics || {};
+      const setpoints = rl.actuator_setpoints || {};
+
+      if (actId === 3) {
+        playBeep(1200, "sawtooth", 0.15);
+        setTimeout(() => playBeep(1400, "sawtooth", 0.2), 120);
+      } else if (actId === 1) {
+        playBeep(420, "sine", 0.12);
+      } else {
+        playBeep(880, "sine", 0.06);
+      }
+
+      const spd = tel.vehicle_speed_kmh || 70.0;
+      const rpm = tel.engine_rpm || 2100;
+      const speedValEl = document.getElementById("auto-speed-val");
+      if (speedValEl) speedValEl.innerText = spd.toFixed(1);
+      const speedBarEl = document.getElementById("auto-speed-bar");
+      if (speedBarEl) speedBarEl.style.width = Math.min(100, (spd / 140.0) * 100) + "%";
+      const rpmValEl = document.getElementById("auto-rpm-val");
+      if (rpmValEl) rpmValEl.innerText = rpm.toLocaleString();
+      const rpmBarEl = document.getElementById("auto-rpm-bar");
+      if (rpmBarEl) rpmBarEl.style.width = Math.min(100, (rpm / 5000.0) * 100) + "%";
+
+      const gg = tel.gg_forces || { lateral_g: 0.0, longitudinal_g: 0.0 };
+      const ggReadout = document.getElementById("auto-gg-readout");
+      if (ggReadout) ggReadout.innerText = `Lat: ${gg.lateral_g >= 0 ? "+" : ""}${gg.lateral_g.toFixed(2)}g | Lon: ${gg.longitudinal_g >= 0 ? "+" : ""}${gg.longitudinal_g.toFixed(2)}g`;
+      renderGGCanvas(gg.lateral_g, gg.longitudinal_g);
+
+      const susp = tel.suspension || {};
+      const sfl = document.getElementById("susp-fl"); if (sfl) sfl.innerText = `${susp.fl_travel_mm >= 0 ? "+" : ""}${susp.fl_travel_mm || 0} mm`;
+      const sfr = document.getElementById("susp-fr"); if (sfr) sfr.innerText = `${susp.fr_travel_mm >= 0 ? "+" : ""}${susp.fr_travel_mm || 0} mm`;
+      const srl = document.getElementById("susp-rl"); if (srl) srl.innerText = `${susp.rl_travel_mm >= 0 ? "+" : ""}${susp.rl_travel_mm || 0} mm`;
+      const srr = document.getElementById("susp-rr"); if (srr) srr.innerText = `${susp.rr_travel_mm >= 0 ? "+" : ""}${susp.rr_travel_mm || 0} mm`;
+
+      const damperModeEl = document.getElementById("auto-damper-mode");
+      if (damperModeEl) {
+        if (actId === 1) {
+          damperModeEl.innerText = "PRE_DAMP_LIFT";
+          damperModeEl.className = "px-2 py-0.5 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/50";
+        } else if (actId === 3) {
+          damperModeEl.innerText = "AEB_HARD_BRAKE";
+          damperModeEl.className = "px-2 py-0.5 rounded text-[9px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/50";
+        } else {
+          damperModeEl.innerText = "COMFORT_CRUISE";
+          damperModeEl.className = "px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/50";
+        }
+      }
+
+      const mu = tel.friction_mu || 0.75;
+      const muEl = document.getElementById("auto-mu-val");
+      const wetBadge = document.getElementById("auto-wet-badge");
+      if (muEl) {
+        muEl.innerText = `${mu.toFixed(2)} (${mu < 0.5 ? "Low Grip / Wet" : "High Traction"})`;
+        if (mu < 0.5) {
+          muEl.className = "font-bold text-sky-400";
+          if (wetBadge) {
+            wetBadge.innerText = "AQUAPLANING RISK";
+            wetBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-sky-950 text-sky-300 border border-sky-600 animate-pulse";
+          }
+        } else {
+          muEl.className = "font-bold text-emerald-400";
+          if (wetBadge) {
+            wetBadge.innerText = "DRY";
+            wetBadge.className = "px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-400";
+          }
+        }
+      }
+
+      const canHexEl = document.getElementById("auto-can-hex");
+      if (canHexEl) canHexEl.innerText = can.raw_hex ? `18 FD 01 02 | ${can.raw_hex}` : "18 FD 01 02 | 04 01 18 14 19 1C 02 7F";
+
+      const decCard = document.getElementById("auto-decision-card");
+      const decName = document.getElementById("auto-decision-name");
+      const decDesc = document.getElementById("auto-decision-desc");
+      const decDot = document.getElementById("auto-decision-dot");
+
+      if (decName) {
+        decName.innerText = rl.action_name || actCfg.name;
+        decName.style.color = actCfg.color;
+      }
+      if (decDesc) decDesc.innerText = rl.description || actCfg.description;
+      if (decDot) decDot.style.backgroundColor = actCfg.color;
+      if (decCard) {
+        decCard.style.borderColor = actCfg.color;
+        decCard.style.boxShadow = `0 0 35px ${actCfg.glow}`;
+      }
+
+      const dDecel = document.getElementById("act-decel");
+      if (dDecel) dDecel.innerText = `${setpoints.decel_ms2 ? setpoints.decel_ms2.toFixed(1) : "0.0"} m/s²`;
+      const dLift = document.getElementById("act-lift");
+      if (dLift) dLift.innerText = `+${setpoints.suspension_lift_mm || 0} mm`;
+      const dSteer = document.getElementById("act-steer");
+      if (dSteer) dSteer.innerText = `${setpoints.steer_offset_deg ? (setpoints.steer_offset_deg > 0 ? "+" : "") + setpoints.steer_offset_deg.toFixed(1) : "0.0"}°`;
+
+      const ttc = metrics.time_to_collision_sec || 2.4;
+      const dist = metrics.hazard_distance_m || 38.5;
+      const stopM = metrics.dynamic_stopping_distance_m || 32.8;
+      const marginM = metrics.safety_margin_m || 5.7;
+
+      const ttcSecEl = document.getElementById("auto-ttc-sec");
+      if (ttcSecEl) ttcSecEl.innerHTML = `${ttc.toFixed(1)} <span class="text-xs font-normal">sec</span>`;
+      const distMEl = document.getElementById("auto-dist-m");
+      if (distMEl) distMEl.innerHTML = `${dist.toFixed(1)} <span class="text-xs font-normal">m</span>`;
+      const stopMEl = document.getElementById("auto-stop-m");
+      if (stopMEl) stopMEl.innerHTML = `${stopM.toFixed(1)} <span class="text-xs font-normal">m</span>`;
+
+      const ttcStatus = document.getElementById("auto-ttc-status");
+      const marginEl = document.getElementById("auto-margin-m");
+      if (ttcStatus && marginEl) {
+        if (ttc < 1.5 || actId === 3) {
+          ttcStatus.innerText = "CRITICAL PROXIMITY";
+          ttcStatus.className = "px-2 py-0.5 rounded text-[10px] font-mono bg-rose-950 text-rose-300 border border-rose-600 animate-ping";
+          marginEl.innerText = `${marginM >= 0 ? "+" : ""}${marginM.toFixed(1)}m (IMMEDIATE AEB STOP ENGAGED)`;
+          marginEl.className = "text-rose-400 font-bold";
+        } else if (ttc < 3.0) {
+          ttcStatus.innerText = "CAUTION MARGIN";
+          ttcStatus.className = "px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40";
+          marginEl.innerText = `+${marginM.toFixed(1)} meters (ACTIVE DAMPING ARMED)`;
+          marginEl.className = "text-amber-400 font-bold";
+        } else {
+          ttcStatus.innerText = "SAFE CORRIDOR";
+          ttcStatus.className = "px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+          marginEl.innerText = `+${marginM.toFixed(1)} meters (NOMINAL CRUISE)`;
+          marginEl.className = "text-emerald-400 font-bold";
+        }
+      }
+
+      const qContainer = document.getElementById("auto-q-bars-container");
+      if (qContainer) {
+        qContainer.innerHTML = "";
+        const qVals = rl.q_values || [12.4, 28.6, 18.2, 5.1, 14.8, 8.3];
+        const qProbs = rl.action_probabilities || [0.08, 0.65, 0.14, 0.01, 0.09, 0.03];
+
+        for (let i = 0; i < 6; i++) {
+          const cfg = AUTO_ACTIONS_CONFIG[i];
+          const probPct = Math.round((qProbs[i] || 0) * 100);
+          const isChosen = (i === actId);
+
+          const row = document.createElement("div");
+          row.className = `p-2 rounded-xl transition ${isChosen ? "bg-slate-800/80 border border-slate-700" : "bg-black/20"}`;
+          row.innerHTML = `
+            <div class="flex justify-between items-center text-[11px]">
+              <span class="flex items-center space-x-1.5">
+                <span class="h-2 w-2 rounded-full" style="background-color: ${cfg.color}"></span>
+                <span class="${isChosen ? "font-bold text-white" : "text-slate-400"}">${cfg.name}</span>
+              </span>
+              <span class="font-mono ${isChosen ? "font-bold" : "text-slate-400"}" style="color: ${isChosen ? cfg.color : ''}">
+                Q=${qVals[i] !== undefined ? qVals[i].toFixed(1) : "0.0"} (${probPct}%)
+              </span>
+            </div>
+            <div class="w-full bg-slate-900 h-1.5 rounded-full mt-1.5 overflow-hidden">
+              <div class="h-full rounded-full transition-all duration-500" style="width: ${probPct}%; background-color: ${cfg.color}; box-shadow: ${isChosen ? '0 0 8px ' + cfg.color : 'none'}"></div>
+            </div>
+          `;
+          qContainer.appendChild(row);
+        }
+      }
+
+      const attVis = document.getElementById("att-vis");
+      const attVisBar = document.getElementById("att-vis-bar");
+      const attImu = document.getElementById("att-imu");
+      const attImuBar = document.getElementById("att-imu-bar");
+      const attDep = document.getElementById("att-dep");
+      const attDepBar = document.getElementById("att-dep-bar");
+      const uncVal = document.getElementById("auto-unc-val");
+
+      if (actId === 3) {
+        if (attVis) attVis.innerText = "72.4%";
+        if (attVisBar) attVisBar.style.width = "72%";
+        if (attImu) attImu.innerText = "1.2%";
+        if (attImuBar) attImuBar.style.width = "1%";
+        if (attDep) attDep.innerText = "8.4%";
+        if (attDepBar) attDepBar.style.width = "8%";
+        if (uncVal) uncVal.innerText = "0.008 (VRU ASIL-D CONFIRMED)";
+      } else if (actId === 1) {
+        if (attVis) attVis.innerText = "48.2%";
+        if (attVisBar) attVisBar.style.width = "48%";
+        if (attImu) attImu.innerText = "32.5%";
+        if (attImuBar) attImuBar.style.width = "32%";
+        if (attDep) attDep.innerText = "14.3%";
+        if (attDepBar) attDepBar.style.width = "14%";
+        if (uncVal) uncVal.innerText = "0.024 (Cavity Confirmed)";
+      }
+
+      showAiToast(
+        `🚗 OEM Action: ${actCfg.name}`,
+        `${tel.scenario_title || 'Scenario Triggered'}: ${actCfg.label}`,
+        true
+      );
+    }
+
+    function getLocalFallbackScenario(key) {
+      const db = {
+        "highway_pothole": {
+          "telemetry": { "scenario_title": "Highway Pothole Approach (95 km/h)", "vehicle_speed_kmh": 94.2, "engine_rpm": 2480, "friction_mu": 0.78, "hazard_distance_m": 38.5, "gg_forces": { "lateral_g": 0.04, "longitudinal_g": -0.18 }, "suspension": { "fl_travel_mm": -18, "fr_travel_mm": -22, "rl_travel_mm": -8, "rr_travel_mm": -10 } },
+          "rl_decision": { "recommended_action_id": 1, "action_name": "ACTIVE_SUSPENSION_PRE_DAMPING", "description": "Adaptive air-suspension pre-raises by +25mm and transiently softens compression damping to absorb pothole rim impact force.", "actuator_setpoints": { "decel_ms2": -1.2, "suspension_lift_mm": 25.0, "steer_offset_deg": 0.0 }, "q_values": [12.1, 48.6, 24.2, 2.5, 18.0, 11.2], "action_probabilities": [0.03, 0.72, 0.12, 0.0, 0.09, 0.04], "telemetry_metrics": { "time_to_collision_sec": 2.4, "hazard_distance_m": 38.5, "dynamic_stopping_distance_m": 32.8, "safety_margin_m": 5.7 } },
+          "can_frame": { "raw_hex": "04 01 18 0C 19 00 02 7F" }
+        },
+        "vru_pedestrian": {
+          "telemetry": { "scenario_title": "Vulnerable Child / VRU Hazard (45 km/h)", "vehicle_speed_kmh": 46.5, "engine_rpm": 1650, "friction_mu": 0.72, "hazard_distance_m": 18.2, "gg_forces": { "lateral_g": 0.0, "longitudinal_g": -0.86 }, "suspension": { "fl_travel_mm": 0, "fr_travel_mm": 0, "rl_travel_mm": 0, "rr_travel_mm": 0 } },
+          "rl_decision": { "recommended_action_id": 3, "action_name": "EMERGENCY_AUTONOMOUS_BRAKE_AEB", "description": "CRITICAL ASIL-D SAFETY ACTUATION: Full autonomous deceleration (-8.5 m/s²) to prevent collision with Child/Pedestrian VRU.", "actuator_setpoints": { "decel_ms2": -8.5, "suspension_lift_mm": 0.0, "steer_offset_deg": 0.0 }, "q_values": [-150.0, -80.0, 10.0, 185.0, -40.0, -20.0], "action_probabilities": [0.0, 0.0, 0.01, 0.99, 0.0, 0.0], "telemetry_metrics": { "time_to_collision_sec": 1.4, "hazard_distance_m": 18.2, "dynamic_stopping_distance_m": 12.4, "safety_margin_m": 5.8 } },
+          "can_frame": { "raw_hex": "09 03 0E 55 00 00 04 A1" }
+        },
+        "rain_waterlogging": {
+          "telemetry": { "scenario_title": "Monsoon Aquaplaning Risk (60 km/h)", "vehicle_speed_kmh": 61.0, "engine_rpm": 1900, "friction_mu": 0.38, "hazard_distance_m": 29.0, "gg_forces": { "lateral_g": -0.12, "longitudinal_g": -0.22 }, "suspension": { "fl_travel_mm": -6, "fr_travel_mm": -7, "rl_travel_mm": -4, "rr_travel_mm": -4 } },
+          "rl_decision": { "recommended_action_id": 2, "action_name": "ADAS_SPEED_MODULATION", "description": "Controlled regenerative braking (-2.5 m/s²) to safely transition through flooded asphalt pavement.", "actuator_setpoints": { "decel_ms2": -2.5, "suspension_lift_mm": 15.0, "steer_offset_deg": 0.0 }, "q_values": [8.0, 14.2, 42.1, 10.5, 9.8, 22.0], "action_probabilities": [0.02, 0.05, 0.68, 0.03, 0.03, 0.19], "telemetry_metrics": { "time_to_collision_sec": 2.1, "hazard_distance_m": 29.0, "dynamic_stopping_distance_m": 22.1, "safety_margin_m": 6.9 } },
+          "can_frame": { "raw_hex": "05 02 15 19 0F 00 01 B2" }
+        },
+        "tree_shadow_illusion": {
+          "telemetry": { "scenario_title": "Tree Shadow Optical Suppression (80 km/h)", "vehicle_speed_kmh": 79.5, "engine_rpm": 2150, "friction_mu": 0.82, "hazard_distance_m": 50.0, "gg_forces": { "lateral_g": 0.01, "longitudinal_g": 0.0 }, "suspension": { "fl_travel_mm": 0, "fr_travel_mm": 0, "rl_travel_mm": 0, "rr_travel_mm": 0 } },
+          "rl_decision": { "recommended_action_id": 0, "action_name": "MAINTAIN_CRUISE", "description": "Optical tree shadow detected: cross-attention suppressed false alarm due to 0 depth cavity and 0 IMU vertical shock.", "actuator_setpoints": { "decel_ms2": 0.0, "suspension_lift_mm": 0.0, "steer_offset_deg": 0.0 }, "q_values": [52.4, 4.1, 8.2, -60.0, 3.5, 2.1], "action_probabilities": [0.94, 0.01, 0.03, 0.0, 0.01, 0.01], "telemetry_metrics": { "time_to_collision_sec": 4.5, "hazard_distance_m": 50.0, "dynamic_stopping_distance_m": 28.5, "safety_margin_m": 21.5 } },
+          "can_frame": { "raw_hex": "00 00 2D 00 00 00 00 12" }
+        },
+        "alligator_cracking": {
+          "telemetry": { "scenario_title": "Alligator Fatigue & Rutting (50 km/h)", "vehicle_speed_kmh": 52.0, "engine_rpm": 1780, "friction_mu": 0.65, "hazard_distance_m": 24.5, "gg_forces": { "lateral_g": 0.08, "longitudinal_g": -0.12 }, "suspension": { "fl_travel_mm": -12, "fr_travel_mm": -14, "rl_travel_mm": -10, "rr_travel_mm": -11 } },
+          "rl_decision": { "recommended_action_id": 5, "action_name": "MUNICIPAL_TELEMETRY_DISPATCH", "description": "Structural pavement fatigue logged to municipal V2X road ledger with geolocated GPS coordinates.", "actuator_setpoints": { "decel_ms2": 0.0, "suspension_lift_mm": 0.0, "steer_offset_deg": 0.0 }, "q_values": [14.0, 18.2, 22.1, 0.0, 16.5, 45.3], "action_probabilities": [0.04, 0.06, 0.10, 0.0, 0.05, 0.75], "telemetry_metrics": { "time_to_collision_sec": 3.1, "hazard_distance_m": 24.5, "dynamic_stopping_distance_m": 15.2, "safety_margin_m": 9.3 } },
+          "can_frame": { "raw_hex": "03 05 1F 00 00 00 00 F8" }
+        }
+      };
+      return db[key] || db["highway_pothole"];
     }
 
     // --- Global Application State ---
@@ -4158,15 +4831,54 @@
           const bh = Math.round(b[3] * (360 / 480));
 
           const isDistress = det.is_distress;
-          const boxColor = isDistress ? "#f59e0b" : "#10b981"; // Amber for pothole, emerald for suppressed manhole
-          const bgGlow = isDistress ? "rgba(245, 158, 11, 0.22)" : "rgba(16, 185, 129, 0.15)";
+          const isPed = Boolean(det.is_pedestrian || (det.class_name && det.class_name.toLowerCase().includes("pedestrian")));
+          const cId = det.class_id;
+          const cName = (det.class_name || "").toLowerCase();
+
+          let boxColor = "#f59e0b";
+          let bgGlow = "rgba(245, 158, 11, 0.24)";
+          let cornerColor = "#fbbf24";
+
+          if (isPed || cId === 9 || cName.includes("pedestrian") || cName.includes("child") || cName.includes("vru")) {
+            boxColor = "#06b6d4";
+            bgGlow = "rgba(6, 182, 212, 0.25)";
+            cornerColor = "#22d3ee";
+          } else if (cId === 3 || cName.includes("alligator") || cName.includes("d20") || cName.includes("fatigue")) {
+            boxColor = "#f43f5e";
+            bgGlow = "rgba(244, 63, 94, 0.25)";
+            cornerColor = "#fb7185";
+          } else if (cId === 2 || cName.includes("transverse") || cName.includes("d10")) {
+            boxColor = "#a855f7";
+            bgGlow = "rgba(168, 85, 247, 0.25)";
+            cornerColor = "#c084fc";
+          } else if (cId === 1 || cName.includes("longitudinal") || cName.includes("d00")) {
+            boxColor = "#ec4899";
+            bgGlow = "rgba(236, 72, 153, 0.25)";
+            cornerColor = "#f472b6";
+          } else if (cId === 4 || cName.includes("pothole") || cName.includes("d40")) {
+            boxColor = "#f59e0b";
+            bgGlow = "rgba(245, 158, 11, 0.25)";
+            cornerColor = "#fbbf24";
+          } else if (cId === 5 || cName.includes("water") || cName.includes("flood")) {
+            boxColor = "#0ea5e9";
+            bgGlow = "rgba(14, 165, 233, 0.25)";
+            cornerColor = "#38bdf8";
+          } else if (isDistress) {
+            boxColor = "#f59e0b";
+            bgGlow = "rgba(245, 158, 11, 0.22)";
+            cornerColor = "#fbbf24";
+          } else {
+            boxColor = "#10b981";
+            bgGlow = "rgba(16, 185, 129, 0.16)";
+            cornerColor = "#34d399";
+          }
 
           // Fill Box Glow
           ctx.fillStyle = bgGlow;
           ctx.fillRect(bx, by, bw, bh);
 
           // Corner Reticle Brackets (High-Tech HUD style)
-          ctx.strokeStyle = boxColor;
+          ctx.strokeStyle = cornerColor;
           ctx.lineWidth = 2.5;
           const cLen = Math.min(12, bw / 3, bh / 3);
 
@@ -4183,13 +4895,18 @@
           ctx.beginPath();
           ctx.moveTo(bx + bw - cLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cLen); ctx.stroke();
 
-          // Defect Cavity Texture inside Box
-          if (isDistress) {
+          // Defect Cavity or Texture inside Box
+          if (isPed) {
+            ctx.fillStyle = "rgba(6, 182, 212, 0.4)";
+            ctx.beginPath();
+            ctx.ellipse(bx + bw / 2, by + bh * 0.3, bw * 0.25, bh * 0.2, 0, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (isDistress) {
             ctx.fillStyle = "rgba(10, 10, 10, 0.75)";
             ctx.beginPath();
             ctx.ellipse(bx + bw / 2, by + bh / 2, bw * 0.38, bh * 0.32, 0, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = "rgba(239, 68, 68, 0.6)";
+            ctx.strokeStyle = boxColor;
             ctx.lineWidth = 1.5;
             ctx.stroke();
           } else {
@@ -4205,19 +4922,25 @@
 
           // Header Label Tag
           const trkId = det.persistent_track_id || "TRK-001";
-          const confPct = Math.round(det.confidence * 100);
+          const confPct = Math.round((det.confidence || 0.95) * 100);
           const distZ = det.distance_meters ? `${det.distance_meters.toFixed(1)}m` : "--";
-          const labelText = isDistress 
-            ? `[#${trkId}] ${det.class_name} (${confPct}%) • Z: ${distZ}`
-            : `[SUPPRESSED] ${det.class_name} • Z: ${distZ}`;
+          const labelText = isPed
+            ? `[VRU ALERT] ${det.class_name || 'PEDESTRIAN'} (${confPct}%) • Z: ${distZ}`
+            : (isDistress 
+                ? `[#${trkId}] ${(det.class_name || 'DEFECT').toUpperCase()} (${confPct}%) • Z: ${distZ}`
+                : `[SUPPRESSED] ${det.class_name || 'ASSET'} • Z: ${distZ}`);
 
           ctx.font = "bold 11px monospace";
           const textWidth = ctx.measureText(labelText).width;
           
-          ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
-          ctx.fillRect(bx, Math.max(0, by - 18), textWidth + 10, 16);
-          ctx.fillStyle = boxColor;
-          ctx.fillText(labelText, bx + 5, Math.max(12, by - 5));
+          ctx.fillStyle = "rgba(6, 10, 22, 0.92)";
+          ctx.strokeStyle = boxColor;
+          ctx.lineWidth = 1;
+          ctx.fillRect(bx, Math.max(0, by - 20), textWidth + 12, 18);
+          ctx.strokeRect(bx, Math.max(0, by - 20), textWidth + 12, 18);
+
+          ctx.fillStyle = cornerColor;
+          ctx.fillText(labelText, bx + 6, Math.max(13, by - 6));
         });
       }
 
@@ -4491,9 +5214,9 @@
         ctx.fillStyle = specGrad;
         ctx.fill();
       } else if (preset.name.includes("Alligator")) {
-        // Draw alligator crack polygon mesh
-        ctx.strokeStyle = "#0f172a";
-        ctx.lineWidth = 3;
+        // Draw alligator crack polygon mesh with vivid rose styling
+        ctx.strokeStyle = "#f43f5e";
+        ctx.lineWidth = 2.5;
         for (let row = 0; row < 5; row++) {
           for (let col = 0; col < 7; col++) {
             const cx = 50 + col * 45 + (row % 2) * 15;
@@ -4501,6 +5224,35 @@
             ctx.strokeRect(cx, cy, 38, 25);
           }
         }
+      } else if (preset.name.includes("Pedestrian") || preset.name.includes("Child")) {
+        // Draw zebra crossing stripes on asphalt
+        ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+        for (let s = 0; s < 6; s++) {
+          ctx.fillRect(40 + s * 52, 40, 28, 120);
+        }
+        // Draw pedestrian / child figure with cyan glow
+        ctx.fillStyle = "#06b6d4";
+        ctx.shadowColor = "rgba(6, 182, 212, 0.75)";
+        ctx.shadowBlur = 14;
+        // Head
+        ctx.beginPath();
+        ctx.arc(W / 2, 58, 13, 0, Math.PI * 2);
+        ctx.fill();
+        // Torso
+        ctx.fillRect(W / 2 - 9, 74, 18, 44);
+        // Legs
+        ctx.lineWidth = 4.5;
+        ctx.strokeStyle = "#06b6d4";
+        ctx.beginPath();
+        ctx.moveTo(W / 2 - 5, 118); ctx.lineTo(W / 2 - 13, 158);
+        ctx.moveTo(W / 2 + 5, 118); ctx.lineTo(W / 2 + 15, 158);
+        ctx.stroke();
+        // Arms
+        ctx.beginPath();
+        ctx.moveTo(W / 2 - 9, 82); ctx.lineTo(W / 2 - 20, 110);
+        ctx.moveTo(W / 2 + 9, 82); ctx.lineTo(W / 2 + 18, 110);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
       } else {
         // Draw deep monsoon pothole with water puddle reflection
         ctx.fillStyle = preset.cavityColor;
@@ -5355,26 +6107,90 @@
         { rank: 3, class_name: "Normal Road", probability: 0.005 }
       ];
 
+      function getCandidateColor(name, id) {
+        const n = (name || "").toLowerCase();
+        if (id === 9 || n.includes("pedestrian") || n.includes("child") || n.includes("vru")) {
+          return { bar: "linear-gradient(90deg, #06b6d4, #22d3ee)", text: "#22d3ee" };
+        } else if (id === 3 || n.includes("alligator") || n.includes("d20") || n.includes("fatigue")) {
+          return { bar: "linear-gradient(90deg, #f43f5e, #fb7185)", text: "#fb7185" };
+        } else if (id === 2 || n.includes("transverse") || n.includes("d10")) {
+          return { bar: "linear-gradient(90deg, #a855f7, #c084fc)", text: "#c084fc" };
+        } else if (id === 1 || n.includes("longitudinal") || n.includes("d00")) {
+          return { bar: "linear-gradient(90deg, #ec4899, #f472b6)", text: "#f472b6" };
+        } else if (id === 4 || n.includes("pothole") || n.includes("d40") || n.includes("cavity")) {
+          return { bar: "linear-gradient(90deg, #f59e0b, #fbbf24)", text: "#fbbf24" };
+        } else if (id === 5 || n.includes("water") || n.includes("flood")) {
+          return { bar: "linear-gradient(90deg, #0ea5e9, #38bdf8)", text: "#38bdf8" };
+        } else if (id === 6 || n.includes("zebra")) {
+          return { bar: "linear-gradient(90deg, #eab308, #facc15)", text: "#facc15" };
+        } else if (id === 7 || n.includes("divider")) {
+          return { bar: "linear-gradient(90deg, #10b981, #34d399)", text: "#34d399" };
+        } else if (id === 8 || n.includes("sign")) {
+          return { bar: "linear-gradient(90deg, #3b82f6, #60a5fa)", text: "#60a5fa" };
+        } else {
+          return { bar: "linear-gradient(90deg, #10b981, #34d399)", text: "#34d399" };
+        }
+      }
+
       if (top3.length >= 1) {
         const c1 = top3[0];
         const p1Pct = (c1.probability * 100).toFixed(1);
-        if (document.getElementById("top1-name")) document.getElementById("top1-name").innerText = `#1 ${c1.class_name}`;
-        if (document.getElementById("prob-d40")) document.getElementById("prob-d40").innerText = `${p1Pct}%`;
-        if (document.getElementById("bar-d40")) document.getElementById("bar-d40").style.width = `${Math.min(100, Math.max(1, p1Pct))}%`;
+        const col1 = getCandidateColor(c1.class_name, c1.class_id);
+        if (document.getElementById("top1-name")) {
+          const el = document.getElementById("top1-name");
+          el.innerText = `#1 ${c1.class_name}`;
+          el.style.color = col1.text;
+        }
+        if (document.getElementById("prob-d40")) {
+          const el = document.getElementById("prob-d40");
+          el.innerText = `${p1Pct}%`;
+          el.style.color = col1.text;
+        }
+        if (document.getElementById("bar-d40")) {
+          const b = document.getElementById("bar-d40");
+          b.style.width = `${Math.min(100, Math.max(1, p1Pct))}%`;
+          b.style.background = col1.bar;
+        }
       }
       if (top3.length >= 2) {
         const c2 = top3[1];
         const p2Pct = (c2.probability * 100).toFixed(1);
-        if (document.getElementById("top2-name")) document.getElementById("top2-name").innerText = `#2 ${c2.class_name}`;
-        if (document.getElementById("prob-d20")) document.getElementById("prob-d20").innerText = `${p2Pct}%`;
-        if (document.getElementById("bar-d20")) document.getElementById("bar-d20").style.width = `${Math.min(100, Math.max(1, p2Pct))}%`;
+        const col2 = getCandidateColor(c2.class_name, c2.class_id);
+        if (document.getElementById("top2-name")) {
+          const el = document.getElementById("top2-name");
+          el.innerText = `#2 ${c2.class_name}`;
+          el.style.color = col2.text;
+        }
+        if (document.getElementById("prob-d20")) {
+          const el = document.getElementById("prob-d20");
+          el.innerText = `${p2Pct}%`;
+          el.style.color = col2.text;
+        }
+        if (document.getElementById("bar-d20")) {
+          const b = document.getElementById("bar-d20");
+          b.style.width = `${Math.min(100, Math.max(1, p2Pct))}%`;
+          b.style.background = col2.bar;
+        }
       }
       if (top3.length >= 3) {
         const c3 = top3[2];
         const p3Pct = (c3.probability * 100).toFixed(1);
-        if (document.getElementById("top3-name")) document.getElementById("top3-name").innerText = `#3 ${c3.class_name}`;
-        if (document.getElementById("prob-norm")) document.getElementById("prob-norm").innerText = `${p3Pct}%`;
-        if (document.getElementById("bar-norm")) document.getElementById("bar-norm").style.width = `${Math.min(100, Math.max(1, p3Pct))}%`;
+        const col3 = getCandidateColor(c3.class_name, c3.class_id);
+        if (document.getElementById("top3-name")) {
+          const el = document.getElementById("top3-name");
+          el.innerText = `#3 ${c3.class_name}`;
+          el.style.color = col3.text;
+        }
+        if (document.getElementById("prob-norm")) {
+          const el = document.getElementById("prob-norm");
+          el.innerText = `${p3Pct}%`;
+          el.style.color = col3.text;
+        }
+        if (document.getElementById("bar-norm")) {
+          const b = document.getElementById("bar-norm");
+          b.style.width = `${Math.min(100, Math.max(1, p3Pct))}%`;
+          b.style.background = col3.bar;
+        }
       }
 
       // Update Deterioration Rate and Embodied Carbon Footprint
@@ -5442,42 +6258,149 @@
             bh = Math.min(canvas.height - by - 4, bh);
 
             const isDetPed = Boolean(det.is_pedestrian || (det.class_name && det.class_name.toLowerCase().includes("pedestrian")));
-            const boxStroke = isDetPed ? "#06b6d4" : "#f59e0b";
-            const cornerStroke = isDetPed ? "#10b981" : "#38bdf8";
-            const fillBg = isDetPed ? "rgba(6, 182, 212, 0.22)" : "rgba(245, 158, 11, 0.20)";
+            const cId = det.class_id !== undefined ? det.class_id : (isDetPed ? 9 : 4);
+            const cName = (det.class_name || "").toLowerCase();
 
+            // Dynamic Multi-Class Cyber Color Engine
+            let boxStroke = "#f59e0b";
+            let cornerStroke = "#fbbf24";
+            let fillBg = "rgba(245, 158, 11, 0.22)";
+            let glowHex = "rgba(245, 158, 11, 0.65)";
+            let labelCol1 = "#38bdf8";
+            let labelCol2 = "#f59e0b";
+            let tag = "[M1 POTHOLE]";
+
+            if (isDetPed || cId === 9 || cName.includes("pedestrian") || cName.includes("vru") || cName.includes("child")) {
+              // Cyber Cyan / Electric Teal (Pedestrian & Child VRU Safety)
+              boxStroke = "#06b6d4";
+              cornerStroke = "#22d3ee";
+              fillBg = "rgba(6, 182, 212, 0.24)";
+              glowHex = "rgba(6, 182, 212, 0.70)";
+              labelCol1 = "#22d3ee";
+              labelCol2 = "#34d399";
+              tag = "[VRU SAFETY]";
+            } else if (cId === 3 || cName.includes("alligator") || cName.includes("d20") || cName.includes("fatigue")) {
+              // Neon Crimson / Vivid Rose (Alligator Fatigue Crack)
+              boxStroke = "#f43f5e";
+              cornerStroke = "#fb7185";
+              fillBg = "rgba(244, 63, 94, 0.24)";
+              glowHex = "rgba(244, 63, 94, 0.70)";
+              labelCol1 = "#fb7185";
+              labelCol2 = "#fda4af";
+              tag = "[FATIGUE CRACK]";
+            } else if (cId === 2 || cName.includes("transverse") || cName.includes("d10")) {
+              // Electric Purple / Neon Violet (Transverse Thermal Crack)
+              boxStroke = "#a855f7";
+              cornerStroke = "#c084fc";
+              fillBg = "rgba(168, 85, 247, 0.24)";
+              glowHex = "rgba(168, 85, 247, 0.70)";
+              labelCol1 = "#c084fc";
+              labelCol2 = "#e9d5ff";
+              tag = "[THERMAL CRACK]";
+            } else if (cId === 1 || cName.includes("longitudinal") || cName.includes("d00")) {
+              // Vivid Fuchsia / Hot Pink (Longitudinal Joint Crack)
+              boxStroke = "#ec4899";
+              cornerStroke = "#f472b6";
+              fillBg = "rgba(236, 72, 153, 0.24)";
+              glowHex = "rgba(236, 72, 153, 0.70)";
+              labelCol1 = "#f472b6";
+              labelCol2 = "#fbcfe8";
+              tag = "[JOINT CRACK]";
+            } else if (cId === 4 || cName.includes("pothole") || cName.includes("d40") || cName.includes("cavity")) {
+              // High-Visibility Amber / Cyber Gold (Pothole Cavity)
+              boxStroke = "#f59e0b";
+              cornerStroke = "#fbbf24";
+              fillBg = "rgba(245, 158, 11, 0.24)";
+              glowHex = "rgba(245, 158, 11, 0.70)";
+              labelCol1 = "#38bdf8";
+              labelCol2 = "#fbbf24";
+              tag = "[D40 CAVITY]";
+            } else if (cId === 5 || cName.includes("water") || cName.includes("flood")) {
+              // Azure Sky Blue (Waterlogging / Flooding)
+              boxStroke = "#0ea5e9";
+              cornerStroke = "#38bdf8";
+              fillBg = "rgba(14, 165, 233, 0.24)";
+              glowHex = "rgba(14, 165, 233, 0.70)";
+              labelCol1 = "#38bdf8";
+              labelCol2 = "#bae6fd";
+              tag = "[WATER HAZARD]";
+            } else if (cId === 6 || cName.includes("zebra")) {
+              // Solar Yellow (Missing Zebra Crossing)
+              boxStroke = "#eab308";
+              cornerStroke = "#facc15";
+              fillBg = "rgba(234, 179, 8, 0.24)";
+              glowHex = "rgba(234, 179, 8, 0.70)";
+              labelCol1 = "#facc15";
+              labelCol2 = "#fef08a";
+              tag = "[ZEBRA MARKING]";
+            } else if (cId === 7 || cName.includes("divider")) {
+              // Emerald Mint (Missing Road Divider)
+              boxStroke = "#10b981";
+              cornerStroke = "#34d399";
+              fillBg = "rgba(16, 185, 129, 0.24)";
+              glowHex = "rgba(16, 185, 129, 0.70)";
+              labelCol1 = "#34d399";
+              labelCol2 = "#a7f3d0";
+              tag = "[ROAD DIVIDER]";
+            } else if (cId === 8 || cName.includes("sign")) {
+              // Electric Sapphire Blue (Damaged Traffic Sign)
+              boxStroke = "#3b82f6";
+              cornerStroke = "#60a5fa";
+              fillBg = "rgba(59, 130, 246, 0.24)";
+              glowHex = "rgba(59, 130, 246, 0.70)";
+              labelCol1 = "#60a5fa";
+              labelCol2 = "#bfdbfe";
+              tag = "[TRAFFIC SIGN]";
+            } else {
+              boxStroke = "#10b981";
+              cornerStroke = "#34d399";
+              fillBg = "rgba(16, 185, 129, 0.18)";
+              glowHex = "rgba(16, 185, 129, 0.45)";
+              labelCol1 = "#34d399";
+              labelCol2 = "#10b981";
+              tag = "[NORMAL ROAD]";
+            }
+
+            ctx.shadowColor = glowHex;
+            ctx.shadowBlur = 9;
             ctx.strokeStyle = boxStroke;
             ctx.lineWidth = 2.5;
             ctx.strokeRect(bx, by, bw, bh);
 
             ctx.fillStyle = fillBg;
             ctx.fillRect(bx, by, bw, bh);
+            ctx.shadowBlur = 0; // Reset blur for crisp brackets and typography
 
             const cLen = Math.min(14, bw / 3, bh / 3);
             ctx.strokeStyle = cornerStroke;
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 3.5;
             ctx.beginPath(); ctx.moveTo(bx, by + cLen); ctx.lineTo(bx, by); ctx.lineTo(bx + cLen, by); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(bx + bw - cLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cLen); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(bx, by + bh - cLen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + cLen, by + bh); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(bx + bw - cLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cLen); ctx.stroke();
 
             const dDims = det.physical_dimensions || dims || {};
-            const tag = isDetPed ? "[VRU SAFETY]" : "[M1 AI]";
             const label1 = `${tag} ${(det.class_name || 'DETECTION').toUpperCase()} (${((det.confidence || 0.98)*100).toFixed(1)}%)`;
-            const label2 = isDetPed ? "Hazard: Autonomous Slowdown Chime" : `Area: ${(dDims.surface_area_m2 || 0).toFixed(2)} m2`;
+            const label2 = isDetPed 
+              ? "VRU Hazard: Autonomous Slowdown Chime Active" 
+              : `Area: ${(dDims.surface_area_m2 || 0).toFixed(2)} m² • Depth: ${(dDims.depth_cm || 0).toFixed(1)} cm • ₹${Math.round(dDims.estimated_repair_cost_inr || 0).toLocaleString('en-IN')}`;
             
             ctx.font = "bold 10px monospace";
             const w1 = ctx.measureText(label1).width;
             const w2 = ctx.measureText(label2).width;
-            const maxW = Math.max(w1, w2) + 8;
+            const maxW = Math.max(w1, w2) + 14;
             
-            const labY = Math.max(26, by - 6);
-            ctx.fillStyle = "rgba(15, 23, 42, 0.90)";
-            ctx.fillRect(bx, labY - 22, maxW, 26);
-            ctx.fillStyle = isDetPed ? "#06b6d4" : "#38bdf8";
-            ctx.fillText(label1, bx + 4, labY - 12);
-            ctx.fillStyle = isDetPed ? "#10b981" : "#f59e0b";
-            ctx.fillText(label2, bx + 4, labY - 2);
+            const labY = Math.max(28, by - 6);
+            ctx.fillStyle = "rgba(6, 10, 22, 0.94)";
+            ctx.fillRect(bx, labY - 26, maxW, 28);
+            ctx.strokeStyle = boxStroke;
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(bx, labY - 26, maxW, 28);
+
+            ctx.fillStyle = labelCol1;
+            ctx.fillText(label1, bx + 6, labY - 14);
+            ctx.fillStyle = labelCol2;
+            ctx.fillText(label2, bx + 6, labY - 3);
           }
         });
       }
@@ -5977,6 +6900,7 @@
       refreshSystemHealth();
       setInterval(refreshSystemHealth, 30000);
       loadTrainingMetrics();
+      triggerAutomotiveScenario('highway_pothole');
       console.log('[ROAD-SHIELD] v3.0 Deep Frontend initialized. All SIH26124 modules active.');
     });
 

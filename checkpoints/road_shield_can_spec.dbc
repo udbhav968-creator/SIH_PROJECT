@@ -1,0 +1,56 @@
+VERSION ""
+
+NS_ : 
+    NS_DESC_
+    CM_
+    BA_DEF_
+    BA_
+    VAL_
+    CAT_DEF_
+    CAT_
+    FILTER
+    BA_DEF_DEF_
+    EV_DATA_
+    ENVVAR_DATA_
+    SGTYPE_
+    SGTYPE_VAL_
+    BA_DEF_SGTYPE_
+    BA_SGTYPE_
+    SIG_TYPE_REF_
+    VAL_TABLE_
+    SIG_GROUP_
+    SIG_VALTYPE_
+    SIGTYPE_VALTYPE_
+    BO_TX_BU_
+    BA_DEF_REL_
+    BA_REL_
+    BA_DEF_DEF_REL_
+    BU_SG_REL_
+    BU_EV_REL_
+    BU_BO_REL_
+    SG_MUL_VAL_
+
+BS_:
+
+BU_: ROAD_SHIELD_ADAS ACTIVE_CHASSIS POWERTRAIN_ECU NHAI_V2X_GATEWAY
+
+BO_ 419234050 ROAD_SHIELD_ADAS_ALERT: 8 ROAD_SHIELD_ADAS
+ SG_ Hazard_Class : 0|8@1+ (1,0) [0|9] "" ACTIVE_CHASSIS,POWERTRAIN_ECU
+ SG_ RL_Action_Cmd : 8|8@1+ (1,0) [0|5] "" ACTIVE_CHASSIS,POWERTRAIN_ECU
+ SG_ Time_To_Collision : 16|8@1+ (0.1,0) [0|25.5] "sec" ACTIVE_CHASSIS,POWERTRAIN_ECU
+ SG_ Target_Decel : 24|8@1+ (0.1,0) [0|25.5] "m/s2" POWERTRAIN_ECU
+ SG_ Suspension_PreLift : 32|8@1+ (1,0) [0|100] "mm" ACTIVE_CHASSIS
+ SG_ Steering_Nudge : 40|8@1- (0.1,0) [-12.8|12.7] "deg" ACTIVE_CHASSIS
+ SG_ ASIL_Safety_Level : 48|8@1+ (1,0) [0|4] "" ACTIVE_CHASSIS,POWERTRAIN_ECU
+ SG_ Alive_Counter_CRC : 56|8@1+ (1,0) [0|255] "" ACTIVE_CHASSIS,POWERTRAIN_ECU
+
+BO_ 418383107 ACTIVE_SUSPENSION_TELEMETRY: 8 ACTIVE_CHASSIS
+ SG_ FL_Damper_Travel : 0|16@1+ (0.1,-100) [-100|150] "mm" ROAD_SHIELD_ADAS
+ SG_ FR_Damper_Travel : 16|16@1+ (0.1,-100) [-100|150] "mm" ROAD_SHIELD_ADAS
+ SG_ Damping_Mode : 32|8@1+ (1,0) [0|3] "" ROAD_SHIELD_ADAS
+ SG_ Surface_Friction_Mu : 40|8@1+ (0.01,0) [0|1.0] "" ROAD_SHIELD_ADAS
+ SG_ Vertical_Shock_Az : 48|16@1+ (0.01,-50) [-50|50] "m/s2" ROAD_SHIELD_ADAS
+
+VAL_ 419234050 Hazard_Class 0 "Normal_Road" 1 "Longitudinal_Crack" 2 "Transverse_Crack" 3 "Alligator_Crack" 4 "Pothole_D40" 5 "Waterlogging" 6 "Missing_Zebra" 7 "Road_Divider" 8 "Traffic_Sign" 9 "Pedestrian_VRU" ;
+VAL_ 419234050 RL_Action_Cmd 0 "MAINTAIN_CRUISE" 1 "ACTIVE_SUSPENSION_PRE_DAMPING" 2 "ADAS_SPEED_MODULATION" 3 "EMERGENCY_BRAKE_AEB" 4 "MICRO_EVASIVE_LANE_NUDGE" 5 "MUNICIPAL_V2X_DISPATCH" ;
+VAL_ 419234050 ASIL_Safety_Level 0 "ASIL_QM" 1 "ASIL_A" 2 "ASIL_B" 4 "ASIL_D" ;

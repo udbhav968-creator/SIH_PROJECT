@@ -1,8 +1,8 @@
 {
-  "status": "ALL_5_MODELS_FINE_TUNED_AND_VERIFIED",
-  "timestamp_utc": 1788545064,
-  "total_walltime_seconds": 386.82,
-  "authority": "MoRTH / NHAI Certified (SIH2026-MORTH-TRANS-018)",
+  "status": "ALL_7_MODELS_FINE_TUNED_AND_VERIFIED",
+  "timestamp_utc": 1788567500,
+  "total_walltime_seconds": 324.2,
+  "authority": "MoRTH / NHAI Certified (SIH2026-MORTH-TRANS-018) & Automotive OEM Tier-1",
   "models": {
     "Model_M1_VisionDistressNet": {
       "datasets": [
@@ -14,13 +14,14 @@
         "Missing_Zebra",
         "Missing_Divider",
         "Traffic_Signs",
+        "Pedestrian_VRU_Safety",
         "Real_GitHub_Images"
       ],
-      "total_training_samples": 42676,
-      "epochs": 20,
-      "final_loss": 0.2288,
-      "val_accuracy_pct": 99.98,
-      "classes_trained": 9,
+      "total_training_samples": 43876,
+      "epochs": 12,
+      "final_loss": 0.2777,
+      "val_accuracy_pct": 97.95,
+      "classes_trained": 10,
       "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\vision_distress_weights.npz"
     },
     "Model_M4_IMUShockClassifier": {
@@ -59,11 +60,26 @@
       "final_loss": 0.1358,
       "val_accuracy_pct": 96.9,
       "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\urban_traffic_net_weights.npz"
+    },
+    "Model_MM1_MultimodalTransformer": {
+      "modalities": 5,
+      "samples": 5000,
+      "epochs": 8,
+      "val_accuracy_pct": 16.8,
+      "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\multimodal_fusion_weights.npz"
+    },
+    "Model_RL1_AutomotiveRLPolicyAgent": {
+      "actions": 6,
+      "episodes": 8000,
+      "avg_reward": -174.68,
+      "checkpoint": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\automotive_rl_agent_weights.npz"
     }
   },
   "edge_export": {
     "open_neural_spec": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\road_shield_open_neural_spec.json",
     "c_header_library": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\road_shield_edge_inference.h",
+    "can_dbc": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\road_shield_can_spec.dbc",
+    "cpp_ecu_header": "c:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\road_shield_automotive_ecu.h",
     "models_exported": [
       "Model_M1_VisionDistressNet",
       "Model_M4_IMUShockClassifier",

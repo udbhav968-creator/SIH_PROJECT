@@ -20,8 +20,9 @@ def softmax(x):
 
 class VisionDistressNet:
     CLASS_NAMES = [
-        "Normal Road", "D00 Longitudinal", "D10 Transverse", "D20 Alligator", "D40 Pothole",
-        "Waterlogging", "Missing Zebra Crossing", "Missing Road Divider", "Damaged Traffic Sign"
+        "Normal Road", "D00 Longitudinal Crack", "D10 Transverse Crack", "D20 Alligator Crack", "D40 Pothole Cavity",
+        "Waterlogging", "Missing Zebra Crossing", "Missing Road Divider", "Damaged Traffic Sign",
+        "Child / Pedestrian Hazard (Vulnerable Road User)"
     ]
 
     IRC_STANDARDS = {
@@ -33,10 +34,24 @@ class VisionDistressNet:
         5: "IRC:SP:42-2014 Section 8: Highway Camber Correction & Stormwater Cross-Drainage Culvert",
         6: "IRC:35-2015 Clause 7.2: Retroreflective Thermoplastic Road Marking (Zebra Pedestrian Crossing)",
         7: "IRC:79-2019 Section 4: Dual-Beam W-Beam Crash Barrier & Retroreflective Road Divider",
-        8: "IRC:67-2012 Code of Practice for Road Signs: High-Intensity Microprismatic Retroreflective Retrofit"
+        8: "IRC:67-2012 Code of Practice for Road Signs: High-Intensity Microprismatic Retroreflective Retrofit",
+        9: "IRC:103-2012 Guidelines for Pedestrian Facilities: Signalized Pelican Crossing & Refuge Island"
     }
 
-    def __init__(self, in_features=64, hidden_dims=[512, 256, 128], num_classes=9, lr=0.002, seed=42, in_dim=None):
+    CLASS_COLORS = {
+        0: {"hex": "#10b981", "glow": "rgba(16, 185, 129, 0.4)", "badge": "bg-emerald-950 text-emerald-300 border-emerald-800", "label": "NORMAL ROAD"},
+        1: {"hex": "#ec4899", "glow": "rgba(236, 72, 153, 0.4)", "badge": "bg-pink-950 text-pink-300 border-pink-800", "label": "D00 LONGITUDINAL CRACK"},
+        2: {"hex": "#a855f7", "glow": "rgba(168, 85, 247, 0.4)", "badge": "bg-purple-950 text-purple-300 border-purple-800", "label": "D10 TRANSVERSE CRACK"},
+        3: {"hex": "#f43f5e", "glow": "rgba(244, 63, 94, 0.4)", "badge": "bg-rose-950 text-rose-300 border-rose-800", "label": "D20 ALLIGATOR CRACK"},
+        4: {"hex": "#f59e0b", "glow": "rgba(245, 158, 11, 0.4)", "badge": "bg-amber-950 text-amber-300 border-amber-800", "label": "D40 POTHOLE CAVITY"},
+        5: {"hex": "#0ea5e9", "glow": "rgba(14, 165, 233, 0.4)", "badge": "bg-sky-950 text-sky-300 border-sky-800", "label": "WATERLOGGING HAZARD"},
+        6: {"hex": "#eab308", "glow": "rgba(234, 179, 8, 0.4)", "badge": "bg-yellow-950 text-yellow-300 border-yellow-800", "label": "MISSING ZEBRA"},
+        7: {"hex": "#10b981", "glow": "rgba(16, 185, 129, 0.4)", "badge": "bg-emerald-950 text-emerald-300 border-emerald-800", "label": "MISSING DIVIDER"},
+        8: {"hex": "#3b82f6", "glow": "rgba(59, 130, 246, 0.4)", "badge": "bg-blue-950 text-blue-300 border-blue-800", "label": "DAMAGED TRAFFIC SIGN"},
+        9: {"hex": "#06b6d4", "glow": "rgba(6, 182, 212, 0.45)", "badge": "bg-cyan-950 text-cyan-300 border-cyan-800", "label": "VRU PEDESTRIAN HAZARD"}
+    }
+
+    def __init__(self, in_features=64, hidden_dims=[512, 256, 128], num_classes=10, lr=0.002, seed=42, in_dim=None):
         if in_dim is not None:
             in_features = in_dim
         np.random.seed(seed)
@@ -125,7 +140,10 @@ class VisionDistressNet:
 
             # Shannon entropy in bits (epistemic uncertainty)
             entropy = float(-np.sum(p_vec * np.log2(p_vec + 1e-10)))
-            uncertainty_rating = "LOW_UNCERTAINTY" if entropy < 1.2 else ("MODERATE_UNCERTAINTY" if entropy < 2.2 else "HIGH_UNCERTAINTY_OOD")
+            if pred_id == 9:
+                uncertainty_rating = "VULNERABLE_ROAD_USER_CONFIRMED"
+            else:
+                uncertainty_rating = "LOW_UNCERTAINTY" if entropy < 1.2 else ("MODERATE_UNCERTAINTY" if entropy < 2.2 else "HIGH_UNCERTAINTY_OOD")
 
             # Top-3 ranking
             sorted_indices = np.argsort(p_vec)[::-1][:3]
@@ -133,8 +151,9 @@ class VisionDistressNet:
                 {
                     "rank": rank + 1,
                     "class_id": int(idx),
-                    "class_name": self.CLASS_NAMES[idx],
-                    "probability": round(float(p_vec[idx]), 4)
+                    "class_name": self.CLASS_NAMES[idx] if idx < len(self.CLASS_NAMES) else f"Class_{idx}",
+                    "probability": round(float(p_vec[idx]), 4),
+                    "color_hex": self.CLASS_COLORS.get(int(idx), {}).get("hex", "#f59e0b")
                 }
                 for rank, idx in enumerate(sorted_indices)
             ]
@@ -142,25 +161,32 @@ class VisionDistressNet:
             # ASTM D6433 Severity
             if pred_id == 0:
                 severity = "NONE"
+            elif pred_id == 9:
+                severity = "N/A_PEDESTRIAN_SAFETY_INCIDENT"
             elif pred_id == 4:
                 severity = "HIGH" if conf > 0.85 else ("MEDIUM" if conf > 0.60 else "LOW")
             else:
                 severity = "HIGH" if conf > 0.88 else ("MEDIUM" if conf > 0.65 else "LOW")
 
             irc_standard = self.IRC_STANDARDS.get(pred_id, "MoRTH General Road Infrastructure Guideline")
+            color_meta = self.CLASS_COLORS.get(pred_id, {"hex": "#f59e0b", "glow": "rgba(245, 158, 11, 0.4)", "badge": "bg-amber-950 text-amber-300 border-amber-800", "label": "DISTRESS"})
             bbox = [round(float(v), 4) for v in geo_preds[i]]
 
             results.append({
                 "class_id": pred_id,
-                "class_name": self.CLASS_NAMES[pred_id],
+                "class_name": self.CLASS_NAMES[pred_id] if pred_id < len(self.CLASS_NAMES) else f"Class_{pred_id}",
                 "confidence": round(conf, 4),
                 "shannon_entropy_bits": round(entropy, 3),
                 "uncertainty_rating": uncertainty_rating,
                 "astm_d6433_severity": severity,
                 "irc_standard_specification": irc_standard,
+                "color_hex": color_meta["hex"],
+                "glow_color": color_meta["glow"],
+                "badge_class": color_meta["badge"],
+                "hud_label": color_meta["label"],
                 "top3_ranked_predictions": top3,
                 "predicted_bbox_normalized": bbox,
-                "all_class_probabilities": {self.CLASS_NAMES[k]: round(float(p_vec[k]), 4) for k in range(len(p_vec))}
+                "all_class_probabilities": {self.CLASS_NAMES[k]: round(float(p_vec[k]), 4) for k in range(min(len(self.CLASS_NAMES), len(p_vec)))}
             })
 
         return results

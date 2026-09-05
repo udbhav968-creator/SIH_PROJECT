@@ -107,10 +107,14 @@ class CVCavityDetector:
                                     "uncertainty_rating": "VULNERABLE_ROAD_USER_CONFIRMED",
                                     "astm_d6433_severity": "N/A_PEDESTRIAN_SAFETY_INCIDENT",
                                     "irc_standard_specification": "IRC:103-2012 Guidelines for Pedestrian Facilities: Signalized Pelican Crossing & Refuge Island",
+                                    "color_hex": "#06b6d4",
+                                    "glow_color": "rgba(6, 182, 212, 0.45)",
+                                    "badge_class": "bg-cyan-950 text-cyan-300 border-cyan-800",
+                                    "hud_label": "VRU PEDESTRIAN HAZARD",
                                     "top3_ranked_predictions": [
-                                        {"rank": 1, "class_id": 9, "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)", "probability": round(float(conf), 4)},
-                                        {"rank": 2, "class_id": 0, "class_name": "Clear Roadway", "probability": round(1.0 - float(conf), 4)},
-                                        {"rank": 3, "class_id": 0, "class_name": "Normal Road", "probability": 0.001}
+                                        {"rank": 1, "class_id": 9, "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)", "probability": round(float(conf), 4), "color_hex": "#06b6d4"},
+                                        {"rank": 2, "class_id": 0, "class_name": "Clear Roadway", "probability": round(1.0 - float(conf), 4), "color_hex": "#10b981"},
+                                        {"rank": 3, "class_id": 0, "class_name": "Normal Road", "probability": 0.001, "color_hex": "#10b981"}
                                     ],
                                     "deterioration_velocity_sqcm_per_day": 0.0,
                                     "carbon_footprint_kg_co2e": 0.0,
@@ -142,10 +146,14 @@ class CVCavityDetector:
                 "uncertainty_rating": "VULNERABLE_ROAD_USER_CONFIRMED",
                 "astm_d6433_severity": "N/A_PEDESTRIAN_SAFETY_INCIDENT",
                 "irc_standard_specification": "IRC:103-2012 Guidelines for Pedestrian Facilities: Signalized Pelican Crossing & Refuge Island",
+                "color_hex": "#06b6d4",
+                "glow_color": "rgba(6, 182, 212, 0.45)",
+                "badge_class": "bg-cyan-950 text-cyan-300 border-cyan-800",
+                "hud_label": "VRU PEDESTRIAN HAZARD",
                 "top3_ranked_predictions": [
-                    {"rank": 1, "class_id": 9, "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)", "probability": 0.985},
-                    {"rank": 2, "class_id": 0, "class_name": "Clear Roadway", "probability": 0.014},
-                    {"rank": 3, "class_id": 0, "class_name": "Normal Road", "probability": 0.001}
+                    {"rank": 1, "class_id": 9, "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)", "probability": 0.985, "color_hex": "#06b6d4"},
+                    {"rank": 2, "class_id": 0, "class_name": "Clear Roadway", "probability": 0.014, "color_hex": "#10b981"},
+                    {"rank": 3, "class_id": 0, "class_name": "Normal Road", "probability": 0.001, "color_hex": "#10b981"}
                 ],
                 "deterioration_velocity_sqcm_per_day": 0.0,
                 "carbon_footprint_kg_co2e": 0.0,
@@ -327,7 +335,7 @@ class CVCavityDetector:
     def extract_feature_vector(self, img_np, bbox):
         bx, by, bw, bh = bbox[:4]
         patch = img_np[by:by+bh, bx:bx+bw]
-        if patch.size == 0:
+        if patch.size == 0 or patch.shape[0] < 4 or patch.shape[1] < 4:
             return np.zeros(64, dtype=np.float32)
 
         patch_gray = 0.299 * patch[:, :, 0] + 0.587 * patch[:, :, 1] + 0.114 * patch[:, :, 2]
@@ -441,6 +449,10 @@ class CVCavityDetector:
                 irc_spec = dp["irc_standard_specification"]
                 top3_ranks = dp["top3_ranked_predictions"]
                 probs = dp["all_class_probabilities"]
+                color_hex = dp.get("color_hex")
+                glow_color = dp.get("glow_color")
+                badge_class = dp.get("badge_class")
+                hud_label = dp.get("hud_label", c_name)
             else:
                 shannon_entropy = 0.28
                 uncertainty_rating = "LOW_UNCERTAINTY"
@@ -454,13 +466,28 @@ class CVCavityDetector:
                 }
                 irc_spec = irc_specs_map.get(pred_cls, "MoRTH Section 500 Maintenance Guideline")
                 top3_ranks = [
-                    {"rank": 1, "class_id": pred_cls, "class_name": c_name, "probability": round(conf, 4)},
-                    {"rank": 2, "class_id": 3 if pred_cls == 4 else 4, "class_name": "D20 Fatigue Alligator Crack" if pred_cls == 4 else "D40 Severe Cavity / Pothole", "probability": round(max(0.01, 0.85 * (1.0 - conf)), 4)},
-                    {"rank": 3, "class_id": 0, "class_name": "Normal Road / Non-Distress", "probability": round(max(0.005, 0.15 * (1.0 - conf)), 4)}
+                    {"rank": 1, "class_id": pred_cls, "class_name": c_name, "probability": round(conf, 4), "color_hex": "#f59e0b" if pred_cls == 4 else ("#f43f5e" if pred_cls == 3 else ("#a855f7" if pred_cls == 2 else "#ec4899"))},
+                    {"rank": 2, "class_id": 3 if pred_cls == 4 else 4, "class_name": "D20 Fatigue Alligator Crack" if pred_cls == 4 else "D40 Severe Cavity / Pothole", "probability": round(max(0.01, 0.85 * (1.0 - conf)), 4), "color_hex": "#f43f5e" if pred_cls == 4 else "#f59e0b"},
+                    {"rank": 3, "class_id": 0, "class_name": "Normal Road / Non-Distress", "probability": round(max(0.005, 0.15 * (1.0 - conf)), 4), "color_hex": "#10b981"}
                 ]
                 probs = {name: 0.01 for name in cls_names}
                 probs[c_name] = conf
                 probs["Normal Road / Non-Distress"] = round(1.0 - conf, 3)
+                color_hex = None
+                glow_color = None
+                badge_class = None
+                hud_label = None
+
+            if not color_hex:
+                cls_color_defaults = {
+                    4: ("#f59e0b", "rgba(245, 158, 11, 0.45)", "bg-amber-950 text-amber-300 border-amber-800", "D40 POTHOLE CAVITY"),
+                    3: ("#f43f5e", "rgba(244, 63, 94, 0.45)", "bg-rose-950 text-rose-300 border-rose-800", "D20 ALLIGATOR CRACK"),
+                    2: ("#a855f7", "rgba(168, 85, 247, 0.45)", "bg-purple-950 text-purple-300 border-purple-800", "D10 TRANSVERSE CRACK"),
+                    1: ("#ec4899", "rgba(236, 72, 153, 0.45)", "bg-pink-950 text-pink-300 border-pink-800", "D00 LONGITUDINAL CRACK"),
+                    0: ("#10b981", "rgba(16, 185, 129, 0.45)", "bg-emerald-950 text-emerald-300 border-emerald-800", "NORMAL ROAD")
+                }
+                c_tup = cls_color_defaults.get(pred_cls, cls_color_defaults[4])
+                color_hex, glow_color, badge_class, hud_label = c_tup
 
             deterioration_vel = round(max(15.0, area_m2 * 120.0), 1) if pred_cls == 4 else round(max(5.0, area_m2 * 45.0), 1)
             carbon_kg = round(tonnage_t * 62.5, 2)
@@ -476,6 +503,10 @@ class CVCavityDetector:
                 "uncertainty_rating": uncertainty_rating,
                 "astm_d6433_severity": astm_severity,
                 "irc_standard_specification": irc_spec,
+                "color_hex": color_hex,
+                "glow_color": glow_color,
+                "badge_class": badge_class,
+                "hud_label": hud_label,
                 "top3_ranked_predictions": top3_ranks,
                 "deterioration_velocity_sqcm_per_day": deterioration_vel,
                 "carbon_footprint_kg_co2e": carbon_kg,
@@ -505,10 +536,14 @@ class CVCavityDetector:
                 "uncertainty_rating": "LOW_UNCERTAINTY",
                 "astm_d6433_severity": "NONE",
                 "irc_standard_specification": "IRC:82-2015 Clause 3.1: Routine Visual Survey - Non-Distress Stable Pavement",
+                "color_hex": "#10b981",
+                "glow_color": "rgba(16, 185, 129, 0.45)",
+                "badge_class": "bg-emerald-950 text-emerald-300 border-emerald-800",
+                "hud_label": "NORMAL ROAD",
                 "top3_ranked_predictions": [
-                    {"rank": 1, "class_id": 0, "class_name": "Normal Road / Sound Pavement", "probability": 0.985},
-                    {"rank": 2, "class_id": 1, "class_name": "D00 Longitudinal Joint", "probability": 0.008},
-                    {"rank": 3, "class_id": 2, "class_name": "D10 Transverse Crack", "probability": 0.005}
+                    {"rank": 1, "class_id": 0, "class_name": "Normal Road / Sound Pavement", "probability": 0.985, "color_hex": "#10b981"},
+                    {"rank": 2, "class_id": 1, "class_name": "D00 Longitudinal Joint Crack", "probability": 0.008, "color_hex": "#ec4899"},
+                    {"rank": 3, "class_id": 2, "class_name": "D10 Transverse Thermal Crack", "probability": 0.005, "color_hex": "#a855f7"}
                 ],
                 "deterioration_velocity_sqcm_per_day": 0.0,
                 "carbon_footprint_kg_co2e": 0.0,

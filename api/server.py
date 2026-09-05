@@ -41,6 +41,9 @@ from pipeline.deep_inference_pipeline import DeepInferencePipeline
 from models.urban_traffic_net import UrbanTrafficNet
 from models.alpr_incident_tracker import ALPRIncidentTracker
 from pipeline.fleet_deduplication_engine import FleetDeduplicationEngine
+from models.multimodal_transformer_fusion import MultimodalTransformerFusionNet
+from models.automotive_rl_policy_agent import AutomotiveRLPolicyAgent
+from models.automotive_telematics_engine import AutomotiveTelematicsEngine
 
 # ==============================================================================
 # GLOBAL MODEL INITIALIZATION & CHECKPOINT LOADING
@@ -50,7 +53,7 @@ CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
 print("[AI Server] Loading trained model checkpoints from:", CKPT_DIR)
 
 # 1. Model M1 Vision Net
-vision_model = VisionDistressNet(in_features=64, hidden_dims=[512, 256, 128], num_classes=9)
+vision_model = VisionDistressNet(in_features=64, hidden_dims=[512, 256, 128], num_classes=10)
 
 # SIH26124 Public Transport Fleet & Urban Sensing Models
 traffic_net = UrbanTrafficNet(in_features=48, hidden_dims=[256, 128], num_classes=7)
@@ -122,8 +125,25 @@ dataset_hub = BenchmarkDatasetHub(seed=42)
 media_engine = RealWorldMediaEngine()
 cv_detector = CVCavityDetector()
 edge_exporter = EdgeModelExporter(CKPT_DIR)
+
+# 10. Automotive OEM Tier-1 Models & RL Agent
+multimodal_net = MultimodalTransformerFusionNet(embed_dim=64, num_classes=10)
+mm_ckpt = os.path.join(CKPT_DIR, "multimodal_fusion_weights.npz")
+if os.path.exists(mm_ckpt):
+    multimodal_net.load_weights(mm_ckpt)
+    print("  ✓ Model MM-1 Multimodal Cross-Attention Net loaded successfully.")
+
+rl_agent = AutomotiveRLPolicyAgent(state_dim=32, num_actions=6)
+rl_ckpt = os.path.join(CKPT_DIR, "automotive_rl_agent_weights.npz")
+if os.path.exists(rl_ckpt):
+    rl_agent.load_weights(rl_ckpt)
+    print("  ✓ Model RL-1 Automotive ADAS & Active Chassis RL Agent loaded successfully.")
+
+automotive_telematics = AutomotiveTelematicsEngine(checkpoints_dir=CKPT_DIR)
+print("  ✓ Automotive OEM Telematics & CAN Protocol Engine initialized.")
+
 deep_pipeline = DeepInferencePipeline(CKPT_DIR)
-print("  ✓ 11-Stage Deep Inference Pipeline initialized.")
+print("  ✓ 12-Stage Deep Inference Pipeline initialized.")
 active_feedback_counter = 0
 video_trackers = {}
 
@@ -411,7 +431,61 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(data)
                 return
-            self._send_json(404, {"error": "road_shield_open_neural_spec.json not found"})
+        # 10. Automotive CAN Stream Simulation
+        elif path == "/api/v1/automotive/can-stream":
+            scenario = self.path.split("scenario=")[1].split("&")[0] if "scenario=" in self.path else "highway_pothole"
+            snapshot = automotive_telematics.get_simulated_telemetry_snapshot(scenario)
+            rl_decision = rl_agent.evaluate_telemetry_state(
+                hazard_class_id=snapshot["hazard_class_id"],
+                confidence=0.96,
+                distance_m=snapshot["hazard_distance_m"],
+                vehicle_speed_kmh=snapshot["vehicle_speed_kmh"],
+                surface_friction_mu=snapshot["friction_mu"],
+                pothole_depth_mm=snapshot["pothole_depth_mm"],
+                imu_z_shock_ms2=snapshot["imu_z_shock_ms2"]
+            )
+            can_frame = automotive_telematics.generate_adas_can_packet(
+                rl_decision=rl_decision,
+                hazard_class_id=snapshot["hazard_class_id"],
+                ttc_sec=rl_decision["telemetry_metrics"]["time_to_collision_sec"],
+                speed_kmh=snapshot["vehicle_speed_kmh"]
+            )
+            self._send_json(200, {
+                "telemetry": snapshot,
+                "rl_decision": rl_decision,
+                "can_frame": can_frame,
+                "timestamp_ms": int(time.time() * 1000)
+            })
+            return
+
+        # 11. Export Vector CAN DBC Specification
+        elif path == "/api/v1/automotive/export-dbc":
+            dbc_file = os.path.join(CKPT_DIR, "road_shield_can_spec.dbc")
+            if not os.path.exists(dbc_file):
+                dbc_file = automotive_telematics.generate_can_dbc()
+            with open(dbc_file, "rb") as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="road_shield_can_spec.dbc"')
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(content)
+            return
+
+        # 12. Export C++20 Header-Only Real-Time ECU Driver
+        elif path == "/api/v1/automotive/export-ecu-header":
+            header_file = os.path.join(CKPT_DIR, "road_shield_automotive_ecu.h")
+            if not os.path.exists(header_file):
+                header_file = automotive_telematics.generate_cpp_ecu_header()
+            with open(header_file, "rb") as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="road_shield_automotive_ecu.h"')
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(content)
             return
 
         self._send_json(404, {"error": f"Endpoint {path} not found"})
@@ -771,10 +845,12 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 5: "Waterlogging Hazard",
                 6: "Missing Zebra Crossing",
                 7: "Missing Road Divider",
-                8: "Damaged Traffic Sign"
+                8: "Damaged Traffic Sign",
+                9: "Child / Pedestrian Hazard (Vulnerable Road User)"
             }
-            pred_class = cls_map.get(pred_cls_idx, VisionDistressNet.CLASS_NAMES[pred_cls_idx])
-            is_distress = (pred_cls_idx != 0)
+            pred_class = cls_map.get(pred_cls_idx, VisionDistressNet.CLASS_NAMES[min(pred_cls_idx, len(VisionDistressNet.CLASS_NAMES)-1)])
+            is_distress = (pred_cls_idx not in [0, 9])
+            is_ped = (pred_cls_idx == 9)
             
             vol_m3 = area * (depth / 100.0)
             tonnage_t = round(vol_m3 * 2.40, 3) if is_distress else 0.0
@@ -786,14 +862,19 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 "weather_condition": weather,
                 "predicted_class": pred_class,
                 "confidence": round(conf, 4),
-                "shannon_entropy_bits": dp.get("shannon_entropy_bits", 0.25),
-                "epistemic_uncertainty_rating": dp.get("uncertainty_rating", "LOW_UNCERTAINTY"),
-                "astm_d6433_severity": dp.get("astm_d6433_severity", "HIGH" if pred_cls_idx == 4 else "LOW"),
-                "irc_standard_specification": dp.get("irc_standard_specification", "IRC:82-2015 Clause 4.2"),
+                "shannon_entropy_bits": dp.get("shannon_entropy_bits", 0.05 if is_ped else 0.25),
+                "epistemic_uncertainty_rating": dp.get("uncertainty_rating", "VULNERABLE_ROAD_USER_CONFIRMED" if is_ped else "LOW_UNCERTAINTY"),
+                "astm_d6433_severity": dp.get("astm_d6433_severity", "N/A_VRU" if is_ped else ("HIGH" if pred_cls_idx == 4 else "LOW")),
+                "irc_standard_specification": dp.get("irc_standard_specification", "IRC:103-2012" if is_ped else "IRC:82-2015 Clause 4.2"),
                 "top3_ranked_predictions": dp.get("top3_ranked_predictions", []),
-                "structural_deterioration_velocity_sqcm_per_day": round(max(15.0, area * 120.0), 1) if pred_cls_idx == 4 else (round(max(5.0, area * 45.0), 1) if is_distress else 0.0),
-                "embodied_carbon_kg_co2e": round(tonnage_t * 62.5, 2),
+                "color_hex": dp.get("color_hex", "#06b6d4" if is_ped else "#f59e0b"),
+                "glow_color": dp.get("glow_color", "rgba(6, 182, 212, 0.45)" if is_ped else "rgba(245, 158, 11, 0.45)"),
+                "badge_class": dp.get("badge_class", "bg-cyan-950 text-cyan-300 border-cyan-800" if is_ped else "bg-amber-950 text-amber-300 border-amber-800"),
+                "hud_label": dp.get("hud_label", pred_class),
+                "structural_deterioration_velocity_sqcm_per_day": 0.0 if (is_ped or not is_distress) else round(max(15.0, area * 120.0), 1) if pred_cls_idx == 4 else round(max(5.0, area * 45.0), 1),
+                "embodied_carbon_kg_co2e": 0.0 if (is_ped or not is_distress) else round(tonnage_t * 62.5, 2),
                 "is_distress": is_distress,
+                "is_pedestrian": is_ped,
                 "defect_dimensions": {
                     "surface_area_m2": area,
                     "depth_cm": depth,
@@ -1069,6 +1150,52 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             
             res = fleet_dedup_engine.ingest_fleet_detection(bus_id, lat, lon, cls_name, pci, area)
             self._send_json(200, res)
+            return
+
+        # ----------------------------------------------------------------------
+        # ENDPOINT 18: Automotive RL Policy Actuation (Model RL-1)
+        # ----------------------------------------------------------------------
+        if path == "/api/v1/automotive/rl-action":
+            h_cls = int(body.get("hazard_class_id", 4))
+            conf = float(body.get("confidence", 0.95))
+            dist = float(body.get("distance_m", 35.0))
+            spd = float(body.get("vehicle_speed_kmh", 70.0))
+            friction = float(body.get("surface_friction_mu", 0.75))
+            depth = float(body.get("pothole_depth_mm", 45.0 if h_cls == 4 else 0.0))
+            shock = float(body.get("imu_z_shock_ms2", 4.2 if h_cls == 4 else 0.1))
+            lat_margin = float(body.get("lateral_lane_margin_m", 1.2))
+            wet = bool(body.get("is_wet", False))
+
+            res = deep_pipeline.evaluate_automotive_incident(
+                hazard_class_id=h_cls,
+                confidence=conf,
+                distance_m=dist,
+                vehicle_speed_kmh=spd,
+                surface_friction_mu=friction,
+                pothole_depth_mm=depth,
+                imu_z_shock_ms2=shock,
+                lateral_lane_margin_m=lat_margin,
+                is_wet=wet
+            )
+            res["model"] = "RL1_AutomotiveRLPolicyAgent"
+            res["latency_ms"] = round((time.time() - t0) * 1000.0, 3)
+            self._send_json(200, res)
+            return
+
+        # ----------------------------------------------------------------------
+        # ENDPOINT 19: Multimodal Transformer Cross-Attention Fusion (Model MM-1)
+        # ----------------------------------------------------------------------
+        if path == "/api/v1/automotive/multimodal-fusion":
+            v_vis = np.array(body.get("v_vis", np.random.randn(64)), dtype=np.float32)
+            v_imu = np.array(body.get("v_imu", np.random.randn(36)), dtype=np.float32)
+            v_dep = np.array(body.get("v_depth", np.random.rand(16)), dtype=np.float32)
+            v_can = np.array(body.get("v_can", np.random.randn(12)), dtype=np.float32)
+            v_env = np.array(body.get("v_env", np.random.rand(8)), dtype=np.float32)
+
+            fusion_res = multimodal_net.predict_multimodal(v_vis, v_imu, v_dep, v_can, v_env)
+            fusion_res["model"] = "MM1_MultimodalTransformerFusionNet"
+            fusion_res["latency_ms"] = round((time.time() - t0) * 1000.0, 3)
+            self._send_json(200, fusion_res)
             return
 
         self._send_json(404, {"error": f"Endpoint {path} not found"})

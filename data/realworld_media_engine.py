@@ -161,6 +161,16 @@ class RealWorldMediaEngine:
                 "depth_cm": 0.0,
                 "pci_impact": 0.0,
                 "features_64": self._synthetic_distress_vector(cls=0, noise_scale=0.08)
+            },
+            "Child_Pedestrian_Hazard_VRU": {
+                "name": "Urban School Zone Child Crossing (VRU Safety)",
+                "highway": "Shivaji Nagar School Zone Corridor",
+                "weather": "Daylight Urban Mixed Traffic",
+                "true_class": "Child / Pedestrian Hazard (Vulnerable Road User)",
+                "area_m2": 0.0,
+                "depth_cm": 0.0,
+                "pci_impact": 0.0,
+                "features_64": self._synthetic_distress_vector(cls=9, noise_scale=0.08)
             }
         }
         return presets.get(preset_name, presets["Monsoon_Submerged_Cavity_NH44"])
@@ -171,4 +181,5 @@ class RealWorldMediaEngine:
         elif cls == 2: vec[16:32] += self.rng.normal(2.0, 0.3, size=16)
         elif cls == 3: vec[32:48] += self.rng.normal(2.3, 0.4, size=16)
         elif cls == 4: vec[48:64] += self.rng.normal(2.9, 0.4, size=16)
+        elif cls == 9: vec[24:40] += self.rng.normal(2.6, 0.35, size=16)
         return vec.tolist()
