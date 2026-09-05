@@ -1956,16 +1956,19 @@
               <!-- MoRTH Section 500 Volumetrics & Green Carbon Footprint -->
               <div class="bg-slate-950/80 p-4 rounded-2xl border border-slate-800">
                 <div class="text-xs font-bold text-white uppercase font-mono mb-2 flex items-center justify-between">
-                  <span>MoRTH Section 500 Physical Bill of Quantities</span>
+                  <div class="flex items-center space-x-2">
+                    <span>MoRTH Section 500 Civil Ledger</span>
+                    <span id="rw-photo-defect-count-badge" class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-950/80 text-amber-300 border border-amber-800/80">Cumulative Image Total</span>
+                  </div>
                   <span class="text-cyan-400 text-[10px]">&rho; = 2.40 T/m&sup3;</span>
                 </div>
                 <div class="grid grid-cols-4 gap-2 text-center font-mono">
                   <div class="bg-slate-900 p-2 rounded-xl border border-slate-800">
-                    <div class="text-[10px] text-slate-400 uppercase">Surface Area</div>
+                    <div class="text-[10px] text-slate-400 uppercase">Total Area</div>
                     <div id="rw-photo-area" class="text-sm font-black text-white mt-0.5">2.15 m&sup2;</div>
                   </div>
                   <div class="bg-slate-900 p-2 rounded-xl border border-slate-800">
-                    <div class="text-[10px] text-slate-400 uppercase">Cavity Depth</div>
+                    <div class="text-[10px] text-slate-400 uppercase">Max Depth</div>
                     <div id="rw-photo-depth" class="text-sm font-black text-white mt-0.5">7.5 cm</div>
                   </div>
                   <div class="bg-slate-900 p-2 rounded-xl border border-slate-800">
@@ -1990,13 +1993,18 @@
                   </div>
                 </div>
 
-                <div class="flex items-center justify-between mt-3 pt-2 border-t border-slate-800 text-xs font-mono">
+                <div class="flex flex-wrap items-center justify-between gap-2 mt-3 pt-2 border-t border-slate-800 text-xs font-mono">
                   <div class="text-slate-400">
                     Estimated MoRTH Patch Cost: <span id="rw-photo-cost" class="text-emerald-400 font-bold">₹ 2,902.50</span>
                   </div>
-                  <button onclick="commitPhotoToLedger()" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold border border-emerald-500/40 transition">
-                    📋 Sign & Seal to MoRTH Ledger
-                  </button>
+                  <div class="flex items-center space-x-2">
+                    <button onclick="jumpPhotoToGoogleMaps()" class="px-2.5 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 font-bold border border-sky-500/40 transition flex items-center space-x-1" title="Open in Google Maps Platform Satellite/Roadmap">
+                      <span>🗺️ Google Maps</span>
+                    </button>
+                    <button onclick="commitPhotoToLedger()" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold border border-emerald-500/40 transition">
+                      📋 Sign & Seal
+                    </button>
+                  </div>
                 </div>
 
                 <!-- Active Learning / Engineer Human-in-the-Loop Feedback Loop -->
@@ -5377,6 +5385,18 @@
       ctx.fillText(`TRUE CLASS: ${preset.predClass.toUpperCase()}`, 30, H - 30);
     }
 
+    function jumpPhotoToGoogleMaps() {
+      playBeep(1200, "sine", 0.06);
+      switchTab('sih-fleet-view');
+      showAiToast('🗺️ Google Maps Navigation Activated', 'Locating defect coordinates on Google Satellite / Hybrid layer...', true);
+      setTimeout(() => {
+        if (window.sihGisMap) {
+          window.sihGisMap.invalidateSize();
+          window.sihGisMap.setView([28.7041, 77.1025], 13);
+        }
+      }, 250);
+    }
+
     function commitPhotoToLedger() {
       playBeep(1300, "sine", 0.06);
       const p = activePhotoData;
@@ -6428,6 +6448,15 @@
       if (document.getElementById("rw-photo-vol")) document.getElementById("rw-photo-vol").innerText = `${((isPed || !p.is_distress) ? 0 : (dims.bitumen_volume_m3 || 0)).toFixed(3)} m³`;
       if (document.getElementById("rw-photo-tonnage")) document.getElementById("rw-photo-tonnage").innerText = `${((isPed || !p.is_distress) ? 0 : (dims.morth_compacted_tonnage_t || 0)).toFixed(3)} T`;
       if (document.getElementById("rw-photo-cost")) document.getElementById("rw-photo-cost").innerText = `₹ ${repairCost.toLocaleString('en-IN')}`;
+
+      // Update Cumulative Defect Count Badge on MoRTH BOQ Card
+      const detCount = (analysis.all_detections && analysis.all_detections.length > 0) ? analysis.all_detections.length : 1;
+      const countBadge = document.getElementById("rw-photo-defect-count-badge");
+      if (countBadge) {
+        countBadge.innerText = detCount > 1 
+          ? `Cumulative Total (${detCount} Distress Zones)` 
+          : `Single Defect Total`;
+      }
 
       // Show toast with deep pipeline forensic metrics or pedestrian safety alert
       if (isPed) {
