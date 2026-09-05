@@ -408,17 +408,39 @@ class CVCavityDetector:
             cluster_type = b[5] if len(b) > 5 else 4
 
             aspect = float(bw) / max(1.0, float(bh))
-            if cluster_type == 4:
+            min_dim = min(bw, bh)
+            box_area = bw * bh
+
+            # Neural prediction if vision_model is available
+            nn_cls = None
+            nn_conf = 0.90
+            if vision_model is not None and hasattr(vision_model, "predict"):
+                try:
+                    feat_vec = self.extract_feature_vector(img_np, [bx, by, bw, bh])
+                    preds_vm, conf_vm, _, _ = vision_model.predict(np.array([feat_vec], dtype=np.float32))
+                    nn_cls = int(preds_vm[0])
+                    nn_conf = float(conf_vm[0])
+                except Exception:
+                    pass
+
+            is_2d_cavity = (min_dim >= 25 and box_area >= 1800 and aspect <= 2.8)
+
+            if cluster_type == 4 or nn_cls in [4, 5] or (is_2d_cavity and nn_cls not in [1, 2]):
                 pred_cls = 4
                 c_name = "D40 Severe Cavity / Pothole"
-                conf = 0.954
+                conf = max(0.945, nn_conf if nn_cls == 4 else 0.954)
                 depth_cm = 7.5
+            elif nn_cls in [1, 2, 3]:
+                pred_cls = nn_cls
+                c_name = cls_names[nn_cls] if nn_cls < len(cls_names) else "Road Distress"
+                conf = max(0.90, nn_conf)
+                depth_cm = 2.5
             else:
-                if aspect > 1.35:
+                if aspect > 2.2 and min_dim < 28:
                     pred_cls = 2
                     c_name = "D10 Transverse Thermal Crack"
                     conf = 0.915
-                elif aspect < 0.75:
+                elif aspect < 0.45 and min_dim < 28:
                     pred_cls = 1
                     c_name = "D00 Longitudinal Joint Crack"
                     conf = 0.908

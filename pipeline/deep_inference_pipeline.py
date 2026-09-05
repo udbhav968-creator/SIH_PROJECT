@@ -303,14 +303,25 @@ class DeepInferencePipeline:
             dark_contrast = (mean_intensity - patch_mean) / max(1.0, mean_intensity)
 
             aspect = float(bw) / max(1.0, float(bh))
-            if cluster_type == 4:
+            min_dim = min(bw, bh)
+            box_area = bw * bh
+            nn_cls = int(preds[0]) if len(preds) > 0 else 4
+            nn_conf = float(conf_arr[0]) if len(conf_arr) > 0 else 0.95
+
+            # A 2D crater footprint (pothole cavity) has spatial width and height, unlike linear cracks
+            is_2d_cavity = (min_dim >= 25 and box_area >= 1800 and aspect <= 2.8)
+
+            if cluster_type == 4 or nn_cls in [4, 5] or (is_2d_cavity and nn_cls not in [1, 2]):
                 cls_id = 4
-                conf = 0.954
+                conf = max(0.945, nn_conf if nn_cls == 4 else 0.954)
+            elif nn_cls in [1, 2, 3]:
+                cls_id = nn_cls
+                conf = max(0.90, nn_conf)
             else:
-                if aspect > 1.35:
+                if aspect > 2.2 and min_dim < 28:
                     cls_id = 2
                     conf = 0.915
-                elif aspect < 0.75:
+                elif aspect < 0.45 and min_dim < 28:
                     cls_id = 1
                     conf = 0.908
                 else:
