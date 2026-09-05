@@ -2674,13 +2674,21 @@
           const data = await resp.json();
           aiPingMs = Math.round(performance.now() - t0);
           aiServerConnected = true;
-          document.getElementById('ai-status-dot').className = "relative inline-flex rounded-full h-2 w-2 bg-emerald-500";
-          document.getElementById('ai-ping-ring').className = "animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75";
-          document.getElementById('ai-status-label').innerText = "ONLINE (FastAPI :8000)";
-          document.getElementById('ai-status-label').className = "text-emerald-400 font-mono font-bold";
-          document.getElementById('ai-ping-label').innerText = `${aiPingMs}ms`;
+          const dot = document.getElementById('ai-status-dot');
+          if (dot) dot.className = "relative inline-flex rounded-full h-2 w-2 bg-emerald-500";
+          const ring = document.getElementById('ai-ping-ring');
+          if (ring) ring.className = "animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75";
+          const sLabel = document.getElementById('ai-status-label');
+          if (sLabel) {
+            sLabel.innerText = "ONLINE (:8000)";
+            sLabel.className = "text-emerald-400 font-mono font-bold";
+          }
+          const pLabel = document.getElementById('ai-ping-label');
+          if (pLabel) pLabel.innerText = `${aiPingMs}ms`;
           return;
         }
+      } catch (err) {
+        aiServerConnected = false;
       }
     }
 
@@ -3051,6 +3059,21 @@
       { id: "Waste Truck #12", x: 620, y: 380, targetX: 100, speed: -0.7 }
     ];
 
+    // Municipal Corridor Filter Handler
+    function filterCorridor(val) {
+      playBeep(840, "sine", 0.04);
+      console.log("[Filter Corridor]", val);
+      const corridorLabel = document.getElementById("map-corridor-name");
+      if (corridorLabel) {
+        if (val === 'ALL') corridorLabel.innerText = "All Metropolitan Master Corridors";
+        else if (val === 'WARD-04') corridorLabel.innerText = "Ward 04 - Shivaji Nagar Arterial";
+        else if (val === 'NH-44') corridorLabel.innerText = "NH-44 National Highway Freight Link (KM 108.4)";
+        else if (val === 'WARD-07') corridorLabel.innerText = "Ward 07 - Industrial Corridor East";
+        else corridorLabel.innerText = val;
+      }
+      showAiToast("Sector Filter Applied", `Corridor scoped to: ${val}`, false);
+    }
+
     // --- Tab Navigation Engine ---
     function switchTab(tabId) {
       playBeep(980, "sine", 0.05);
@@ -3067,6 +3090,7 @@
         activeBtn.classList.remove('border-transparent', 'text-slate-400');
         activeBtn.classList.add('border-amber-500', 'text-amber-400');
       }
+      window.dispatchEvent(new Event('resize'));
     }
 
     // --- DPDP Privacy Mode Toggle ---
@@ -4457,9 +4481,11 @@
 
     async function initRealWorldVisionEngine() {
       console.log("[RW Engine] Initializing Real-World Dashcam & Photo Lab...");
-      await testRealWorldApiHealth();
       renderCurrentVideoFrame();
       loadPhotoPreset("Monsoon_Submerged_Cavity_NH44");
+      testRealWorldApiHealth().then(() => {
+        renderCurrentVideoFrame();
+      });
     }
 
     async function testRealWorldApiHealth() {
@@ -4610,13 +4636,13 @@
           });
           if (resp.ok) {
             const data = await resp.json();
-            detections = data.tracked_detections;
-            serverLatency = data.latency_ms;
-            RW_ENGINE.currentSpeed = data.vehicle_speed_kmh;
-            RW_ENGINE.currentWeather = data.weather_condition;
+            detections = data.tracked_detections || [];
+            serverLatency = (typeof data.latency_ms === 'number') ? data.latency_ms : 1.8;
+            RW_ENGINE.currentSpeed = data.vehicle_speed_kmh || (meta ? meta.speed : 65.0);
+            RW_ENGINE.currentWeather = data.weather_condition || (meta ? meta.weather : "Monsoon Wet Asphalt");
             if (data.anti_double_counting_metrics) {
-              RW_ENGINE.uniquePotholes = data.anti_double_counting_metrics.total_unique_potholes_counted;
-              RW_ENGINE.uniqueCracks = data.anti_double_counting_metrics.total_unique_cracks_counted;
+              RW_ENGINE.uniquePotholes = data.anti_double_counting_metrics.total_unique_potholes_counted || 0;
+              RW_ENGINE.uniqueCracks = data.anti_double_counting_metrics.total_unique_cracks_counted || 0;
             }
           }
         } catch (e) {
@@ -4626,19 +4652,19 @@
         detections = computeLocalDetections(clipId, fIdx);
       }
 
-      RW_ENGINE.currentDetections = detections;
+      RW_ENGINE.currentDetections = detections || [];
 
       // Update HUD latency
       const latTag = document.getElementById("rw-latency-tag");
-      if (latTag) latTag.innerText = `${serverLatency.toFixed(1)}ms INFER`;
+      if (latTag) latTag.innerText = `${(Number(serverLatency) || 1.8).toFixed(1)}ms INFER`;
 
       // Update HUD speed & title
       const titleEl = document.getElementById("rw-hud-clip-title");
-      if (titleEl) titleEl.innerText = meta.title;
+      if (titleEl && meta) titleEl.innerText = meta.title || "Live Stream";
       const speedEl = document.getElementById("rw-hud-speed");
-      if (speedEl) speedEl.innerText = `${meta.speed.toFixed(1)} km/h`;
+      if (speedEl && meta) speedEl.innerText = `${(Number(meta.speed) || 60.0).toFixed(1)} km/h`;
       const weatherEl = document.getElementById("rw-hud-weather");
-      if (weatherEl) weatherEl.innerText = meta.weather;
+      if (weatherEl && meta) weatherEl.innerText = meta.weather || "Clear Daylight";
 
       // Paint Canvas
       paintDashcamCanvas(fIdx, detections, meta);
@@ -5437,6 +5463,21 @@
     // OMNI-CONNECTED CROSS-TAB DEEP INTEGRATION ENGINE
     // =========================================================================
     let isPipMiniPlayerVisible = true;
+
+    function renderPipMiniCanvas() {
+      const pipCanvas = document.getElementById("rw-pip-canvas");
+      if (!pipCanvas) return;
+      const pipCtx = pipCanvas.getContext("2d");
+      const masterCanvas = document.getElementById("rw-video-canvas");
+      if (masterCanvas && masterCanvas.width > 0) {
+        try {
+          pipCtx.drawImage(masterCanvas, 0, 0, pipCanvas.width, pipCanvas.height);
+        } catch (e) {}
+      }
+      if (typeof renderCurrentVideoFrame === 'function') {
+        renderCurrentVideoFrame();
+      }
+    }
 
     function togglePipMiniPlayer() {
       playBeep(920, "sine", 0.04);
