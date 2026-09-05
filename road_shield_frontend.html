@@ -2110,7 +2110,7 @@
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Interactive Leaflet GIS Map Container (2 cols) -->
         <div class="lg:col-span-2 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col">
-          <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center justify-between mb-2.5">
             <div class="flex items-center space-x-2">
               <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
               <h3 class="text-sm font-black text-white uppercase tracking-wider">Centralized Fleet GIS Map & Road Condition Heatmap</h3>
@@ -2122,13 +2122,79 @@
               <span class="inline-flex items-center space-x-1 text-slate-300"><span class="w-2 h-2 rounded-full bg-emerald-400"></span><span>Bus Units</span></span>
             </div>
           </div>
+
+          <!-- Google Maps Layer Controls & API Status Bar -->
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5 bg-slate-950/80 p-2 rounded-xl border border-slate-800/80">
+            <div class="flex items-center space-x-1.5 flex-wrap">
+              <span class="text-[10px] font-black text-amber-400 font-mono mr-1">🗺️ GOOGLE MAPS LAYERS:</span>
+              <button id="btn-layer-roadmap" onclick="setGoogleMapsLayer('roadmap')" class="gmap-layer-btn px-2.5 py-1 rounded-lg bg-amber-500 text-black font-black text-[10px] border border-amber-400 transition shadow-sm">🗺️ Roadmap</button>
+              <button id="btn-layer-satellite" onclick="setGoogleMapsLayer('satellite')" class="gmap-layer-btn px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-300 font-semibold text-[10px] border border-slate-700 hover:text-white transition">🛰️ Satellite</button>
+              <button id="btn-layer-hybrid" onclick="setGoogleMapsLayer('hybrid')" class="gmap-layer-btn px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-300 font-semibold text-[10px] border border-slate-700 hover:text-white transition">🌐 Hybrid</button>
+              <button id="btn-layer-terrain" onclick="setGoogleMapsLayer('terrain')" class="gmap-layer-btn px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-300 font-semibold text-[10px] border border-slate-700 hover:text-white transition">⛰️ Terrain</button>
+              <button id="btn-layer-traffic" onclick="setGoogleMapsLayer('traffic')" class="gmap-layer-btn px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-300 font-semibold text-[10px] border border-slate-700 hover:text-white transition">🚦 Live Traffic</button>
+              <button id="btn-layer-dark" onclick="setGoogleMapsLayer('dark')" class="gmap-layer-btn px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-300 font-semibold text-[10px] border border-slate-700 hover:text-white transition">🌙 Dark Tactical</button>
+            </div>
+            <div class="flex items-center space-x-1.5">
+              <button onclick="openGoogleMapsKeyModal()" class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-400 text-[10px] font-mono border border-emerald-500/40 hover:bg-emerald-500/30 transition flex items-center space-x-1">
+                <span>🔑 Google Engine:</span> <span id="gmaps-key-badge" class="font-bold">ACTIVE</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Google Maps Geocoding & Highway Search Bar -->
+          <div class="flex items-center space-x-2 mb-2.5">
+            <div class="relative flex-1">
+              <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 text-xs">🔍</span>
+              <input id="gmaps-search-input" type="text" placeholder="Search any Indian Highway, Corridor, or Junction (e.g. Silk Board, NH-44, MG Road, Whitefield)..." 
+                class="w-full pl-8 pr-3 py-1.5 bg-slate-950/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono" 
+                onkeydown="if(event.key==='Enter') searchGoogleMapsHighway()" />
+            </div>
+            <button onclick="searchGoogleMapsHighway()" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold font-mono transition shadow-md flex items-center space-x-1 shrink-0">
+              <span>Search & Fly</span>
+            </button>
+          </div>
           
           <!-- Leaflet Map Div -->
           <div id="sih-leaflet-map" style="height: 440px; width: 100%; border-radius: 12px; z-index: 10;" class="border border-slate-800 shadow-inner"></div>
           
-          <div class="mt-3 flex items-center justify-between text-[11px] text-slate-400 font-mono bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+          <!-- Google Maps Navigation & Pothole Avoidance Toolbar -->
+          <div class="mt-2.5 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center space-x-2 flex-wrap text-xs font-mono">
+                <span class="text-amber-400 font-bold">🚗 GOOGLE ROUTING:</span>
+                <span class="text-slate-400 text-[11px]">Bus:</span>
+                <select id="gmaps-route-bus" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-white font-mono">
+                  <option value="BUS-KA01-101">BUS-KA01-101 (Route 335-E)</option>
+                  <option value="BUS-KA01-204">BUS-KA01-204 (Route 500-D)</option>
+                  <option value="BUS-KA01-308">BUS-KA01-308 (Route 201-R)</option>
+                </select>
+                <span class="text-slate-400 text-[11px]">Target Defect:</span>
+                <select id="gmaps-route-defect" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-white font-mono">
+                  <option value="DEF-BLR-1001">DEF-BLR-1001 (D40 Pothole Cavity)</option>
+                  <option value="DEF-BLR-1002">DEF-BLR-1002 (Waterlogging / Flood)</option>
+                  <option value="DEF-BLR-1003">DEF-BLR-1003 (Missing Zebra Crossing)</option>
+                  <option value="DEF-BLR-1004">DEF-BLR-1004 (Damaged Traffic Sign)</option>
+                </select>
+              </div>
+              <div class="flex items-center space-x-2">
+                <label class="flex items-center space-x-1.5 text-xs text-emerald-400 font-mono cursor-pointer bg-emerald-950/40 px-2 py-1 rounded-lg border border-emerald-500/30">
+                  <input type="checkbox" id="gmaps-avoid-toggle" class="accent-emerald-500" checked />
+                  <span class="text-[11px]">⚠️ Avoid Potholes (Detour)</span>
+                </label>
+                <button onclick="calculateGoogleMapsRoute()" class="px-3 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs font-mono transition shadow">
+                  Calculate Route
+                </button>
+                <button onclick="clearGoogleMapsRoute()" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-mono transition">
+                  Clear
+                </button>
+              </div>
+            </div>
+            <div id="gmaps-route-info" class="hidden p-2 rounded-lg bg-sky-950/30 border border-sky-500/30"></div>
+          </div>
+
+          <div class="mt-2.5 flex items-center justify-between text-[11px] text-slate-400 font-mono bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
             <span>📍 Map Center: Bengaluru Urban Hub (12.9716° N, 77.5946° E)</span>
-            <span class="text-emerald-400">● Live Haversine Clustering Engine Active</span>
+            <span class="text-emerald-400">● Google Maps & Haversine Clustering Active</span>
           </div>
         </div>
 
@@ -6663,6 +6729,70 @@
     let sihMap = null;
     let sihMapInitialized = false;
     let gisRefreshInterval = null;
+    let sihGisBuses = [];
+    let sihGisDefects = [];
+    let currentTileLayer = null;
+    let googleTileLayers = {};
+    let currentRoutePolyline = null;
+    let activeGmapLayerKey = 'roadmap';
+
+    function initGoogleTileLayers() {
+      if (typeof L === 'undefined') return;
+      googleTileLayers = {
+        roadmap: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+          attribution: '&copy; Google Maps Platform',
+          maxZoom: 21,
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        }),
+        satellite: L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+          attribution: '&copy; Google Earth Imagery',
+          maxZoom: 21,
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        }),
+        hybrid: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+          attribution: '&copy; Google Hybrid & Roads',
+          maxZoom: 21,
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        }),
+        terrain: L.tileLayer('https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', {
+          attribution: '&copy; Google Topographic Terrain',
+          maxZoom: 21,
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        }),
+        traffic: L.tileLayer('https://mt1.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}', {
+          attribution: '&copy; Google Real-Time Traffic Telematics',
+          maxZoom: 21,
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        }),
+        dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+          attribution: '&copy; OpenStreetMap & CartoDB',
+          subdomains: 'abcd',
+          maxZoom: 19
+        })
+      };
+    }
+
+    function setGoogleMapsLayer(layerKey) {
+      if (!sihMap) return;
+      if (!googleTileLayers[layerKey]) initGoogleTileLayers();
+      if (currentTileLayer) {
+        sihMap.removeLayer(currentTileLayer);
+      }
+      currentTileLayer = googleTileLayers[layerKey] || googleTileLayers.roadmap;
+      currentTileLayer.addTo(sihMap);
+      activeGmapLayerKey = layerKey;
+
+      document.querySelectorAll('.gmap-layer-btn').forEach(btn => {
+        btn.classList.remove('bg-amber-500', 'text-black', 'border-amber-400', 'font-black');
+        btn.classList.add('bg-slate-800/80', 'text-slate-300', 'border-slate-700', 'font-semibold');
+      });
+      const activeBtn = document.getElementById(`btn-layer-${layerKey}`);
+      if (activeBtn) {
+        activeBtn.classList.remove('bg-slate-800/80', 'text-slate-300', 'border-slate-700', 'font-semibold');
+        activeBtn.classList.add('bg-amber-500', 'text-black', 'border-amber-400', 'font-black');
+      }
+      showAiToast('Google Maps Layer Changed', `Active: ${layerKey.toUpperCase()}`, true);
+    }
 
     function initSihGisMap() {
       if (sihMapInitialized || typeof L === 'undefined') {
@@ -6675,7 +6805,6 @@
       const mapEl = document.getElementById('sih-leaflet-map');
       if (!mapEl) return;
 
-      // Destroy old map instance if any
       if (sihMap) { sihMap.remove(); sihMap = null; }
 
       sihMap = L.map('sih-leaflet-map', {
@@ -6685,20 +6814,15 @@
         attributionControl: false
       });
 
-      // Dark CartoDB tile layer
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap & CartoDB',
-        subdomains: 'abcd',
-        maxZoom: 19
-      }).addTo(sihMap);
+      initGoogleTileLayers();
+      setGoogleMapsLayer('roadmap');
 
       sihMapInitialized = true;
       refreshGisData();
 
-      // Auto-refresh every 30s
       if (gisRefreshInterval) clearInterval(gisRefreshInterval);
       gisRefreshInterval = setInterval(refreshGisData, 30000);
-      console.log('[SIH GIS] Leaflet map initialized');
+      console.log('[SIH GIS] Google Maps Platform Leaflet instance active');
     }
 
     async function refreshGisData() {
@@ -6710,51 +6834,63 @@
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
 
-        // Update KPI stats
-        const buses = data.fleet_units || [];
-        const defects = data.deduplicated_defects || [];
+        sihGisBuses = data.fleet_units || [];
+        sihGisDefects = data.deduplicated_defects || [];
         const heatmap = data.congestion_heatmap || [];
 
         const busEl = document.getElementById('sih-stat-buses');
-        if (busEl) busEl.textContent = `${buses.length} Fleet Units`;
+        if (busEl) busEl.textContent = `${sihGisBuses.length} Fleet Units`;
 
         const defEl = document.getElementById('sih-stat-defects');
-        if (defEl) defEl.textContent = `${defects.length} Unique Sites`;
+        if (defEl) defEl.textContent = `${sihGisDefects.length} Unique Sites`;
 
-        // Update dedup table
-        updateDedupTable(defects);
+        populateRouteSelectors(sihGisBuses, sihGisDefects);
+        updateDedupTable(sihGisDefects);
 
-        // Update map markers
         if (sihMap) {
-          updateMapMarkers(defects, buses, heatmap);
+          updateMapMarkers(sihGisDefects, sihGisBuses, heatmap);
         }
 
-        showAiToast('GIS Sync Complete', `${defects.length} defects, ${buses.length} bus units loaded`, true);
+        showAiToast('GIS Sync Complete', `${sihGisDefects.length} defects, ${sihGisBuses.length} buses via Google Maps API`, true);
       } catch (e) {
-        console.warn('[SIH GIS] API unavailable, using static fallback:', e.message);
-        // Fallback static data
+        console.warn('[SIH GIS] API unavailable, using fallback:', e.message);
         const staticDefects = [
-          { defect_id: 'DEF-BLR-1001', defect_class: 'D40 Pothole Cavity', lat: 12.9716, lon: 77.5946, severity_pci: 42, area_m2: 1.85, is_verified_hotspot: true, reporting_buses: 'BUS-KA01-101, BUS-KA01-204' },
-          { defect_id: 'DEF-BLR-1002', defect_class: 'Waterlogging / Flooding', lat: 12.9750, lon: 77.5980, severity_pci: 35, area_m2: 5.2, is_verified_hotspot: false, reporting_buses: 'BUS-KA01-101' },
-          { defect_id: 'DEF-BLR-1003', defect_class: 'Missing Zebra Crossing', lat: 12.9680, lon: 77.5910, severity_pci: 60, area_m2: 3.4, is_verified_hotspot: false, reporting_buses: 'BUS-KA01-308' },
-          { defect_id: 'DEF-BLR-1004', defect_class: 'Damaged Traffic Sign', lat: 12.9800, lon: 77.6050, severity_pci: 55, area_m2: 0.8, is_verified_hotspot: false, reporting_buses: 'BUS-KA01-204' },
+          { defect_id: 'DEF-BLR-1001', defect_class: 'D40 Pothole Cavity', lat: 12.9716, lon: 77.5946, severity_pci: 42, area_m2: 1.85, is_verified_hotspot: true, reporting_buses: 'BUS-KA01-101, BUS-KA01-204', address: 'St. Joseph\'s Indian High School, Vittal Mallya Rd, Bengaluru', elevation_m: 943.8, drainage_risk: 'OPTIMAL_DRAINAGE' },
+          { defect_id: 'DEF-BLR-1002', defect_class: 'Waterlogging / Flooding', lat: 12.9750, lon: 77.5980, severity_pci: 35, area_m2: 5.2, is_verified_hotspot: false, reporting_buses: 'BUS-KA01-101', address: 'MG Road Corridor, Ashok Nagar, Bengaluru', elevation_m: 928.4, drainage_risk: 'MODERATE_WATER_ACCUMULATION' },
+          { defect_id: 'DEF-BLR-1003', defect_class: 'Missing Zebra Crossing', lat: 12.9680, lon: 77.5910, severity_pci: 60, area_m2: 3.4, is_verified_hotspot: false, reporting_buses: 'BUS-KA01-308', address: 'Corporation Circle, Nrupathunga Rd, Bengaluru', elevation_m: 918.2, drainage_risk: 'OPTIMAL_DRAINAGE' },
+          { defect_id: 'DEF-BLR-1004', defect_class: 'Damaged Traffic Sign', lat: 12.9800, lon: 77.6050, severity_pci: 55, area_m2: 0.8, is_verified_hotspot: false, reporting_buses: 'BUS-KA01-204', address: 'Old Madras Rd / Tin Factory Link, Bengaluru', elevation_m: 902.1, drainage_risk: 'HIGH_MONSOON_WATERLOGGING_RISK' },
         ];
+        sihGisDefects = staticDefects;
+        populateRouteSelectors(sihGisBuses, sihGisDefects);
         updateDedupTable(staticDefects);
         if (sihMap) updateMapMarkers(staticDefects, [], []);
+      }
+    }
+
+    function populateRouteSelectors(buses, defects) {
+      const busSelect = document.getElementById('gmaps-route-bus');
+      if (busSelect && buses && buses.length > 0) {
+        const curVal = busSelect.value;
+        busSelect.innerHTML = buses.map(b => `<option value="${b.bus_id}">${b.bus_id} (${(b.route || '').split('(')[0].trim()})</option>`).join('');
+        if (curVal) busSelect.value = curVal;
+      }
+      const defSelect = document.getElementById('gmaps-route-defect');
+      if (defSelect && defects && defects.length > 0) {
+        const curDef = defSelect.value;
+        defSelect.innerHTML = defects.map(d => `<option value="${d.defect_id}">${d.defect_id} (${d.defect_class})</option>`).join('');
+        if (curDef) defSelect.value = curDef;
       }
     }
 
     function updateMapMarkers(defects, buses, heatmap) {
       if (!sihMap) return;
 
-      // Clear existing layers
       sihMap.eachLayer(layer => {
         if (layer instanceof L.Marker || layer instanceof L.CircleMarker || layer instanceof L.Circle) {
           sihMap.removeLayer(layer);
         }
       });
 
-      // Defect color map
       const classColors = {
         'D40': '#ef4444', 'Pothole': '#ef4444', 'Waterlogging': '#06b6d4',
         'Zebra': '#f59e0b', 'Sign': '#f59e0b', 'Divider': '#a78bfa', 'Missing': '#a78bfa',
@@ -6764,31 +6900,41 @@
       defects.forEach(d => {
         let color = '#ef4444';
         for (const [key, val] of Object.entries(classColors)) {
-          if (d.defect_class.includes(key)) { color = val; break; }
+          if (d.defect_class && d.defect_class.includes(key)) { color = val; break; }
         }
 
-        const radius = Math.max(10, Math.min(30, (d.area_m2 || 1) * 5));
+        const radius = Math.max(10, Math.min(28, (d.area_m2 || 1) * 5));
         const marker = L.circleMarker([d.lat, d.lon || d.lng], {
           radius: radius,
           color: color,
           fillColor: color,
-          fillOpacity: d.is_verified_hotspot ? 0.9 : 0.55,
+          fillOpacity: d.is_verified_hotspot ? 0.9 : 0.6,
           weight: d.is_verified_hotspot ? 3 : 1.5
         }).addTo(sihMap);
 
         const hotspotBadge = d.is_verified_hotspot ?
-          '<span style="background:#ef4444;color:#fff;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:bold;">🔥 HOTSPOT</span>' : '';
+          '<span style="background:#ef4444;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:bold;">🔥 HOTSPOT</span>' : '';
+        const mapsUrl = d.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${d.lat},${d.lon || d.lng}`;
+        const streetViewUrl = d.street_view_url || `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${d.lat},${d.lon || d.lng}`;
 
         marker.bindPopup(`
-          <div style="font-family:monospace;font-size:11px;min-width:200px;">
-            <b style="color:${color};font-size:13px;">${d.defect_class}</b><br>
-            ${hotspotBadge}
-            <hr style="border-color:#334155;margin:4px 0;">
-            <b>ID:</b> ${d.defect_id}<br>
-            <b>PCI:</b> ${d.severity_pci} / 100<br>
-            <b>Area:</b> ${(d.area_m2 || 0).toFixed(2)} m²<br>
+          <div style="font-family:monospace;font-size:11px;min-width:260px;line-height:1.45;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <b style="color:${color};font-size:12px;">${d.defect_class}</b>
+              ${hotspotBadge}
+            </div>
+            <hr style="border-color:#334155;margin:5px 0;">
+            <div style="color:#cbd5e1;font-size:10px;margin-bottom:4px;">📍 <b>Location:</b> ${d.address || 'Bengaluru Urban Corridor'}</div>
+            <b>ID:</b> ${d.defect_id} | <b>PCI:</b> <span style="color:${d.severity_pci < 40 ? '#f87171' : '#facc15'};font-weight:bold;">${d.severity_pci} / 100</span><br>
+            <b>Area:</b> ${(d.area_m2 || 0).toFixed(2)} m² | <b>Elevation:</b> ${d.elevation_m || 915} m<br>
             <b>GPS:</b> ${d.lat.toFixed(4)}°N, ${(d.lon || d.lng || 0).toFixed(4)}°E<br>
-            <b>Buses:</b> ${d.reporting_buses || 'N/A'}
+            <b>Buses:</b> <span style="color:#94a3b8;">${d.reporting_buses || 'N/A'}</span>
+            <hr style="border-color:#334155;margin:5px 0;">
+            <div style="display:flex;gap:4px;margin-top:6px;">
+              <a href="${mapsUrl}" target="_blank" style="flex:1;text-align:center;background:#0284c7;color:#fff;padding:4px;border-radius:6px;text-decoration:none;font-size:9px;font-weight:bold;">📍 Google Maps ↗</a>
+              <a href="${streetViewUrl}" target="_blank" style="flex:1;text-align:center;background:#7c3aed;color:#fff;padding:4px;border-radius:6px;text-decoration:none;font-size:9px;font-weight:bold;">👁️ Street View ↗</a>
+              <button onclick="planRouteToDefect('${d.defect_id}')" style="flex:1;background:#f59e0b;color:#000;padding:4px;border-radius:6px;border:none;font-size:9px;font-weight:bold;cursor:pointer;">🚗 Route Here</button>
+            </div>
           </div>
         `);
       });
@@ -6802,14 +6948,18 @@
 
       buses.forEach(bus => {
         const mk = L.marker([bus.lat, bus.lng], { icon: busIcon(bus.bus_id, bus.status) }).addTo(sihMap);
+        const busMapsUrl = bus.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${bus.lat},${bus.lng}`;
         mk.bindPopup(`
-          <div style="font-family:monospace;font-size:11px;min-width:200px;">
+          <div style="font-family:monospace;font-size:11px;min-width:210px;line-height:1.4;">
             <b style="font-size:13px;color:#10b981;">🚌 ${bus.bus_id}</b><br>
             <hr style="border-color:#334155;margin:4px 0;">
             <b>Route:</b> ${bus.route}<br>
             <b>Speed:</b> ${bus.speed_kmh} km/h<br>
             <b>Status:</b> <span style="color:${bus.status && bus.status.includes('ALERT') ? '#ef4444' : '#10b981'}">${bus.status}</span><br>
-            <b>Defects Logged:</b> ${bus.active_distress_count}
+            <b>Defects Logged:</b> ${bus.active_distress_count}<br>
+            <div style="margin-top:6px;">
+              <a href="${busMapsUrl}" target="_blank" style="color:#38bdf8;font-weight:bold;text-decoration:none;font-size:10px;">📍 Track on Google Maps ↗</a>
+            </div>
           </div>
         `);
       });
@@ -6848,16 +6998,144 @@
           ? '<span style="background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.4);padding:1px 6px;border-radius:4px;font-size:9px;">🔥 HOTSPOT</span>'
           : '<span style="background:rgba(100,116,139,0.2);color:#94a3b8;border:1px solid rgba(100,116,139,0.3);padding:1px 6px;border-radius:4px;font-size:9px;">LOGGED</span>';
         const count = d.confirmation_count || 1;
-        const buses = d.reporting_buses || 'N/A';
+        const mapsUrl = d.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${d.lat},${d.lon || d.lng}`;
         return `<tr style="border-bottom:1px solid #1e293b;">
-          <td style="padding:6px 8px;color:#fff;font-weight:bold;">${d.defect_id}</td>
+          <td style="padding:6px 8px;color:#fff;font-weight:bold;">
+            <a href="${mapsUrl}" target="_blank" class="hover:text-amber-400 underline decoration-dotted" title="${d.address || ''}">${d.defect_id}</a>
+          </td>
           <td style="padding:6px 8px;color:${color};">${d.defect_class}</td>
-          <td style="padding:6px 8px;color:#94a3b8;font-size:10px;">${buses}</td>
+          <td style="padding:6px 8px;color:#cbd5e1;font-size:10px;" title="${d.address || ''}">${(d.address || 'Bengaluru Corridor').slice(0, 28)}...</td>
+          <td style="padding:6px 8px;color:#38bdf8;font-size:10px;">${d.elevation_m || 915}m</td>
           <td style="padding:6px 8px;color:#34d399;">${count} Pass${count > 1 ? 'es' : ''}</td>
           <td style="padding:6px 8px;">${status}</td>
         </tr>`;
       }).join('');
     }
+
+    async function searchGoogleMapsHighway() {
+      const query = document.getElementById('gmaps-search-input')?.value.trim();
+      if (!query) {
+        showAiToast('Google Maps Search', 'Enter a highway, junction, or city.', false);
+        return;
+      }
+      try {
+        const resp = await fetch(`http://127.0.0.1:8000/api/v1/maps/geocode?query=${encodeURIComponent(query)}`);
+        const data = await resp.json();
+        if (data.status === 'OK' && data.results && data.results.length > 0) {
+          const top = data.results[0];
+          sihMap.flyTo([top.lat, top.lng], 15, { animate: true, duration: 1.2 });
+          L.popup()
+            .setLatLng([top.lat, top.lng])
+            .setContent(`
+              <div style="font-family:monospace;font-size:11px;">
+                <b style="color:#f59e0b;font-size:12px;">📍 ${query}</b><br>
+                <div style="color:#cbd5e1;margin-top:2px;">${top.formatted_address}</div>
+                <div style="margin-top:6px;">
+                  <a href="${top.google_maps_url}" target="_blank" style="color:#38bdf8;font-weight:bold;text-decoration:none;">Open in Google Maps ↗</a>
+                </div>
+              </div>
+            `)
+            .openOn(sihMap);
+          showAiToast('Google Maps Geocoded', top.formatted_address.slice(0, 45) + '...', true);
+        } else {
+          showAiToast('Location Not Found', 'Could not resolve location.', false);
+        }
+      } catch (err) {
+        console.error('[Google Maps] Geocode error:', err);
+      }
+    }
+
+    async function calculateGoogleMapsRoute() {
+      const busId = document.getElementById('gmaps-route-bus')?.value || 'BUS-KA01-101';
+      const defectId = document.getElementById('gmaps-route-defect')?.value || 'DEF-BLR-1001';
+      const avoidPotholes = document.getElementById('gmaps-avoid-toggle')?.checked ?? true;
+
+      const busEl = sihGisBuses.find(b => b.bus_id === busId) || { lat: 12.9725, lng: 77.5955 };
+      const defEl = sihGisDefects.find(d => d.defect_id === defectId) || { lat: 12.9780, lon: 77.6020 };
+
+      try {
+        const resp = await fetch('http://127.0.0.1:8000/api/v1/maps/directions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            origin_lat: busEl.lat,
+            origin_lng: busEl.lng,
+            dest_lat: defEl.lat,
+            dest_lng: defEl.lon || defEl.lng,
+            avoid_defects: avoidPotholes
+          })
+        });
+        const routeData = await resp.json();
+        if (routeData.status === 'OK' && routeData.polyline_coords) {
+          if (currentRoutePolyline) sihMap.removeLayer(currentRoutePolyline);
+
+          const lineColor = avoidPotholes ? '#10b981' : '#38bdf8';
+          currentRoutePolyline = L.polyline(routeData.polyline_coords, {
+            color: lineColor,
+            weight: 5,
+            opacity: 0.85,
+            dashArray: avoidPotholes ? '6 6' : null
+          }).addTo(sihMap);
+
+          sihMap.fitBounds(currentRoutePolyline.getBounds(), { padding: [40, 40] });
+
+          const infoEl = document.getElementById('gmaps-route-info');
+          if (infoEl) {
+            infoEl.innerHTML = `
+              <div class="flex items-center justify-between text-xs font-mono">
+                <span class="text-white font-bold">🛣️ ${routeData.summary}</span>
+                <span class="text-emerald-400 font-bold">${routeData.distance_km} km | ${routeData.duration_text}</span>
+              </div>
+              <div class="text-[10px] text-slate-400 font-mono mt-1">
+                Mode: ${avoidPotholes ? '🛡️ Safe Detour (Pothole Avoidance Active)' : '⚡ Direct Route'} |
+                <a href="${routeData.google_maps_nav_url}" target="_blank" class="text-amber-400 font-bold underline ml-1">Live Google Navigation ↗</a>
+              </div>
+            `;
+            infoEl.classList.remove('hidden');
+          }
+
+          showAiToast('Route Calculated', `${routeData.distance_km} km via ${routeData.provider}`, true);
+        }
+      } catch (err) {
+        console.error('[Google Maps] Route error:', err);
+      }
+    }
+
+    function clearGoogleMapsRoute() {
+      if (currentRoutePolyline && sihMap) {
+        sihMap.removeLayer(currentRoutePolyline);
+        currentRoutePolyline = null;
+      }
+      const infoEl = document.getElementById('gmaps-route-info');
+      if (infoEl) infoEl.classList.add('hidden');
+      showAiToast('Route Cleared', 'Active navigation overlay removed', false);
+    }
+
+    function planRouteToDefect(defectId) {
+      const defSelect = document.getElementById('gmaps-route-defect');
+      if (defSelect) defSelect.value = defectId;
+      calculateGoogleMapsRoute();
+    }
+
+    function openGoogleMapsKeyModal() {
+      const currentKey = localStorage.getItem('roadshield_google_maps_key') || '';
+      const entered = prompt('Enter your Google Maps Platform API Key (AIza...):\nLeave blank to use High-Fidelity Dual-Engine (OSM & MoRTH Gazetteer):', currentKey);
+      if (entered !== null) {
+        localStorage.setItem('roadshield_google_maps_key', entered.trim());
+        fetch('http://127.0.0.1:8000/api/v1/maps/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: entered.trim() })
+        }).then(r => r.json()).then(res => {
+          showAiToast('Google Maps Key Configured', res.status_message, res.is_valid);
+          const badge = document.getElementById('gmaps-key-badge');
+          if (badge) badge.textContent = res.api_key_configured ? 'CUSTOM KEY' : 'DUAL-ENGINE';
+        }).catch(() => {
+          showAiToast('Google Maps Key Saved', 'Saved locally in browser storage.', true);
+        });
+      }
+    }
+
 
     async function triggerRashDrivingSim() {
       try {

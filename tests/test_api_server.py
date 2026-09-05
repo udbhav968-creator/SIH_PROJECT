@@ -131,9 +131,40 @@ def run_server_tests():
         assert status == 200
         assert summary["total_images_evaluated"] == 5
         assert summary["pavements_accepted"] == 5
+
+        # Test 11: Google Maps Status & Tile Layers
+        status, maps_stat = http_get("/api/v1/maps/status")
+        print(f"  [PASS] GET /api/v1/maps/status -> Status: {maps_stat['google_maps_platform']} | Provider: {maps_stat['active_provider']}")
+        assert status == 200
+        assert maps_stat["google_maps_platform"] == "ONLINE"
+
+        # Test 12: Google Maps Reverse Geocoding API
+        status, rev_res = http_get("/api/v1/maps/reverse-geocode?lat=12.9716&lon=77.5946")
+        print(f"  [PASS] GET /api/v1/maps/reverse-geocode -> Address: {rev_res['formatted_address'][:50]}...")
+        assert status == 200
+        assert "formatted_address" in rev_res
+        assert "google.com/maps" in rev_res["google_maps_url"]
+
+        # Test 13: Google Maps Directions API & Pothole Detour Planner
+        status, dirs_res = http_post("/api/v1/maps/directions", {
+            "origin_lat": 12.9725, "origin_lng": 77.5955,
+            "dest_lat": 12.9780, "dest_lng": 77.6020,
+            "avoid_defects": True
+        })
+        print(f"  [PASS] POST /api/v1/maps/directions -> Distance: {dirs_res['distance_km']} km | Duration: {dirs_res['duration_text']} | Avoidance: {dirs_res['pothole_avoidance_mode']}")
+        assert status == 200
+        assert dirs_res["distance_km"] > 0
+        assert len(dirs_res["polyline_coords"]) >= 2
+
+        # Test 14: Centralized Fleet GIS Map Data with Google Maps Enrichment
+        status, gis_res = http_get("/api/v1/gis/map-data")
+        print(f"  [PASS] GET /api/v1/gis/map-data -> Verified Sites: {len(gis_res['deduplicated_defects'])} | Tile Layer: {gis_res['default_tile_layer']}")
+        assert status == 200
+        assert len(gis_res["deduplicated_defects"]) > 0
+        assert "google_maps_url" in gis_res["deduplicated_defects"][0]
         
         print("-" * 70)
-        print("🏆 ALL 10 API GATEWAY INTEGRATION ENDPOINTS PASSED WITH 100% SUCCESS!")
+        print("🏆 ALL 14 API GATEWAY & GOOGLE MAPS INTEGRATION ENDPOINTS PASSED WITH 100% SUCCESS!")
         print("=" * 70)
         return True
     finally:

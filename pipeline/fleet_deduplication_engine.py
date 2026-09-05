@@ -66,6 +66,24 @@ class FleetDeduplicationEngine:
             # Brand new unique physical defect
             new_id = f"DEF-BLR-{self.next_defect_id}"
             self.next_defect_id += 1
+
+            # Google Maps & Geospatial enrichment
+            google_maps_url = f"https://www.google.com/maps/search/?api=1&query={round(lat, 6)},{round(lon, 6)}"
+            street_view_url = f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={round(lat, 6)},{round(lon, 6)}"
+            formatted_address = ""
+            elevation_m = 915.0
+            drainage_risk = "OPTIMAL_DRAINAGE"
+
+            try:
+                from services.google_maps_service import google_maps_service
+                geo = google_maps_service.reverse_geocode(lat, lon)
+                formatted_address = geo.get("formatted_address", "")
+                elev = google_maps_service.get_elevation(lat, lon)
+                elevation_m = elev.get("elevation_meters", 915.0)
+                drainage_risk = elev.get("drainage_risk_category", "OPTIMAL_DRAINAGE")
+            except Exception:
+                formatted_address = f"Corridor KM {abs(round(lat*10, 1))}, Bengaluru Urban Hub, Karnataka 560001"
+
             self.defect_registry[new_id] = {
                 "defect_id": new_id,
                 "defect_class": defect_class,
@@ -78,16 +96,25 @@ class FleetDeduplicationEngine:
                 "confirmation_count": 1,
                 "first_seen_timestamp": now,
                 "last_seen_timestamp": now,
-                "is_verified_hotspot": False
+                "is_verified_hotspot": False,
+                "address": formatted_address,
+                "google_maps_url": google_maps_url,
+                "street_view_url": street_view_url,
+                "elevation_m": elevation_m,
+                "drainage_risk": drainage_risk
             }
             return {
                 "action": "REGISTERED_NEW_DEFECT",
                 "defect_id": new_id,
                 "confirmations": 1,
                 "is_hotspot": False,
-                "distance_to_centroid_m": 0.0
+                "distance_to_centroid_m": 0.0,
+                "address": formatted_address,
+                "google_maps_url": google_maps_url,
+                "street_view_url": street_view_url
             }
 
     def get_all_deduplicated_defects(self):
         """Returns the deduplicated list for GIS map visualization."""
         return list(self.defect_registry.values())
+

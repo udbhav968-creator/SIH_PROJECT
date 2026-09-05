@@ -44,6 +44,9 @@ from pipeline.fleet_deduplication_engine import FleetDeduplicationEngine
 from models.multimodal_transformer_fusion import MultimodalTransformerFusionNet
 from models.automotive_rl_policy_agent import AutomotiveRLPolicyAgent
 from models.automotive_telematics_engine import AutomotiveTelematicsEngine
+import urllib.parse
+from services.google_maps_service import google_maps_service
+
 
 # ==============================================================================
 # GLOBAL MODEL INITIALIZATION & CHECKPOINT LOADING
@@ -250,29 +253,102 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
+        # GOOGLE MAPS PLATFORM & GIS INTELLIGENCE ENDPOINTS
+        if path == "/api/v1/maps/status":
+            self._send_json(200, google_maps_service.get_service_status())
+            return
+
+        elif path == "/api/v1/maps/tile-layers":
+            self._send_json(200, {
+                "status": "OK",
+                "default_layer": "google_roadmap",
+                "tile_layers": google_maps_service.get_tile_layers()
+            })
+            return
+
+        elif path == "/api/v1/maps/geocode":
+            parsed = urllib.parse.urlparse(full_path)
+            q_params = urllib.parse.parse_qs(parsed.query)
+            q = q_params.get("query", q_params.get("address", [""]))[0]
+            res = google_maps_service.geocode(q)
+            self._send_json(200, res)
+            return
+
+        elif path == "/api/v1/maps/reverse-geocode":
+            parsed = urllib.parse.urlparse(full_path)
+            q_params = urllib.parse.parse_qs(parsed.query)
+            lat = float(q_params.get("lat", [12.9716])[0])
+            lon = float(q_params.get("lon", q_params.get("lng", [77.5946]))[0])
+            res = google_maps_service.reverse_geocode(lat, lon)
+            self._send_json(200, res)
+            return
+
+        elif path == "/api/v1/maps/elevation":
+            parsed = urllib.parse.urlparse(full_path)
+            q_params = urllib.parse.parse_qs(parsed.query)
+            lat = float(q_params.get("lat", [12.9716])[0])
+            lon = float(q_params.get("lon", q_params.get("lng", [77.5946]))[0])
+            res = google_maps_service.get_elevation(lat, lon)
+            self._send_json(200, res)
+            return
+
+        elif path == "/api/v1/maps/places-nearby":
+            parsed = urllib.parse.urlparse(full_path)
+            q_params = urllib.parse.parse_qs(parsed.query)
+            lat = float(q_params.get("lat", [12.9716])[0])
+            lon = float(q_params.get("lon", q_params.get("lng", [77.5946]))[0])
+            fac_type = q_params.get("type", ["all"])[0]
+            res = google_maps_service.find_nearby_civil_facilities(lat, lon, fac_type)
+            self._send_json(200, res)
+            return
+
+        elif path == "/api/v1/maps/streetview-url":
+            parsed = urllib.parse.urlparse(full_path)
+            q_params = urllib.parse.parse_qs(parsed.query)
+            lat = float(q_params.get("lat", [12.9716])[0])
+            lon = float(q_params.get("lon", q_params.get("lng", [77.5946]))[0])
+            res = google_maps_service.get_streetview_metadata(lat, lon)
+            self._send_json(200, res)
+            return
+
         # SIH26124 GET ENDPOINTS
         if path == "/api/v1/gis/map-data":
             defects = fleet_dedup_engine.get_all_deduplicated_defects()
+            for d in defects:
+                if not d.get("address"):
+                    geo = google_maps_service.reverse_geocode(d["lat"], d["lon"])
+                    d["address"] = geo.get("formatted_address", "Urban Corridor")
+                    d["google_maps_url"] = geo.get("google_maps_url", f"https://www.google.com/maps/search/?api=1&query={d['lat']},{d['lon']}")
+                    d["street_view_url"] = geo.get("street_view_url", f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={d['lat']},{d['lon']}")
+                    elev = google_maps_service.get_elevation(d["lat"], d["lon"])
+                    d["elevation_m"] = elev.get("elevation_meters", 915.0)
+                    d["drainage_risk"] = elev.get("drainage_risk_category", "OPTIMAL_DRAINAGE")
             buses = [
-                {"bus_id": "BUS-KA01-101", "route": "Route 335-E (Majestic -> Whitefield)", "lat": 12.9725, "lng": 77.5955, "speed_kmh": 42.5, "status": "PATROLLING_NORMAL", "active_distress_count": 2},
-                {"bus_id": "BUS-KA01-204", "route": "Route 500-D (Hebbal -> Silk Board)", "lat": 12.9780, "lng": 77.6020, "speed_kmh": 36.0, "status": "ALERT_RASH_DRIVER_DETECTED", "active_distress_count": 2},
-                {"bus_id": "BUS-KA01-308", "route": "Route 201-R (Kengeri -> Electronic City)", "lat": 12.9675, "lng": 77.5895, "speed_kmh": 48.0, "status": "PATROLLING_NORMAL", "active_distress_count": 1}
+                {"bus_id": "BUS-KA01-101", "route": "Route 335-E (Majestic -> Whitefield)", "lat": 12.9725, "lng": 77.5955, "speed_kmh": 42.5, "status": "PATROLLING_NORMAL", "active_distress_count": 2, "google_maps_url": "https://www.google.com/maps/search/?api=1&query=12.9725,77.5955"},
+                {"bus_id": "BUS-KA01-204", "route": "Route 500-D (Hebbal -> Silk Board)", "lat": 12.9780, "lng": 77.6020, "speed_kmh": 36.0, "status": "ALERT_RASH_DRIVER_DETECTED", "active_distress_count": 2, "google_maps_url": "https://www.google.com/maps/search/?api=1&query=12.9780,77.6020"},
+                {"bus_id": "BUS-KA01-308", "route": "Route 201-R (Kengeri -> Electronic City)", "lat": 12.9675, "lng": 77.5895, "speed_kmh": 48.0, "status": "PATROLLING_NORMAL", "active_distress_count": 1, "google_maps_url": "https://www.google.com/maps/search/?api=1&query=12.9675,77.5895"}
             ]
             congestion_heatmap = [
-                {"lat": 12.9716, "lng": 77.5946, "intensity": 0.85, "bottleneck": "Silk Board Junction"},
-                {"lat": 12.9750, "lng": 77.5980, "intensity": 0.65, "bottleneck": "MG Road Corridor"},
-                {"lat": 12.9680, "lng": 77.5910, "intensity": 0.40, "bottleneck": "Corporation Circle"},
-                {"lat": 12.9800, "lng": 77.6050, "intensity": 0.90, "bottleneck": "Tin Factory Outer Ring Road"}
+                {"lat": 12.9716, "lng": 77.5946, "intensity": 0.85, "bottleneck": "Silk Board Junction", "google_maps_url": "https://www.google.com/maps/search/?api=1&query=12.9716,77.5946"},
+                {"lat": 12.9750, "lng": 77.5980, "intensity": 0.65, "bottleneck": "MG Road Corridor", "google_maps_url": "https://www.google.com/maps/search/?api=1&query=12.9750,77.5980"},
+                {"lat": 12.9680, "lng": 77.5910, "intensity": 0.40, "bottleneck": "Corporation Circle", "google_maps_url": "https://www.google.com/maps/search/?api=1&query=12.9680,77.5910"},
+                {"lat": 12.9800, "lng": 77.6050, "intensity": 0.90, "bottleneck": "Tin Factory Outer Ring Road", "google_maps_url": "https://www.google.com/maps/search/?api=1&query=12.9800,77.6050"}
             ]
+            civil_depots = google_maps_service.find_nearby_civil_facilities(12.9716, 77.5946)["facilities"]
             self._send_json(200, {
                 "system": "SIH26124 Centralized Urban Intelligence GIS Platform",
-                "organization": "Bharat Electronics Limited (BEL)",
+                "organization": "Bharat Electronics Limited (BEL) & MoRTH / NHAI",
+                "google_maps_status": google_maps_service.get_service_status(),
+                "tile_layers": google_maps_service.get_tile_layers(),
+                "default_tile_layer": "google_roadmap",
                 "deduplicated_defects": defects,
                 "fleet_units": buses,
                 "congestion_heatmap": congestion_heatmap,
+                "civil_infrastructure": civil_depots,
                 "timestamp_utc": int(time.time())
             })
             return
+
 
         if path == "/api/v1/fleet/telemetry":
             self._send_json(200, {
@@ -512,12 +588,54 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         t0 = time.time()
 
         # ----------------------------------------------------------------------
-        # ENDPOINT 1: Vision Distress Detection (Model M1)
+        # GOOGLE MAPS PLATFORM SERVICES (POST)
         # ----------------------------------------------------------------------
+        if path == "/api/v1/maps/config":
+            api_key = body.get("api_key", "")
+            res = google_maps_service.set_api_key(api_key)
+            self._send_json(200, res)
+            return
+
+        elif path == "/api/v1/maps/directions":
+            origin_lat = float(body.get("origin_lat", 12.9725))
+            origin_lng = float(body.get("origin_lng", 77.5955))
+            dest_lat = float(body.get("dest_lat", 12.9780))
+            dest_lng = float(body.get("dest_lng", 77.6020))
+            avoid_defects = bool(body.get("avoid_defects", False))
+            known_defects = fleet_dedup_engine.get_all_deduplicated_defects()
+            dirs = google_maps_service.get_directions(
+                origin_lat, origin_lng, dest_lat, dest_lng,
+                avoid_defects=avoid_defects,
+                known_defects=known_defects
+            )
+            self._send_json(200, dirs)
+            return
+
+        elif path == "/api/v1/maps/geocode":
+            q = body.get("query", body.get("address", ""))
+            res = google_maps_service.geocode(q)
+            self._send_json(200, res)
+            return
+
+        elif path == "/api/v1/maps/reverse-geocode":
+            lat = float(body.get("lat", body.get("latitude", 12.9716)))
+            lon = float(body.get("lon", body.get("lng", body.get("longitude", 77.5946))))
+            res = google_maps_service.reverse_geocode(lat, lon)
+            self._send_json(200, res)
+            return
+
+        elif path == "/api/v1/maps/elevation":
+            lat = float(body.get("lat", body.get("latitude", 12.9716)))
+            lon = float(body.get("lon", body.get("lng", body.get("longitude", 77.5946))))
+            res = google_maps_service.get_elevation(lat, lon)
+            self._send_json(200, res)
+            return
+
         # ----------------------------------------------------------------------
         # ENDPOINT 1: Vision Distress Detection (Model M1)
         # ----------------------------------------------------------------------
         if path in ["/api/v1/detect/vision", "/api/v1/vision/predict"]:
+
             if "features" in body and len(body["features"]) == 64:
                 X = np.array([body["features"]], dtype=np.float32)
             else:
