@@ -455,9 +455,34 @@ class DeepInferencePipeline:
                 }
             })
 
-        # Select primary detection: prioritize distress class, then physical prominence
-        detections = sorted(detections, key=lambda d: (d["class_id"], d["surface_area_m2"], d["confidence"]), reverse=True)
-        primary = detections[0]
+        # Separate Pedestrians (VRU Safety) and Road Distress Objects
+        ped_detections = [d for d in detections if d.get("is_pedestrian")]
+        distress_detections = [d for d in detections if d.get("is_distress")]
+
+        primary_pedestrian = ped_detections[0] if ped_detections else None
+        if distress_detections:
+            sorted_distress = sorted(
+                distress_detections, 
+                key=lambda d: (
+                    d.get("class_id") == 4, 
+                    d.get("surface_area_m2", 0.0), 
+                    d.get("confidence", 0.0)
+                ), 
+                reverse=True
+            )
+            primary_distress = sorted_distress[0]
+        else:
+            primary_distress = detections[0]
+
+        primary = primary_pedestrian if primary_pedestrian is not None else primary_distress
+        has_dual_targets = (len(ped_detections) > 0 and len(distress_detections) > 0)
+        dual_target_summary = ""
+        if has_dual_targets:
+            dual_target_summary = (
+                f"CRITICAL CO-OCCURRENCE: Vulnerable Pedestrian ({primary_pedestrian['class_name']}) "
+                f"and Road Surface Distress ({primary_distress['class_name']} - {primary_distress['surface_area_m2']} m²) "
+                f"detected simultaneously! Triggering dual ADAS slowdown and defect bypass."
+            )
 
         # ----------------------------------------------------------------------
         # STAGE 6: Model M4 100 Hz IMU Shock Telemetry Correlation
@@ -468,21 +493,21 @@ class DeepInferencePipeline:
                 raw_imu = np.expand_dims(raw_imu, axis=0)
             delta_z = float(np.max(raw_imu[0, :, 2]) - np.min(raw_imu[0, :, 2]))
         else:
-            # Generate dynamically correlated shock matching optical depth
-            rng = np.random.RandomState(int(primary["surface_area_m2"] * 100) + int(primary["depth_cm"] * 10))
+            # Generate dynamically correlated shock matching optical depth of road distress
+            rng = np.random.RandomState(int(primary_distress["surface_area_m2"] * 100) + int(primary_distress["depth_cm"] * 10))
             raw_imu = np.zeros((1, 100, 3), dtype=np.float32)
             raw_imu[0, :, 0] = rng.normal(0, 0.2, 100)
             raw_imu[0, :, 1] = rng.normal(0, 0.2, 100)
             raw_imu[0, :, 2] = 9.81 + rng.normal(0, 0.3, 100)
             
-            if primary["class_id"] == 4:
+            if primary_distress["class_id"] == 4:
                 # Severe Pothole impact pulse
-                shock_amp = min(18.0, 3.5 + primary["depth_cm"] * 0.85)
+                shock_amp = min(18.0, 3.5 + primary_distress["depth_cm"] * 0.85)
                 raw_imu[0, 45:55, 2] += shock_amp
                 delta_z = float(shock_amp)
-            elif primary["is_distress"]:
+            elif primary_distress["is_distress"]:
                 # Mild crack ripple
-                shock_amp = 1.8 + primary["depth_cm"] * 0.2
+                shock_amp = 1.8 + primary_distress["depth_cm"] * 0.2
                 raw_imu[0, 48:52, 2] += shock_amp
                 delta_z = float(shock_amp)
             else:
@@ -496,7 +521,7 @@ class DeepInferencePipeline:
         # ----------------------------------------------------------------------
         # STAGE 7: Model M5 Recursive Bayesian Dual-Sensor Fusion Gate
         # ----------------------------------------------------------------------
-        p_vis = primary["probabilities"].get(cls_names[4], primary["confidence"] if primary["class_id"] == 4 else 0.05)
+        p_vis = primary_distress["probabilities"].get(cls_names[4], primary_distress["confidence"] if primary_distress["class_id"] == 4 else 0.05)
         fusion_res = self.bayesian_gate.fuse(
             p_visual=p_vis,
             p_imu_shock=p_imu,
@@ -533,8 +558,8 @@ class DeepInferencePipeline:
         # STAGE 9: Model M_DEGRADE Monsoon Deterioration Forecaster
         # ----------------------------------------------------------------------
         degrade_report = self.degrade_model.predict_lifecycle_roi(
-            init_area_m2=max(0.5, primary["surface_area_m2"]),
-            depth_cm=max(3.0, primary["depth_cm"]),
+            init_area_m2=max(0.5, primary_distress["surface_area_m2"]),
+            depth_cm=max(3.0, primary_distress["depth_cm"]),
             esal_trucks=traffic_esal,
             rain_mm=rain_mm,
             age_yr=pavement_age_yr
@@ -550,14 +575,14 @@ class DeepInferencePipeline:
         # STAGE 11: Model M10 MoRTH Cryptographic Work Order Dispatch Agent
         # ----------------------------------------------------------------------
         work_order = None
-        if primary["is_distress"]:
+        if primary_distress["is_distress"]:
             work_order = self.dispatch_agent.generate_work_order(
                 corridor_id=corridor_id,
                 latitude=latitude,
                 longitude=longitude,
-                distress_class=primary["class_name"],
-                area_sqm=primary["surface_area_m2"],
-                depth_cm=primary["depth_cm"],
+                distress_class=primary_distress["class_name"],
+                area_sqm=primary_distress["surface_area_m2"],
+                depth_cm=primary_distress["depth_cm"],
                 pci_score=int(pci_score)
             )
             # Verify cryptographic seal
@@ -579,8 +604,12 @@ class DeepInferencePipeline:
                 "lng": longitude,
                 "chainage_km": chainage_km
             },
-            "is_distress": primary["is_distress"],
-            "primary_distress": primary,
+            "is_distress": len(distress_detections) > 0,
+            "vulnerable_safety_alert": len(ped_detections) > 0,
+            "has_dual_targets": has_dual_targets,
+            "dual_target_summary": dual_target_summary,
+            "primary_distress": primary_distress,
+            "primary_pedestrian": primary_pedestrian,
             "primary_detection": primary,
             "all_detections": detections,
             "imu_shock_telemetry": {
@@ -606,14 +635,16 @@ class DeepInferencePipeline:
             },
             "cryptographic_work_order": work_order,
             "deep_forensic_intelligence": {
-                "shannon_entropy_bits": primary.get("shannon_entropy_bits", 0.25),
-                "epistemic_uncertainty_rating": primary.get("uncertainty_rating", "LOW_UNCERTAINTY"),
-                "astm_d6433_severity": primary.get("astm_d6433_severity", "HIGH" if primary.get("class_id") == 4 else "LOW"),
-                "irc_standard_specification": primary.get("irc_standard_specification", "IRC:82-2015 Clause 4.2"),
-                "top3_ranked_distress_hypotheses": primary.get("top3_ranked_predictions", []),
-                "structural_deterioration_velocity_sqcm_per_day": primary.get("deterioration_velocity_sqcm_per_day", 0.0),
-                "embodied_carbon_footprint_kg_co2e": primary.get("carbon_footprint_kg_co2e", 0.0),
-                "monsoon_risk_multiplier": primary.get("monsoon_vulnerability_index", 0.0)
+                "shannon_entropy_bits": primary_distress.get("shannon_entropy_bits", 0.25),
+                "epistemic_uncertainty_rating": primary_distress.get("uncertainty_rating", "LOW_UNCERTAINTY"),
+                "astm_d6433_severity": primary_distress.get("astm_d6433_severity", "HIGH" if primary_distress.get("class_id") == 4 else "LOW"),
+                "irc_standard_specification": primary_distress.get("irc_standard_specification", "IRC:82-2015 Clause 4.2"),
+                "top3_ranked_distress_hypotheses": primary_distress.get("top3_ranked_predictions", []),
+                "structural_deterioration_velocity_sqcm_per_day": primary_distress.get("deterioration_velocity_sqcm_per_day", 0.0),
+                "embodied_carbon_footprint_kg_co2e": primary_distress.get("carbon_footprint_kg_co2e", 0.0),
+                "monsoon_risk_multiplier": primary_distress.get("monsoon_vulnerability_index", 0.0),
+                "has_pedestrian_hazard": primary_pedestrian is not None,
+                "pedestrian_alert_level": primary_pedestrian.get("alert_level") if primary_pedestrian else "NO_PEDESTRIAN_HAZARD"
             },
             "latency_ms": elapsed_ms
         }

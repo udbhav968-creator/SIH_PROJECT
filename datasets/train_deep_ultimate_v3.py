@@ -70,9 +70,10 @@ def run_ultimate_deep_training():
         print(f"  ✓ Ingested {len(X_ped):,} Real Pedestrian / VRU Safety samples into Class 9.")
     else:
         np.random.seed(999)
-        X_ped = np.random.randn(1500, 64).astype(np.float32)
-        X_ped[:, 0:10] += 3.2
-        y_ped = np.full(1500, 9, dtype=np.int64)
+        X_ped = np.random.randn(2500, 64).astype(np.float32)
+        X_ped[:, 54:64] += 3.8
+        X_ped[:, 24:34] += 1.8
+        y_ped = np.full(2500, 9, dtype=np.int64)
 
     # Generate multi-class representation for 10 classes
     np.random.seed(42)
@@ -83,7 +84,8 @@ def run_ultimate_deep_training():
 
     for c in range(9):
         X_c = np.random.randn(N_per_class, 64).astype(np.float32)
-        X_c[:, (c * 6) : (c * 6 + 10)] += 3.5
+        start_idx = (c * 6) % 54
+        X_c[:, start_idx : start_idx + 10] += 3.6
         X_c[:, 16:32] += 0.8 * np.sin(np.linspace(0, np.pi * 2, 16))
         X_list.append(X_c)
         y_list.append(np.full(N_per_class, c, dtype=np.int64))
@@ -98,7 +100,10 @@ def run_ultimate_deep_training():
     X_list.append(X_ped)
     y_list.append(y_ped)
     geo_ped = np.zeros((len(X_ped), 4), dtype=np.float32)
-    geo_ped[:, 0] = 0.5; geo_ped[:, 1] = 0.5; geo_ped[:, 2] = 0.0; geo_ped[:, 3] = 0.0
+    geo_ped[:, 0] = np.random.uniform(0.2, 0.7, len(X_ped))
+    geo_ped[:, 1] = np.random.uniform(0.15, 0.45, len(X_ped))
+    geo_ped[:, 2] = np.random.uniform(0.12, 0.28, len(X_ped))
+    geo_ped[:, 3] = np.random.uniform(0.35, 0.65, len(X_ped))
     geo_list.append(geo_ped)
 
     X_m1 = np.vstack(X_list)

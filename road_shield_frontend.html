@@ -1919,6 +1919,23 @@
                   </div>
                 </div>
 
+                <!-- Dual Hazard Co-Occurrence Banner (Active when person + pothole co-occur) -->
+                <div id="rw-dual-target-banner" class="hidden text-xs font-mono bg-gradient-to-r from-cyan-950/80 via-amber-950/70 to-rose-950/80 p-3 rounded-2xl border border-cyan-500/50 text-cyan-200 flex items-start gap-2.5 shadow-lg shadow-cyan-950/40 my-2">
+                  <span class="text-lg leading-none">⚠️</span>
+                  <div class="flex-1">
+                    <div class="font-bold text-cyan-300 flex items-center justify-between flex-wrap gap-2">
+                      <span class="flex items-center gap-1.5">
+                        <span class="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                        DUAL HAZARD CO-OCCURRENCE DETECTED
+                      </span>
+                      <span class="px-2 py-0.5 bg-cyan-900/80 text-cyan-300 border border-cyan-700 rounded text-[10px] font-mono">VRU SAFETY + ROAD DEFECT</span>
+                    </div>
+                    <div id="rw-dual-target-desc" class="text-[11px] text-slate-200 mt-1 leading-relaxed">
+                      Pedestrian on carriage way and road cavity detected simultaneously. Autonomous ADAS slowdown and defect bypass policy engaged.
+                    </div>
+                  </div>
+                </div>
+
                 <!-- MoRTH / IRC Standard Civil Repair Specification Banner -->
                 <div id="rw-photo-irc-spec" class="text-[11px] font-mono bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-sky-300 flex items-start gap-2">
                   <span class="text-amber-400 font-bold whitespace-nowrap">📜 MoRTH/IRC Standard:</span>
@@ -6281,24 +6298,53 @@
       };
     }
 
-        function applyPhotoAnalysisToUI(analysis, fileName) {
+    function applyPhotoAnalysisToUI(analysis, fileName) {
       if (!analysis) return;
       
       // Support both /api/v1/pipeline/deep-audit and legacy endpoint formats
-      const p = analysis.primary_distress || analysis.primary_detection || {};
-      const dims = p.physical_dimensions || {
+      const hasDual = Boolean(analysis.has_dual_targets || (analysis.primary_pedestrian && analysis.primary_distress && analysis.primary_distress.is_distress));
+      const pedObj = analysis.primary_pedestrian || (analysis.primary_detection && (analysis.primary_detection.is_pedestrian || (analysis.primary_detection.class_name && analysis.primary_detection.class_name.toLowerCase().includes("pedestrian"))) ? analysis.primary_detection : null);
+      const distObj = (analysis.primary_distress && analysis.primary_distress.is_distress) ? analysis.primary_distress : (analysis.primary_detection && analysis.primary_detection.is_distress ? analysis.primary_detection : (analysis.primary_distress || {}));
+      
+      const p = hasDual ? distObj : (analysis.primary_distress || analysis.primary_detection || {});
+      const isPed = Boolean(p.is_pedestrian || (p.class_name && p.class_name.toLowerCase().includes("pedestrian")));
+      const isPedOnly = Boolean(!hasDual && isPed);
+      
+      const dims = (distObj && distObj.physical_dimensions) ? distObj.physical_dimensions : (p.physical_dimensions || {
         surface_area_m2: p.surface_area_m2 || (analysis.morth_civil_ledger ? (analysis.morth_civil_ledger.total_bitumen_tonnage_t / 0.207) : 0.0),
         depth_cm: p.depth_cm || 0.0,
         bitumen_volume_m3: (analysis.morth_civil_ledger && analysis.morth_civil_ledger.total_bitumen_tonnage_t) ? (analysis.morth_civil_ledger.total_bitumen_tonnage_t / 2.76) : ((p.surface_area_m2 || 0) * (p.depth_cm || 0) / 100),
         morth_compacted_tonnage_t: (analysis.morth_civil_ledger && analysis.morth_civil_ledger.total_bitumen_tonnage_t) || 0.0,
         estimated_repair_cost_inr: (analysis.morth_civil_ledger && analysis.morth_civil_ledger.total_estimated_repair_inr) || 0.0
-      };
+      });
 
-      const isPed = Boolean(p.is_pedestrian || (p.class_name && p.class_name.toLowerCase().includes("pedestrian")));
       const predEl = document.getElementById("rw-photo-pred-class");
       if (predEl) {
-        predEl.innerText = p.class_name || (isPed ? "Child / Pedestrian Hazard (Vulnerable Road User)" : "D40 Severe Cavity / Pothole");
-        predEl.style.color = isPed ? "#06b6d4" : (p.is_distress ? "#ef4444" : "#10b981");
+        if (hasDual) {
+          predEl.innerHTML = `<span style="color:#06b6d4" class="font-bold">🚶 VRU Pedestrian</span> <span class="text-slate-400 font-normal">&amp;</span> <span style="color:#f59e0b" class="font-bold">🕳️ ${distObj.class_name || 'D40 Cavity / Pothole'}</span>`;
+        } else if (isPedOnly) {
+          predEl.innerText = p.class_name || "Child / Pedestrian Hazard (Vulnerable Road User)";
+          predEl.style.color = "#06b6d4";
+        } else {
+          predEl.innerText = p.class_name || "D40 Severe Cavity / Pothole";
+          predEl.style.color = p.is_distress ? "#ef4444" : "#10b981";
+        }
+      }
+
+      // Show or hide Dual Target Co-Occurrence Banner
+      const dualBanner = document.getElementById("rw-dual-target-banner");
+      const dualDesc = document.getElementById("rw-dual-target-desc");
+      if (dualBanner) {
+        if (hasDual) {
+          dualBanner.classList.remove("hidden");
+          dualBanner.style.display = "flex";
+          if (dualDesc) {
+            dualDesc.innerHTML = analysis.dual_target_summary || `<strong>CRITICAL CO-OCCURRENCE:</strong> Vulnerable Pedestrian (${((pedObj && pedObj.confidence ? pedObj.confidence : 0.98)*100).toFixed(1)}%) and Road Surface Cavity (${distObj.class_name || 'D40 Pothole'}) detected simultaneously. Autonomous ADAS dual-action policy (Slowdown + Crater Bypass) engaged.`;
+          }
+        } else {
+          dualBanner.classList.add("hidden");
+          dualBanner.style.display = "none";
+        }
       }
 
       const locEl = document.getElementById("rw-photo-location");
@@ -6436,17 +6482,18 @@
       }
 
       // Update Deterioration Rate and Embodied Carbon Footprint
-      const detRate = (isPed || !p.is_distress) ? 0.0 : (p.deterioration_velocity_sqcm_per_day !== undefined ? p.deterioration_velocity_sqcm_per_day : (deep.structural_deterioration_velocity_sqcm_per_day || (dims.surface_area_m2 * 120.0)));
-      const carbon = (isPed || !p.is_distress) ? 0.0 : (p.carbon_footprint_kg_co2e !== undefined ? p.carbon_footprint_kg_co2e : (deep.embodied_carbon_footprint_kg_co2e || (dims.morth_compacted_tonnage_t * 62.5)));
+      const hasRoadDistress = Boolean(distObj && (distObj.is_distress || dims.surface_area_m2 > 0 || (analysis.morth_civil_ledger && analysis.morth_civil_ledger.total_estimated_repair_inr > 0)));
+      const detRate = (!hasRoadDistress || isPedOnly) ? 0.0 : (distObj.deterioration_velocity_sqcm_per_day !== undefined ? distObj.deterioration_velocity_sqcm_per_day : (deep.structural_deterioration_velocity_sqcm_per_day || (dims.surface_area_m2 * 120.0)));
+      const carbon = (!hasRoadDistress || isPedOnly) ? 0.0 : (distObj.carbon_footprint_kg_co2e !== undefined ? distObj.carbon_footprint_kg_co2e : (deep.embodied_carbon_footprint_kg_co2e || (dims.morth_compacted_tonnage_t * 62.5)));
       if (document.getElementById("rw-photo-det-rate")) document.getElementById("rw-photo-det-rate").innerText = `${detRate.toFixed(1)} cm²/day`;
       if (document.getElementById("rw-photo-carbon")) document.getElementById("rw-photo-carbon").innerText = `${carbon.toFixed(1)} kg CO₂e`;
 
-      // Dimensions & zero repair cost for pedestrians or clean roads
-      const repairCost = (isPed || !p.is_distress) ? 0 : Math.round(dims.estimated_repair_cost_inr || 0);
-      if (document.getElementById("rw-photo-area")) document.getElementById("rw-photo-area").innerText = `${((isPed || !p.is_distress) ? 0 : (dims.surface_area_m2 || 0)).toFixed(2)} m²`;
-      if (document.getElementById("rw-photo-depth")) document.getElementById("rw-photo-depth").innerText = `${((isPed || !p.is_distress) ? 0 : (dims.depth_cm || 0)).toFixed(1)} cm`;
-      if (document.getElementById("rw-photo-vol")) document.getElementById("rw-photo-vol").innerText = `${((isPed || !p.is_distress) ? 0 : (dims.bitumen_volume_m3 || 0)).toFixed(3)} m³`;
-      if (document.getElementById("rw-photo-tonnage")) document.getElementById("rw-photo-tonnage").innerText = `${((isPed || !p.is_distress) ? 0 : (dims.morth_compacted_tonnage_t || 0)).toFixed(3)} T`;
+      // Dimensions & repair cost (preserved when road defect is present, even alongside pedestrian!)
+      const repairCost = (isPedOnly || !hasRoadDistress) ? 0 : Math.round(dims.estimated_repair_cost_inr || (analysis.morth_civil_ledger && analysis.morth_civil_ledger.total_estimated_repair_inr) || 0);
+      if (document.getElementById("rw-photo-area")) document.getElementById("rw-photo-area").innerText = `${((isPedOnly || !hasRoadDistress) ? 0 : (dims.surface_area_m2 || 0)).toFixed(2)} m²`;
+      if (document.getElementById("rw-photo-depth")) document.getElementById("rw-photo-depth").innerText = `${((isPedOnly || !hasRoadDistress) ? 0 : (dims.depth_cm || 0)).toFixed(1)} cm`;
+      if (document.getElementById("rw-photo-vol")) document.getElementById("rw-photo-vol").innerText = `${((isPedOnly || !hasRoadDistress) ? 0 : (dims.bitumen_volume_m3 || 0)).toFixed(3)} m³`;
+      if (document.getElementById("rw-photo-tonnage")) document.getElementById("rw-photo-tonnage").innerText = `${((isPedOnly || !hasRoadDistress) ? 0 : (dims.morth_compacted_tonnage_t || 0)).toFixed(3)} T`;
       if (document.getElementById("rw-photo-cost")) document.getElementById("rw-photo-cost").innerText = `₹ ${repairCost.toLocaleString('en-IN')}`;
 
       // Update Cumulative Defect Count Badge on MoRTH BOQ Card
@@ -6454,12 +6501,14 @@
       const countBadge = document.getElementById("rw-photo-defect-count-badge");
       if (countBadge) {
         countBadge.innerText = detCount > 1 
-          ? `Cumulative Total (${detCount} Distress Zones)` 
+          ? `Cumulative Total (${detCount} Hazard Targets)` 
           : `Single Defect Total`;
       }
 
       // Show toast with deep pipeline forensic metrics or pedestrian safety alert
-      if (isPed) {
+      if (hasDual) {
+        showAiToast(`⚠️ DUAL HAZARD CO-OCCURRENCE!`, `Pedestrian on carriage way AND Road Cavity (${distObj.class_name || 'D40 Pothole'}) detected simultaneously! Autonomous slowdown & MoRTH repair active.`);
+      } else if (isPedOnly) {
         showAiToast(`⚠️ VULNERABLE ROAD USER ALERT!`, `Child / Pedestrian Hazard detected on carriage way. Autonomous vehicle slowdown chime active.`);
       } else if (analysis.astm_d6433_pci && analysis.bayesian_sensor_fusion) {
         const pci = analysis.astm_d6433_pci;
@@ -6472,10 +6521,10 @@
       activePhotoData = {
         name: fileName,
         highway: analysis.corridor_id || "Custom Survey Location",
-        predClass: p.class_name || "Distress",
+        predClass: hasDual ? `${distObj.class_name || 'D40 Pothole'} + Pedestrian` : (p.class_name || "Distress"),
         confidence: p.confidence || 0.98,
-        area: (isPed || !p.is_distress) ? 0.0 : (dims.surface_area_m2 || 0.0),
-        depth: (isPed || !p.is_distress) ? 0.0 : (dims.depth_cm || 0.0)
+        area: (isPedOnly || !hasRoadDistress) ? 0.0 : (dims.surface_area_m2 || 0.0),
+        depth: (isPedOnly || !hasRoadDistress) ? 0.0 : (dims.depth_cm || 0.0)
       };
 
       // Draw detection reticle overlays on photo canvas

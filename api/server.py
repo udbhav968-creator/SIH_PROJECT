@@ -5,8 +5,14 @@ Integrates Canonical Real-World Benchmark Datasets (RDD2022, Kaggle Pothole-600,
 Asynchronous Training Orchestrator with Streaming Telemetry, and Cryptographic MoRTH BOQ Ledger.
 """
 import sys
-if hasattr(sys.stdout, "reconfigure"):
+if sys.stdout is None:
+    sys.stdout = open("server.log", "a", encoding="utf-8")
+elif hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
+
+if sys.stderr is None:
+    sys.stderr = open("server_err.log", "a", encoding="utf-8")
+elif hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 import os
@@ -1039,7 +1045,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 
             try:
                 analysis = cv_detector.analyze_image(img_b64, vision_model=vision_model, highway_name=highway)
-                analysis["primary_distress"] = analysis.get("primary_detection")
+                if "primary_distress" not in analysis or analysis["primary_distress"] is None:
+                    analysis["primary_distress"] = analysis.get("primary_detection")
                 analysis["latency_ms"] = round((time.time() - t0) * 1000.0, 3)
                 self._send_json(200, analysis)
             except Exception as e:

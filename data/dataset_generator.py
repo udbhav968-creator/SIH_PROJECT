@@ -16,15 +16,30 @@ def generate_vision_dataset(num_samples=5000, feat_dim=64, num_classes=10, seed=
 
     for i in range(num_samples):
         cls = y_cls[i]
-        if cls < 9:
-            X[i, (cls * 6) : (cls * 6 + 10)] += 3.5
-            X[i, 16:32] += 0.8 * np.sin(np.linspace(0, np.pi * 2, 16))
-            y_geo[i] = [np.random.uniform(0.1, 0.9), np.random.uniform(0.3, 0.8), np.random.uniform(0.2, 4.5), np.random.uniform(1.0, 4.0)]
-            y_area[i] = np.random.uniform(0.1, 3.0)
-        else:
-            X[i, 0:10] += 3.2
+        start_idx = (cls * 6) % (feat_dim - 10)
+        X[i, start_idx : start_idx + 10] += 3.8
+        X[i, (start_idx + 12) % feat_dim] += 1.5
+        
+        if cls == 9:
+            # Pedestrian / VRU Safety: Upright vertical geometry, zero pavement repair area
+            u = float(np.random.uniform(0.2, 0.7))
+            v = float(np.random.uniform(0.15, 0.45))
+            w = float(np.random.uniform(0.12, 0.28))
+            h = float(np.random.uniform(0.35, 0.65))
+            y_geo[i] = [u, v, w, h]
+            y_area[i] = 0.0
+        elif cls == 0:
+            # Normal Road: zero distress area
             y_geo[i] = [0.5, 0.5, 0.0, 0.0]
             y_area[i] = 0.0
+        else:
+            # Pavement Distresses (D00, D10, D20, D40, Waterlogging, Signs):
+            u = float(np.random.uniform(0.1, 0.8))
+            v = float(np.random.uniform(0.35, 0.85))
+            w = float(np.random.uniform(0.15, 0.45))
+            h = float(np.random.uniform(0.08, 0.35))
+            y_geo[i] = [u, v, w, h]
+            y_area[i] = float(np.random.uniform(0.15, 3.5))
 
     return X, y_cls, y_geo, y_area
 

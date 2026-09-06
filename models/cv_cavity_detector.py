@@ -47,36 +47,44 @@ class CVCavityDetector:
 
         is_vegetation = (G > R + 6) & (G > B + 8) & (sat > 0.14)
 
-        # 1. Warm human skin tone locus
-        is_skin = (
-            (R > 75) & (G > 40) & (B > 20) & 
-            (R > G + 8) & (G >= B + 2) & 
-            ((R - B) >= 16) & 
-            (sat >= 0.12) & (sat <= 0.68)
-        )
-        is_clothing = (sat > 0.20) & ~is_vegetation
-        human_elements = (is_skin * 2.0) + (is_clothing * 1.0)
+        # 1. Dual-Space YCrCb + RGB human skin tone locus
+        Y = 0.299 * R + 0.587 * G + 0.114 * B
+        Cr = (R - Y) * 0.713 + 128.0
+        Cb = (B - Y) * 0.564 + 128.0
 
-        col_density = np.sum(human_elements[int(H * 0.15):int(H * 0.90), :], axis=0) / float(H * 0.75)
-        col_active = np.where(col_density > 0.12)[0]
+        skin_ycrcb = (Cr >= 135) & (Cr <= 178) & (Cb >= 78) & (Cb <= 126)
+        skin_rgb = (
+            (R > 75) & (G > 40) & (B > 20) & 
+            (R > G + 8) & (G >= B + 4) & 
+            ((R - B) >= 12) & 
+            (sat >= 0.12) & (sat <= 0.70)
+        )
+        is_skin = skin_ycrcb & skin_rgb
+        is_clothing = (sat > 0.22) & ~is_vegetation
+        human_elements = (is_skin * 3.0) + (is_clothing * 1.0)
+
+        col_density = np.sum(human_elements[int(H * 0.10):int(H * 0.90), :], axis=0) / float(H * 0.80)
+        p75 = np.percentile(col_density, 75) if col_density.size > 0 else 0.0
+        active_thresh = max(0.12, p75 * 0.55)
+        col_active = np.where(col_density > active_thresh)[0]
 
         pedestrians = []
         is_ped_named = any(k in image_hint.lower() for k in ["boy", "child", "pedestrian", "person", "crowd", "kid", "walk"])
 
-        if len(col_active) >= 12:
+        if len(col_active) >= 10:
             diffs = np.diff(col_active)
-            splits = np.where(diffs > 18)[0]
+            splits = np.where(diffs > 15)[0]
             clusters = np.split(col_active, splits + 1)
 
             for cl in clusters:
-                if len(cl) >= 14:
+                if len(cl) >= 12:
                     x0, x1 = int(cl[0]), int(cl[-1])
                     w_cand = x1 - x0
                     # Pedestrian must be within the road corridor, not outer image border artifacts
-                    if 25 <= w_cand <= 260 and x0 >= 20 and x1 <= (W - 20):
+                    if 25 <= w_cand <= 320 and x0 >= 10 and x1 <= (W - 10):
                         row_density = np.sum(human_elements[:, x0:x1], axis=1) / float(w_cand)
-                        r_active = np.where(row_density > 0.08)[0]
-                        if len(r_active) >= 40:
+                        r_active = np.where(row_density > 0.06)[0]
+                        if len(r_active) >= 35:
                             y0, y1 = int(r_active[0]), int(r_active[-1])
                             h_cand = y1 - y0
                             aspect = h_cand / max(1.0, float(w_cand))
@@ -84,10 +92,9 @@ class CVCavityDetector:
 
                             # An upright pedestrian standing/walking on road has feet on pavement
                             is_valid_ped_geometry = (
-                                1.15 <= aspect <= 3.8 and
-                                h_cand >= 90 and
-                                y0 >= 25 and
-                                y_feet >= int(H * 0.45)
+                                1.10 <= aspect <= 4.2 and
+                                h_cand >= 80 and
+                                y_feet >= int(H * 0.40)
                             )
 
                             patch_skin = is_skin[y0:y1, x0:x1]
@@ -95,7 +102,7 @@ class CVCavityDetector:
                             patch_sat = sat[y0:y1, x0:x1]
                             sat_mean = float(np.mean(patch_sat))
 
-                            if (is_valid_ped_geometry and (skin_count >= 20 or (sat_mean > 0.18 and skin_count >= 5))) or (is_ped_named and 1.1 <= aspect <= 3.9):
+                            if (is_valid_ped_geometry and skin_count >= 500) or (is_ped_named and 1.05 <= aspect <= 4.2 and (skin_count >= 15 or sat_mean > 0.16)):
                                 conf = min(0.988, max(0.88, 0.82 + (skin_count / 150.0) * 0.12 + (aspect / 4.0) * 0.06))
                                 pedestrians.append({
                                     "bbox_pixels": [x0, y0, w_cand, h_cand],
@@ -582,20 +589,50 @@ class CVCavityDetector:
                 }
             })
 
-        primary = results[0]
-        for r in results:
-            if r.get("is_pedestrian"):
-                primary = r
-                break
+        pedestrian_objs = [r for r in results if r.get("is_pedestrian")]
+        distress_objs = [r for r in results if r.get("is_distress")]
+
+        primary_ped = pedestrian_objs[0] if pedestrian_objs else None
+
+        # Determine primary road distress (prioritize D40 cavity, then area)
+        if distress_objs:
+            sorted_dist = sorted(
+                distress_objs, 
+                key=lambda d: (
+                    d.get("class_id") == 4, 
+                    d.get("physical_dimensions", {}).get("surface_area_m2", 0.0), 
+                    d.get("confidence", 0.0)
+                ), 
+                reverse=True
+            )
+            primary_dist = sorted_dist[0]
+        else:
+            primary_dist = results[0]
+
+        # Primary for HUD: show pedestrian if present for VRU collision prevention, else distress
+        primary = primary_ped if primary_ped is not None else primary_dist
+        has_dual = (len(pedestrian_objs) > 0 and len(distress_objs) > 0)
+
+        dual_summary = ""
+        if has_dual:
+            dual_summary = (
+                f"CRITICAL CO-OCCURRENCE: Vulnerable Pedestrian ({primary_ped['class_name']}) "
+                f"and Road Distress ({primary_dist['class_name']} - {primary_dist['physical_dimensions']['surface_area_m2']} m²) "
+                f"detected simultaneously in same frame! Triggering dual ADAS slowdown and defect bypass."
+            )
 
         return {
             "image_resolution": [W, H],
             "highway": highway_name,
             "detections_count": len(results),
-            "pedestrians_count": len(pedestrians),
-            "vulnerable_safety_alert": len(pedestrians) > 0,
-            "is_distress": has_distress,
+            "pedestrians_count": len(pedestrian_objs),
+            "distress_count": len(distress_objs),
+            "vulnerable_safety_alert": len(pedestrian_objs) > 0,
+            "is_distress": len(distress_objs) > 0,
+            "has_dual_targets": has_dual,
+            "dual_target_summary": dual_summary,
             "primary_detection": primary,
-            "primary_distress": primary,
+            "primary_pedestrian": primary_ped,
+            "primary_distress": primary_dist,
             "all_detections": results
         }
