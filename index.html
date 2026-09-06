@@ -324,8 +324,8 @@
   <!-- ========================================================================= -->
   <!-- 4. MASTER INTERACTIVE TAB VIEWS                                           -->
   <!-- ========================================================================= -->
-  <!-- Live AI Toast Alert Container -->
-  <div id="ai-toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+  <!-- Live AI Toast Alert Container (Positioned top-right to avoid obstructing controls) -->
+  <div id="ai-toast-container" class="fixed top-20 right-6 z-50 flex flex-col space-y-2 pointer-events-none max-w-sm"></div>
 
   <main class="flex-1 max-w-[1780px] w-full mx-auto p-6">
 
@@ -1848,51 +1848,92 @@
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 gap-2.5">
-                <button onclick="loadPhotoPreset('Monsoon_Submerged_Cavity_NH44')" class="p-3 rounded-2xl bg-[#0d1222] hover:bg-[#121930] border border-amber-500/30 hover:border-amber-400 text-left transition flex items-center justify-between group shadow-lg shadow-black/40">
-                  <div>
-                    <div class="text-xs font-black text-amber-300 group-hover:text-amber-400 flex items-center space-x-1.5">
-                      <span>🌧️</span> <span>NH-44 Monsoon Heavy Rain Cavity</span>
+              <!-- 4 Benchmark Photo Presets (Compact 2x2 Grid) -->
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="loadPhotoPreset('Monsoon_Submerged_Cavity_NH44')" class="p-2 rounded-xl bg-[#0d1222] hover:bg-[#121930] border border-amber-500/30 hover:border-amber-400 text-left transition flex items-center justify-between group shadow-md shadow-black/40">
+                  <div class="truncate">
+                    <div class="text-[11px] font-black text-amber-300 group-hover:text-amber-400 flex items-center space-x-1 truncate">
+                      <span>🌧️</span> <span class="truncate">NH-44 Monsoon Cavity</span>
                     </div>
-                    <div class="text-[11px] text-slate-400 mt-0.5">Submerged pothole under rain glare (D40 Cavity • Depth: 7.5 cm)</div>
+                    <div class="text-[9px] text-slate-400 mt-0.5 truncate">D40 Pothole • 7.5 cm</div>
                   </div>
-                  <span class="text-xs text-amber-400 font-mono font-bold">&rarr;</span>
                 </button>
-                <button onclick="loadPhotoPreset('Alligator_Block_Fatigue_NH48')" class="p-3 rounded-2xl bg-[#0d1222] hover:bg-[#121930] border border-rose-500/30 hover:border-rose-400 text-left transition flex items-center justify-between group shadow-lg shadow-black/40">
-                  <div>
-                    <div class="text-xs font-black text-rose-300 group-hover:text-rose-400 flex items-center space-x-1.5">
-                      <span>☀️</span> <span>NH-48 Heavy Alligator Fatigue</span>
+                <button onclick="loadPhotoPreset('Alligator_Block_Fatigue_NH48')" class="p-2 rounded-xl bg-[#0d1222] hover:bg-[#121930] border border-rose-500/30 hover:border-rose-400 text-left transition flex items-center justify-between group shadow-md shadow-black/40">
+                  <div class="truncate">
+                    <div class="text-[11px] font-black text-rose-300 group-hover:text-rose-400 flex items-center space-x-1 truncate">
+                      <span>☀️</span> <span class="truncate">NH-48 Alligator Fatigue</span>
                     </div>
-                    <div class="text-[11px] text-slate-400 mt-0.5">Structural block cracking under arid heat (D20 Crack • Area: 4.80 m²)</div>
+                    <div class="text-[9px] text-slate-400 mt-0.5 truncate">D20 Crack • 4.80 m²</div>
                   </div>
-                  <span class="text-xs text-rose-400 font-mono font-bold">&rarr;</span>
                 </button>
-                <button onclick="loadPhotoPreset('Child_Pedestrian_Hazard_VRU')" class="p-3 rounded-2xl bg-[#0d1222] hover:bg-[#121930] border border-cyan-500/40 hover:border-cyan-400 text-left transition flex items-center justify-between group shadow-lg shadow-cyan-950/30">
-                  <div>
-                    <div class="text-xs font-black text-cyan-300 group-hover:text-cyan-400 flex items-center space-x-1.5">
-                      <span>🚶</span> <span>Urban School Zone Child Crossing (VRU Safety)</span>
+                <button onclick="loadPhotoPreset('Child_Pedestrian_Hazard_VRU')" class="p-2 rounded-xl bg-[#0d1222] hover:bg-[#121930] border border-cyan-500/40 hover:border-cyan-400 text-left transition flex items-center justify-between group shadow-md shadow-cyan-950/30">
+                  <div class="truncate">
+                    <div class="text-[11px] font-black text-cyan-300 group-hover:text-cyan-400 flex items-center space-x-1 truncate">
+                      <span>🚶</span> <span class="truncate">School VRU Pedestrian</span>
                     </div>
-                    <div class="text-[11px] text-cyan-200/70 mt-0.5">Autonomous slowdown chime, ₹0 repair tender (boy.webp)</div>
+                    <div class="text-[9px] text-cyan-200/70 mt-0.5 truncate">Auto-slowdown • boy.webp</div>
                   </div>
-                  <span class="text-xs text-cyan-400 font-mono font-bold">&rarr;</span>
                 </button>
-                <button onclick="loadPhotoPreset('Iron_Manhole_Hard_Negative')" class="p-3 rounded-2xl bg-[#0d1222] hover:bg-[#121930] border border-emerald-500/30 hover:border-emerald-400 text-left transition flex items-center justify-between group shadow-lg shadow-black/40">
-                  <div>
-                    <div class="text-xs font-black text-emerald-300 group-hover:text-emerald-400 flex items-center space-x-1.5">
-                      <span>🛡️</span> <span>Cast Iron Utility Cover (Hard Negative)</span>
+                <button onclick="loadPhotoPreset('Iron_Manhole_Hard_Negative')" class="p-2 rounded-xl bg-[#0d1222] hover:bg-[#121930] border border-emerald-500/30 hover:border-emerald-400 text-left transition flex items-center justify-between group shadow-md shadow-black/40">
+                  <div class="truncate">
+                    <div class="text-[11px] font-black text-emerald-300 group-hover:text-emerald-400 flex items-center space-x-1 truncate">
+                      <span>🛡️</span> <span class="truncate">Cast Iron Manhole</span>
                     </div>
-                    <div class="text-[11px] text-slate-400 mt-0.5">Specular metallic reflection rejection (Non-Distress • 0.0 m²)</div>
+                    <div class="text-[9px] text-slate-400 mt-0.5 truncate">Non-Distress Hard Negative</div>
                   </div>
-                  <span class="text-xs text-emerald-400 font-mono font-bold">&rarr;</span>
                 </button>
               </div>
 
               <!-- Photo Canvas Preview -->
-              <div class="mt-2 bg-slate-950 p-3 rounded-2xl border border-slate-800 flex flex-col items-center justify-center relative min-h-[160px]">
+              <div class="bg-slate-950 p-2.5 rounded-2xl border border-slate-800 flex flex-col items-center justify-center relative">
                 <canvas id="rw-photo-canvas" width="380" height="200" class="rounded-xl border border-slate-700 max-w-full"></canvas>
-                <div id="rw-photo-caption" class="text-[11px] font-mono text-slate-400 mt-2 text-center">
+                <div id="rw-photo-caption" class="text-[10px] font-mono text-slate-400 mt-1.5 text-center">
                   Photo loaded: NH-44 Monsoon Submerged Cavity (108.4 KM)
                 </div>
+              </div>
+
+              <!-- Active Learning / Engineer Human-in-the-Loop Feedback Loop (Directly below photo) -->
+              <div class="bg-slate-900/90 rounded-2xl p-3 border border-cyan-500/30 space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-1.5">
+                    <span class="text-amber-400 text-sm">🧠</span>
+                    <span class="text-xs font-bold text-white uppercase tracking-wider font-mono">Active Feedback & Online Retraining</span>
+                  </div>
+                  <span id="active-feedback-badge" class="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">Ready for Feedback</span>
+                </div>
+
+                <p class="text-[10px] text-slate-400 leading-tight">
+                  Correct predictions in real-time. Submitting feedback executes an immediate single-step SGD gradient backpropagation on Model M1 in RAM.
+                </p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                  <div class="sm:col-span-5">
+                    <label class="text-[9px] font-mono text-slate-400 block mb-0.5">True Ground-Truth:</label>
+                    <select id="active-feedback-class" class="w-full bg-slate-950 border border-slate-700 text-white text-xs font-mono rounded-lg p-1.5 focus:border-cyan-500 focus:outline-none">
+                      <option value="9">Class 9: Child / Pedestrian Hazard (VRU Safety)</option>
+                      <option value="4">Class 4: D40 Pothole / Severe Cavity</option>
+                      <option value="2">Class 2: D10 Transverse Thermal Crack</option>
+                      <option value="1">Class 1: D00 Longitudinal Joint Crack</option>
+                      <option value="3">Class 3: D20 Alligator Fatigue Cracking</option>
+                      <option value="5">Class 5: Waterlogging / Flooding Hazard</option>
+                      <option value="6">Class 6: Missing Zebra Crossing</option>
+                      <option value="7">Class 7: Missing Road Divider</option>
+                      <option value="8">Class 8: Damaged Traffic Sign</option>
+                      <option value="0">Class 0: Normal Road / Sound Pavement</option>
+                    </select>
+                  </div>
+                  <div class="sm:col-span-7">
+                    <label class="text-[9px] font-mono text-slate-400 block mb-0.5">Inspector Verification Note:</label>
+                    <input type="text" id="active-feedback-notes" value="Verified by Field Engineer - Edge spalling confirmed" class="w-full bg-slate-950 border border-slate-700 text-white text-xs font-mono rounded-lg p-1.5 focus:border-cyan-500 focus:outline-none" title="Verified by Field Engineer - Edge spalling confirmed" />
+                  </div>
+                </div>
+
+                <div class="pt-0.5">
+                  <button onclick="submitActiveFeedback()" class="w-full py-2 rounded-xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-mono font-bold transition flex items-center justify-center space-x-2 shadow-lg shadow-orange-950/40">
+                    <span>⚡ Submit Feedback & Trigger Online Gradient Update</span>
+                  </button>
+                </div>
+                <div id="active-feedback-response" class="hidden text-[11px] font-mono p-2 rounded-lg bg-emerald-950/50 border border-emerald-500/40 text-emerald-300"></div>
               </div>
             </div>
 
@@ -2028,50 +2069,6 @@
                       📋 Sign & Seal
                     </button>
                   </div>
-                </div>
-
-                <!-- Active Learning / Engineer Human-in-the-Loop Feedback Loop -->
-                <div class="mt-4 pt-3 border-t border-cyan-900/50 bg-slate-900/80 rounded-xl p-3 border border-cyan-500/20 space-y-2.5">
-                  <div class="flex items-center justify-between">
-                    <div class="flex items-center space-x-2">
-                      <span class="text-amber-400 text-sm">🧠</span>
-                      <span class="text-xs font-bold text-white uppercase tracking-wider font-mono">Active Feedback & Online Retraining</span>
-                    </div>
-                    <span id="active-feedback-badge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">Ready for Feedback</span>
-                  </div>
-
-                  <p class="text-[11px] text-slate-400">
-                    Empower field engineers to correct misclassifications in real-time. Submitting feedback triggers an immediate single-step SGD gradient backpropagation on Model M1 in RAM.
-                  </p>
-
-                  <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                    <div class="sm:col-span-5">
-                      <label class="text-[10px] font-mono text-slate-400 block mb-1">True Ground-Truth Classification:</label>
-                      <select id="active-feedback-class" class="w-full bg-slate-950 border border-slate-700 text-white text-xs font-mono rounded-lg p-2 focus:border-cyan-500 focus:outline-none">
-                        <option value="9">Class 9: Child / Pedestrian Hazard (VRU Safety)</option>
-                        <option value="4">Class 4: D40 Pothole / Severe Cavity</option>
-                        <option value="2">Class 2: D10 Transverse Thermal Crack</option>
-                        <option value="1">Class 1: D00 Longitudinal Joint Crack</option>
-                        <option value="3">Class 3: D20 Alligator Fatigue Cracking</option>
-                        <option value="5">Class 5: Waterlogging / Flooding Hazard</option>
-                        <option value="6">Class 6: Missing Zebra Crossing</option>
-                        <option value="7">Class 7: Missing Road Divider</option>
-                        <option value="8">Class 8: Damaged Traffic Sign</option>
-                        <option value="0">Class 0: Normal Road / Sound Pavement</option>
-                      </select>
-                    </div>
-                    <div class="sm:col-span-7">
-                      <label class="text-[10px] font-mono text-slate-400 block mb-1">Inspector Verification Note:</label>
-                      <input type="text" id="active-feedback-notes" value="Verified by Field Engineer - Edge spalling confirmed" class="w-full bg-slate-950 border border-slate-700 text-white text-xs font-mono rounded-lg p-2 focus:border-cyan-500 focus:outline-none" title="Verified by Field Engineer - Edge spalling confirmed" />
-                    </div>
-                  </div>
-
-                  <div class="flex items-center justify-between pt-1">
-                    <button onclick="submitActiveFeedback()" class="w-full py-2 rounded-xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-mono font-bold transition flex items-center justify-center space-x-2 shadow-lg shadow-orange-950/40">
-                      <span>⚡ Submit Feedback & Trigger Online Gradient Update</span>
-                    </button>
-                  </div>
-                  <div id="active-feedback-response" class="hidden text-[11px] font-mono p-2 rounded-lg bg-emerald-950/50 border border-emerald-500/40 text-emerald-300"></div>
                 </div>
               </div>
 
