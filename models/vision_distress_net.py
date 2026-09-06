@@ -120,6 +120,17 @@ class VisionDistressNet:
         return activations, pre_acts, cls_logits, geo_preds, cnn_out
 
     def predict(self, X):
+        if len(X) > 512:
+            preds_l, conf_l, probs_l, geo_l = [], [], [], []
+            for i in range(0, len(X), 512):
+                bx = X[i : i + 512]
+                _, _, c_logits, g_preds, _ = self.forward(bx)
+                p = softmax(c_logits)
+                preds_l.append(np.argmax(p, axis=-1))
+                conf_l.append(np.max(p, axis=-1))
+                probs_l.append(p)
+                geo_l.append(g_preds)
+            return np.concatenate(preds_l), np.concatenate(conf_l), np.vstack(probs_l), np.vstack(geo_l)
         activations, pre_acts, cls_logits, geo_preds, _ = self.forward(X)
         probs = softmax(cls_logits)
         preds = np.argmax(probs, axis=-1)
