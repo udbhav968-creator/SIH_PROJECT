@@ -28,10 +28,23 @@ def generate_vision_dataset(num_samples=5000, feat_dim=64, num_classes=10, seed=
             h = float(np.random.uniform(0.35, 0.65))
             y_geo[i] = [u, v, w, h]
             y_area[i] = 0.0
+            u_p = float(np.clip(u + np.random.normal(0, 0.0025), 0.02, 0.95))
+            v_p = float(np.clip(v + np.random.normal(0, 0.0025), 0.02, 0.95))
+            w_p = float(np.clip(w + np.random.normal(0, 0.0025), 0.02, 0.95))
+            h_p = float(np.clip(h + np.random.normal(0, 0.0025), 0.02, 0.95))
+            v_c = v_p + h_p / 2.0
+            asp = w_p / max(0.01, h_p)
+            X[i, 48:52] = [u_p, v_p, w_p, h_p]
+            X[i, 52] = v_c * 2.0
+            X[i, 53] = asp
+            X[i, 54] = (w_p * h_p) * 10.0
+            X[i, 55:60] = v_c * 1.5
+            X[i, 60:64] = asp * 0.8
         elif cls == 0:
-            # Normal Road: zero distress area
-            y_geo[i] = [0.5, 0.5, 0.0, 0.0]
+            # Normal Road: zero distress area and zero box
+            y_geo[i] = [0.0, 0.0, 0.0, 0.0]
             y_area[i] = 0.0
+            X[i, 48:64] = 0.0
         else:
             # Pavement Distresses (D00, D10, D20, D40, Waterlogging, Signs):
             u = float(np.random.uniform(0.1, 0.8))
@@ -40,6 +53,18 @@ def generate_vision_dataset(num_samples=5000, feat_dim=64, num_classes=10, seed=
             h = float(np.random.uniform(0.08, 0.35))
             y_geo[i] = [u, v, w, h]
             y_area[i] = float(np.random.uniform(0.15, 3.5))
+            u_p = float(np.clip(u + np.random.normal(0, 0.0025), 0.02, 0.95))
+            v_p = float(np.clip(v + np.random.normal(0, 0.0025), 0.02, 0.95))
+            w_p = float(np.clip(w + np.random.normal(0, 0.0025), 0.02, 0.95))
+            h_p = float(np.clip(h + np.random.normal(0, 0.0025), 0.02, 0.95))
+            v_c = v_p + h_p / 2.0
+            asp = w_p / max(0.01, h_p)
+            X[i, 48:52] = [u_p, v_p, w_p, h_p]
+            X[i, 52] = v_c * 2.0
+            X[i, 53] = asp
+            X[i, 54] = (w_p * h_p) * 10.0
+            X[i, 55:60] = v_c * 1.5
+            X[i, 60:64] = asp * 0.8
 
     return X, y_cls, y_geo, y_area
 

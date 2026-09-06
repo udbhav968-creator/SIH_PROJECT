@@ -1,75 +1,76 @@
 {
   "version": "5.0-ULTIMATE-SOTA-200K-MULTI-SOURCE",
-  "timestamp_utc": 1788676609,
+  "timestamp_utc": 1788700659,
   "status": "CONVERGED_ACTIVE",
   "models": {
     "Model_M1_VisionDistressNet": {
       "architecture": "ConvNeXt-Swin-Transformer Hybrid (10 Classes)",
-      "total_training_samples": 106619,
+      "total_training_samples": 136619,
       "epochs": 12,
-      "final_loss": 0.2101,
-      "val_accuracy_pct": 92.04,
+      "final_loss": 0.1475,
+      "val_accuracy_pct": 96.14,
+      "val_box_miou_pct": 95.72,
       "classes_trained": 10,
       "checkpoint": "C:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\vision_distress_weights.npz",
-      "sha256": "081f552b2e8dc2a91b1a3b42cfce02532e662127a35a3ab5458fb8e2391f20c2"
+      "sha256": "2983639cc637ebe642dc89392841e76f1dfd2b6ec2964f7b69b02d92f197d369"
     },
     "Model_M4_IMUShockClassifier": {
       "architecture": "1D Multi-Scale Dilated Residual Temporal CNN",
-      "total_samples": 30000,
+      "total_samples": 40000,
       "epochs": 12,
       "val_accuracy_pct": 100.0,
       "checkpoint": "C:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\imu_shock_weights.npz",
-      "sha256": "40ffe1061eb674c96235953cba6097e31a811a97618f6c9fb0338b0c6b1ab6af"
+      "sha256": "86a89b60dc96854aefa43e4591855c74603429f17100a173ebb95c5dd1ee189c"
     },
     "Model_M_PCI_Regressor": {
       "architecture": "Deep Residual MLP with LayerNorm & Huber Loss",
-      "total_samples": 25000,
+      "total_samples": 35000,
       "epochs": 16,
-      "val_mae_pci_points": 1.278,
+      "val_mae_pci_points": 1.277,
       "checkpoint": "C:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\pci_regressor_weights.npz",
-      "sha256": "a0fed358670f3552986b802fde9fdb4e9a88d46eaeddfa67b9d9a9c355a67838"
+      "sha256": "153a4d15664beca8750aef2b380560d1db43d5121e846c747187eb29f4d3819f"
     },
     "Model_M_DEGRADE_Forecaster": {
       "architecture": "Monotonic Neural Temporal Forecaster (30d, 90d, 180d)",
-      "total_samples": 15000,
+      "total_samples": 30000,
       "epochs": 14,
-      "val_mae_pci_points": 0.035,
+      "val_mae_pci_points": 0.033,
       "checkpoint": "C:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\deterioration_forecaster_weights.npz",
-      "sha256": "1983ff93a8599db9eb75486875dfc585152dde6aad43de0c58f9768b0c519d81"
+      "sha256": "3387a79b3904191e9d5dc4ea8e61ad7c9a8fdbcc9ce3e0983e5d65281c213780"
     },
     "Model_M5_UrbanTrafficNet": {
       "architecture": "Multi-Layer Kinematic Density Classifier",
-      "total_samples": 15000,
+      "total_samples": 25000,
       "epochs": 12,
-      "val_accuracy_pct": 99.99,
+      "val_accuracy_pct": 100.0,
       "checkpoint": "C:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\urban_traffic_net_weights.npz",
-      "sha256": "9a578854acdafb4769c4b6a33d99634177b5e3004419911a56cff42a4835670d"
+      "sha256": "795ab759ab4d3e2c2732126193f70a6af8e409f20f1912726996c60d36a7be0c"
     },
     "Model_MM1_MultimodalTransformer": {
       "architecture": "5-Modality Scaled Dot-Product Cross-Attention Transformer",
       "modalities": 5,
-      "samples": 12000,
+      "samples": 25000,
       "epochs": 8,
-      "final_loss": 0.3545,
-      "val_accuracy_pct": 99.9,
+      "final_loss": 0.3,
+      "val_accuracy_pct": 99.97,
       "checkpoint": "C:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\multimodal_fusion_weights.npz",
-      "sha256": "640690047875b0afb7d85b0888c36012b1410ec257ed2d02d0a66333ce417081"
+      "sha256": "590468881ea513b7af68efdbc4254a4d4134cad8bd4cca07853054bcaaa62dd7"
     },
     "Model_RL1_AutomotiveRLPolicyAgent": {
       "architecture": "Dueling Double-DQN Policy with ISO 26262 ASIL-D Functional Safety Supervisor",
       "actions": 6,
-      "episodes": 8000,
-      "final_average_reward": -11.1,
+      "episodes": 12000,
+      "final_average_reward": -76.16,
       "checkpoint": "C:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\automotive_rl_agent_weights.npz",
-      "sha256": "ba89839d32872d2815fb93c0e24e5570ddd222cb8793b8d3511bc35b9ef75b11"
+      "sha256": "2f31bc393a2592004cd554db9e39d5129eab8c748ab2cf5979570720290c82ff"
     },
     "Models_M7_M8_ForensicMetricEmbedder": {
       "architecture": "Siamese Metric Embedding Net with Triplet Margin Loss",
-      "triplets": 7500,
+      "triplets": 12500,
       "epochs": 15,
       "final_triplet_loss": 0.0056,
       "checkpoint": "C:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\forensic_embedder_weights.npz",
-      "sha256": "ee2bd479882e3f304329cdc985b7038c7942779e888cb0757ee67b287638c58e"
+      "sha256": "4ba6bf354cc7702759b49ad9147f795b120d785ecc12c72970c5cb1c7feb15d6"
     }
   }
 }

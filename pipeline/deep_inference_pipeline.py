@@ -263,6 +263,11 @@ class DeepInferencePipeline:
                 "class_id": 9,
                 "class_name": ped["class_name"],
                 "confidence": ped["confidence"],
+                "pedestrian_id": ped.get("pedestrian_id", 1),
+                "hud_label": ped.get("hud_label", "VRU PEDESTRIAN HAZARD"),
+                "color_hex": ped.get("color_hex", "#06b6d4"),
+                "glow_color": ped.get("glow_color", "rgba(6, 182, 212, 0.45)"),
+                "badge_class": ped.get("badge_class", "bg-cyan-950 text-cyan-300 border-cyan-800"),
                 "shannon_entropy_bits": ped.get("shannon_entropy_bits", 0.05),
                 "uncertainty_rating": ped.get("uncertainty_rating", "VULNERABLE_ROAD_USER_CONFIRMED"),
                 "astm_d6433_severity": ped.get("astm_d6433_severity", "N/A_PEDESTRIAN_SAFETY_INCIDENT"),
@@ -498,10 +503,22 @@ class DeepInferencePipeline:
         has_dual_targets = (len(ped_detections) > 0 and len(distress_detections) > 0)
         dual_target_summary = ""
         if has_dual_targets:
+            if len(ped_detections) > 1:
+                dual_target_summary = (
+                    f"CRITICAL CO-OCCURRENCE: {len(ped_detections)} Vulnerable Pedestrians (Closest: {primary_pedestrian['distance_meters']}m) "
+                    f"and Road Surface Distress ({primary_distress['class_name']} - {primary_distress['surface_area_m2']} m²) "
+                    f"detected simultaneously! Triggering multi-VRU ADAS slowdown and defect bypass."
+                )
+            else:
+                dual_target_summary = (
+                    f"CRITICAL CO-OCCURRENCE: Vulnerable Pedestrian ({primary_pedestrian['class_name']}) "
+                    f"and Road Surface Distress ({primary_distress['class_name']} - {primary_distress['surface_area_m2']} m²) "
+                    f"detected simultaneously! Triggering dual ADAS slowdown and defect bypass."
+                )
+        elif len(ped_detections) > 1:
             dual_target_summary = (
-                f"CRITICAL CO-OCCURRENCE: Vulnerable Pedestrian ({primary_pedestrian['class_name']}) "
-                f"and Road Surface Distress ({primary_distress['class_name']} - {primary_distress['surface_area_m2']} m²) "
-                f"detected simultaneously! Triggering dual ADAS slowdown and defect bypass."
+                f"MULTI-VRU SAFETY ALERT: {len(ped_detections)} Pedestrians detected on roadway "
+                f"(Closest: {primary_pedestrian['distance_meters']}m). Autonomous slowdown chime and emergency braking active."
             )
 
         # ----------------------------------------------------------------------
@@ -726,6 +743,8 @@ class DeepInferencePipeline:
             },
             "is_distress": len(distress_detections) > 0,
             "vulnerable_safety_alert": len(ped_detections) > 0,
+            "pedestrians_count": len(ped_detections),
+            "all_pedestrians": ped_detections,
             "has_dual_targets": has_dual_targets,
             "dual_target_summary": dual_target_summary,
             "primary_distress": primary_distress,
@@ -764,6 +783,7 @@ class DeepInferencePipeline:
                 "embodied_carbon_footprint_kg_co2e": primary_distress.get("carbon_footprint_kg_co2e", 0.0),
                 "monsoon_risk_multiplier": primary_distress.get("monsoon_vulnerability_index", 0.0),
                 "has_pedestrian_hazard": primary_pedestrian is not None,
+                "pedestrians_detected_count": len(ped_detections),
                 "pedestrian_alert_level": primary_pedestrian.get("alert_level") if primary_pedestrian else "NO_PEDESTRIAN_HAZARD"
             },
             "latency_ms": elapsed_ms

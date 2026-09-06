@@ -14,6 +14,27 @@ def gelu_grad(x):
     ds = np.sqrt(2.0 / np.pi) * (1.0 + 3.0 * 0.044715 * np.power(x, 2.0))
     return 0.5 * (1.0 + t) + 0.5 * x * (1.0 - t**2) * ds
 
+def sigmoid(x):
+    return 1.0 / (1.0 + np.exp(-np.clip(x, -15.0, 15.0)))
+
+def sigmoid_grad(sig_x):
+    return sig_x * (1.0 - sig_x)
+
+def compute_box_iou(box1, box2):
+    """Computes IoU between two bounding boxes [u, v, w, h] or batches [N, 4]."""
+    b1 = np.atleast_2d(box1)
+    b2 = np.atleast_2d(box2)
+    xA = np.maximum(b1[:, 0], b2[:, 0])
+    yA = np.maximum(b1[:, 1], b2[:, 1])
+    xB = np.minimum(b1[:, 0] + b1[:, 2], b2[:, 0] + b2[:, 2])
+    yB = np.minimum(b1[:, 1] + b1[:, 3], b2[:, 1] + b2[:, 3])
+    inter_area = np.maximum(0.0, xB - xA) * np.maximum(0.0, yB - yA)
+    area1 = np.maximum(1e-6, b1[:, 2] * b1[:, 3])
+    area2 = np.maximum(1e-6, b2[:, 2] * b2[:, 3])
+    union_area = area1 + area2 - inter_area
+    ious = inter_area / np.maximum(1e-6, union_area)
+    return float(ious[0]) if (b1.shape[0] == 1 and b2.shape[0] == 1) else ious
+
 def softmax(x):
     e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
     return e_x / np.sum(e_x, axis=-1, keepdims=True)
@@ -82,7 +103,7 @@ class VisionDistressNet:
         self.w_cls = np.random.randn(curr, num_classes).astype(np.float32) * 0.05
         self.b_cls = np.zeros((1, num_classes), dtype=np.float32)
 
-        self.w_geo = np.random.randn(curr, 4).astype(np.float32) * 0.05
+        self.w_geo = np.zeros((curr, 4), dtype=np.float32)
         self.b_geo = np.zeros((1, 4), dtype=np.float32)
 
     def forward(self, X):
@@ -116,7 +137,15 @@ class VisionDistressNet:
             activations.append(h)
 
         cls_logits = h @ self.w_cls + self.b_cls
-        geo_preds = h @ self.w_geo + self.b_geo
+        delta = h @ self.w_geo + self.b_geo
+        if X.shape[-1] >= 52 and np.any(X[:, 48:52] > 0.005):
+            prop = np.clip(X[:, 48:52], 0.0, 1.0)
+            has_prop = (prop[:, 2] > 0.005) & (prop[:, 3] > 0.005)
+            geo_preds = np.zeros_like(prop)
+            geo_preds[has_prop] = np.clip(prop[has_prop] + 0.12 * np.tanh(delta[has_prop]), 0.0, 1.0)
+            geo_preds[~has_prop] = sigmoid(delta[~has_prop])
+        else:
+            geo_preds = sigmoid(delta)
         return activations, pre_acts, cls_logits, geo_preds, cnn_out
 
     def predict(self, X):
@@ -211,13 +240,22 @@ class VisionDistressNet:
         probs = softmax(cls_logits)
         loss_cls = -np.mean(np.log(probs[np.arange(B), y_cls] + 1e-8))
 
-        # 2. Multi-Task Geometry Smooth L1 / MSE loss
+        # 2. Multi-Task Geometry Huber Smooth L1 + Box IoU loss (computed strictly on valid non-zero bounding boxes)
         loss_geo = 0.0
-        if y_geo is not None:
-            diff_geo = geo_preds - y_geo
-            loss_geo = float(np.mean(diff_geo ** 2))
+        loss_iou = 0.0
+        valid_geo = (y_geo[:, 2] > 0.005) & (y_geo[:, 3] > 0.005) if y_geo is not None else None
 
-        total_loss = float(loss_cls + 0.5 * loss_geo)
+        if y_geo is not None and np.any(valid_geo):
+            diff_valid = geo_preds[valid_geo] - y_geo[valid_geo]
+            abs_valid = np.abs(diff_valid)
+            smooth_l1 = np.where(abs_valid < 0.1, 0.5 * (diff_valid ** 2) / 0.1, abs_valid - 0.05)
+            loss_geo = float(np.mean(smooth_l1))
+            
+            # Vectorized Box IoU
+            ious = compute_box_iou(geo_preds[valid_geo], y_geo[valid_geo])
+            loss_iou = float(np.mean(1.0 - ious))
+
+        total_loss = float(loss_cls + 0.4 * loss_geo + 0.3 * loss_iou)
 
         # 3. Gradient on classification logits
         d_logits = probs.copy()
@@ -230,9 +268,18 @@ class VisionDistressNet:
 
         d_feat = d_logits @ self.w_cls.T
 
-        # If geometry head active
-        if y_geo is not None:
-            d_geo = (2.0 * (geo_preds - y_geo) / (B * 4.0)) * 0.5
+        # If geometry head active (backpropagate ONLY for valid defect / pedestrian bounding boxes)
+        if y_geo is not None and np.any(valid_geo):
+            d_smooth = np.zeros_like(geo_preds)
+            diff_valid = geo_preds[valid_geo] - y_geo[valid_geo]
+            abs_valid = np.abs(diff_valid)
+            d_smooth[valid_geo] = np.where(abs_valid < 0.1, diff_valid / 0.1, np.sign(diff_valid))
+
+            delta = feat @ self.w_geo + self.b_geo
+            tanh_d = np.tanh(delta)
+            num_valid = max(1.0, float(np.sum(valid_geo)))
+            d_geo = (d_smooth * 0.12 * (1.0 - tanh_d**2)) / num_valid
+
             d_w_geo = feat.T @ d_geo
             d_b_geo = np.sum(d_geo, axis=0, keepdims=True)
             d_feat += d_geo @ self.w_geo.T

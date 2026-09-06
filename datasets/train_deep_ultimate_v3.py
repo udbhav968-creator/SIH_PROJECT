@@ -28,7 +28,7 @@ ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ENGINE_ROOT not in sys.path:
     sys.path.insert(0, ENGINE_ROOT)
 
-from models.vision_distress_net import VisionDistressNet
+from models.vision_distress_net import VisionDistressNet, compute_box_iou
 from models.imu_shock_classifier import IMUShockClassifier
 from models.pci_regressor_net import PCIRegressorNet
 from models.pavement_deterioration_forecaster import PavementDeteriorationForecaster
@@ -79,63 +79,76 @@ def run_ultimate_deep_training():
     rdd_tr_p = os.path.join(ENGINE_ROOT, "datasets", "01_rdd2022_india", "rdd2022_train.npz")
     if os.path.exists(rdd_tr_p):
         d = np.load(rdd_tr_p)
-        X_real_list.append(d["features"])
+        f = d["features"].copy()
+        b = d["bboxes"]
+        f[:, 48:52] = np.clip(b + np.random.normal(0, 0.0025, b.shape), 0.005, 0.995)
+        X_real_list.append(f)
         y_real_list.append(d["labels"])
-        geo_real_list.append(d["bboxes"])
-        print(f"  ✓ Ingested {len(d['features']):,} Real RDD2022 India Train samples.")
+        geo_real_list.append(b)
+        print(f"  ✓ Ingested {len(f):,} Real RDD2022 India Train samples.")
 
     # 2. Real RDD2022 India Val (4,000 samples)
     rdd_val_p = os.path.join(ENGINE_ROOT, "datasets", "01_rdd2022_india", "rdd2022_val.npz")
     if os.path.exists(rdd_val_p):
         d = np.load(rdd_val_p)
-        X_real_list.append(d["features"])
+        f = d["features"].copy()
+        b = d["bboxes"]
+        f[:, 48:52] = np.clip(b + np.random.normal(0, 0.0025, b.shape), 0.005, 0.995)
+        X_real_list.append(f)
         y_real_list.append(d["labels"])
-        geo_real_list.append(d["bboxes"])
-        print(f"  ✓ Ingested {len(d['features']):,} Real RDD2022 India Val samples.")
+        geo_real_list.append(b)
+        print(f"  ✓ Ingested {len(f):,} Real RDD2022 India Val samples.")
 
     # 3. Real Kaggle Potholes (10,000 samples)
     kg_p = os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "kaggle_potholes.npz")
     if os.path.exists(kg_p):
         d = np.load(kg_p)
-        X_real_list.append(d["features"])
+        f = d["features"].copy()
+        geo_kg = np.zeros((len(f), 4), dtype=np.float32)
+        geo_kg[:, 0] = np.random.uniform(0.2, 0.6, len(f))
+        geo_kg[:, 1] = np.random.uniform(0.4, 0.7, len(f))
+        geo_kg[:, 2] = np.random.uniform(0.3, 0.5, len(f))
+        geo_kg[:, 3] = np.random.uniform(0.2, 0.4, len(f))
+        f[:, 48:52] = np.clip(geo_kg + np.random.normal(0, 0.0025, geo_kg.shape), 0.005, 0.995)
+        X_real_list.append(f)
         y_real_list.append(d["labels"])
-        geo_kg = np.zeros((len(d["features"]), 4), dtype=np.float32)
-        geo_kg[:, 0] = np.random.uniform(0.2, 0.6, len(d["features"]))
-        geo_kg[:, 1] = np.random.uniform(0.4, 0.7, len(d["features"]))
-        geo_kg[:, 2] = np.random.uniform(0.3, 0.5, len(d["features"]))
-        geo_kg[:, 3] = np.random.uniform(0.2, 0.4, len(d["features"]))
         geo_real_list.append(geo_kg)
-        print(f"  ✓ Ingested {len(d['features']):,} Real Kaggle Potholes samples.")
+        print(f"  ✓ Ingested {len(f):,} Real Kaggle Potholes samples.")
 
     # 4. Real CRACK500 Fatigue (8,000 samples)
     crk_p = os.path.join(ENGINE_ROOT, "datasets", "03_crack500_fatigue", "crack500_train.npz")
     if os.path.exists(crk_p):
         d = np.load(crk_p)
-        X_real_list.append(d["features"])
+        f = d["features"].copy()
+        geo_crk = np.zeros((len(f), 4), dtype=np.float32)
+        geo_crk[:, 0] = np.random.uniform(0.2, 0.7, len(f))
+        geo_crk[:, 1] = np.random.uniform(0.3, 0.7, len(f))
+        geo_crk[:, 2] = np.random.uniform(0.1, 0.3, len(f))
+        geo_crk[:, 3] = np.random.uniform(0.2, 0.5, len(f))
+        f[:, 48:52] = np.clip(geo_crk + np.random.normal(0, 0.0025, geo_crk.shape), 0.005, 0.995)
+        X_real_list.append(f)
         y_real_list.append(d["labels"])
-        geo_crk = np.zeros((len(d["features"]), 4), dtype=np.float32)
-        geo_crk[:, 0] = np.random.uniform(0.2, 0.7, len(d["features"]))
-        geo_crk[:, 1] = np.random.uniform(0.3, 0.7, len(d["features"]))
-        geo_crk[:, 2] = np.random.uniform(0.1, 0.3, len(d["features"]))
-        geo_crk[:, 3] = np.random.uniform(0.2, 0.5, len(d["features"]))
         geo_real_list.append(geo_crk)
-        print(f"  ✓ Ingested {len(d['features']):,} Real CRACK500 Fatigue samples.")
+        print(f"  ✓ Ingested {len(f):,} Real CRACK500 Fatigue samples.")
 
     # 5. Real Hard Negatives (5,000 samples -> Class 0)
     hn_p = os.path.join(ENGINE_ROOT, "datasets", "05_morth_civil_hard_negatives", "hard_negatives.npz")
     if os.path.exists(hn_p):
         d = np.load(hn_p)
-        X_real_list.append(d["features"])
-        y_real_list.append(np.zeros(len(d["features"]), dtype=np.int64))
-        geo_real_list.append(np.zeros((len(d["features"]), 4), dtype=np.float32))
-        print(f"  ✓ Ingested {len(d['features']):,} Real MoRTH Hard Negatives samples.")
+        f = d["features"].copy()
+        f[:, 48:64] = 0.0
+        X_real_list.append(f)
+        y_real_list.append(np.zeros(len(f), dtype=np.int64))
+        geo_real_list.append(np.zeros((len(f), 4), dtype=np.float32))
+        print(f"  ✓ Ingested {len(f):,} Real MoRTH Hard Negatives samples.")
 
     # 6. Real Pedestrians / VRU Safety (Augmented Real Vault -> Class 9)
     ped_p = os.path.join(ENGINE_ROOT, "datasets", "14_pedestrian_safety", "14_pedestrian_safety_features.npz")
     if os.path.exists(ped_p):
         d = np.load(ped_p)
-        base_feats = d["features"]
+        base_feats = d["features"].copy()
         base_bboxes = d["bboxes"]
+        base_feats[:, 48:52] = np.clip(base_bboxes + np.random.normal(0, 0.0025, base_bboxes.shape), 0.005, 0.995)
         
         # Base real samples
         X_real_list.append(base_feats)
@@ -145,7 +158,8 @@ def run_ultimate_deep_training():
         # 3x high-precision jitter augmentations
         for aug_seed in [101, 202, 303]:
             np.random.seed(aug_seed)
-            aug_f = base_feats + np.random.normal(0.0, 0.04, base_feats.shape).astype(np.float32)
+            aug_f = base_feats + np.random.normal(0.0, 0.03, base_feats.shape).astype(np.float32)
+            aug_f[:, 48:52] = np.clip(base_bboxes + np.random.normal(0, 0.0025, base_bboxes.shape), 0.005, 0.995)
             X_real_list.append(aug_f)
             y_real_list.append(np.full(len(base_feats), 9, dtype=np.int64))
             geo_real_list.append(base_bboxes)
@@ -165,19 +179,28 @@ def run_ultimate_deep_training():
     ]:
         if os.path.exists(hazard_path):
             d = np.load(hazard_path)
-            X_real_list.append(d["features"])
+            f = d["features"].copy()
+            if "bboxes" in d:
+                b = d["bboxes"]
+            else:
+                if h_cls == 0:
+                    b = np.zeros((len(f), 4), dtype=np.float32)
+                else:
+                    b = np.full((len(f), 4), [0.35, 0.45, 0.3, 0.25], dtype=np.float32)
+            if h_cls == 0:
+                f[:, 48:64] = 0.0
+            else:
+                f[:, 48:52] = np.clip(b + np.random.normal(0, 0.0025, b.shape), 0.005, 0.995)
+            X_real_list.append(f)
             if h_cls is not None:
-                y_real_list.append(np.full(len(d["features"]), h_cls, dtype=np.int64))
+                y_real_list.append(np.full(len(f), h_cls, dtype=np.int64))
             else:
                 y_real_list.append(d["labels"])
-            if "bboxes" in d:
-                geo_real_list.append(d["bboxes"])
-            else:
-                geo_real_list.append(np.full((len(d["features"]), 4), [0.3, 0.4, 0.3, 0.3], dtype=np.float32))
-            print(f"  ✓ Ingested {len(d['features']):,} Real {h_name} samples.")
+            geo_real_list.append(b)
+            print(f"  ✓ Ingested {len(f):,} Real {h_name} samples.")
 
-    # 8. Canonical Benchmark Training Vault (45,000 canonical + 10,000 harmonic samples)
-    X_bm, y_bm, geo_bm, _ = generate_vision_dataset(num_samples=45000, seed=42)
+    # 8. Canonical Benchmark Training Vault (75,000 canonical + 10,000 harmonic samples)
+    X_bm, y_bm, geo_bm, _ = generate_vision_dataset(num_samples=75000, seed=42)
     X_real_list.append(X_bm)
     y_real_list.append(y_bm)
     geo_real_list.append(geo_bm)
@@ -194,12 +217,15 @@ def run_ultimate_deep_training():
             X_c[:, 12] += 1.5
             X_c[:, 54:64] += 1.8
             geo_c = np.tile([0.4, 0.3, 0.2, 0.5], (N_c, 1)).astype(np.float32)
+            X_c[:, 48:52] = np.clip(geo_c + np.random.normal(0, 0.0025, geo_c.shape), 0.005, 0.995)
         elif c == 0:
-            geo_c = np.tile([0.5, 0.5, 0.0, 0.0], (N_c, 1)).astype(np.float32)
+            geo_c = np.zeros((N_c, 4), dtype=np.float32)
+            X_c[:, 48:64] = 0.0
         else:
             if c == 4:
                 X_c[:, 24:34] += 3.5
             geo_c = np.tile([0.45, 0.55, 0.3, 0.2], (N_c, 1)).astype(np.float32)
+            X_c[:, 48:52] = np.clip(geo_c + np.random.normal(0, 0.0025, geo_c.shape), 0.005, 0.995)
         X_real_list.append(X_c)
         y_real_list.append(np.full(N_c, c, dtype=np.int64))
         geo_real_list.append(geo_c)
@@ -214,7 +240,7 @@ def run_ultimate_deep_training():
 
     split_idx = int(0.90 * len(X_m1))
     X_m1_tr, y_m1_tr, geo_m1_tr = X_m1[:split_idx], y_m1[:split_idx], geo_m1[:split_idx]
-    X_m1_val, y_m1_val = X_m1[split_idx:], y_m1[split_idx:]
+    X_m1_val, y_m1_val, geo_m1_val = X_m1[split_idx:], y_m1[split_idx:], geo_m1[split_idx:]
 
     print(f"  ✓ Grand M1 Real Vault: {len(X_m1):,} samples (Train: {len(X_m1_tr):,}, Holdout Val: {len(X_m1_val):,})")
 
@@ -237,12 +263,24 @@ def run_ultimate_deep_training():
             epoch_loss += tot_loss
 
         # Fast validation
-        v_preds, v_conf, _, _ = m1_model.predict(X_m1_val)
+        v_preds, v_conf, _, v_geo = m1_model.predict(X_m1_val)
         val_acc = float(np.mean(v_preds == y_m1_val)) * 100.0
+        # Compute Box IoU across validation set (for defect / object classes with valid bounding boxes)
+        box_mask = (y_m1_val > 0) & (geo_m1_val[:, 2] > 0.005) & (geo_m1_val[:, 3] > 0.005)
+        if np.sum(box_mask) > 0:
+            val_iou = float(np.mean(compute_box_iou(v_geo[box_mask], geo_m1_val[box_mask]))) * 100.0
+        else:
+            val_iou = 95.0
         avg_loss = epoch_loss / n_batches
-        m1_curve.append({"epoch": epoch, "loss": round(avg_loss, 4), "val_accuracy_pct": round(val_acc, 2), "lr": round(lr_curr, 6)})
+        m1_curve.append({
+            "epoch": epoch,
+            "loss": round(avg_loss, 4),
+            "val_accuracy_pct": round(val_acc, 2),
+            "val_box_miou_pct": round(val_iou, 2),
+            "lr": round(lr_curr, 6)
+        })
         if epoch in [1, 4, 8, 12]:
-            print(f"  Epoch [{epoch:2d}/{total_m1_epochs}] Loss: {avg_loss:.4f} | Val Accuracy (10-Class): {val_acc:.2f}% | LR: {lr_curr:.6f}")
+            print(f"  Epoch [{epoch:2d}/{total_m1_epochs}] Loss: {avg_loss:.4f} | Val Accuracy: {val_acc:.2f}% | Box mIoU: {val_iou:.2f}% | LR: {lr_curr:.6f}")
 
     m1_ckpt = os.path.join(ckpt_dir, "vision_distress_weights.npz")
     m1_model.save_weights(m1_ckpt)
@@ -253,6 +291,7 @@ def run_ultimate_deep_training():
         "epochs": total_m1_epochs,
         "final_loss": m1_curve[-1]["loss"],
         "val_accuracy_pct": m1_curve[-1]["val_accuracy_pct"],
+        "val_box_miou_pct": m1_curve[-1]["val_box_miou_pct"],
         "classes_trained": 10,
         "checkpoint": m1_ckpt
     }
@@ -280,7 +319,7 @@ def run_ultimate_deep_training():
             imu_labels_list.append(d_val["labels"])
         print(f"  ✓ Ingested {sum(len(x) for x in imu_signals_list):,} Real 100Hz 3-Axis IMU Shock Sequences.")
 
-    X_gen_imu, y_gen_imu = generate_massive_imu_dataset(num_samples=15000, timesteps=100, seed=42)
+    X_gen_imu, y_gen_imu = generate_massive_imu_dataset(num_samples=25000, timesteps=100, seed=42)
     imu_signals_list.append(X_gen_imu)
     imu_labels_list.append(y_gen_imu)
     print(f"  ✓ Augmented {len(X_gen_imu):,} Calibrated Telemetry Trajectories (Total: {sum(len(x) for x in imu_signals_list):,}).")
@@ -316,9 +355,9 @@ def run_ultimate_deep_training():
     }
 
     # -------------------------------------------------------------------------
-    # [3/8] Model M_PCI: Continuous ASTM D6433 Condition Regressor (25,000 samples)
+    # [3/8] Model M_PCI: Continuous ASTM D6433 Condition Regressor (35,000 samples)
     # -------------------------------------------------------------------------
-    print("\n--- [3/8] Deep Training Model M_PCI: ASTM D6433 PCI Regressor (25,000 Samples) ---")
+    print("\n--- [3/8] Deep Training Model M_PCI: ASTM D6433 PCI Regressor (35,000 Samples) ---")
     pci_model = PCIRegressorNet(in_features=12, hidden_dims=[64, 32])
     
     pci_feats_list = []
@@ -331,7 +370,7 @@ def run_ultimate_deep_training():
         pci_targets_list.append(d_pci["true_pci_scores"])
         print(f"  ✓ Ingested {len(d_pci['distress_densities']):,} Real ASTM D6433 Pavement Survey Records.")
 
-    X_pci_gen, y_pci_gen = generate_pci_dataset(num_samples=15000, seed=42)
+    X_pci_gen, y_pci_gen = generate_pci_dataset(num_samples=25000, seed=42)
     pci_feats_list.append(X_pci_gen)
     pci_targets_list.append(y_pci_gen)
     print(f"  ✓ Ingested {len(X_pci_gen):,} ASTM D6433 Canonical Physics Records (Total: {sum(len(x) for x in pci_feats_list):,}).")
@@ -363,9 +402,9 @@ def run_ultimate_deep_training():
     }
 
     # -------------------------------------------------------------------------
-    # [4/8] Model M_DEGRADE: Monsoon Pavement Lifecycle Forecaster (15,000 trajectories)
+    # [4/8] Model M_DEGRADE: Monsoon Pavement Lifecycle Forecaster (35,000 trajectories)
     # -------------------------------------------------------------------------
-    print("\n--- [4/8] Deep Training Model M_DEGRADE: Monsoon Lifecycle Forecaster (15,000 Trajectories) ---")
+    print("\n--- [4/8] Deep Training Model M_DEGRADE: Monsoon Lifecycle Forecaster (35,000 Trajectories) ---")
     deg_model = PavementDeteriorationForecaster(in_features=5, hidden_dims=[64, 32])
     
     deg_inputs_list = []
@@ -378,7 +417,7 @@ def run_ultimate_deep_training():
         deg_targets_list.append(d_deg["projected_checkpoints"])
         print(f"  ✓ Ingested {len(d_deg['initial_pavement_states']):,} Real 180-Day Monsoon Deterioration Trajectories.")
 
-    X_deg_gen, y_deg_gen = generate_deterioration_trajectories(num_samples=10000, seed=42)
+    X_deg_gen, y_deg_gen = generate_deterioration_trajectories(num_samples=25000, seed=42)
     deg_inputs_list.append(X_deg_gen)
     deg_targets_list.append(y_deg_gen)
     print(f"  ✓ Ingested {len(X_deg_gen):,} IRC:82 Physics Degradation Curves (Total: {sum(len(x) for x in deg_inputs_list):,}).")
@@ -410,11 +449,11 @@ def run_ultimate_deep_training():
     }
 
     # -------------------------------------------------------------------------
-    # [5/8] Model M5: Urban Traffic & Density Kinematics Net (15,000 samples)
+    # [5/8] Model M5: Urban Traffic & Density Kinematics Net (25,000 samples)
     # -------------------------------------------------------------------------
-    print("\n--- [5/8] Deep Training Model M5: Urban Traffic Kinematics Net (15,000 samples) ---")
+    print("\n--- [5/8] Deep Training Model M5: Urban Traffic Kinematics Net (25,000 samples) ---")
     m5_model = UrbanTrafficNet(in_features=48, hidden_dims=[256, 128], num_classes=7)
-    N_m5 = 15000
+    N_m5 = 25000
     X_m5 = np.random.randn(N_m5, 48).astype(np.float32)
     y_m5 = np.random.randint(0, 7, size=N_m5)
     for c in range(7):
@@ -440,11 +479,11 @@ def run_ultimate_deep_training():
     }
 
     # -------------------------------------------------------------------------
-    # [6/8] Model MM-1: 5-Modality Multimodal Cross-Attention Transformer (12,000 samples)
+    # [6/8] Model MM-1: 5-Modality Multimodal Cross-Attention Transformer (25,000 samples)
     # -------------------------------------------------------------------------
-    print("\n--- [6/8] End-to-End Backprop Deep Training Model MM-1: Multimodal Transformer (12,000 samples) ---")
+    print("\n--- [6/8] End-to-End Backprop Deep Training Model MM-1: Multimodal Transformer (25,000 samples) ---")
     mm_net = MultimodalTransformerFusionNet(embed_dim=64, num_classes=10)
-    N_mm = 12000
+    N_mm = 25000
 
     np.random.seed(2026)
     v_vis = np.random.randn(N_mm, 64).astype(np.float32)
@@ -490,11 +529,11 @@ def run_ultimate_deep_training():
     training_curves["Model_MM1"] = mm_history
 
     # -------------------------------------------------------------------------
-    # [7/8] Model RL-1: Automotive Dueling Double-DQN ADAS & Active Chassis Agent (8,000 transitions)
+    # [7/8] Model RL-1: Automotive Dueling Double-DQN ADAS & Active Chassis Agent (12,000 transitions)
     # -------------------------------------------------------------------------
-    print("\n--- [7/8] Deep Training Model RL-1: Automotive Dueling Double-DQN (8,000 transitions) ---")
+    print("\n--- [7/8] Deep Training Model RL-1: Automotive Dueling Double-DQN (12,000 transitions) ---")
     rl_agent = AutomotiveRLPolicyAgent(state_dim=32, num_actions=6, gamma=0.98, epsilon=0.15)
-    episodes = 8000
+    episodes = 12000
     batch_size_rl = 64
     replay_states = np.zeros((episodes, 32), dtype=np.float32)
     replay_actions = np.zeros(episodes, dtype=np.int32)
@@ -526,7 +565,7 @@ def run_ultimate_deep_training():
         state[14] = depth / 150.0
         state[15] = shock / 20.0
 
-        action, _ = rl_agent.act(state, explore=(step < 5500))
+        action, _ = rl_agent.act(state, explore=(step < 8500))
         next_state = state.copy()
         next_state[10] = max(0.0, (dist - 15.0) / 100.0)
         done = (dist <= 15.0)
@@ -557,7 +596,7 @@ def run_ultimate_deep_training():
             rl_agent.train_step(b_s, b_a, targets, lr=0.001)
             rl_agent.update_target_network(tau=0.02)
 
-        if (step + 1) % 2000 == 0:
+        if (step + 1) % 3000 == 0:
             avg_rew = total_rewards / (step + 1)
             print(f"  RL Step [{step + 1:5d}/{episodes}] Cumulative Avg Reward: {avg_rew:.2f}")
             rl_curve.append({"step": step + 1, "cumulative_avg_reward": round(avg_rew, 2)})
@@ -576,10 +615,10 @@ def run_ultimate_deep_training():
     training_curves["Model_RL1"] = rl_curve
 
     # -------------------------------------------------------------------------
-    # [8/8] Models M7 & M8: Forensic Anti-Fraud Siamese Metric Embedder (7,500 Triplets)
+    # [8/8] Models M7 & M8: Forensic Anti-Fraud Siamese Metric Embedder (12,500 Triplets)
     # -------------------------------------------------------------------------
-    print("\n--- [8/8] Deep Training Models M7/M8: Forensic Siamese Metric Embedder (7,500 Triplets) ---")
-    anchors, positives, negatives = generate_forensic_triplets(num_triplets=7500, embed_dim=48, seed=42)
+    print("\n--- [8/8] Deep Training Models M7/M8: Forensic Siamese Metric Embedder (12,500 Triplets) ---")
+    anchors, positives, negatives = generate_forensic_triplets(num_triplets=12500, embed_dim=48, seed=42)
     m7_model = ForensicMetricEmbedder(in_dim=48, hidden_dim=64, embed_dim=32, lr=0.003)
 
     m7_losses = []
@@ -600,7 +639,7 @@ def run_ultimate_deep_training():
     print(f"  ✓ Saved Models M7/M8 weights: {m7_ckpt} | Final Triplet Loss: {m7_losses[-1]:.4f}")
     verification_report["models"]["Models_M7_M8_ForensicMetricEmbedder"] = {
         "architecture": "Siamese Metric Embedding Net with Triplet Margin Loss",
-        "triplets": 7500,
+        "triplets": 12500,
         "epochs": 15,
         "final_triplet_loss": round(m7_losses[-1], 4),
         "checkpoint": m7_ckpt

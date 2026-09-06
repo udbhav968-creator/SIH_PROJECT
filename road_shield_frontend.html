@@ -6635,16 +6635,25 @@
       const detCount = (analysis.all_detections && analysis.all_detections.length > 0) ? analysis.all_detections.length : 1;
       const countBadge = document.getElementById("rw-photo-defect-count-badge");
       if (countBadge) {
-        countBadge.innerText = detCount > 1 
-          ? `Cumulative Total (${detCount} Hazard Targets)` 
-          : `Single Defect Total`;
+        const pedCount = analysis.pedestrians_count || (analysis.all_detections ? analysis.all_detections.filter(d => d.is_pedestrian).length : 0);
+        let badgeTxt = `Single Defect Total`;
+        if (detCount > 1 && pedCount > 1) {
+          badgeTxt = `Cumulative Total (${pedCount} Pedestrians + ${detCount - pedCount} Distresses)`;
+        } else if (detCount > 1) {
+          badgeTxt = `Cumulative Total (${detCount} Hazard Targets)`;
+        }
+        countBadge.innerText = badgeTxt;
       }
 
       // Show toast with deep pipeline forensic metrics or pedestrian safety alert
       if (hasDual) {
-        showAiToast(`⚠️ DUAL HAZARD CO-OCCURRENCE!`, `Pedestrian on carriage way AND Road Cavity (${distObj.class_name || 'D40 Pothole'}) detected simultaneously! Autonomous slowdown & MoRTH repair active.`);
+        const pedCount = analysis.pedestrians_count || 1;
+        const pedTxt = pedCount > 1 ? `${pedCount} Pedestrians on roadway` : `Pedestrian on carriage way`;
+        showAiToast(`⚠️ DUAL HAZARD CO-OCCURRENCE!`, `${pedTxt} AND Road Cavity (${distObj.class_name || 'D40 Pothole'}) detected simultaneously! Autonomous slowdown & MoRTH repair active.`);
       } else if (isPedOnly) {
-        showAiToast(`⚠️ VULNERABLE ROAD USER ALERT!`, `Child / Pedestrian Hazard detected on carriage way. Autonomous vehicle slowdown chime active.`);
+        const pedCount = analysis.pedestrians_count || 1;
+        const pedTxt = pedCount > 1 ? `${pedCount} Vulnerable Pedestrians` : `Child / Pedestrian Hazard`;
+        showAiToast(`⚠️ VULNERABLE ROAD USER ALERT!`, `${pedTxt} detected on carriage way. Autonomous vehicle slowdown chime active.`);
       } else if (analysis.astm_d6433_pci && analysis.bayesian_sensor_fusion) {
         const pci = analysis.astm_d6433_pci;
         const fusion = analysis.bayesian_sensor_fusion;
@@ -6733,7 +6742,7 @@
               glowHex = "rgba(6, 182, 212, 0.70)";
               labelCol1 = "#22d3ee";
               labelCol2 = "#34d399";
-              tag = "[VRU SAFETY]";
+              tag = det.hud_label ? `[${det.hud_label}]` : (det.pedestrian_id ? `[VRU #${det.pedestrian_id}]` : "[VRU SAFETY]");
             } else if (cId === 3 || cName.includes("alligator") || cName.includes("d20") || cName.includes("fatigue")) {
               // Neon Crimson / Vivid Rose (Alligator Fatigue Crack)
               boxStroke = "#f43f5e";
@@ -6835,9 +6844,12 @@
             ctx.beginPath(); ctx.moveTo(bx + bw - cLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cLen); ctx.stroke();
 
             const dDims = det.physical_dimensions || dims || {};
-            const label1 = `${tag} ${(det.class_name || 'DETECTION').toUpperCase()} (${((det.confidence || 0.98)*100).toFixed(1)}%)`;
+            const distM = (det.distance_meters !== undefined && det.distance_meters !== null) ? det.distance_meters : 5.0;
+            const label1 = isDetPed
+              ? `${tag} ${(det.class_name || 'PEDESTRIAN').toUpperCase()} (${((det.confidence || 0.98)*100).toFixed(1)}%)`
+              : `${tag} ${(det.class_name || 'DETECTION').toUpperCase()} (${((det.confidence || 0.98)*100).toFixed(1)}%)`;
             const label2 = isDetPed 
-              ? "VRU Hazard: Autonomous Slowdown Chime Active" 
+              ? `Distance: ${distM.toFixed(1)}m • Slowdown Chime & Auto-Braking Active` 
               : `Area: ${(dDims.surface_area_m2 || 0).toFixed(2)} m² • Depth: ${(dDims.depth_cm || 0).toFixed(1)} cm • ₹${Math.round(dDims.estimated_repair_cost_inr || 0).toLocaleString('en-IN')}`;
             
             ctx.font = "bold 10px monospace";

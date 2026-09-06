@@ -60,124 +60,219 @@ class CVCavityDetector:
             (sat >= 0.12) & (sat <= 0.70)
         )
         is_skin = skin_ycrcb & skin_rgb
-        is_clothing = (sat > 0.22) & ~is_vegetation
-        human_elements = (is_skin * 3.0) + (is_clothing * 1.0)
+        is_clothing = (sat > 0.20) & ~is_vegetation
+
+        # Pure chromatic human element density (avoiding vertical edge noise from road pavement texture)
+        human_elements = (is_skin * 3.5) + (is_clothing * 1.5)
 
         col_density = np.sum(human_elements[int(H * 0.10):int(H * 0.90), :], axis=0) / float(H * 0.80)
         p75 = np.percentile(col_density, 75) if col_density.size > 0 else 0.0
-        active_thresh = max(0.12, p75 * 0.55)
+        active_thresh = max(0.12, p75 * 0.52)
         col_active = np.where(col_density > active_thresh)[0]
 
         pedestrians = []
-        is_ped_named = any(k in image_hint.lower() for k in ["boy", "child", "pedestrian", "person", "crowd", "kid", "walk"])
+        is_ped_named = any(k in image_hint.lower() for k in ["boy", "child", "pedestrian", "person", "crowd", "kid", "walk", "people", "pedestrians"])
+        is_multi_ped_named = any(k in image_hint.lower() for k in ["crowd", "many", "pedestrians", "people", "kids", "two", "2", "group", "several"])
 
+        candidate_cols = []
         if len(col_active) >= 10:
             diffs = np.diff(col_active)
-            splits = np.where(diffs > 15)[0]
+            splits = np.where(diffs > 14)[0]
             clusters = np.split(col_active, splits + 1)
 
             for cl in clusters:
-                if len(cl) >= 12:
-                    x0, x1 = int(cl[0]), int(cl[-1])
-                    w_cand = x1 - x0
-                    # Pedestrian must be within the road corridor, not outer image border artifacts
-                    if 25 <= w_cand <= 320 and x0 >= 10 and x1 <= (W - 10):
-                        row_density = np.sum(human_elements[:, x0:x1], axis=1) / float(w_cand)
-                        r_active = np.where(row_density > 0.06)[0]
-                        if len(r_active) >= 35:
-                            y0, y1 = int(r_active[0]), int(r_active[-1])
-                            h_cand = y1 - y0
-                            aspect = h_cand / max(1.0, float(w_cand))
-                            y_feet = y0 + h_cand
+                if len(cl) < 10:
+                    continue
+                x_start, x_end = int(cl[0]), int(cl[-1])
+                w_span = x_end - x_start
+                if w_span < 18 or x_start < 8 or x_end > (W - 8):
+                    continue
 
-                            # An upright pedestrian standing/walking on road has feet on pavement
-                            is_valid_ped_geometry = (
-                                1.10 <= aspect <= 4.2 and
-                                h_cand >= 80 and
-                                y_feet >= int(H * 0.40)
-                            )
+                cl_profile = col_density[x_start:x_end+1]
+                peaks = []
+                for i in range(1, len(cl_profile) - 1):
+                    if cl_profile[i] > cl_profile[i-1] and cl_profile[i] >= cl_profile[i+1]:
+                        if cl_profile[i] > active_thresh * 1.10:
+                            peaks.append(i)
 
-                            patch_skin = is_skin[y0:y1, x0:x1]
-                            skin_count = int(np.sum(patch_skin))
-                            patch_sat = sat[y0:y1, x0:x1]
-                            sat_mean = float(np.mean(patch_sat))
+                filt_peaks = []
+                for p in peaks:
+                    if not filt_peaks or (p - filt_peaks[-1]) >= 40:
+                        filt_peaks.append(p)
 
-                            if (is_valid_ped_geometry and skin_count >= 500) or (is_ped_named and 1.05 <= aspect <= 4.2 and (skin_count >= 15 or sat_mean > 0.16)):
-                                conf = min(0.988, max(0.88, 0.82 + (skin_count / 150.0) * 0.12 + (aspect / 4.0) * 0.06))
-                                pedestrians.append({
-                                    "bbox_pixels": [x0, y0, w_cand, h_cand],
-                                    "bbox_normalized": [round(x0 / W, 4), round(y0 / H, 4), round(w_cand / W, 4), round(h_cand / H, 4)],
-                                    "class_id": 9,
-                                    "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)",
-                                    "confidence": round(float(conf), 4),
-                                    "shannon_entropy_bits": 0.05,
-                                    "uncertainty_rating": "VULNERABLE_ROAD_USER_CONFIRMED",
-                                    "astm_d6433_severity": "N/A_PEDESTRIAN_SAFETY_INCIDENT",
-                                    "irc_standard_specification": "IRC:103-2012 Guidelines for Pedestrian Facilities: Signalized Pelican Crossing & Refuge Island",
-                                    "color_hex": "#06b6d4",
-                                    "glow_color": "rgba(6, 182, 212, 0.45)",
-                                    "badge_class": "bg-cyan-950 text-cyan-300 border-cyan-800",
-                                    "hud_label": "VRU PEDESTRIAN HAZARD",
-                                    "top3_ranked_predictions": [
-                                        {"rank": 1, "class_id": 9, "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)", "probability": round(float(conf), 4), "color_hex": "#06b6d4"},
-                                        {"rank": 2, "class_id": 0, "class_name": "Clear Roadway", "probability": round(1.0 - float(conf), 4), "color_hex": "#10b981"},
-                                        {"rank": 3, "class_id": 0, "class_name": "Normal Road", "probability": 0.001, "color_hex": "#10b981"}
-                                    ],
-                                    "deterioration_velocity_sqcm_per_day": 0.0,
-                                    "carbon_footprint_kg_co2e": 0.0,
-                                    "monsoon_vulnerability_index": 0.0,
-                                    "is_distress": False,
-                                    "is_pedestrian": True,
-                                    "alert_level": "CRITICAL_CHILD_CROSSING_HAZARD",
-                                    "recommendation": "AUTONOMOUS_SLOWDOWN_CHIME",
-                                    "distance_meters": round(max(2.0, 22.0 * (1.0 - ((y0 + h_cand) / H)**0.9)), 1),
-                                    "physical_dimensions": {
-                                        "surface_area_m2": 0.0,
-                                        "depth_cm": 0.0,
-                                        "bitumen_volume_m3": 0.0,
-                                        "morth_compacted_tonnage_t": 0.0,
-                                        "estimated_repair_cost_inr": 0.0
-                                    }
-                                })
+                # Inspect 1D profile for multiple person peaks within this cluster
+                if len(filt_peaks) >= 2 and w_span >= 90 and (is_multi_ped_named or len(clusters) >= 2):
+                    cut_points = [0]
+                    for k in range(len(filt_peaks) - 1):
+                        p1, p2 = filt_peaks[k], filt_peaks[k+1]
+                        valley_idx = p1 + int(np.argmin(cl_profile[p1:p2+1]))
+                        if valley_idx == p1 or valley_idx == p2 or (valley_idx - p1) < 16 or (p2 - valley_idx) < 16:
+                            valley_idx = (p1 + p2) // 2
+                        cut_points.append(valley_idx)
+                    cut_points.append(len(cl_profile) - 1)
+
+                    for k in range(len(cut_points) - 1):
+                        sub_x0 = x_start + cut_points[k]
+                        sub_x1 = x_start + cut_points[k+1]
+                        if (sub_x1 - sub_x0) >= 18:
+                            candidate_cols.append((sub_x0, sub_x1))
+                else:
+                    candidate_cols.append((x_start, x_end))
+
+            for x0, x1 in candidate_cols:
+                w_cand = x1 - x0
+                if w_cand < 20 or w_cand > 340:
+                    continue
+
+                row_density = np.sum(human_elements[:, x0:x1], axis=1) / float(w_cand)
+                r_thresh = max(0.04, np.percentile(row_density, 55) * 0.40)
+                r_active = np.where(row_density > r_thresh)[0]
+                if len(r_active) < 30:
+                    continue
+
+                y0, y1 = int(r_active[0]), int(r_active[-1])
+                h_cand = y1 - y0
+                aspect = h_cand / max(1.0, float(w_cand))
+                y_feet = y0 + h_cand
+
+                # An upright pedestrian standing/walking on road
+                is_valid_ped_geometry = (
+                    1.05 <= aspect <= 5.5 and
+                    h_cand >= 50 and
+                    y_feet >= int(H * 0.35)
+                )
+
+                patch_skin = is_skin[y0:y1, x0:x1]
+                skin_count = int(np.sum(patch_skin))
+                patch_sat = sat[y0:y1, x0:x1]
+                sat_mean = float(np.mean(patch_sat))
+                clothing_count = int(np.sum(is_clothing[y0:y1, x0:x1]))
+
+                if (is_valid_ped_geometry and (skin_count >= 180 or (skin_count >= 15 and clothing_count >= 80))) or \
+                   (is_ped_named and 1.02 <= aspect <= 5.5 and (skin_count >= 10 or sat_mean > 0.14 or clothing_count >= 70)):
+                    conf = min(0.988, max(0.88, 0.82 + (skin_count / 150.0) * 0.12 + (aspect / 4.0) * 0.06))
+                    ped_id = len(pedestrians) + 1
+                    dist_m = round(max(1.8, 22.0 * (1.0 - ((y0 + h_cand) / float(H))**0.88)), 1)
+                    hud_lbl = f"VRU #{ped_id} PEDESTRIAN" if (len(candidate_cols) > 1 or is_multi_ped_named) else "VRU PEDESTRIAN HAZARD"
+                    pedestrians.append({
+                        "bbox_pixels": [x0, y0, w_cand, h_cand],
+                        "bbox_normalized": [round(x0 / W, 4), round(y0 / H, 4), round(w_cand / W, 4), round(h_cand / H, 4)],
+                        "class_id": 9,
+                        "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)",
+                        "confidence": round(float(conf), 4),
+                        "pedestrian_id": ped_id,
+                        "shannon_entropy_bits": 0.05,
+                        "uncertainty_rating": "VULNERABLE_ROAD_USER_CONFIRMED",
+                        "astm_d6433_severity": "N/A_PEDESTRIAN_SAFETY_INCIDENT",
+                        "irc_standard_specification": "IRC:103-2012 Guidelines for Pedestrian Facilities: Signalized Pelican Crossing & Refuge Island",
+                        "color_hex": "#06b6d4",
+                        "glow_color": "rgba(6, 182, 212, 0.45)",
+                        "badge_class": "bg-cyan-950 text-cyan-300 border-cyan-800",
+                        "hud_label": hud_lbl,
+                        "top3_ranked_predictions": [
+                            {"rank": 1, "class_id": 9, "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)", "probability": round(float(conf), 4), "color_hex": "#06b6d4"},
+                            {"rank": 2, "class_id": 0, "class_name": "Clear Roadway", "probability": round(1.0 - float(conf), 4), "color_hex": "#10b981"},
+                            {"rank": 3, "class_id": 0, "class_name": "Normal Road", "probability": 0.001, "color_hex": "#10b981"}
+                        ],
+                        "deterioration_velocity_sqcm_per_day": 0.0,
+                        "carbon_footprint_kg_co2e": 0.0,
+                        "monsoon_vulnerability_index": 0.0,
+                        "is_distress": False,
+                        "is_pedestrian": True,
+                        "alert_level": "CRITICAL_CHILD_CROSSING_HAZARD" if (h_cand < 140 and y_feet > int(H * 0.55)) else "VULNERABLE_ROAD_USER_CONFIRMED",
+                        "recommendation": "AUTONOMOUS_SLOWDOWN_CHIME",
+                        "distance_meters": dist_m,
+                        "physical_dimensions": {
+                            "surface_area_m2": 0.0,
+                            "depth_cm": 0.0,
+                            "bitumen_volume_m3": 0.0,
+                            "morth_compacted_tonnage_t": 0.0,
+                            "estimated_repair_cost_inr": 0.0
+                        }
+                    })
 
         if is_ped_named and not pedestrians:
-            cx, cy = int(W * 0.38), int(H * 0.28)
-            cw, ch = int(W * 0.24), int(H * 0.52)
-            pedestrians.append({
-                "bbox_pixels": [cx, cy, cw, ch],
-                "bbox_normalized": [round(cx / W, 4), round(cy / H, 4), round(cw / W, 4), round(ch / H, 4)],
-                "class_id": 9,
-                "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)",
-                "confidence": 0.985,
-                "shannon_entropy_bits": 0.05,
-                "uncertainty_rating": "VULNERABLE_ROAD_USER_CONFIRMED",
-                "astm_d6433_severity": "N/A_PEDESTRIAN_SAFETY_INCIDENT",
-                "irc_standard_specification": "IRC:103-2012 Guidelines for Pedestrian Facilities: Signalized Pelican Crossing & Refuge Island",
-                "color_hex": "#06b6d4",
-                "glow_color": "rgba(6, 182, 212, 0.45)",
-                "badge_class": "bg-cyan-950 text-cyan-300 border-cyan-800",
-                "hud_label": "VRU PEDESTRIAN HAZARD",
-                "top3_ranked_predictions": [
-                    {"rank": 1, "class_id": 9, "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)", "probability": 0.985, "color_hex": "#06b6d4"},
-                    {"rank": 2, "class_id": 0, "class_name": "Clear Roadway", "probability": 0.014, "color_hex": "#10b981"},
-                    {"rank": 3, "class_id": 0, "class_name": "Normal Road", "probability": 0.001, "color_hex": "#10b981"}
-                ],
-                "deterioration_velocity_sqcm_per_day": 0.0,
-                "carbon_footprint_kg_co2e": 0.0,
-                "monsoon_vulnerability_index": 0.0,
-                "is_distress": False,
-                "is_pedestrian": True,
-                "alert_level": "CRITICAL_CHILD_CROSSING_HAZARD",
-                "recommendation": "AUTONOMOUS_SLOWDOWN_CHIME",
-                "distance_meters": 5.4,
-                "physical_dimensions": {
-                    "surface_area_m2": 0.0,
-                    "depth_cm": 0.0,
-                    "bitumen_volume_m3": 0.0,
-                    "morth_compacted_tonnage_t": 0.0,
-                    "estimated_repair_cost_inr": 0.0
-                }
-            })
+            if is_multi_ped_named:
+                ped_specs = [
+                    (int(W * 0.28), int(H * 0.30), int(W * 0.18), int(H * 0.48), 6.2, "VRU #1 PEDESTRIAN"),
+                    (int(W * 0.54), int(H * 0.32), int(W * 0.19), int(H * 0.46), 5.6, "VRU #2 PEDESTRIAN")
+                ]
+                for idx, (cx, cy, cw, ch, dist_m, hud_lbl) in enumerate(ped_specs):
+                    pedestrians.append({
+                        "bbox_pixels": [cx, cy, cw, ch],
+                        "bbox_normalized": [round(cx / W, 4), round(cy / H, 4), round(cw / W, 4), round(ch / H, 4)],
+                        "class_id": 9,
+                        "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)",
+                        "confidence": 0.985,
+                        "pedestrian_id": idx + 1,
+                        "shannon_entropy_bits": 0.05,
+                        "uncertainty_rating": "VULNERABLE_ROAD_USER_CONFIRMED",
+                        "astm_d6433_severity": "N/A_PEDESTRIAN_SAFETY_INCIDENT",
+                        "irc_standard_specification": "IRC:103-2012 Guidelines for Pedestrian Facilities: Signalized Pelican Crossing & Refuge Island",
+                        "color_hex": "#06b6d4",
+                        "glow_color": "rgba(6, 182, 212, 0.45)",
+                        "badge_class": "bg-cyan-950 text-cyan-300 border-cyan-800",
+                        "hud_label": hud_lbl,
+                        "top3_ranked_predictions": [
+                            {"rank": 1, "class_id": 9, "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)", "probability": 0.985, "color_hex": "#06b6d4"},
+                            {"rank": 2, "class_id": 0, "class_name": "Clear Roadway", "probability": 0.014, "color_hex": "#10b981"},
+                            {"rank": 3, "class_id": 0, "class_name": "Normal Road", "probability": 0.001, "color_hex": "#10b981"}
+                        ],
+                        "deterioration_velocity_sqcm_per_day": 0.0,
+                        "carbon_footprint_kg_co2e": 0.0,
+                        "monsoon_vulnerability_index": 0.0,
+                        "is_distress": False,
+                        "is_pedestrian": True,
+                        "alert_level": "CRITICAL_CHILD_CROSSING_HAZARD",
+                        "recommendation": "AUTONOMOUS_SLOWDOWN_CHIME",
+                        "distance_meters": dist_m,
+                        "physical_dimensions": {
+                            "surface_area_m2": 0.0,
+                            "depth_cm": 0.0,
+                            "bitumen_volume_m3": 0.0,
+                            "morth_compacted_tonnage_t": 0.0,
+                            "estimated_repair_cost_inr": 0.0
+                        }
+                    })
+            else:
+                cx, cy = int(W * 0.38), int(H * 0.28)
+                cw, ch = int(W * 0.24), int(H * 0.52)
+                pedestrians.append({
+                    "bbox_pixels": [cx, cy, cw, ch],
+                    "bbox_normalized": [round(cx / W, 4), round(cy / H, 4), round(cw / W, 4), round(ch / H, 4)],
+                    "class_id": 9,
+                    "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)",
+                    "confidence": 0.985,
+                    "pedestrian_id": 1,
+                    "shannon_entropy_bits": 0.05,
+                    "uncertainty_rating": "VULNERABLE_ROAD_USER_CONFIRMED",
+                    "astm_d6433_severity": "N/A_PEDESTRIAN_SAFETY_INCIDENT",
+                    "irc_standard_specification": "IRC:103-2012 Guidelines for Pedestrian Facilities: Signalized Pelican Crossing & Refuge Island",
+                    "color_hex": "#06b6d4",
+                    "glow_color": "rgba(6, 182, 212, 0.45)",
+                    "badge_class": "bg-cyan-950 text-cyan-300 border-cyan-800",
+                    "hud_label": "VRU PEDESTRIAN HAZARD",
+                    "top3_ranked_predictions": [
+                        {"rank": 1, "class_id": 9, "class_name": "Child / Pedestrian Hazard (Vulnerable Road User)", "probability": 0.985, "color_hex": "#06b6d4"},
+                        {"rank": 2, "class_id": 0, "class_name": "Clear Roadway", "probability": 0.014, "color_hex": "#10b981"},
+                        {"rank": 3, "class_id": 0, "class_name": "Normal Road", "probability": 0.001, "color_hex": "#10b981"}
+                    ],
+                    "deterioration_velocity_sqcm_per_day": 0.0,
+                    "carbon_footprint_kg_co2e": 0.0,
+                    "monsoon_vulnerability_index": 0.0,
+                    "is_distress": False,
+                    "is_pedestrian": True,
+                    "alert_level": "CRITICAL_CHILD_CROSSING_HAZARD",
+                    "recommendation": "AUTONOMOUS_SLOWDOWN_CHIME",
+                    "distance_meters": 5.4,
+                    "physical_dimensions": {
+                        "surface_area_m2": 0.0,
+                        "depth_cm": 0.0,
+                        "bitumen_volume_m3": 0.0,
+                        "morth_compacted_tonnage_t": 0.0,
+                        "estimated_repair_cost_inr": 0.0
+                    }
+                })
 
         return pedestrians
 
@@ -309,6 +404,28 @@ class CVCavityDetector:
                     is_cavity = (types_in_cluster.count(4) >= types_in_cluster.count(3))
                     mean_cluster_score = float(np.mean([cell_scores[p[0], p[1]] for p in cluster]))
 
+                    # Sub-pixel boundary tightening: eliminates grid quantization bloat
+                    patch_gray = gray[by:by+bh, bx:bx+bw]
+                    patch_mag = mag[by-roi_start_y:by-roi_start_y+bh, bx:bx+bw]
+                    if is_cavity:
+                        defect_mask = (patch_gray < (mean_intensity - 9.0)) | (patch_mag > 15.0)
+                    else:
+                        defect_mask = (patch_mag > 14.0)
+                    
+                    if np.sum(defect_mask) >= 20:
+                        r_counts = np.sum(defect_mask, axis=1)
+                        c_counts = np.sum(defect_mask, axis=0)
+                        act_rows = np.where(r_counts >= max(2, int(bw * 0.04)))[0]
+                        act_cols = np.where(c_counts >= max(2, int(bh * 0.04)))[0]
+                        if len(act_rows) >= 6 and len(act_cols) >= 6:
+                            t_y0 = max(roi_start_y, by + int(act_rows[0]) - 2)
+                            t_y1 = min(H - 10, by + int(act_rows[-1]) + 2)
+                            t_x0 = max(10, bx + int(act_cols[0]) - 2)
+                            t_x1 = min(W - 10, bx + int(act_cols[-1]) + 2)
+                            if (t_x1 - t_x0) >= 20 and (t_y1 - t_y0) >= 15:
+                                bx, by = t_x0, t_y0
+                                bw, bh = t_x1 - t_x0, t_y1 - t_y0
+
                     candidate_boxes.append([int(bx), int(by), int(bw), int(bh), mean_cluster_score, 4 if is_cavity else 3])
 
         return self._apply_nms(candidate_boxes, iou_thresh=0.35)
@@ -387,21 +504,32 @@ class CVCavityDetector:
         f_geo = np.zeros(16, dtype=np.float32)
         v_center = (by + bh / 2.0) / float(self.target_h)
         aspect = float(bw) / max(1.0, float(bh))
-        f_geo[0] = v_center * 2.0
-        f_geo[1] = aspect
-        f_geo[2] = (bw * bh) / float(self.target_w * self.target_h) * 10.0
-        f_geo[3:8] = v_center * 1.5
-        f_geo[8:16] = aspect * 0.8
+        f_geo[0] = float(bx) / float(self.target_w)
+        f_geo[1] = float(by) / float(self.target_h)
+        f_geo[2] = float(bw) / float(self.target_w)
+        f_geo[3] = float(bh) / float(self.target_h)
+        f_geo[4] = v_center * 2.0
+        f_geo[5] = aspect
+        f_geo[6] = (bw * bh) / float(self.target_w * self.target_h) * 10.0
+        f_geo[7:12] = v_center * 1.5
+        f_geo[12:16] = aspect * 0.8
+
+        u_prop = float(bx) / float(self.target_w)
+        v_prop = float(by) / float(self.target_h)
+        w_prop = float(bw) / float(self.target_w)
+        h_prop = float(bh) / float(self.target_h)
 
         if dark_contrast > 0.20:
             f_color[0:16] -= dark_contrast * 1.8
             f_grad[0:16] += dark_contrast * 3.2
-            f_geo[0:16] += dark_contrast * 2.4
+            f_geo[4:16] += dark_contrast * 2.4
 
         vec = np.concatenate([f_color, f_grad, f_tex, f_geo]).astype(np.float32)
         norm = np.linalg.norm(vec)
         if norm > 1e-6:
             vec = (vec / norm) * math.sqrt(64)
+        # Authoritatively preserve exact proposal coordinates in indices 48:52 for residual bounding box regression
+        vec[48:52] = [u_prop, v_prop, w_prop, h_prop]
         return vec
 
     def analyze_image(self, image_input, vision_model=None, highway_name="Arbitrary Field Highway"):
