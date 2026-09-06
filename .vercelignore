@@ -1,0 +1,8 @@
+datasets/
+scratch/
+tests/
+*.bat
+*.pptx
+*.pdf
+*.log
+*.tmp

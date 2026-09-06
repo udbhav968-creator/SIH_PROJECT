@@ -202,12 +202,10 @@ def run_deep_model_benchmarks():
     if os.path.exists(deg_ckpt):
         deg.load_weights(deg_ckpt)
 
+    from data.massive_dataset_generator import generate_deterioration_trajectories
     np.random.seed(42)
     N_total_deg = 800
-    X_deg = np.random.rand(N_total_deg, 5).astype(np.float32)
-    y_deg = np.zeros((N_total_deg, 4), dtype=np.float32)
-    for i in range(4):
-        y_deg[:, i] = np.clip(75.0 - (i + 1) * 7.5 * X_deg[:, 0] - X_deg[:, 1] * 4.5, 5.0, 100.0)
+    X_deg, y_deg = generate_deterioration_trajectories(num_samples=N_total_deg, seed=42)
 
     split_deg = int(0.80 * N_total_deg)
     preds_deg_tr = deg.predict(X_deg[:split_deg])
@@ -217,22 +215,22 @@ def run_deep_model_benchmarks():
 
     mae_deg_tr = float(np.mean(np.abs(preds_deg_tr - y_deg[:split_deg])))
     mae_deg_te = float(np.mean(np.abs(preds_deg_te - y_deg[split_deg:])))
-    acc_deg_tr = float(np.mean(np.abs(preds_deg_tr - y_deg[:split_deg]) <= 5.0)) * 100.0
-    acc_deg_te = float(np.mean(np.abs(preds_deg_te - y_deg[split_deg:]) <= 5.0)) * 100.0
+    acc_deg_tr = float(np.mean(np.abs(preds_deg_tr - y_deg[:split_deg]) <= 0.40)) * 100.0
+    acc_deg_te = float(np.mean(np.abs(preds_deg_te - y_deg[split_deg:]) <= 0.40)) * 100.0
 
-    print(f"  ✓ Train MAE: {mae_deg_tr:.3f} | Test MAE: {mae_deg_te:.3f} (Acc +/-5: {acc_deg_te:.2f}%)")
+    print(f"  ✓ Train MAE: {mae_deg_tr:.3f} m² | Test MAE: {mae_deg_te:.3f} m² (Acc +/-0.4m²: {acc_deg_te:.2f}%)")
     benchmark_results["Model_M_DEGRADE_Forecaster"] = {
         "architecture": "Monotonic Neural Temporal Forecaster",
         "train_samples": split_deg,
         "test_samples": N_total_deg - split_deg,
-        "train_mae_pci": round(mae_deg_tr, 3),
-        "test_mae_pci": round(mae_deg_te, 3),
+        "train_mae_sqm": round(mae_deg_tr, 3),
+        "test_mae_sqm": round(mae_deg_te, 3),
         "train_accuracy_pct": round(acc_deg_tr, 2),
         "test_accuracy_pct": round(acc_deg_te, 2),
         "inference_latency_ms": round(deg_lat_ms, 3),
         "standard": "IRC:82-2015 Road Maintenance Code"
     }
-    table_rows.append(("M_DEGRADE: Monsoon Forecaster (180-Day)", f"{acc_deg_tr:.2f}% (MAE {mae_deg_tr:.2f})", f"{acc_deg_te:.2f}% (MAE {mae_deg_te:.2f})", f"{deg_lat_ms:.3f} ms", "PASSED (Monotonic Curve)"))
+    table_rows.append(("M_DEGRADE: Monsoon Forecaster (180-Day)", f"{acc_deg_tr:.2f}% (MAE {mae_deg_tr:.2f}m²)", f"{acc_deg_te:.2f}% (MAE {mae_deg_te:.2f}m²)", f"{deg_lat_ms:.3f} ms", "PASSED (Monotonic Curve)"))
 
     # -------------------------------------------------------------------------
     # [5/8] Model M5: Urban Traffic & Density Kinematics Net (7 Classes)

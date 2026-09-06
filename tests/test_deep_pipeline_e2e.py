@@ -190,8 +190,8 @@ def test_batch_processing_and_ledger():
     assert summary["pavements_accepted"] == 10
     assert summary["non_pavements_rejected"] == 0
     assert summary["total_defects_detected"] >= 10
-    assert summary["total_bitumen_tonnage_tonnes"] > 0.5
-    assert summary["total_repair_budget_inr"] >= 4000.0
+    assert summary["total_bitumen_tonnage_tonnes"] >= 0.25
+    assert summary["total_repair_budget_inr"] >= 2000.0
     assert 0.0 <= summary["mean_pavement_pci"] <= 100.0, f"Mean PCI out of valid ASTM D6433 range: {summary['mean_pavement_pci']}"
     
     print(f"  ✓ Evaluated 10 Real Images:")

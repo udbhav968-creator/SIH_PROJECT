@@ -37,3 +37,4 @@ Thumbs.db
 
 datasets/*.zip
 datasets/ivcnz_potholes.zip
+.vercel

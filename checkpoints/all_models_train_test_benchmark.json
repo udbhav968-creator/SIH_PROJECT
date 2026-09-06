@@ -1,5 +1,5 @@
 {
-  "timestamp": 1788671463,
+  "timestamp": 1788673663,
   "overall_status": "100% SPECIFICATION CONFORMANCE",
   "models": {
     "Model_M1_VisionDistressNet": {
@@ -7,10 +7,10 @@
       "num_classes": 10,
       "train_samples": 3200,
       "test_samples": 800,
-      "train_accuracy_pct": 99.91,
-      "test_accuracy_pct": 99.75,
+      "train_accuracy_pct": 97.75,
+      "test_accuracy_pct": 98.25,
       "vru_pedestrian_recall_pct": 100.0,
-      "inference_latency_ms": 0.387,
+      "inference_latency_ms": 0.206,
       "standard": "ISO 26262 ASIL-D / MoRTH Section 3004"
     },
     "Model_M4_IMUShockClassifier": {
@@ -20,29 +20,29 @@
       "test_samples": 200,
       "train_accuracy_pct": 100.0,
       "test_accuracy_pct": 100.0,
-      "inference_latency_ms": 0.032,
+      "inference_latency_ms": 0.028,
       "standard": "SAE J1939 / ISO 26262 ASIL-B"
     },
     "Model_M_PCI_Regressor": {
       "architecture": "Deep Residual MLP with LayerNorm",
       "train_samples": 800,
       "test_samples": 200,
-      "train_mae_pci": 1.431,
-      "test_mae_pci": 1.363,
+      "train_mae_pci": 1.366,
+      "test_mae_pci": 1.253,
       "train_accuracy_pct": 98.12,
       "test_accuracy_pct": 97.0,
-      "inference_latency_ms": 0.011,
+      "inference_latency_ms": 0.01,
       "standard": "ASTM D6433 Standard Practice"
     },
     "Model_M_DEGRADE_Forecaster": {
       "architecture": "Monotonic Neural Temporal Forecaster",
       "train_samples": 640,
       "test_samples": 160,
-      "train_mae_pci": 0.957,
-      "test_mae_pci": 0.903,
-      "train_accuracy_pct": 99.88,
+      "train_mae_sqm": 0.039,
+      "test_mae_sqm": 0.039,
+      "train_accuracy_pct": 100.0,
       "test_accuracy_pct": 100.0,
-      "inference_latency_ms": 0.01,
+      "inference_latency_ms": 0.011,
       "standard": "IRC:82-2015 Road Maintenance Code"
     },
     "Model_M5_UrbanTrafficNet": {
@@ -52,7 +52,7 @@
       "test_samples": 200,
       "train_accuracy_pct": 100.0,
       "test_accuracy_pct": 100.0,
-      "inference_latency_ms": 0.044,
+      "inference_latency_ms": 0.052,
       "standard": "MoRTH Smart City Mobility Telematics"
     },
     "Model_MM1_MultimodalTransformer": {
@@ -66,10 +66,10 @@
       ],
       "train_samples": 800,
       "test_samples": 200,
-      "train_accuracy_pct": 96.88,
-      "test_accuracy_pct": 95.5,
+      "train_accuracy_pct": 98.5,
+      "test_accuracy_pct": 99.0,
       "optical_shadow_suppression_verified": true,
-      "inference_latency_ms": 0.025,
+      "inference_latency_ms": 0.026,
       "standard": "ISO 26262 ASIL-D Safe-State Fallback"
     },
     "Model_RL1_AutomotiveRLPolicyAgent": {
@@ -79,7 +79,7 @@
       "policy_safety_accuracy_pct": 100.0,
       "train_accuracy_pct": 99.8,
       "test_accuracy_pct": 100.0,
-      "inference_latency_ms": 0.429,
+      "inference_latency_ms": 0.411,
       "standard": "ISO 26262 ASIL-D / SAE J1939 Active Chassis"
     },
     "Models_M7_M8_ForensicEmbedder": {

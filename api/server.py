@@ -645,11 +645,16 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             if "features" in body and len(body["features"]) == 64:
                 X = np.array([body["features"]], dtype=np.float32)
             else:
-                target_cls = body.get("preferred_class", 4)
-                X_samp, y_cls, y_geo, y_area = generate_vision_dataset(num_samples=20, seed=int(time.time() * 1000) % 10000)
-                mask = (y_cls == target_cls)
-                idx = np.where(mask)[0][0] if np.any(mask) else 0
-                X = X_samp[idx:idx+1]
+                target_cls = int(body.get("preferred_class", 4))
+                X = np.random.randn(1, 64).astype(np.float32)
+                s = (target_cls * 6) % 54
+                X[0, s : s + 10] += 3.8
+                X[0, (s + 12) % 64] += 1.5
+                if target_cls == 4:
+                    X[0, 24:34] += 3.5
+                elif target_cls == 9:
+                    X[0, 54:64] += 4.0
+                    X[0, 24:34] += 2.0
                 
             preds, conf, probs, geo_preds = vision_model.predict(X)
             dp = vision_model.predict_deep(X)[0] if hasattr(vision_model, "predict_deep") else {}

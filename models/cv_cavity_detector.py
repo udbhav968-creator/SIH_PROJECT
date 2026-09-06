@@ -313,15 +313,31 @@ class CVCavityDetector:
 
         return self._apply_nms(candidate_boxes, iou_thresh=0.35)
 
-    def _apply_nms(self, boxes, iou_thresh=0.35):
+    def _apply_nms(self, boxes, iou_thresh=0.35, containment_thresh=0.55):
         if not boxes:
             return []
-        boxes = sorted(boxes, key=lambda b: b[4], reverse=True)
+        # Sort prioritizing confidence and solid cluster area
+        boxes = sorted(boxes, key=lambda b: (b[4] * ((b[2] * b[3]) ** 0.20)), reverse=True)
         selected = []
+        max_area = max([b[2] * b[3] for b in boxes], default=0)
+        
         for b in boxes:
+            b_area = b[2] * b[3]
+            # Suppress tiny peripheral margin noise when a dominant cavity is present
+            if max_area > 8000 and b_area < 0.08 * max_area:
+                continue
             keep = True
             for s in selected:
-                if self._compute_iou(b[:4], s[:4]) > iou_thresh:
+                s_area = s[2] * s[3]
+                iou = self._compute_iou(b[:4], s[:4])
+                # Compute containment ratio: intersection / min(area)
+                xA = max(b[0], s[0])
+                yA = max(b[1], s[1])
+                xB = min(b[0] + b[2], s[0] + s[2])
+                yB = min(b[1] + b[3], s[1] + s[3])
+                inter = max(0, xB - xA) * max(0, yB - yA)
+                ios = inter / max(1.0, min(b_area, s_area))
+                if iou > iou_thresh or ios > containment_thresh:
                     keep = False
                     break
             if keep:

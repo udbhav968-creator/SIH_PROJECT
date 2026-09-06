@@ -2,100 +2,100 @@
   "Model_M1": [
     {
       "epoch": 1,
-      "loss": 2.2302,
-      "val_accuracy_pct": 88.8,
-      "lr": 0.007734
+      "loss": 0.9855,
+      "val_accuracy_pct": 85.01,
+      "lr": 0.007726
     },
     {
       "epoch": 2,
-      "loss": 0.9633,
-      "val_accuracy_pct": 98.28,
-      "lr": 0.006975
+      "loss": 0.3692,
+      "val_accuracy_pct": 92.11,
+      "lr": 0.006946
     },
     {
       "epoch": 3,
-      "loss": 0.6405,
-      "val_accuracy_pct": 99.01,
-      "lr": 0.005839
+      "loss": 0.2607,
+      "val_accuracy_pct": 93.43,
+      "lr": 0.005778
     },
     {
       "epoch": 4,
-      "loss": 0.5564,
-      "val_accuracy_pct": 99.58,
-      "lr": 0.0045
+      "loss": 0.2219,
+      "val_accuracy_pct": 94.21,
+      "lr": 0.0044
     },
     {
       "epoch": 5,
-      "loss": 0.5209,
-      "val_accuracy_pct": 99.58,
-      "lr": 0.003161
+      "loss": 0.2039,
+      "val_accuracy_pct": 94.44,
+      "lr": 0.003022
     },
     {
       "epoch": 6,
-      "loss": 0.5028,
-      "val_accuracy_pct": 99.64,
-      "lr": 0.002025
+      "loss": 0.1935,
+      "val_accuracy_pct": 94.55,
+      "lr": 0.001854
     },
     {
       "epoch": 7,
-      "loss": 0.4895,
-      "val_accuracy_pct": 99.64,
-      "lr": 0.001266
+      "loss": 0.1871,
+      "val_accuracy_pct": 94.62,
+      "lr": 0.001074
     },
     {
       "epoch": 8,
-      "loss": 0.4878,
-      "val_accuracy_pct": 99.64,
-      "lr": 0.001
+      "loss": 0.1875,
+      "val_accuracy_pct": 94.73,
+      "lr": 0.0008
     }
   ],
   "Model_MM1": [
     {
       "epoch": 1,
-      "loss": 2.0856645906426725,
-      "accuracy": 28.94736842105263,
+      "loss": 2.0355753273980226,
+      "accuracy": 32.86345108695652,
       "lr": 0.007714548246917325
     },
     {
       "epoch": 2,
-      "loss": 1.5805196516339313,
-      "accuracy": 64.61759868421052,
+      "loss": 1.4509998502836654,
+      "accuracy": 73.13179347826087,
       "lr": 0.006901650429449553
     },
     {
       "epoch": 3,
-      "loss": 1.2366088115379505,
-      "accuracy": 83.32648026315789,
+      "loss": 1.0770754073658961,
+      "accuracy": 89.47010869565217,
       "lr": 0.005685062871369087
     },
     {
       "epoch": 4,
-      "loss": 1.0144307186008281,
-      "accuracy": 91.22121710526316,
+      "loss": 0.8529882318043278,
+      "accuracy": 95.46535326086956,
       "lr": 0.00425
     },
     {
       "epoch": 5,
-      "loss": 0.8821503947070589,
-      "accuracy": 94.34621710526316,
+      "loss": 0.7297391598173045,
+      "accuracy": 97.70720108695652,
       "lr": 0.0028149371286309136
     },
     {
       "epoch": 6,
-      "loss": 0.8100172975189263,
-      "accuracy": 96.07319078947368,
+      "loss": 0.6668800643600907,
+      "accuracy": 98.74320652173913,
       "lr": 0.001598349570550447
     },
     {
       "epoch": 7,
-      "loss": 0.7763823263320971,
-      "accuracy": 96.81332236842105,
+      "loss": 0.6380931008156349,
+      "accuracy": 99.04891304347827,
       "lr": 0.0007854517530826747
     },
     {
       "epoch": 8,
-      "loss": 0.7578697392274685,
-      "accuracy": 97.06003289473684,
+      "loss": 0.6220845648467318,
+      "accuracy": 99.16779891304348,
       "lr": 0.0005
     }
   ],
@@ -114,7 +114,73 @@
     },
     {
       "step": 4000,
-      "cumulative_avg_reward": 8.55
+      "cumulative_avg_reward": 4.83
+    },
+    {
+      "step": 5000,
+      "cumulative_avg_reward": 14.18
+    }
+  ],
+  "Models_M7_M8": [
+    {
+      "epoch": 1,
+      "triplet_loss": 0.0063
+    },
+    {
+      "epoch": 2,
+      "triplet_loss": 0.0063
+    },
+    {
+      "epoch": 3,
+      "triplet_loss": 0.0063
+    },
+    {
+      "epoch": 4,
+      "triplet_loss": 0.006
+    },
+    {
+      "epoch": 5,
+      "triplet_loss": 0.0061
+    },
+    {
+      "epoch": 6,
+      "triplet_loss": 0.006
+    },
+    {
+      "epoch": 7,
+      "triplet_loss": 0.0062
+    },
+    {
+      "epoch": 8,
+      "triplet_loss": 0.006
+    },
+    {
+      "epoch": 9,
+      "triplet_loss": 0.0061
+    },
+    {
+      "epoch": 10,
+      "triplet_loss": 0.0058
+    },
+    {
+      "epoch": 11,
+      "triplet_loss": 0.0059
+    },
+    {
+      "epoch": 12,
+      "triplet_loss": 0.0058
+    },
+    {
+      "epoch": 13,
+      "triplet_loss": 0.0059
+    },
+    {
+      "epoch": 14,
+      "triplet_loss": 0.0058
+    },
+    {
+      "epoch": 15,
+      "triplet_loss": 0.0059
     }
   ]
 }
