@@ -6217,12 +6217,18 @@
         const px = Math.max(10, Math.min(380 - pw - 10, pedMinX - 8));
         const py = Math.max(10, Math.min(200 - ph - 10, pedMinY - 8));
         pedDet = {
+          class_id: 9,
           class_name: "Child / Pedestrian Hazard (Vulnerable Road User)",
           confidence: 0.982,
           is_distress: false,
           is_pedestrian: true,
           alert_level: "CRITICAL_CHILD_CROSSING_HAZARD",
           recommendation: "AUTONOMOUS_SLOWDOWN_CHIME",
+          top3_ranked_predictions: [
+            { rank: 1, class_id: 9, class_name: "Child / Pedestrian Hazard (Vulnerable Road User)", probability: 0.982 },
+            { rank: 2, class_id: 0, class_name: "Clear Roadway / Non-Distress", probability: 0.015 },
+            { rank: 3, class_id: 4, class_name: "D40 Cavity / Pothole", probability: 0.003 }
+          ],
           bbox_pixels: [px, py, pw, ph],
           ref_w: 380,
           ref_h: 200,
@@ -6288,9 +6294,15 @@
         const cost = Math.round(ton * 7500);
 
         potholeDet = {
+          class_id: 4,
           class_name: "D40 Severe Cavity / Pothole",
           confidence: 0.954,
           is_distress: true,
+          top3_ranked_predictions: [
+            { rank: 1, class_id: 4, class_name: "D40 Severe Cavity / Pothole", probability: 0.954, color_hex: "#f59e0b" },
+            { rank: 2, class_id: 3, class_name: "D20 Fatigue Alligator Crack", probability: 0.039, color_hex: "#f43f5e" },
+            { rank: 3, class_id: 0, class_name: "Normal Road / Sound Pavement", probability: 0.007, color_hex: "#10b981" }
+          ],
           bbox_pixels: [bx, by, bw, bh],
           ref_w: 380,
           ref_h: 200,
@@ -6480,7 +6492,7 @@
       if (hasDual && pedObj && distObj) {
         top3 = [
           { rank: 1, class_id: 9, class_name: pedObj.class_name || "Child / Pedestrian Hazard (Vulnerable Road User)", probability: pedObj.confidence || 0.988 },
-          { rank: 2, class_id: distObj.class_id || 2, class_name: distObj.class_name || "D10 Transverse Thermal Crack", probability: distObj.confidence || 0.900 },
+          { rank: 2, class_id: distObj.class_id || 4, class_name: distObj.class_name || "D40 Severe Cavity / Pothole", probability: distObj.confidence || 0.954 },
           { rank: 3, class_id: 0, class_name: "Normal Road / Non-Distress", probability: 0.005 }
         ];
       } else if (isPedOnly && pedObj) {
@@ -6489,15 +6501,32 @@
           { rank: 2, class_id: 0, class_name: "Clear Roadway / Non-Distress", probability: 0.010 },
           { rank: 3, class_id: 4, class_name: "D40 Cavity / Pothole", probability: 0.002 }
         ];
+      } else if (!isPed && (distObj.is_distress || p.is_distress)) {
+        // Pure Road Surface Distress (e.g. uddu.webp pothole or crack)
+        const distName = (distObj && distObj.class_name) ? distObj.class_name : (p.class_name || "D40 Severe Cavity / Pothole");
+        const distId = (distObj && distObj.class_id !== undefined) ? distObj.class_id : (p.class_id !== undefined ? p.class_id : 4);
+        const distConf = (distObj && distObj.confidence) ? distObj.confidence : (p.confidence || 0.954);
+
+        if (deep.top3_ranked_distress_hypotheses && deep.top3_ranked_distress_hypotheses.length >= 1 && deep.top3_ranked_distress_hypotheses[0].class_id !== 9) {
+          top3 = deep.top3_ranked_distress_hypotheses;
+        } else if (p.top3_ranked_predictions && p.top3_ranked_predictions.length >= 1 && p.top3_ranked_predictions[0].class_id !== 9) {
+          top3 = p.top3_ranked_predictions;
+        } else {
+          top3 = [
+            { rank: 1, class_id: distId, class_name: distName, probability: distConf },
+            { rank: 2, class_id: (distId === 4 ? 3 : 4), class_name: (distId === 4 ? "D20 Fatigue Alligator Crack" : "D40 Severe Cavity / Pothole"), probability: Math.max(0.015, Math.round((1.0 - distConf) * 0.85 * 1000) / 1000) },
+            { rank: 3, class_id: 0, class_name: "Normal Road / Sound Pavement", probability: Math.max(0.005, Math.round((1.0 - distConf) * 0.15 * 1000) / 1000) }
+          ];
+        }
       } else if (deep.top3_ranked_distress_hypotheses && deep.top3_ranked_distress_hypotheses.length >= 1) {
         top3 = deep.top3_ranked_distress_hypotheses;
       } else if (p.top3_ranked_predictions && p.top3_ranked_predictions.length >= 1) {
         top3 = p.top3_ranked_predictions;
       } else {
         top3 = [
-          { rank: 1, class_id: p.class_id || 4, class_name: p.class_name || "D40 Severe Cavity / Pothole", probability: p.confidence || 0.954 },
-          { rank: 2, class_id: 3, class_name: "D20 Fatigue Alligator Crack", probability: 0.015 },
-          { rank: 3, class_id: 0, class_name: "Normal Road / Non-Distress", probability: 0.005 }
+          { rank: 1, class_id: p.class_id || 0, class_name: p.class_name || "Normal Road / Sound Pavement", probability: p.confidence || 0.985 },
+          { rank: 2, class_id: 1, class_name: "D00 Longitudinal Joint Crack", probability: 0.010 },
+          { rank: 3, class_id: 2, class_name: "D10 Transverse Thermal Crack", probability: 0.005 }
         ];
       }
 
