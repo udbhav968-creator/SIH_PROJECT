@@ -1,17 +1,17 @@
 {
   "version": "5.0-ULTIMATE-SOTA-200K-MULTI-SOURCE",
-  "timestamp_utc": 1788675041,
+  "timestamp_utc": 1788676609,
   "status": "CONVERGED_ACTIVE",
   "models": {
     "Model_M1_VisionDistressNet": {
       "architecture": "ConvNeXt-Swin-Transformer Hybrid (10 Classes)",
-      "total_training_samples": 103019,
-      "epochs": 8,
-      "final_loss": 0.2536,
-      "val_accuracy_pct": 90.46,
+      "total_training_samples": 106619,
+      "epochs": 12,
+      "final_loss": 0.2101,
+      "val_accuracy_pct": 92.04,
       "classes_trained": 10,
       "checkpoint": "C:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\vision_distress_weights.npz",
-      "sha256": "fa1040b4e48e46e3028cdec8a9be93f246aac629acdae24847ad1884d0de3cfe"
+      "sha256": "081f552b2e8dc2a91b1a3b42cfce02532e662127a35a3ab5458fb8e2391f20c2"
     },
     "Model_M4_IMUShockClassifier": {
       "architecture": "1D Multi-Scale Dilated Residual Temporal CNN",

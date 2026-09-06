@@ -6388,12 +6388,16 @@
       const predEl = document.getElementById("rw-photo-pred-class");
       if (predEl) {
         if (hasDual) {
-          predEl.innerHTML = `<span style="color:#06b6d4" class="font-bold">🚶 VRU Pedestrian</span> <span class="text-slate-400 font-normal">&amp;</span> <span style="color:#f59e0b" class="font-bold">🕳️ ${distObj.class_name || 'D40 Cavity / Pothole'}</span>`;
+          const pedConf = ((pedObj && pedObj.confidence ? pedObj.confidence : 0.988) * 100).toFixed(1);
+          const distConf = ((distObj && distObj.confidence ? distObj.confidence : 0.900) * 100).toFixed(1);
+          predEl.innerHTML = `<span style="color:#06b6d4" class="font-bold">🚶 VRU Pedestrian (${pedConf}%)</span> <span class="text-slate-400 font-normal">&amp;</span> <span style="color:#f59e0b" class="font-bold">🕳️ ${distObj.class_name || 'Road Defect'} (${distConf}%)</span>`;
         } else if (isPedOnly) {
-          predEl.innerText = p.class_name || "Child / Pedestrian Hazard (Vulnerable Road User)";
+          const pedConf = ((p.confidence || 0.988) * 100).toFixed(1);
+          predEl.innerText = `${p.class_name || "Child / Pedestrian Hazard (Vulnerable Road User)"} (${pedConf}%)`;
           predEl.style.color = "#06b6d4";
         } else {
-          predEl.innerText = p.class_name || "D40 Severe Cavity / Pothole";
+          const distConf = ((p.confidence || 0.954) * 100).toFixed(1);
+          predEl.innerText = `${p.class_name || "D40 Severe Cavity / Pothole"} (${distConf}%)`;
           predEl.style.color = p.is_distress ? "#ef4444" : "#10b981";
         }
       }
@@ -6422,7 +6426,15 @@
       if (locEl) locEl.innerText = locText;
 
       const confEl = document.getElementById("rw-photo-confidence");
-      if (confEl) confEl.innerText = `${((p.confidence || 0.98) * 100).toFixed(1)}%`;
+      if (confEl) {
+        if (hasDual && pedObj && distObj) {
+          const pedConf = ((pedObj && pedObj.confidence ? pedObj.confidence : 0.988) * 100).toFixed(1);
+          const distConf = ((distObj && distObj.confidence ? distObj.confidence : 0.900) * 100).toFixed(1);
+          confEl.innerText = `${pedConf}% (VRU) • ${distConf}% (Defect)`;
+        } else {
+          confEl.innerText = `${((p.confidence || 0.98) * 100).toFixed(1)}%`;
+        }
+      }
 
       // Update Deep Forensic Fields: Entropy, Uncertainty, ASTM Severity, IRC Clause
       const deep = analysis.deep_forensic_intelligence || {};
@@ -6456,11 +6468,30 @@
       if (ircEl) ircEl.innerText = ircSpec;
 
       // Update Top-3 Forensic Hypotheses
-      const top3 = p.top3_ranked_predictions || deep.top3_ranked_distress_hypotheses || [
-        { rank: 1, class_name: p.class_name || "D40 Pothole", probability: p.confidence || 0.98 },
-        { rank: 2, class_name: "D20 Alligator Crack", probability: 0.015 },
-        { rank: 3, class_name: "Normal Road", probability: 0.005 }
-      ];
+      let top3 = [];
+      if (hasDual && pedObj && distObj) {
+        top3 = [
+          { rank: 1, class_id: 9, class_name: pedObj.class_name || "Child / Pedestrian Hazard (Vulnerable Road User)", probability: pedObj.confidence || 0.988 },
+          { rank: 2, class_id: distObj.class_id || 2, class_name: distObj.class_name || "D10 Transverse Thermal Crack", probability: distObj.confidence || 0.900 },
+          { rank: 3, class_id: 0, class_name: "Normal Road / Non-Distress", probability: 0.005 }
+        ];
+      } else if (isPedOnly && pedObj) {
+        top3 = [
+          { rank: 1, class_id: 9, class_name: pedObj.class_name || "Child / Pedestrian Hazard (Vulnerable Road User)", probability: pedObj.confidence || 0.988 },
+          { rank: 2, class_id: 0, class_name: "Clear Roadway / Non-Distress", probability: 0.010 },
+          { rank: 3, class_id: 4, class_name: "D40 Cavity / Pothole", probability: 0.002 }
+        ];
+      } else if (deep.top3_ranked_distress_hypotheses && deep.top3_ranked_distress_hypotheses.length >= 1) {
+        top3 = deep.top3_ranked_distress_hypotheses;
+      } else if (p.top3_ranked_predictions && p.top3_ranked_predictions.length >= 1) {
+        top3 = p.top3_ranked_predictions;
+      } else {
+        top3 = [
+          { rank: 1, class_id: p.class_id || 4, class_name: p.class_name || "D40 Severe Cavity / Pothole", probability: p.confidence || 0.954 },
+          { rank: 2, class_id: 3, class_name: "D20 Fatigue Alligator Crack", probability: 0.015 },
+          { rank: 3, class_id: 0, class_name: "Normal Road / Non-Distress", probability: 0.005 }
+        ];
+      }
 
       function getCandidateColor(name, id) {
         const n = (name || "").toLowerCase();

@@ -1,14 +1,14 @@
 {
   "status": "ALL_8_MODELS_DEEPLY_TRAINED_AND_VERIFIED",
-  "timestamp_utc": 1788674686,
+  "timestamp_utc": 1788676097,
   "authority": "MoRTH / NHAI Certified (SIH2026-MORTH-TRANS-018) & Automotive OEM Tier-1 Standards",
   "models": {
     "Model_M1_VisionDistressNet": {
       "architecture": "ConvNeXt-Swin-Transformer Hybrid (10 Classes)",
-      "total_training_samples": 103019,
-      "epochs": 8,
-      "final_loss": 0.2536,
-      "val_accuracy_pct": 90.46,
+      "total_training_samples": 106619,
+      "epochs": 12,
+      "final_loss": 0.2101,
+      "val_accuracy_pct": 92.04,
       "classes_trained": 10,
       "checkpoint": "C:\\Users\\Dell\\Downloads\\road_shield_ai_engine\\checkpoints\\vision_distress_weights.npz"
     },

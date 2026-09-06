@@ -130,14 +130,26 @@ def run_ultimate_deep_training():
         geo_real_list.append(np.zeros((len(d["features"]), 4), dtype=np.float32))
         print(f"  ✓ Ingested {len(d['features']):,} Real MoRTH Hard Negatives samples.")
 
-    # 6. Real Pedestrians / VRU Safety (1,200 samples -> Class 9)
+    # 6. Real Pedestrians / VRU Safety (Augmented Real Vault -> Class 9)
     ped_p = os.path.join(ENGINE_ROOT, "datasets", "14_pedestrian_safety", "14_pedestrian_safety_features.npz")
     if os.path.exists(ped_p):
         d = np.load(ped_p)
-        X_real_list.append(d["features"])
+        base_feats = d["features"]
+        base_bboxes = d["bboxes"]
+        
+        # Base real samples
+        X_real_list.append(base_feats)
         y_real_list.append(d["labels"])
-        geo_real_list.append(d["bboxes"])
-        print(f"  ✓ Ingested {len(d['features']):,} Real Pedestrian / VRU Safety samples.")
+        geo_real_list.append(base_bboxes)
+        
+        # 3x high-precision jitter augmentations
+        for aug_seed in [101, 202, 303]:
+            np.random.seed(aug_seed)
+            aug_f = base_feats + np.random.normal(0.0, 0.04, base_feats.shape).astype(np.float32)
+            X_real_list.append(aug_f)
+            y_real_list.append(np.full(len(base_feats), 9, dtype=np.int64))
+            geo_real_list.append(base_bboxes)
+        print(f"  ✓ Ingested {len(base_feats) * 4:,} Augmented Real Pedestrian / VRU Safety samples.")
 
     # 7. Real Smart City & Infrastructure Hazards (Classes 5-8 + Urban Vehicles + GitHub Vault)
     for hazard_path, h_cls, h_name in [
@@ -178,8 +190,9 @@ def run_ultimate_deep_training():
         X_c[:, (s + 12) % 64] += 1.5
         X_c[:, 16:32] += 0.8 * np.sin(np.linspace(0, np.pi * 2, 16))
         if c == 9:
-            X_c[:, 54:64] += 4.0
-            X_c[:, 24:34] += 2.0
+            X_c[:, 0:10] += 3.8
+            X_c[:, 12] += 1.5
+            X_c[:, 54:64] += 1.8
             geo_c = np.tile([0.4, 0.3, 0.2, 0.5], (N_c, 1)).astype(np.float32)
         elif c == 0:
             geo_c = np.tile([0.5, 0.5, 0.0, 0.0], (N_c, 1)).astype(np.float32)
@@ -209,11 +222,12 @@ def run_ultimate_deep_training():
     n_batches = len(X_m1_tr) // batch_size
     m1_curve = []
     initial_lr = 0.008
+    total_m1_epochs = 12
 
-    for epoch in range(1, 9):
+    for epoch in range(1, total_m1_epochs + 1):
         epoch_loss = 0.0
         perm_ep = np.random.permutation(len(X_m1_tr))
-        lr_curr = 0.0008 + 0.5 * (initial_lr - 0.0008) * (1.0 + np.cos(np.pi * epoch / 8.0))
+        lr_curr = 0.0004 + 0.5 * (initial_lr - 0.0004) * (1.0 + np.cos(np.pi * epoch / float(total_m1_epochs)))
         m1_model.lr = lr_curr
 
         for b in range(n_batches):
@@ -227,8 +241,8 @@ def run_ultimate_deep_training():
         val_acc = float(np.mean(v_preds == y_m1_val)) * 100.0
         avg_loss = epoch_loss / n_batches
         m1_curve.append({"epoch": epoch, "loss": round(avg_loss, 4), "val_accuracy_pct": round(val_acc, 2), "lr": round(lr_curr, 6)})
-        if epoch in [1, 3, 5, 8]:
-            print(f"  Epoch [{epoch:2d}/8] Loss: {avg_loss:.4f} | Val Accuracy (10-Class): {val_acc:.2f}% | LR: {lr_curr:.6f}")
+        if epoch in [1, 4, 8, 12]:
+            print(f"  Epoch [{epoch:2d}/{total_m1_epochs}] Loss: {avg_loss:.4f} | Val Accuracy (10-Class): {val_acc:.2f}% | LR: {lr_curr:.6f}")
 
     m1_ckpt = os.path.join(ckpt_dir, "vision_distress_weights.npz")
     m1_model.save_weights(m1_ckpt)
@@ -236,7 +250,7 @@ def run_ultimate_deep_training():
     verification_report["models"]["Model_M1_VisionDistressNet"] = {
         "architecture": "ConvNeXt-Swin-Transformer Hybrid (10 Classes)",
         "total_training_samples": len(X_m1),
-        "epochs": 8,
+        "epochs": total_m1_epochs,
         "final_loss": m1_curve[-1]["loss"],
         "val_accuracy_pct": m1_curve[-1]["val_accuracy_pct"],
         "classes_trained": 10,
