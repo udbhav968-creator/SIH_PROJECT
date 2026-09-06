@@ -163,8 +163,20 @@ def run_server_tests():
         assert len(gis_res["deduplicated_defects"]) > 0
         assert "google_maps_url" in gis_res["deduplicated_defects"][0]
         
+        # Test 15: Active Feedback Online Gradient Update Loop
+        status, fb_res = http_post("/api/v1/training/active-feedback", {
+            "true_class": 9,
+            "notes": "Inspector Confirmation: Vulnerable Road User Pedestrian Crossing"
+        })
+        print(f"  [PASS] POST /api/v1/training/active-feedback -> Status: {fb_res['adaptation_status']} | Target: {fb_res['target_class']} | Loss: {fb_res['training_loss_step']}")
+        assert status == 200
+        assert fb_res["adaptation_status"] == "SUCCESS_GRADIENTS_UPDATED"
+        assert "Pedestrian" in fb_res["target_class"] or "VRU" in fb_res["target_class"] or "Class 9" in fb_res["target_class"]
+        assert "training_loss_step" in fb_res
+        assert fb_res["total_active_feedback_samples"] >= 1
+
         print("-" * 70)
-        print("🏆 ALL 14 API GATEWAY & GOOGLE MAPS INTEGRATION ENDPOINTS PASSED WITH 100% SUCCESS!")
+        print("🏆 ALL 15 API GATEWAY, MAPS & ONLINE LEARNING INTEGRATION ENDPOINTS PASSED WITH 100% SUCCESS!")
         print("=" * 70)
         return True
     finally:

@@ -1,5 +1,5 @@
 {
-  "timestamp": 1788676632,
+  "timestamp": 1788677487,
   "overall_status": "100% SPECIFICATION CONFORMANCE",
   "models": {
     "Model_M1_VisionDistressNet": {
@@ -7,10 +7,10 @@
       "num_classes": 10,
       "train_samples": 3200,
       "test_samples": 800,
-      "train_accuracy_pct": 97.84,
-      "test_accuracy_pct": 97.88,
+      "train_accuracy_pct": 93.03,
+      "test_accuracy_pct": 92.75,
       "vru_pedestrian_recall_pct": 100.0,
-      "inference_latency_ms": 0.209,
+      "inference_latency_ms": 0.194,
       "standard": "ISO 26262 ASIL-D / MoRTH Section 3004"
     },
     "Model_M4_IMUShockClassifier": {
@@ -20,7 +20,7 @@
       "test_samples": 200,
       "train_accuracy_pct": 100.0,
       "test_accuracy_pct": 100.0,
-      "inference_latency_ms": 0.043,
+      "inference_latency_ms": 0.03,
       "standard": "SAE J1939 / ISO 26262 ASIL-B"
     },
     "Model_M_PCI_Regressor": {
@@ -31,7 +31,7 @@
       "test_mae_pci": 1.318,
       "train_accuracy_pct": 98.88,
       "test_accuracy_pct": 98.5,
-      "inference_latency_ms": 0.01,
+      "inference_latency_ms": 0.011,
       "standard": "ASTM D6433 Standard Practice"
     },
     "Model_M_DEGRADE_Forecaster": {
@@ -52,7 +52,7 @@
       "test_samples": 200,
       "train_accuracy_pct": 100.0,
       "test_accuracy_pct": 100.0,
-      "inference_latency_ms": 0.046,
+      "inference_latency_ms": 0.074,
       "standard": "MoRTH Smart City Mobility Telematics"
     },
     "Model_MM1_MultimodalTransformer": {
@@ -79,7 +79,7 @@
       "policy_safety_accuracy_pct": 100.0,
       "train_accuracy_pct": 99.8,
       "test_accuracy_pct": 100.0,
-      "inference_latency_ms": 0.413,
+      "inference_latency_ms": 0.456,
       "standard": "ISO 26262 ASIL-D / SAE J1939 Active Chassis"
     },
     "Models_M7_M8_ForensicEmbedder": {
@@ -88,7 +88,7 @@
       "test_triplets": 200,
       "train_accuracy_pct": 100.0,
       "test_accuracy_pct": 100.0,
-      "inference_latency_ms": 0.003,
+      "inference_latency_ms": 0.004,
       "standard": "MoRTH Section 3004 Cryptographic Audit Anti-Fraud"
     }
   }

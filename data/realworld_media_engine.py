@@ -181,5 +181,10 @@ class RealWorldMediaEngine:
         elif cls == 2: vec[16:32] += self.rng.normal(2.0, 0.3, size=16)
         elif cls == 3: vec[32:48] += self.rng.normal(2.3, 0.4, size=16)
         elif cls == 4: vec[48:64] += self.rng.normal(2.9, 0.4, size=16)
+        elif cls == 5: vec[8:24] += self.rng.normal(2.2, 0.3, size=16)
+        elif cls == 6: vec[12:28] += self.rng.normal(2.1, 0.3, size=16)
+        elif cls == 7: vec[36:52] += self.rng.normal(2.2, 0.3, size=16)
+        elif cls == 8: vec[40:56] += self.rng.normal(2.4, 0.3, size=16)
         elif cls == 9: vec[24:40] += self.rng.normal(2.6, 0.35, size=16)
         return vec.tolist()
+

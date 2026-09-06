@@ -1144,17 +1144,26 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             # 3. Measure post-adaptation confidence
             post_preds, post_conf, post_probs, _ = vision_model.predict(X)
             
-            # Save updated weights checkpoint
+            # Save updated weights checkpoint (safe for serverless read-only filesystems)
             ckpt_path = os.path.join(CKPT_DIR, "vision_distress_weights.npz")
-            vision_model.save_weights(ckpt_path)
+            try:
+                vision_model.save_weights(ckpt_path)
+            except Exception:
+                pass
             
+            target_name = VisionDistressNet.CLASS_NAMES[true_cls] if 0 <= true_cls < len(VisionDistressNet.CLASS_NAMES) else f"Class {true_cls}"
+            prev_idx = int(pre_preds[0])
+            prev_name = VisionDistressNet.CLASS_NAMES[prev_idx] if 0 <= prev_idx < len(VisionDistressNet.CLASS_NAMES) else f"Class {prev_idx}"
+            post_idx = int(post_preds[0])
+            post_name = VisionDistressNet.CLASS_NAMES[post_idx] if 0 <= post_idx < len(VisionDistressNet.CLASS_NAMES) else f"Class {post_idx}"
+
             self._send_json(200, {
                 "adaptation_status": "SUCCESS_GRADIENTS_UPDATED",
                 "active_feedback_id": f"AFB-2026-{active_feedback_counter:04d}",
-                "target_class": VisionDistressNet.CLASS_NAMES[true_cls],
-                "previous_predicted_class": VisionDistressNet.CLASS_NAMES[int(pre_preds[0])],
+                "target_class": target_name,
+                "previous_predicted_class": prev_name,
                 "previous_confidence": round(float(pre_conf[0]), 4),
-                "updated_predicted_class": VisionDistressNet.CLASS_NAMES[int(post_preds[0])],
+                "updated_predicted_class": post_name,
                 "updated_confidence": round(float(post_conf[0]), 4),
                 "training_loss_step": round(float(l_tot), 4),
                 "total_active_feedback_samples": active_feedback_counter,
