@@ -538,10 +538,10 @@ function renderAnalysis(res, imgSrc) {
   const scene = res.scene_summary || {};
   const sceneObjs = res.scene_objects || [];
   const sceneEl = document.getElementById('sceneBody');
+  const sceneCard = sceneEl.closest('.card');
   if (!scene.available) {
-    sceneEl.innerHTML = `<p class="text-[12px] text-slate-500">Object detector not installed on this server — road-damage analysis only.
-      <span class="block text-[11px] mt-1 font-mono">${scene.reason || ''}</span></p>`;
-  } else if (!sceneObjs.length) {
+    if (sceneCard) sceneCard.style.display = 'none';
+  } else if (sceneCard && (sceneCard.style.display = '') === '' && !sceneObjs.length) {
     sceneEl.innerHTML = '<p class="text-[12px] text-slate-500">No people, vehicles or signs found in this frame.</p>';
   } else {
     sceneEl.innerHTML = `

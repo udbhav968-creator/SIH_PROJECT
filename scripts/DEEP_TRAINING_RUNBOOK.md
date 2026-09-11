@@ -97,3 +97,57 @@ small dataset should reach roughly 55–70%. With several thousand real images
 from Kaggle, 85%+ is a reasonable target for the three well-populated classes,
 with the rare ones trailing until they have more data. I'd rather you go in
 with a measured number and a clear explanation than a claimed one.
+
+## If PyTorch won't load on Windows
+
+Symptom:
+
+```
+OSError: [WinError 1114] A dynamic link library (DLL) initialization routine failed.
+Error loading "...\torch\lib\c10.dll" or one of its dependencies.
+```
+
+In order of likelihood:
+
+1. **Missing Visual C++ runtime.** Install
+   `https://aka.ms/vs/17/release/vc_redist.x64.exe`, reboot, then
+   `python -c "import torch"`.
+2. **PyTorch too new for the CPU.** Recent builds require AVX2. Drop back:
+   ```powershell
+   & $py -m pip install "torch==2.5.1" "torchvision==0.20.1" --index-url https://download.pytorch.org/whl/cpu
+   ```
+3. **Antivirus quarantining the DLLs.** Check the quarantine log; exclude the
+   `.venv` folder and reinstall torch.
+
+### You do not need PyTorch to *serve* models
+
+Only to train them. Serving runs on ONNX Runtime alone, which is a much
+smaller and less fragile dependency. So if torch stays broken on this laptop:
+
+* Train on Google Colab (free GPU) or the DGX, using the same script.
+* Bring back `deep_vision_<arch>.onnx`, drop it in `checkpoints/`, and the API
+  uses it immediately.
+* For the object detector, export once elsewhere:
+  ```python
+  from ultralytics import YOLO
+  YOLO("yolo11n.pt").export(format="onnx", imgsz=640, opset=13)
+  ```
+  then on the laptop:
+  ```powershell
+  & $py -m scripts.fetch_detector --onnx-file C:\path\to\yolo11n.onnx
+  ```
+
+### Colab, start to finish
+
+```python
+!git clone https://github.com/udbhav968-creator/SIH_PROJECT.git
+%cd SIH_PROJECT
+!pip install -q torch torchvision onnx
+!python -m training.train_deep_vision --arch efficientnet_b0 --epochs 25 --batch-size 64
+from google.colab import files
+files.download("checkpoints/deep_vision_efficientnet_b0.onnx")
+files.download("checkpoints/deep_vision_report.json")
+```
+
+Put both files in `checkpoints/` on the laptop and restart the API. The model
+card page then shows the CNN's held-out test numbers.
