@@ -46,3 +46,9 @@ checkpoints/active_feedback_log.jsonl
 # Promoted training images under datasets/<class>/real_images stay tracked.
 datasets/incoming/
 datasets/patches/
+# Crops pulled by scripts/fetch_cracks_potholes_dataset.py - regenerate with
+# that script rather than committing ~110 MB of derived images.
+datasets/*/real_images/cpr_*.jpg
+
+# Google Maps API key file - never commit a key
+checkpoints/google_maps_api_key.txt

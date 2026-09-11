@@ -117,8 +117,11 @@ def load_labeled_dataset(max_per_class=None, dedupe_augmented=False, max_side=64
     images, labels, paths = [], [], []
     for cls_id, (folder, _name) in CLASS_FOLDERS.items():
         photos = _list_photos(folder, dedupe_augmented=dedupe_augmented)
-        if max_per_class is not None:
-            photos = photos[:max_per_class]
+        if max_per_class is not None and len(photos) > max_per_class:
+            # Sample across the whole folder rather than taking the first N in
+            # alphabetical order, which would favour one source over another.
+            rng = np.random.default_rng(42)
+            photos = [photos[i] for i in sorted(rng.choice(len(photos), max_per_class, replace=False))]
         for path in photos:
             try:
                 images.append(load_image(path, max_side=max_side))

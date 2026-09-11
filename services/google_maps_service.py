@@ -75,8 +75,27 @@ class GoogleMapsService:
 
     FAILURE_CACHE_SECONDS = 300  # don't hammer a source that just failed
 
+    @staticmethod
+    def _key_from_disk():
+        """
+        Reads checkpoints/google_maps_api_key.txt if it exists. Keeping the key
+        in a gitignored file means it never has to be pasted into a terminal,
+        a commit, or a chat window.
+        """
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "checkpoints", "google_maps_api_key.txt")
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        return line
+        except OSError:
+            pass
+        return ""
+
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = (api_key or os.environ.get("GOOGLE_MAPS_API_KEY", "")).strip()
+        self.api_key = (api_key or os.environ.get("GOOGLE_MAPS_API_KEY", "") or self._key_from_disk()).strip()
         contact = os.environ.get("ROAD_SHIELD_CONTACT", "SIH 2026 student project")
         self.user_agent = f"ROAD-SHIELD/3.0 ({contact})"
         self._cache: Dict[str, Tuple[float, Any]] = {}

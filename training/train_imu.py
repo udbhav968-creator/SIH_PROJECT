@@ -7,6 +7,14 @@ touched during fitting).
 Run directly: python -m training.train_imu
 """
 
+# Cap the BLAS thread pools before NumPy/scikit-learn are imported. On
+# laptops with modest RAM, OpenBLAS otherwise allocates a buffer per
+# thread per core and dies with "Memory allocation still failed".
+import os as _os
+for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    _os.environ.setdefault(_v, "2")
+
+
 import os
 import sys
 import json

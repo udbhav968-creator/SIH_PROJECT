@@ -19,6 +19,14 @@ tracks real *stages* (training vision, training IMU, done) instead of
 fabricating an epoch counter for a training process that doesn't have
 epochs.
 """
+
+# Cap the BLAS thread pools before NumPy/scikit-learn are imported. On
+# laptops with modest RAM, OpenBLAS otherwise allocates a buffer per
+# thread per core and dies with "Memory allocation still failed".
+import os as _os
+for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    _os.environ.setdefault(_v, "2")
+
 import time
 import threading
 
