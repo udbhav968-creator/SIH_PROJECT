@@ -101,7 +101,7 @@ fleet_dedup_engine = FleetDeduplicationEngine(proximity_threshold_meters=10.0)
 # Seed a handful of demo defects so the GIS map isn't empty on a fresh
 # server start - these are labeled fixture data below, not live telemetry.
 fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9716, 77.5946, "Pothole Cavity", 42.0, 1.85, enrich_location=False)
-fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.9717, 77.5945, "Pothole Cavity", 38.0, 2.10, enrich_location=False)  # near-duplicate -> confirmed hotspot
+fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.97163, 77.59457, "Pothole Cavity", 38.0, 2.10, enrich_location=False)  # ~5 m away -> merges into the first, confirming it
 fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9750, 77.5980, "Waterlogging / Flooding Hazard", 35.0, 5.20, enrich_location=False)
 fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-308", 12.9680, 77.5910, "Missing Zebra Crossing", 60.0, 3.40, enrich_location=False)
 fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.9800, 77.6050, "Damaged Traffic Sign", 55.0, 0.80, enrich_location=False)
@@ -748,6 +748,17 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 return
             try:
                 result = deep_pipeline.audit_image(image_input=preset["image_path"], corridor_id=f"Demo preset ({preset['class_name']})")
+                # Hand the dashboard the actual photo that was analysed, so the
+                # overlay it draws is over the real input rather than a stand-in.
+                try:
+                    import base64 as _b64, mimetypes as _mt
+                    with open(preset["image_path"], "rb") as _fh:
+                        _raw = _fh.read()
+                    _mime = _mt.guess_type(preset["image_path"])[0] or "image/jpeg"
+                    result["image_data_url"] = f"data:{_mime};base64," + _b64.b64encode(_raw).decode("ascii")
+                    result["image_source_file"] = os.path.basename(preset["image_path"])
+                except Exception:
+                    pass
             except Exception as e:
                 self._send_json(500, {"error": f"Failed to analyze preset photo: {str(e)}"})
                 return

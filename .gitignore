@@ -41,3 +41,8 @@ datasets/ivcnz_potholes.zip
 
 # Runtime logs written by the API server
 checkpoints/active_feedback_log.jsonl
+
+# Raw dataset downloads and intermediate crops (scripts/fetch_datasets.py).
+# Promoted training images under datasets/<class>/real_images stay tracked.
+datasets/incoming/
+datasets/patches/

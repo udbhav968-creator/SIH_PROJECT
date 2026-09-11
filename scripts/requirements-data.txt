@@ -1,0 +1,3 @@
+# Extra packages for the dataset tooling in scripts/ (not needed to run the API).
+#   pip install -r scripts/requirements-data.txt
+kaggle>=1.6.0

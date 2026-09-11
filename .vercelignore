@@ -13,3 +13,4 @@ tests/
 *.pdf
 *.log
 *.tmp
+scripts/
