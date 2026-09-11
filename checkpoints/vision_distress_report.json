@@ -189,5 +189,5 @@
     }
   },
   "note": "Validation photos and their augmented copies are strictly disjoint from the training set. Accuracy is limited mainly by how few distinct source photos exist for some classes (see dataset_inventory) - this is a data problem, not an unreported one.",
-  "trained_at_unix": 1789169369
+  "trained_at_unix": 1789170604
 }
