@@ -62,6 +62,14 @@ from services.google_maps_service import google_maps_service
 # ==============================================================================
 CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
 
+# On Vercel (and similar serverless hosts) the deployed files are read-only
+# and only /tmp is writable - and /tmp is wiped between cold starts. Anything
+# the server writes at runtime goes to WRITABLE_DIR; trained models are
+# still read from CKPT_DIR.
+IS_SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+_ckpt_writable = os.access(CKPT_DIR, os.W_OK) if os.path.isdir(CKPT_DIR) else os.access(ENGINE_ROOT, os.W_OK)
+WRITABLE_DIR = CKPT_DIR if (_ckpt_writable and not IS_SERVERLESS) else os.path.join("/tmp", "road_shield")
+
 print("[AI Server] Loading trained models from:", CKPT_DIR)
 
 vision_model = VisionDistressNet(model_path=os.path.join(CKPT_DIR, "vision_distress_model.joblib"))
@@ -92,16 +100,28 @@ print("  ✓ Deep inference pipeline initialized.")
 fleet_dedup_engine = FleetDeduplicationEngine(proximity_threshold_meters=10.0)
 # Seed a handful of demo defects so the GIS map isn't empty on a fresh
 # server start - these are labeled fixture data below, not live telemetry.
-fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9716, 77.5946, "Pothole Cavity", 42.0, 1.85)
-fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.9717, 77.5945, "Pothole Cavity", 38.0, 2.10)  # near-duplicate -> confirmed hotspot
-fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9750, 77.5980, "Waterlogging / Flooding Hazard", 35.0, 5.20)
-fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-308", 12.9680, 77.5910, "Missing Zebra Crossing", 60.0, 3.40)
-fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.9800, 77.6050, "Damaged Traffic Sign", 55.0, 0.80)
+fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9716, 77.5946, "Pothole Cavity", 42.0, 1.85, enrich_location=False)
+fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.9717, 77.5945, "Pothole Cavity", 38.0, 2.10, enrich_location=False)  # near-duplicate -> confirmed hotspot
+fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9750, 77.5980, "Waterlogging / Flooding Hazard", 35.0, 5.20, enrich_location=False)
+fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-308", 12.9680, 77.5910, "Missing Zebra Crossing", 60.0, 3.40, enrich_location=False)
+fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.9800, 77.6050, "Damaged Traffic Sign", 55.0, 0.80, enrich_location=False)
 print("  ✓ Fleet deduplication engine initialized (seeded with 5 demo reports).")
 
 active_feedback_counter = 0
 video_trackers = {}
-FEEDBACK_LOG_PATH = os.path.join(CKPT_DIR, "active_feedback_log.jsonl")
+FEEDBACK_LOG_PATH = os.path.join(WRITABLE_DIR, "active_feedback_log.jsonl")
+
+
+def find_or_export_artifact(filename):
+    """Path to an exported spec/header, looking in checkpoints/ first, then
+    WRITABLE_DIR; exports into WRITABLE_DIR if neither has it yet."""
+    for folder in (CKPT_DIR, WRITABLE_DIR):
+        candidate = os.path.join(folder, filename)
+        if os.path.exists(candidate):
+            return candidate
+    edge_exporter.export_all_to_open_spec(output_dir=WRITABLE_DIR)
+    candidate = os.path.join(WRITABLE_DIR, filename)
+    return candidate if os.path.exists(candidate) else None
 
 
 def get_session_tracker(session_id="default", reset=False):
@@ -258,7 +278,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             for d in defects:
                 if not d.get("address"):
                     geo = google_maps_service.reverse_geocode(d["lat"], d["lon"])
-                    d["address"] = geo.get("formatted_address", "Urban Corridor")
+                    d["address"] = geo.get("formatted_address")
                     d["geocode_source"] = geo.get("provider")
                     d["google_maps_url"] = geo.get("google_maps_url", f"https://www.google.com/maps/search/?api=1&query={d['lat']},{d['lon']}")
                     d["street_view_url"] = geo.get("street_view_url", f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={d['lat']},{d['lon']}")
@@ -313,11 +333,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/models/registry":
             # Read-only: the dashboard polls this, so it must not rewrite files
             # on every call. Exporting is /api/v1/models/export-edge-spec's job.
-            spec_path = os.path.join(CKPT_DIR, "road_shield_open_model_spec.json")
-            header_path = os.path.join(CKPT_DIR, "road_shield_edge_inference.h")
-            if not (os.path.exists(spec_path) and os.path.exists(header_path)):
-                self._send_json(200, edge_exporter.export_all_to_open_spec())
-                return
+            spec_path = find_or_export_artifact("road_shield_open_model_spec.json")
+            header_path = find_or_export_artifact("road_shield_edge_inference.h")
             with open(spec_path, "r", encoding="utf-8") as fh:
                 spec = json.load(fh)
             self._send_json(200, {
@@ -364,7 +381,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/v1/models/export-edge-spec":
-            exp_res = edge_exporter.export_all_to_open_spec()
+            exp_res = edge_exporter.export_all_to_open_spec(output_dir=WRITABLE_DIR)
             self._send_json(200, {
                 "status": "SUCCESS_EXPORTED",
                 "open_spec_json": exp_res["spec_json_path"],
@@ -375,10 +392,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/v1/models/download-c-header":
-            c_path = os.path.join(CKPT_DIR, "road_shield_edge_inference.h")
-            if not os.path.exists(c_path):
-                edge_exporter.export_all_to_open_spec()
-            if os.path.exists(c_path):
+            c_path = find_or_export_artifact("road_shield_edge_inference.h")
+            if c_path:
                 with open(c_path, "rb") as f:
                     data = f.read()
                 self.send_response(200)
@@ -393,10 +408,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/v1/models/download-neural-spec":
-            json_path = os.path.join(CKPT_DIR, "road_shield_open_model_spec.json")
-            if not os.path.exists(json_path):
-                edge_exporter.export_all_to_open_spec()
-            if os.path.exists(json_path):
+            json_path = find_or_export_artifact("road_shield_open_model_spec.json")
+            if json_path:
                 with open(json_path, "rb") as f:
                     data = f.read()
                 self.send_response(200)
@@ -712,6 +725,14 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # Launch real training (vision + IMU) - runs the actual scikit-learn fits
         # ----------------------------------------------------------------------
         if path == "/api/v1/training/launch":
+            if IS_SERVERLESS:
+                self._send_json(503, {
+                    "status": "TRAINING_UNAVAILABLE_ON_SERVERLESS",
+                    "error": "Training needs the datasets/ folder and a writable checkpoints/ folder, neither of "
+                             "which exists on this serverless deployment. Train locally with "
+                             "`python -m training.train_mega_suite`, commit checkpoints/, and redeploy.",
+                })
+                return
             launch_res = run_training_suite(async_mode=True)
             self._send_json(200, launch_res)
             return
@@ -834,7 +855,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             # pretending one just happened (as the old endpoint did) would be
             # fabricating a result.
             try:
-                os.makedirs(CKPT_DIR, exist_ok=True)
+                os.makedirs(WRITABLE_DIR, exist_ok=True)
                 with open(FEEDBACK_LOG_PATH, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record) + "\n")
                 logged = True
@@ -910,6 +931,10 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             corridor = body.get("corridor_id", "NH-44")
             if not dir_path or not os.path.isdir(dir_path):
                 dir_path = os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "real_images")
+            if not os.path.isdir(dir_path):
+                self._send_json(503, {"error": "No image folder available for a batch audit on this deployment "
+                                               "(datasets/ is not deployed). Use /api/v1/pipeline/deep-audit with your own photo."})
+                return
             try:
                 batch_result = deep_pipeline.process_batch(image_source=dir_path, max_samples=max_samples, corridor_id=corridor)
                 self._send_json(200, batch_result)

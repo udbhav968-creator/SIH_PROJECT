@@ -7072,7 +7072,7 @@
 
     async function refreshGisData() {
       try {
-        const resp = await fetch('http://127.0.0.1:8000/api/v1/gis/map-data', {
+        const resp = await fetch(`${AI_BACKEND_URL}/api/v1/gis/map-data`, {
           method: 'GET',
           headers: { 'Accept': 'application/json' }
         });
@@ -7264,7 +7264,7 @@
         return;
       }
       try {
-        const resp = await fetch(`http://127.0.0.1:8000/api/v1/maps/geocode?query=${encodeURIComponent(query)}`);
+        const resp = await fetch(`${AI_BACKEND_URL}/api/v1/maps/geocode?query=${encodeURIComponent(query)}`);
         const data = await resp.json();
         if (data.status === 'OK' && data.results && data.results.length > 0) {
           const top = data.results[0];
@@ -7299,7 +7299,7 @@
       const defEl = sihGisDefects.find(d => d.defect_id === defectId) || { lat: 12.9780, lon: 77.6020 };
 
       try {
-        const resp = await fetch('http://127.0.0.1:8000/api/v1/maps/directions', {
+        const resp = await fetch(`${AI_BACKEND_URL}/api/v1/maps/directions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -7367,7 +7367,7 @@
       const entered = prompt('Enter your Google Maps Platform API Key (AIza...):\nLeave blank to use High-Fidelity Dual-Engine (OSM & MoRTH Gazetteer):', currentKey);
       if (entered !== null) {
         localStorage.setItem('roadshield_google_maps_key', entered.trim());
-        fetch('http://127.0.0.1:8000/api/v1/maps/config', {
+        fetch(`${AI_BACKEND_URL}/api/v1/maps/config`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ api_key: entered.trim() })
@@ -7392,7 +7392,7 @@
           vehicle_id: `KA${Math.floor(Math.random()*99).toString().padStart(2,'0')}${String.fromCharCode(65+Math.floor(Math.random()*26))}${String.fromCharCode(65+Math.floor(Math.random()*26))}${Math.floor(1000+Math.random()*8999)}`
         };
 
-        const resp = await fetch('http://127.0.0.1:8000/api/v1/incidents/alpr', {
+        const resp = await fetch(`${AI_BACKEND_URL}/api/v1/incidents/alpr`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -7462,7 +7462,7 @@
       if (delEl) delEl.textContent = delay + ' Minutes';
 
       try {
-        await fetch('http://127.0.0.1:8000/api/v1/traffic/analyze', {
+        await fetch(`${AI_BACKEND_URL}/api/v1/traffic/analyze`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ cars, buses_count: buses, trucks, two_wheelers: bikes })
@@ -7478,7 +7478,7 @@
     // ─────────────────────────────────────────────────────────────────────────
     async function loadTrainingMetrics() {
       try {
-        const resp = await fetch('http://127.0.0.1:8000/api/v1/training/metrics');
+        const resp = await fetch(`${AI_BACKEND_URL}/api/v1/training/metrics`);
         if (!resp.ok) throw new Error('No data');
         const data = await resp.json();
 
@@ -7505,8 +7505,8 @@
     async function refreshSystemHealth() {
       try {
         const [modelResp, fleetResp] = await Promise.all([
-          fetch('http://127.0.0.1:8000/api/v1/models/registry'),
-          fetch('http://127.0.0.1:8000/api/v1/fleet/telemetry')
+          fetch(`${AI_BACKEND_URL}/api/v1/models/registry`),
+          fetch(`${AI_BACKEND_URL}/api/v1/fleet/telemetry`)
         ]);
         if (modelResp.ok) {
           const models = await modelResp.json();

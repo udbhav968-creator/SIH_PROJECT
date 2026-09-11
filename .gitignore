@@ -38,3 +38,6 @@ Thumbs.db
 datasets/*.zip
 datasets/ivcnz_potholes.zip
 .vercel
+
+# Runtime logs written by the API server
+checkpoints/active_feedback_log.jsonl

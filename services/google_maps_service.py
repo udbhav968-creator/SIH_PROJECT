@@ -1,16 +1,27 @@
 """
-Geocoding, elevation, directions and places lookups with a real three-tier
-fallback: the official Google Maps Platform APIs when GOOGLE_MAPS_API_KEY is
-configured, live OpenStreetMap Nominatim/OSRM when it isn't (or the Google
-call fails), and finally a small offline gazetteer of known Indian highway
-corridors so a lookup still resolves to something useful with no network
-access at all. Each tier is genuinely queried, not simulated - the fallback
-only exists because this project can't assume a paid API key or reliable
-internet is available.
+Geocoding, routing, elevation and nearby-facility lookups.
+
+Every lookup tries real data sources in order and says which one answered:
+
+    geocode / reverse geocode : Google Geocoding API (if GOOGLE_MAPS_API_KEY is set)
+                                -> OpenStreetMap Nominatim
+                                -> a small offline table of city bounding boxes and
+                                   well-known Bengaluru landmarks (approximate)
+    directions                : Google Directions API -> OSRM public router
+                                -> straight-line distance estimate (labelled as such)
+    elevation / drainage      : Google Elevation API -> Open-Meteo elevation API
+                                (Copernicus 90 m DEM) -> unavailable
+    nearby facilities         : Google Places API -> OpenStreetMap Overpass API
+                                -> unavailable
+
+When every source fails the response says "UNAVAILABLE" with empty values -
+nothing is filled in with made-up addresses, elevations or facilities.
+
+Set ROAD_SHIELD_CONTACT to an email/URL you control; OpenStreetMap's usage
+policies ask for a real contact in the User-Agent.
 """
 
 import os
-import sys
 import json
 import math
 import time
@@ -18,775 +29,527 @@ import urllib.request
 import urllib.parse
 from typing import Dict, List, Any, Optional, Tuple
 
+
+def _maps_links(lat: float, lon: float) -> Dict[str, str]:
+    return {
+        "google_maps_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}",
+        "street_view_url": f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}",
+    }
+
+
 class GoogleMapsService:
-    """Geocoding/elevation/directions/places client with the Google -> OSM -> offline-gazetteer fallback chain."""
+    """Maps/GIS lookups with a Google -> OpenStreetMap -> offline fallback chain."""
 
     GOOGLE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
     GOOGLE_DIRECTIONS_URL = "https://maps.googleapis.com/maps/api/directions/json"
     GOOGLE_ELEVATION_URL = "https://maps.googleapis.com/maps/api/elevation/json"
     GOOGLE_PLACES_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-    GOOGLE_DISTANCE_MATRIX_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
-    GOOGLE_STATIC_MAP_URL = "https://maps.googleapis.com/maps/api/staticmap"
+    NOMINATIM_URL = "https://nominatim.openstreetmap.org"
+    OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
+    OPEN_METEO_ELEVATION_URL = "https://api.open-meteo.com/v1/elevation"
+    OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
-    # Known Indian National Highway & Urban Hub Gazetteer for sub-millisecond local resolution
-    INDIAN_GAZETTEER = [
-        {
-            "corridor": "NH-44 (Delhi-Srinagar-Bengaluru-Kanyakumari)",
-            "highway": "NH-44",
-            "lat_min": 12.80, "lat_max": 13.15, "lon_min": 77.50, "lon_max": 77.75,
-            "locality": "Hosur Road / Electronic City Corridor",
-            "city": "Bengaluru",
-            "state": "Karnataka",
-            "pincode": "560100",
-            "asphalt_depot": "NHAI Hot-Mix Plant Unit 4, Chandapura",
-            "base_elevation_m": 912.0
-        },
-        {
-            "corridor": "Outer Ring Road (ORR) Silk Board - Tin Factory",
-            "highway": "ORR-BLR",
-            "lat_min": 12.91, "lat_max": 12.99, "lon_min": 77.61, "lon_max": 77.70,
-            "locality": "Bellandur / Marathahalli IT Corridor",
-            "city": "Bengaluru",
-            "state": "Karnataka",
-            "pincode": "560103",
-            "asphalt_depot": "BBMP Hot-Mix Asphalt Batching Plant, Mahadevapura",
-            "base_elevation_m": 885.0
-        },
-        {
-            "corridor": "MG Road - Trinity - Halasuru Central Hub",
-            "highway": "SH-35 / Urban Arterial",
-            "lat_min": 12.96, "lat_max": 12.98, "lon_min": 77.58, "lon_max": 77.63,
-            "locality": "Central Business District / MG Road",
-            "city": "Bengaluru",
-            "state": "Karnataka",
-            "pincode": "560001",
-            "asphalt_depot": "Central Zone Road Maintenance Depot, Corporation Circle",
-            "base_elevation_m": 920.0
-        },
-        {
-            "corridor": "NH-48 (Delhi-Mumbai-Bengaluru Expressway)",
-            "highway": "NH-48",
-            "lat_min": 18.45, "lat_max": 18.65, "lon_min": 73.75, "lon_max": 73.95,
-            "locality": "Pune-Mumbai Expressway Bypass",
-            "city": "Pune",
-            "state": "Maharashtra",
-            "pincode": "411038",
-            "asphalt_depot": "MSRDC Bituminous Plant, Wakad Depot",
-            "base_elevation_m": 560.0
-        },
-        {
-            "corridor": "NH-66 (Panvel-Kanyakumari Coastal Highway)",
-            "highway": "NH-66",
-            "lat_min": 15.20, "lat_max": 15.50, "lon_min": 73.95, "lon_max": 74.25,
-            "locality": "Goa Coastal Expressway",
-            "city": "Margao",
-            "state": "Goa",
-            "pincode": "403601",
-            "asphalt_depot": "MoRTH Coastal Division Asphalt Station, Verna",
-            "base_elevation_m": 18.0
-        }
+    # Offline fallback 1: coarse city bounding boxes. Only ever reported as an
+    # approximate, city-level match - never as a street address.
+    OFFLINE_CITY_BOXES = [
+        {"city": "Bengaluru", "state": "Karnataka", "lat": (12.80, 13.15), "lon": (77.45, 77.80)},
+        {"city": "Delhi NCR", "state": "Delhi / Uttar Pradesh / Haryana", "lat": (28.30, 28.90), "lon": (76.85, 77.60)},
+        {"city": "Mumbai", "state": "Maharashtra", "lat": (18.85, 19.30), "lon": (72.75, 73.10)},
+        {"city": "Pune", "state": "Maharashtra", "lat": (18.40, 18.65), "lon": (73.70, 74.00)},
+        {"city": "Chennai", "state": "Tamil Nadu", "lat": (12.85, 13.25), "lon": (80.10, 80.35)},
+        {"city": "Hyderabad", "state": "Telangana", "lat": (17.25, 17.60), "lon": (78.30, 78.65)},
+        {"city": "Goa (Margao-Panaji)", "state": "Goa", "lat": (15.20, 15.60), "lon": (73.75, 74.10)},
     ]
 
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
-        self.request_timeout = 4.0  # seconds
-        self._cache_geocode = {}
-        self._cache_directions = {}
-        self._cache_elevation = {}
+    # Offline fallback 2: a few well-known Bengaluru landmarks for forward geocoding.
+    OFFLINE_LANDMARKS = [
+        {"name": "Silk Board Junction", "lat": 12.9176, "lng": 77.6238, "addr": "Central Silk Board Junction, Hosur Road, Bengaluru, Karnataka"},
+        {"name": "MG Road", "lat": 12.9750, "lng": 77.6080, "addr": "Mahatma Gandhi Road, Bengaluru, Karnataka"},
+        {"name": "Tin Factory", "lat": 12.9940, "lng": 77.6620, "addr": "Tin Factory, Old Madras Road, Bengaluru, Karnataka"},
+        {"name": "Electronic City", "lat": 12.8450, "lng": 77.6630, "addr": "Electronic City, Hosur Road (NH-44), Bengaluru, Karnataka"},
+        {"name": "Whitefield ITPL", "lat": 12.9850, "lng": 77.7310, "addr": "ITPL, Whitefield Main Road, Bengaluru, Karnataka"},
+        {"name": "Majestic Bus Station", "lat": 12.9770, "lng": 77.5720, "addr": "Kempegowda Bus Station, Majestic, Bengaluru, Karnataka"},
+        {"name": "Hebbal Flyover", "lat": 13.0350, "lng": 77.5970, "addr": "Hebbal Flyover, Bellary Road (NH-44), Bengaluru, Karnataka"},
+    ]
+    _GENERIC_QUERY_WORDS = {"road", "rd", "junction", "bengaluru", "bangalore", "nh", "the", "near", "karnataka", "india", "main", "cross"}
 
+    FAILURE_CACHE_SECONDS = 300  # don't hammer a source that just failed
+
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = (api_key or os.environ.get("GOOGLE_MAPS_API_KEY", "")).strip()
+        contact = os.environ.get("ROAD_SHIELD_CONTACT", "SIH 2026 student project")
+        self.user_agent = f"ROAD-SHIELD/3.0 ({contact})"
+        self._cache: Dict[str, Tuple[float, Any]] = {}
+
+    # ------------------------------------------------------------------ helpers
+    def _get_json(self, url: str, timeout: float, data: Optional[bytes] = None) -> Any:
+        req = urllib.request.Request(url, data=data, headers={"User-Agent": self.user_agent})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def _cached(self, key: str, compute):
+        hit = self._cache.get(key)
+        if hit is not None:
+            stored_at, value = hit
+            if value.get("status") not in ("UNAVAILABLE", "ZERO_RESULTS") or time.time() - stored_at < self.FAILURE_CACHE_SECONDS:
+                return value
+        value = compute()
+        self._cache[key] = (time.time(), value)
+        return value
+
+    @staticmethod
+    def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """Great-circle distance in meters."""
+        r = 6371000.0
+        phi1, phi2 = math.radians(lat1), math.radians(lat2)
+        dphi = math.radians(lat2 - lat1)
+        dlam = math.radians(lon2 - lon1)
+        a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2.0) ** 2
+        return 2.0 * r * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+
+    # ------------------------------------------------------------ key / status
     def set_api_key(self, key: str) -> Dict[str, Any]:
-        """Dynamically configures or updates the Google Maps API key."""
+        """Sets (or clears) the Google Maps API key at runtime and checks it."""
         self.api_key = key.strip() if key else ""
+        self._cache.clear()
         valid, msg = self.validate_key()
         return {
             "api_key_configured": bool(self.api_key),
             "key_masked": f"{self.api_key[:6]}...{self.api_key[-4:]}" if len(self.api_key) > 10 else ("Configured" if self.api_key else "None"),
             "is_valid": valid,
             "status_message": msg,
-            "active_engine": "Official Google Maps Platform" if self.api_key else "OpenStreetMap / MoRTH Dual-Engine Fallback"
+            "active_engine": "Google Maps Platform" if self.api_key else "OpenStreetMap services (Nominatim / OSRM / Overpass) + Open-Meteo",
         }
 
     def validate_key(self) -> Tuple[bool, str]:
-        """Pings Google Geocoding endpoint to verify API key validity."""
         if not self.api_key:
-            return False, "No Google Maps API Key provided. Operating in high-fidelity Dual-Engine mode."
-        
+            return False, "No Google Maps API key set - using OpenStreetMap and Open-Meteo instead."
         try:
             params = urllib.parse.urlencode({"address": "Bengaluru", "key": self.api_key})
-            url = f"{self.GOOGLE_GEOCODE_URL}?{params}"
-            req = urllib.request.Request(url, headers={"User-Agent": "ROAD-SHIELD-AI-Engine/2.5"})
-            with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                status = data.get("status")
-                if status in ["OK", "ZERO_RESULTS"]:
-                    return True, "Google Maps API Key is active and verified."
-                elif status == "REQUEST_DENIED":
-                    return False, f"Google Maps API Key rejected: {data.get('error_message', 'Request Denied')}"
-                else:
-                    return False, f"Google Maps API returned status: {status}"
+            data = self._get_json(f"{self.GOOGLE_GEOCODE_URL}?{params}", timeout=4.0)
+            status = data.get("status")
+            if status in ("OK", "ZERO_RESULTS"):
+                return True, "Google Maps API key is active."
+            if status == "REQUEST_DENIED":
+                return False, f"Google Maps API key rejected: {data.get('error_message', 'Request denied')}"
+            return False, f"Google Maps API returned status: {status}"
         except Exception as e:
-            return False, f"Network verification check failed: {str(e)}"
+            return False, f"Could not reach Google to verify the key: {e}"
 
     def get_service_status(self) -> Dict[str, Any]:
-        """Returns comprehensive status of all Google Maps services."""
         has_key = bool(self.api_key and len(self.api_key) > 8)
+        google_or = lambda fallback: "GOOGLE_MAPS_API" if has_key else fallback
         return {
-            "google_maps_platform": "ONLINE",
             "api_key_configured": has_key,
-            "active_provider": "Google Maps Platform (Cloud Web Services)" if has_key else "MoRTH High-Fidelity Hybrid GIS Engine",
+            "active_provider": "Google Maps Platform" if has_key else "OpenStreetMap services + Open-Meteo (no Google key set)",
             "services": {
-                "geocoding": "ACTIVE" if has_key else "FALLBACK_NOMINATIM_AND_GAZETTEER",
-                "reverse_geocoding": "ACTIVE" if has_key else "FALLBACK_NOMINATIM_AND_GAZETTEER",
-                "directions_routing": "ACTIVE" if has_key else "FALLBACK_OSRM_AND_KINEMATIC",
-                "pothole_avoidance_planner": "ACTIVE (ROAD-SHIELD Neural Router)",
-                "elevation_drainage_analysis": "ACTIVE" if has_key else "FALLBACK_TOPOGRAPHIC",
-                "places_civil_facilities": "ACTIVE" if has_key else "FALLBACK_MORTH_REGISTRY",
-                "street_view_360": "ACTIVE (Direct Google Street View Engine)",
-                "tile_layers": {
-                    "roadmap": "ACTIVE (Google Maps Vector / Raster)",
-                    "satellite": "ACTIVE (Google Maps High-Res Earth)",
-                    "hybrid": "ACTIVE (Google Maps Roads + Imagery)",
-                    "terrain": "ACTIVE (Google Maps Topographic Contours)",
-                    "traffic": "ACTIVE (Google Maps Live Congestion Overlay)"
-                }
+                "geocoding": google_or("OSM_NOMINATIM (offline landmark table if unreachable)"),
+                "reverse_geocoding": google_or("OSM_NOMINATIM (offline city-level match if unreachable)"),
+                "directions_routing": google_or("OSRM (straight-line estimate if unreachable)"),
+                "pothole_avoidance": "Picks, among the router's alternative routes, the one passing fewest known defects",
+                "elevation_drainage": google_or("OPEN_METEO_DEM (unavailable if unreachable)"),
+                "nearby_facilities": google_or("OSM_OVERPASS (unavailable if unreachable)"),
+                "street_view": "Google Maps links (thumbnail needs an API key)",
             },
             "tile_endpoints": self.get_tile_layers(),
-            "timestamp_utc": int(time.time())
+            "timestamp_utc": int(time.time()),
         }
 
-    # -------------------------------------------------------------------------
-    # 1. GOOGLE MAPS TILE ENDPOINTS
-    # -------------------------------------------------------------------------
     @staticmethod
-    def get_tile_layers() -> Dict[str, Dict[str, str]]:
-        """Returns valid tile URLs for all Google Maps layers."""
+    def get_tile_layers() -> Dict[str, Dict[str, Any]]:
+        """Map tile URL templates used by the dashboard's Leaflet map."""
         return {
-            "google_roadmap": {
-                "name": "Google Maps (Roadmap)",
-                "url": "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
-                "attribution": "&copy; Google Maps",
-                "max_zoom": 20,
-                "type": "vector_road"
-            },
-            "google_satellite": {
-                "name": "Google Maps (Satellite)",
-                "url": "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-                "attribution": "&copy; Google Earth & Imagery",
-                "max_zoom": 20,
-                "type": "highres_satellite"
-            },
-            "google_hybrid": {
-                "name": "Google Maps (Hybrid)",
-                "url": "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-                "attribution": "&copy; Google Hybrid Imagery & Roads",
-                "max_zoom": 20,
-                "type": "satellite_with_roads"
-            },
-            "google_terrain": {
-                "name": "Google Maps (Terrain)",
-                "url": "https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}",
-                "attribution": "&copy; Google Topographic Terrain",
-                "max_zoom": 20,
-                "type": "topographic_elevation"
-            },
-            "google_traffic": {
-                "name": "Google Maps (Live Traffic)",
-                "url": "https://mt1.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}",
-                "attribution": "&copy; Google Real-Time Traffic Telematics",
-                "max_zoom": 20,
-                "type": "live_traffic"
-            },
-            "carto_dark": {
-                "name": "CartoDB Dark (Tactical Night)",
-                "url": "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-                "attribution": "&copy; OpenStreetMap & CartoDB",
-                "max_zoom": 19,
-                "type": "tactical_dark"
-            }
+            "google_roadmap": {"name": "Google Maps (Roadmap)", "url": "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+                               "attribution": "&copy; Google Maps", "max_zoom": 20, "type": "vector_road"},
+            "google_satellite": {"name": "Google Maps (Satellite)", "url": "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+                                 "attribution": "&copy; Google", "max_zoom": 20, "type": "highres_satellite"},
+            "google_hybrid": {"name": "Google Maps (Hybrid)", "url": "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+                              "attribution": "&copy; Google", "max_zoom": 20, "type": "satellite_with_roads"},
+            "google_terrain": {"name": "Google Maps (Terrain)", "url": "https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}",
+                               "attribution": "&copy; Google", "max_zoom": 20, "type": "topographic_elevation"},
+            "google_traffic": {"name": "Google Maps (Traffic)", "url": "https://mt1.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}",
+                               "attribution": "&copy; Google", "max_zoom": 20, "type": "live_traffic"},
+            "carto_dark": {"name": "CartoDB Dark", "url": "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+                           "attribution": "&copy; OpenStreetMap contributors &copy; CARTO", "max_zoom": 19, "type": "tactical_dark"},
         }
 
-    # -------------------------------------------------------------------------
-    # 2. REVERSE GEOCODING API (Coordinates -> Real Street Address & Highway)
-    # -------------------------------------------------------------------------
+    # --------------------------------------------------------- reverse geocode
     def reverse_geocode(self, lat: float, lon: float) -> Dict[str, Any]:
-        """
-        Translates defect GPS coordinates into a verified real-world street address,
-        highway corridor name, locality, and district.
-        """
-        cache_key = f"{round(lat, 5)}_{round(lon, 5)}"
-        if cache_key in self._cache_geocode:
-            return self._cache_geocode[cache_key]
+        """Coordinates -> address, with the source that produced it."""
+        return self._cached(f"rev_{round(lat, 5)}_{round(lon, 5)}", lambda: self._reverse_geocode(lat, lon))
 
-        # 1. Try official Google Maps Geocoding API if key configured
+    def _reverse_geocode(self, lat: float, lon: float) -> Dict[str, Any]:
+        base = {"latitude": lat, "longitude": lon, **_maps_links(lat, lon)}
+
         if self.api_key:
             try:
-                params = urllib.parse.urlencode({
-                    "latlng": f"{lat},{lon}",
-                    "key": self.api_key,
-                    "language": "en"
-                })
-                url = f"{self.GOOGLE_GEOCODE_URL}?{params}"
-                req = urllib.request.Request(url, headers={"User-Agent": "ROAD-SHIELD-AI-Engine/2.5"})
-                with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    if data.get("status") == "OK" and data.get("results"):
-                        top_res = data["results"][0]
-                        res = {
-                            "status": "OK",
-                            "provider": "Google Maps Geocoding API",
-                            "formatted_address": top_res.get("formatted_address", ""),
-                            "place_id": top_res.get("place_id", ""),
-                            "latitude": lat,
-                            "longitude": lon,
-                            "google_maps_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}",
-                            "street_view_url": f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}",
-                            "address_components": top_res.get("address_components", [])
-                        }
-                        self._cache_geocode[cache_key] = res
-                        return res
-            except Exception as e:
-                pass  # Fall through to fallback engine
-
-        # 2. Try OpenStreetMap Nominatim Live Reverse Geocoder
-        try:
-            osm_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18&addressdetails=1"
-            req = urllib.request.Request(osm_url, headers={
-                "User-Agent": "ROAD-SHIELD-SIH2026-HighwayIntelligenceEngine/2.5 (contact@roadshield.gov.in)"
-            })
-            with urllib.request.urlopen(req, timeout=1.5) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                display_name = data.get("display_name")
-                if display_name:
-                    addr = data.get("address", {})
-                    road = addr.get("road") or addr.get("pedestrian") or addr.get("suburb") or "Arterial Road"
-                    res = {
-                        "status": "OK",
-                        "provider": "OpenStreetMap Nominatim (Live Geocoding)",
-                        "formatted_address": display_name,
-                        "road": road,
-                        "locality": addr.get("suburb", addr.get("neighbourhood", "")),
-                        "city": addr.get("city", addr.get("town", "Bengaluru")),
-                        "state": addr.get("state", "Karnataka"),
-                        "postcode": addr.get("postcode", "560001"),
-                        "latitude": lat,
-                        "longitude": lon,
-                        "google_maps_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}",
-                        "street_view_url": f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}"
-                    }
-                    self._cache_geocode[cache_key] = res
-                    return res
-        except Exception:
-            pass
-
-        # 3. High-Fidelity MoRTH Indian Gazetteer Matcher
-        best_match = None
-        for entry in self.INDIAN_GAZETTEER:
-            if (entry["lat_min"] <= lat <= entry["lat_max"] and
-                entry["lon_min"] <= lon <= entry["lon_max"]):
-                best_match = entry
-                break
-
-        if best_match:
-            formatted = f"{best_match['locality']}, {best_match['highway']}, {best_match['city']}, {best_match['state']} {best_match['pincode']}, India"
-            corridor = best_match["corridor"]
-        else:
-            formatted = f"National Highway Corridor KM {abs(round(lat*10, 1))}, Bengaluru Metropolitan Hub, Karnataka, India"
-            corridor = "NH-44 / Central Urban Corridor"
-
-        res = {
-            "status": "OK",
-            "provider": "MoRTH National Highway Gazetteer (Offline Fast Engine)",
-            "formatted_address": formatted,
-            "highway_corridor": corridor,
-            "latitude": lat,
-            "longitude": lon,
-            "google_maps_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}",
-            "street_view_url": f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}",
-            "is_gazetteer_match": bool(best_match)
-        }
-        self._cache_geocode[cache_key] = res
-        return res
-
-    # -------------------------------------------------------------------------
-    # 3. FORWARD GEOCODING API (Address / Query -> Lat, Lon, Bounding Box)
-    # -------------------------------------------------------------------------
-    def geocode(self, query: str) -> Dict[str, Any]:
-        """
-        Geocodes a search string (e.g. 'Silk Board', 'NH 44 Hosur Road', 'MG Road')
-        to GPS coordinates.
-        """
-        query_clean = query.strip()
-        if not query_clean:
-            return {"status": "ZERO_RESULTS", "results": []}
-
-        # 1. Try official Google Maps Geocoding API if key configured
-        if self.api_key:
-            try:
-                params = urllib.parse.urlencode({"address": query_clean, "key": self.api_key})
-                url = f"{self.GOOGLE_GEOCODE_URL}?{params}"
-                req = urllib.request.Request(url, headers={"User-Agent": "ROAD-SHIELD-AI-Engine/2.5"})
-                with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    if data.get("status") == "OK" and data.get("results"):
-                        return {
-                            "status": "OK",
-                            "provider": "Google Maps Geocoding API",
-                            "results": [
-                                {
-                                    "formatted_address": r["formatted_address"],
-                                    "lat": r["geometry"]["location"]["lat"],
-                                    "lng": r["geometry"]["location"]["lng"],
-                                    "place_id": r.get("place_id", ""),
-                                    "viewport": r["geometry"].get("viewport", {}),
-                                    "google_maps_url": f"https://www.google.com/maps/search/?api=1&query={r['geometry']['location']['lat']},{r['geometry']['location']['lng']}"
-                                }
-                                for r in data["results"][:5]
-                            ]
-                        }
+                params = urllib.parse.urlencode({"latlng": f"{lat},{lon}", "key": self.api_key, "language": "en"})
+                data = self._get_json(f"{self.GOOGLE_GEOCODE_URL}?{params}", timeout=4.0)
+                if data.get("status") == "OK" and data.get("results"):
+                    top = data["results"][0]
+                    return {**base, "status": "OK", "provider": "Google Geocoding API",
+                            "formatted_address": top.get("formatted_address", ""), "place_id": top.get("place_id", ""),
+                            "address_components": top.get("address_components", [])}
             except Exception:
                 pass
 
-        # 2. Try OpenStreetMap Nominatim
         try:
-            encoded_q = urllib.parse.quote(query_clean)
-            osm_url = f"https://nominatim.openstreetmap.org/search?format=json&q={encoded_q}&limit=5"
-            req = urllib.request.Request(osm_url, headers={
-                "User-Agent": "ROAD-SHIELD-SIH2026-HighwayIntelligenceEngine/2.5 (contact@roadshield.gov.in)"
-            })
-            with urllib.request.urlopen(req, timeout=1.8) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                if data:
-                    return {
-                        "status": "OK",
-                        "provider": "OpenStreetMap Nominatim (Live Geocoding)",
-                        "results": [
-                            {
-                                "formatted_address": item["display_name"],
-                                "lat": float(item["lat"]),
-                                "lng": float(item["lon"]),
-                                "place_id": str(item.get("place_id", "")),
-                                "google_maps_url": f"https://www.google.com/maps/search/?api=1&query={item['lat']},{item['lon']}"
-                            }
-                            for item in data
-                        ]
-                    }
+            params = urllib.parse.urlencode({"format": "json", "lat": lat, "lon": lon, "zoom": 18, "addressdetails": 1})
+            data = self._get_json(f"{self.NOMINATIM_URL}/reverse?{params}", timeout=3.0)
+            if data.get("display_name"):
+                addr = data.get("address", {})
+                return {**base, "status": "OK", "provider": "OpenStreetMap Nominatim",
+                        "formatted_address": data["display_name"],
+                        "road": addr.get("road"),
+                        "locality": addr.get("suburb") or addr.get("neighbourhood"),
+                        "city": addr.get("city") or addr.get("town") or addr.get("village"),
+                        "state": addr.get("state"),
+                        "postcode": addr.get("postcode")}
         except Exception:
             pass
 
-        # 3. Built-in Local Indian Junction Matcher
-        q_lower = query_clean.lower()
-        local_points = [
-            {"name": "Silk Board Junction", "lat": 12.9176, "lng": 77.6238, "addr": "Central Silk Board, Hosur Rd, Bengaluru, Karnataka 560068"},
-            {"name": "MG Road Corridor", "lat": 12.9750, "lng": 77.6080, "addr": "Mahatma Gandhi Rd, Bengaluru, Karnataka 560001"},
-            {"name": "Tin Factory Outer Ring Road", "lat": 12.9940, "lng": 77.6620, "addr": "Tin Factory, Old Madras Rd, Bengaluru, Karnataka 560016"},
-            {"name": "Electronic City Toll Gate (NH-44)", "lat": 12.8450, "lng": 77.6630, "addr": "NH-44 Elevated Tollway, Electronic City, Bengaluru 560100"},
-            {"name": "Whitefield ITPL", "lat": 12.9850, "lng": 77.7310, "addr": "ITPB, Whitefield Main Rd, Bengaluru, Karnataka 560066"},
-            {"name": "Majestic Bus Station (KSRTC)", "lat": 12.9770, "lng": 77.5720, "addr": "Kempegowda Bus Station, Majestic, Bengaluru 560009"},
-            {"name": "Hebbal Flyover (Airport Rd)", "lat": 13.0350, "lng": 77.5970, "addr": "Hebbal Junction Flyover, NH-44, Bengaluru 560024"}
-        ]
-        matches = [p for p in local_points if any(w in p["name"].lower() or w in p["addr"].lower() for w in q_lower.split())]
+        for box in self.OFFLINE_CITY_BOXES:
+            if box["lat"][0] <= lat <= box["lat"][1] and box["lon"][0] <= lon <= box["lon"][1]:
+                return {**base, "status": "APPROXIMATE", "provider": "Offline city bounding box (no geocoding service reachable)",
+                        "formatted_address": f"Within {box['city']}, {box['state']} (approximate - street address unavailable offline)",
+                        "city": box["city"], "state": box["state"]}
+
+        return {**base, "status": "UNAVAILABLE", "provider": None, "formatted_address": None,
+                "reason": "No geocoding service was reachable and the point is outside the offline city table."}
+
+    # --------------------------------------------------------- forward geocode
+    def geocode(self, query: str) -> Dict[str, Any]:
+        """Search text -> candidate coordinates."""
+        query_clean = (query or "").strip()
+        if not query_clean:
+            return {"status": "ZERO_RESULTS", "results": []}
+        return self._cached(f"fwd_{query_clean.lower()}", lambda: self._geocode(query_clean))
+
+    def _geocode(self, query: str) -> Dict[str, Any]:
+        if self.api_key:
+            try:
+                params = urllib.parse.urlencode({"address": query, "key": self.api_key})
+                data = self._get_json(f"{self.GOOGLE_GEOCODE_URL}?{params}", timeout=4.0)
+                if data.get("status") == "OK" and data.get("results"):
+                    return {"status": "OK", "provider": "Google Geocoding API", "results": [
+                        {"formatted_address": r["formatted_address"],
+                         "lat": r["geometry"]["location"]["lat"], "lng": r["geometry"]["location"]["lng"],
+                         "place_id": r.get("place_id", ""), "viewport": r["geometry"].get("viewport", {}),
+                         "google_maps_url": _maps_links(r["geometry"]["location"]["lat"], r["geometry"]["location"]["lng"])["google_maps_url"]}
+                        for r in data["results"][:5]]}
+            except Exception:
+                pass
+
+        try:
+            params = urllib.parse.urlencode({"format": "json", "q": query, "limit": 5})
+            data = self._get_json(f"{self.NOMINATIM_URL}/search?{params}", timeout=3.0)
+            if data:
+                return {"status": "OK", "provider": "OpenStreetMap Nominatim", "results": [
+                    {"formatted_address": item["display_name"], "lat": float(item["lat"]), "lng": float(item["lon"]),
+                     "place_id": str(item.get("place_id", "")),
+                     "google_maps_url": _maps_links(item["lat"], item["lon"])["google_maps_url"]}
+                    for item in data]}
+            return {"status": "ZERO_RESULTS", "provider": "OpenStreetMap Nominatim", "results": []}
+        except Exception:
+            pass
+
+        words = [w for w in query.lower().replace(",", " ").split() if len(w) >= 3 and w not in self._GENERIC_QUERY_WORDS]
+        matches = [p for p in self.OFFLINE_LANDMARKS
+                   if any(w in p["name"].lower() or w in p["addr"].lower() for w in words)]
         if not matches:
-            matches = [local_points[0]]
+            return {"status": "ZERO_RESULTS", "provider": "Offline landmark table (no geocoding service reachable)", "results": []}
+        return {"status": "OK", "approximate": True, "provider": "Offline landmark table (no geocoding service reachable)", "results": [
+            {"formatted_address": m["addr"], "lat": m["lat"], "lng": m["lng"], "place_id": "",
+             "google_maps_url": _maps_links(m["lat"], m["lng"])["google_maps_url"]} for m in matches]}
 
-        return {
-            "status": "OK",
-            "provider": "MoRTH Highway Junction Database",
-            "results": [
-                {
-                    "formatted_address": m["addr"],
-                    "lat": m["lat"],
-                    "lng": m["lng"],
-                    "place_id": f"BLR-JUNCTION-{hash(m['name']) % 10000}",
-                    "google_maps_url": f"https://www.google.com/maps/search/?api=1&query={m['lat']},{m['lng']}"
-                }
-                for m in matches
-            ]
-        }
-
-    # -------------------------------------------------------------------------
-    # 4. GOOGLE MAPS DIRECTIONS & POTHOLE-AVOIDANCE ROUTE PLANNER
-    # -------------------------------------------------------------------------
+    # -------------------------------------------------------------- directions
     def get_directions(self, origin_lat: float, origin_lng: float,
                        dest_lat: float, dest_lng: float,
                        avoid_defects: bool = False,
                        known_defects: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """
-        Calculates driving directions between origin and destination with step-by-step
-        turn maneuvers, distance, duration, and optional pothole-avoidance rerouting.
+        Driving route between two points. With avoid_defects, the router is
+        asked for alternative routes and the one passing the fewest known
+        defects (within 40 m) is chosen - the geometry itself is never edited.
         """
-        cache_key = f"{round(origin_lat,4)}_{round(origin_lng,4)}_{round(dest_lat,4)}_{round(dest_lng,4)}_{avoid_defects}"
-        if cache_key in self._cache_directions:
-            return self._cache_directions[cache_key]
+        defects = known_defects or []
+        key = f"dir_{round(origin_lat, 4)}_{round(origin_lng, 4)}_{round(dest_lat, 4)}_{round(dest_lng, 4)}_{avoid_defects}_{len(defects)}"
+        return self._cached(key, lambda: self._directions(origin_lat, origin_lng, dest_lat, dest_lng, avoid_defects, defects))
 
-        # 1. Try official Google Maps Directions API if key configured
+    def _defects_near_route(self, polyline: List[List[float]], defects: List[Dict[str, Any]], radius_m: float = 40.0) -> int:
+        hits = 0
+        for d in defects:
+            d_lat, d_lon = d.get("lat"), d.get("lon", d.get("lng"))
+            if d_lat is None or d_lon is None:
+                continue
+            if any(self._haversine(p[0], p[1], d_lat, d_lon) <= radius_m for p in polyline):
+                hits += 1
+        return hits
+
+    def _pick_route(self, candidates: List[Dict[str, Any]], defects: List[Dict[str, Any]], avoid: bool) -> Dict[str, Any]:
+        for c in candidates:
+            c["defects_within_40m"] = self._defects_near_route(c["polyline_coords"], defects) if defects else 0
+        if avoid and defects:
+            return min(candidates, key=lambda c: (c["defects_within_40m"], c["duration_minutes"]))
+        return candidates[0]
+
+    def _directions(self, o_lat, o_lng, d_lat, d_lng, avoid, defects) -> Dict[str, Any]:
+        nav_url = f"https://www.google.com/maps/dir/?api=1&origin={o_lat},{o_lng}&destination={d_lat},{d_lng}&travelmode=driving"
+
         if self.api_key:
             try:
-                params = {
-                    "origin": f"{origin_lat},{origin_lng}",
-                    "destination": f"{dest_lat},{dest_lng}",
-                    "mode": "driving",
-                    "alternatives": "true",
-                    "key": self.api_key
-                }
-                url = f"{self.GOOGLE_DIRECTIONS_URL}?{urllib.parse.urlencode(params)}"
-                req = urllib.request.Request(url, headers={"User-Agent": "ROAD-SHIELD-AI-Engine/2.5"})
-                with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    if data.get("status") == "OK" and data.get("routes"):
-                        selected_route = data["routes"][0]
-                        leg = selected_route["legs"][0]
-                        steps = [
-                            {
-                                "instruction": s.get("html_instructions", "").replace("<b>", "").replace("</b>", "").replace('<div style="font-size:0.9em">', " - ").replace("</div>", ""),
-                                "distance_text": s.get("distance", {}).get("text", ""),
-                                "duration_text": s.get("duration", {}).get("text", ""),
-                                "start_location": s.get("start_location", {}),
-                                "end_location": s.get("end_location", {})
-                            }
-                            for s in leg.get("steps", [])
-                        ]
-                        polyline = self._decode_polyline(selected_route["overview_polyline"]["points"])
-                        res = {
-                            "status": "OK",
-                            "provider": "Google Maps Directions API",
-                            "summary": selected_route.get("summary", "National Highway Route"),
+                params = urllib.parse.urlencode({"origin": f"{o_lat},{o_lng}", "destination": f"{d_lat},{d_lng}",
+                                                 "mode": "driving", "alternatives": "true", "key": self.api_key})
+                data = self._get_json(f"{self.GOOGLE_DIRECTIONS_URL}?{params}", timeout=4.0)
+                if data.get("status") == "OK" and data.get("routes"):
+                    candidates = []
+                    for route in data["routes"]:
+                        leg = route["legs"][0]
+                        candidates.append({
+                            "summary": route.get("summary", ""),
                             "distance_km": round(leg["distance"]["value"] / 1000.0, 2),
                             "duration_minutes": round(leg["duration"]["value"] / 60.0, 1),
                             "duration_text": leg["duration"]["text"],
                             "distance_text": leg["distance"]["text"],
-                            "polyline_coords": polyline,
-                            "turn_by_turn_steps": steps,
-                            "pothole_avoidance_mode": avoid_defects,
-                            "google_maps_nav_url": f"https://www.google.com/maps/dir/?api=1&origin={origin_lat},{origin_lng}&destination={dest_lat},{dest_lng}&travelmode=driving"
-                        }
-                        self._cache_directions[cache_key] = res
-                        return res
+                            "polyline_coords": self._decode_polyline(route["overview_polyline"]["points"]),
+                            "turn_by_turn_steps": [
+                                {"instruction": s.get("html_instructions", "").replace("<b>", "").replace("</b>", ""),
+                                 "distance_text": s.get("distance", {}).get("text", ""),
+                                 "duration_text": s.get("duration", {}).get("text", "")}
+                                for s in leg.get("steps", [])],
+                        })
+                    best = self._pick_route(candidates, defects, avoid)
+                    return {"status": "OK", "provider": "Google Directions API", "route_type": "road_network",
+                            "alternatives_considered": len(candidates), "pothole_avoidance_mode": avoid,
+                            "google_maps_nav_url": nav_url, **best}
             except Exception:
                 pass
 
-        # 2. Try Open Source Routing Machine (OSRM) Live Routing API
         try:
-            osrm_url = f"https://router.project-osrm.org/route/v1/driving/{origin_lng},{origin_lat};{dest_lng},{dest_lat}?overview=full&geometries=geojson&steps=true"
-            req = urllib.request.Request(osrm_url, headers={
-                "User-Agent": "ROAD-SHIELD-SIH2026-HighwayIntelligenceEngine/2.5"
-            })
-            with urllib.request.urlopen(req, timeout=2.0) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                if data.get("code") == "Ok" and data.get("routes"):
-                    route = data["routes"][0]
-                    geojson_coords = route["geometry"]["coordinates"]  # [lng, lat]
-                    polyline = [[pt[1], pt[0]] for pt in geojson_coords]
-                    
+            url = (f"{self.OSRM_URL}/{o_lng},{o_lat};{d_lng},{d_lat}"
+                   f"?overview=full&geometries=geojson&steps=true&alternatives=true")
+            data = self._get_json(url, timeout=4.0)
+            if data.get("code") == "Ok" and data.get("routes"):
+                candidates = []
+                for route in data["routes"]:
                     steps = []
                     for leg in route.get("legs", []):
                         for st in leg.get("steps", []):
-                            name = st.get("name") or "Corridor Link"
-                            maneuver = st.get("maneuver", {}).get("type", "turn")
-                            modifier = st.get("maneuver", {}).get("modifier", "")
-                            dist_m = round(st.get("distance", 0))
-                            steps.append({
-                                "instruction": f"{maneuver.title()} {modifier} onto {name}".strip(),
-                                "distance_text": f"{dist_m} m",
-                                "duration_text": f"{round(st.get('duration', 0)/60.0, 1)} min"
-                            })
-
-                    # If avoidance is enabled, modify route slightly away from high-severity defects
-                    if avoid_defects and known_defects:
-                        polyline = self._apply_pothole_detour(polyline, known_defects)
-
+                            m = st.get("maneuver", {})
+                            name = st.get("name") or "unnamed road"
+                            steps.append({"instruction": f"{m.get('type', 'continue').title()} {m.get('modifier', '')} onto {name}".replace("  ", " "),
+                                          "distance_text": f"{round(st.get('distance', 0))} m",
+                                          "duration_text": f"{round(st.get('duration', 0) / 60.0, 1)} min"})
                     dist_km = round(route["distance"] / 1000.0, 2)
                     dur_min = round(route["duration"] / 60.0, 1)
-
-                    res = {
-                        "status": "OK",
-                        "provider": "OSRM Open Routing Engine (Real Driving Geometry)",
-                        "summary": "Urban Arterial Corridor Navigation",
-                        "distance_km": dist_km,
-                        "duration_minutes": dur_min,
-                        "duration_text": f"{dur_min} mins",
-                        "distance_text": f"{dist_km} km",
-                        "polyline_coords": polyline,
-                        "turn_by_turn_steps": steps[:10],
-                        "pothole_avoidance_mode": avoid_defects,
-                        "google_maps_nav_url": f"https://www.google.com/maps/dir/?api=1&origin={origin_lat},{origin_lng}&destination={dest_lat},{dest_lng}&travelmode=driving"
-                    }
-                    self._cache_directions[cache_key] = res
-                    return res
+                    candidates.append({
+                        "summary": "OSRM driving route",
+                        "distance_km": dist_km, "duration_minutes": dur_min,
+                        "duration_text": f"{dur_min} mins", "distance_text": f"{dist_km} km",
+                        "polyline_coords": [[pt[1], pt[0]] for pt in route["geometry"]["coordinates"]],
+                        "turn_by_turn_steps": steps,
+                    })
+                best = self._pick_route(candidates, defects, avoid)
+                return {"status": "OK", "provider": "OSRM public router (OpenStreetMap road network)", "route_type": "road_network",
+                        "alternatives_considered": len(candidates), "pothole_avoidance_mode": avoid,
+                        "google_maps_nav_url": nav_url, **best}
         except Exception:
             pass
 
-        # 3. High-Precision Kinematic Pavement Road Interpolator
-        polyline = self._generate_synthetic_road_polyline(origin_lat, origin_lng, dest_lat, dest_lng, avoid_defects, known_defects)
-        dist_m = self._haversine(origin_lat, origin_lng, dest_lat, dest_lng) * 1.25
-        dist_km = round(dist_m / 1000.0, 2)
-        dur_min = round((dist_km / 38.0) * 60.0, 1)  # average 38 km/h urban speed
-
-        res = {
+        straight_km = round(self._haversine(o_lat, o_lng, d_lat, d_lng) / 1000.0, 2)
+        return {
             "status": "OK",
-            "provider": "MoRTH Real-Time Telematics Route Planner",
-            "summary": "NHAI Smart Corridor Direct Guidance",
-            "distance_km": dist_km,
-            "duration_minutes": dur_min,
-            "duration_text": f"{dur_min} mins",
-            "distance_text": f"{dist_km} km",
-            "polyline_coords": polyline,
-            "turn_by_turn_steps": [
-                {"instruction": "Head forward onto Primary Highway Corridor", "distance_text": f"{round(dist_km*0.4, 2)} km", "duration_text": f"{round(dur_min*0.4, 1)} min"},
-                {"instruction": "Keep left towards Designated MoRTH Maintenance Chainage", "distance_text": f"{round(dist_km*0.4, 2)} km", "duration_text": f"{round(dur_min*0.4, 1)} min"},
-                {"instruction": "Arrive at Target Road Distress Verification Site", "distance_text": f"{round(dist_km*0.2, 2)} km", "duration_text": f"{round(dur_min*0.2, 1)} min"}
-            ],
-            "pothole_avoidance_mode": avoid_defects,
-            "google_maps_nav_url": f"https://www.google.com/maps/dir/?api=1&origin={origin_lat},{origin_lng}&destination={dest_lat},{dest_lng}&travelmode=driving"
+            "provider": "Straight-line estimate (no routing service reachable)",
+            "route_type": "straight_line_estimate",
+            "summary": "Straight line between the two points - not a drivable route",
+            "distance_km": straight_km,
+            "distance_text": f"{straight_km} km (straight line)",
+            "duration_minutes": None,
+            "duration_text": "unknown (no route)",
+            "polyline_coords": [[o_lat, o_lng], [d_lat, d_lng]],
+            "turn_by_turn_steps": [],
+            "pothole_avoidance_mode": avoid,
+            "defects_within_40m": None,
+            "google_maps_nav_url": nav_url,
         }
-        self._cache_directions[cache_key] = res
-        return res
 
-    # -------------------------------------------------------------------------
-    # 5. GOOGLE MAPS ELEVATION API & DRAINAGE SOLVER
-    # -------------------------------------------------------------------------
+    # --------------------------------------------------- elevation & drainage
+    # Drainage risk uses the topographic position index: the point's elevation
+    # minus the mean of 8 points on a ring ~250 m away. A point clearly lower
+    # than its surroundings collects runoff. It's a screening heuristic, not a
+    # hydrological model - it knows nothing about drains or kerbs.
+    RING_RADIUS_M = 250.0
+
+    def _ring_points(self, lat: float, lon: float) -> List[Tuple[float, float]]:
+        pts = [(lat, lon)]
+        dlat = self.RING_RADIUS_M / 111320.0
+        dlon = self.RING_RADIUS_M / (111320.0 * max(0.1, math.cos(math.radians(lat))))
+        for k in range(8):
+            a = 2.0 * math.pi * k / 8.0
+            pts.append((round(lat + dlat * math.sin(a), 6), round(lon + dlon * math.cos(a), 6)))
+        return pts
+
+    def _elevations_google(self, pts) -> Optional[List[float]]:
+        locs = "|".join(f"{a},{b}" for a, b in pts)
+        data = self._get_json(f"{self.GOOGLE_ELEVATION_URL}?{urllib.parse.urlencode({'locations': locs, 'key': self.api_key})}", timeout=4.0)
+        if data.get("status") == "OK" and len(data.get("results", [])) == len(pts):
+            return [r["elevation"] for r in data["results"]]
+        return None
+
+    def _elevations_open_meteo(self, pts) -> Optional[List[float]]:
+        params = urllib.parse.urlencode({"latitude": ",".join(str(a) for a, _ in pts),
+                                         "longitude": ",".join(str(b) for _, b in pts)})
+        data = self._get_json(f"{self.OPEN_METEO_ELEVATION_URL}?{params}", timeout=3.0)
+        elev = data.get("elevation")
+        if isinstance(elev, list) and len(elev) == len(pts) and all(e is not None for e in elev):
+            return [float(e) for e in elev]
+        return None
+
     def get_elevation(self, lat: float, lon: float) -> Dict[str, Any]:
-        """
-        Queries surface elevation to determine roadway slope and waterlogging vulnerability.
-        """
-        cache_key = f"{round(lat, 5)}_{round(lon, 5)}"
-        if cache_key in self._cache_elevation:
-            return self._cache_elevation[cache_key]
+        """Elevation at a point plus a local-relief drainage screening."""
+        return self._cached(f"elev_{round(lat, 5)}_{round(lon, 5)}", lambda: self._elevation(lat, lon))
 
-        # 1. Official Google Maps Elevation API if key configured
+    def _elevation(self, lat: float, lon: float) -> Dict[str, Any]:
+        pts = self._ring_points(lat, lon)
+        sources = []
+        if self.api_key:
+            sources.append(("Google Elevation API", self._elevations_google))
+        sources.append(("Open-Meteo elevation API (Copernicus 90 m DEM)", self._elevations_open_meteo))
+
+        for provider, fetch in sources:
+            try:
+                elevs = fetch(pts)
+            except Exception:
+                elevs = None
+            if elevs:
+                return self._drainage_from_relief(lat, lon, elevs, provider)
+
+        return {"status": "UNAVAILABLE", "provider": None, "latitude": lat, "longitude": lon,
+                "elevation_meters": None, "relative_relief_m": None,
+                "waterlogging_vulnerability_pct": None, "drainage_risk_category": None,
+                "civil_recommendation": None,
+                "reason": "No elevation service was reachable."}
+
+    def _drainage_from_relief(self, lat, lon, elevs: List[float], provider: str) -> Dict[str, Any]:
+        center = elevs[0]
+        ring_mean = sum(elevs[1:]) / len(elevs[1:])
+        tpi = center - ring_mean  # negative = lower than surroundings
+        if tpi <= -3.0:
+            category = "HIGH_MONSOON_WATERLOGGING_RISK"
+            rec = "Point sits in a local depression - check cross-drainage / culvert capacity (IRC:SP:42)."
+        elif tpi <= -1.0:
+            category = "MODERATE_WATER_ACCUMULATION"
+            rec = "Slightly lower than surroundings - keep side drains clear and verify camber."
+        else:
+            category = "OPTIMAL_DRAINAGE"
+            rec = "Not in a local depression - standard camber should shed water."
+        # Simple, documented mapping from relief to a 0-100 screening score.
+        vulnerability = round(max(0.0, min(100.0, 30.0 - tpi * 12.0)), 1)
+        return {
+            "status": "OK", "provider": provider, "latitude": lat, "longitude": lon,
+            "elevation_meters": round(center, 1),
+            "surrounding_mean_elevation_m": round(ring_mean, 1),
+            "relative_relief_m": round(tpi, 2),
+            "waterlogging_vulnerability_pct": vulnerability,
+            "drainage_risk_category": category,
+            "civil_recommendation": rec,
+            "method": f"Topographic position index: point elevation minus mean of 8 points {int(self.RING_RADIUS_M)} m away (screening heuristic).",
+        }
+
+    # ------------------------------------------------------ nearby facilities
+    FACILITY_TYPES = {"hospital": "hospital", "police": "police", "fire_station": "fire_station"}
+
+    def find_nearby_civil_facilities(self, lat: float, lon: float, facility_type: str = "all", radius_m: int = 5000) -> Dict[str, Any]:
+        """Real hospitals, police and fire stations near a point (Google Places or OpenStreetMap)."""
+        res = self._cached(f"fac_{round(lat, 3)}_{round(lon, 3)}_{radius_m}", lambda: self._facilities(lat, lon, radius_m))
+        facilities = res["facilities"]
+        if facility_type != "all":
+            facilities = [f for f in facilities if f["type"] == facility_type]
+        return {**res, "facilities": facilities, "facility_count": len(facilities)}
+
+    def _facility_entry(self, name, ftype, f_lat, f_lon, lat, lon):
+        return {"name": name or f"Unnamed {ftype.replace('_', ' ')}", "type": ftype,
+                "lat": f_lat, "lng": f_lon,
+                "distance_km": round(self._haversine(lat, lon, f_lat, f_lon) / 1000.0, 2),
+                "google_maps_url": _maps_links(f_lat, f_lon)["google_maps_url"]}
+
+    def _facilities(self, lat: float, lon: float, radius_m: int) -> Dict[str, Any]:
+        center = {"lat": lat, "lng": lon}
         if self.api_key:
             try:
-                params = urllib.parse.urlencode({"locations": f"{lat},{lon}", "key": self.api_key})
-                url = f"{self.GOOGLE_ELEVATION_URL}?{params}"
-                req = urllib.request.Request(url, headers={"User-Agent": "ROAD-SHIELD-AI-Engine/2.5"})
-                with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    if data.get("status") == "OK" and data.get("results"):
-                        elev_m = round(data["results"][0]["elevation"], 1)
-                        res = self._compute_drainage_risk(lat, lon, elev_m, "Google Maps Elevation API")
-                        self._cache_elevation[cache_key] = res
-                        return res
+                found = []
+                for ftype in self.FACILITY_TYPES:
+                    params = urllib.parse.urlencode({"location": f"{lat},{lon}", "radius": radius_m, "type": ftype, "key": self.api_key})
+                    data = self._get_json(f"{self.GOOGLE_PLACES_URL}?{params}", timeout=4.0)
+                    for p in data.get("results", [])[:5]:
+                        loc = p["geometry"]["location"]
+                        found.append(self._facility_entry(p.get("name"), ftype, loc["lat"], loc["lng"], lat, lon))
+                found.sort(key=lambda f: f["distance_km"])
+                return {"status": "OK", "provider": "Google Places API", "query_center": center, "facilities": found}
             except Exception:
                 pass
 
-        # 2. Topographic Regional Model for Bengaluru & Indian Expressways
-        # Base elevation for Bengaluru plateau is ~900-930m
-        elev_m = round(915.0 + math.sin(lat * 80.0) * 18.0 + math.cos(lon * 80.0) * 14.0, 1)
-        res = self._compute_drainage_risk(lat, lon, elev_m, "MoRTH National Topographic Model")
-        self._cache_elevation[cache_key] = res
-        return res
+        try:
+            query = (f"[out:json][timeout:8];"
+                     f"nwr[\"amenity\"~\"^(hospital|police|fire_station)$\"](around:{radius_m},{lat},{lon});"
+                     f"out center 40;")
+            data = self._get_json(self.OVERPASS_URL, timeout=8.0, data=urllib.parse.urlencode({"data": query}).encode())
+            found = []
+            for el in data.get("elements", []):
+                f_lat = el.get("lat", el.get("center", {}).get("lat"))
+                f_lon = el.get("lon", el.get("center", {}).get("lon"))
+                if f_lat is None or f_lon is None:
+                    continue
+                tags = el.get("tags", {})
+                found.append(self._facility_entry(tags.get("name"), tags.get("amenity"), f_lat, f_lon, lat, lon))
+            found.sort(key=lambda f: f["distance_km"])
+            return {"status": "OK", "provider": "OpenStreetMap Overpass API", "query_center": center, "facilities": found[:15]}
+        except Exception:
+            pass
 
-    def _compute_drainage_risk(self, lat: float, lon: float, elev_m: float, provider: str) -> Dict[str, Any]:
-        """Calculates waterlogging vulnerability score based on elevation and localized depression."""
-        # Depressions below 905m on Bengaluru plateau act as stormwater retention sinks
-        relative_depression = max(0.0, 920.0 - elev_m)
-        vulnerability_pct = round(min(95.0, 25.0 + relative_depression * 3.5), 1)
-        
-        if vulnerability_pct > 70.0:
-            risk_category = "HIGH_MONSOON_WATERLOGGING_RISK"
-            drainage_recommendation = "MoRTH IRC:SP:42 Cross-Drainage Culvert Installation Required"
-        elif vulnerability_pct > 45.0:
-            risk_category = "MODERATE_WATER_ACCUMULATION"
-            drainage_recommendation = "Side Drain Cleaning & Longitudinal Sloping (2.5% Camber)"
-        else:
-            risk_category = "OPTIMAL_DRAINAGE"
-            drainage_recommendation = "Standard MoRTH Section 300 Camber Adequate"
+        return {"status": "UNAVAILABLE", "provider": None, "query_center": center, "facilities": [],
+                "reason": "Neither Google Places nor the OpenStreetMap Overpass API was reachable."}
 
-        return {
-            "status": "OK",
-            "provider": provider,
-            "latitude": lat,
-            "longitude": lon,
-            "elevation_meters": elev_m,
-            "waterlogging_vulnerability_pct": vulnerability_pct,
-            "drainage_risk_category": risk_category,
-            "civil_recommendation": drainage_recommendation
-        }
-
-    # -------------------------------------------------------------------------
-    # 6. GOOGLE PLACES API (Nearby Asphalt Plants, Depots, Emergency Centers)
-    # -------------------------------------------------------------------------
-    def find_nearby_civil_facilities(self, lat: float, lon: float, facility_type: str = "all") -> Dict[str, Any]:
-        """
-        Locates nearby Asphalt Hot-Mix Batching Plants, NHAI Regional Hubs,
-        and Hospital Emergency Centers within a 15 km radius.
-        """
-        facilities = [
-            {
-                "name": "NHAI Regional Hot-Mix Bitumen Batching Yard",
-                "type": "asphalt_plant",
-                "lat": lat + 0.018,
-                "lng": lon + 0.015,
-                "distance_km": 2.8,
-                "capacity_tonnes_hr": 120,
-                "contact_freq": "142.85 MHz (VHF)",
-                "google_maps_url": f"https://www.google.com/maps/search/?api=1&query={lat+0.018},{lon+0.015}"
-            },
-            {
-                "name": "MoRTH Project Road-Shield Fast-Patch Depot #3",
-                "type": "maintenance_depot",
-                "lat": lat - 0.012,
-                "lng": lon + 0.021,
-                "distance_km": 3.4,
-                "response_trucks_available": 4,
-                "google_maps_url": f"https://www.google.com/maps/search/?api=1&query={lat-0.012},{lon+0.021}"
-            },
-            {
-                "name": "Level-1 Highway Trauma Emergency Hospital",
-                "type": "trauma_center",
-                "lat": lat + 0.025,
-                "lng": lon - 0.010,
-                "distance_km": 4.1,
-                "ambulance_eta_mins": 7.5,
-                "google_maps_url": f"https://www.google.com/maps/search/?api=1&query={lat+0.025},{lon-0.010}"
-            },
-            {
-                "name": "Traffic Police Highway Patrol Beat Station",
-                "type": "traffic_control",
-                "lat": lat - 0.008,
-                "lng": lon - 0.014,
-                "distance_km": 1.9,
-                "patrol_units": 2,
-                "google_maps_url": f"https://www.google.com/maps/search/?api=1&query={lat-0.008},{lon-0.014}"
-            }
-        ]
-
-        if facility_type != "all":
-            facilities = [f for f in facilities if f["type"] == facility_type]
-
-        return {
-            "status": "OK",
-            "provider": "Google Places & MoRTH Civil Infrastructure Registry",
-            "query_center": {"lat": lat, "lng": lon},
-            "facility_count": len(facilities),
-            "facilities": facilities
-        }
-
-    # -------------------------------------------------------------------------
-    # 7. GOOGLE STREET VIEW 360° & STATIC MAPS GENERATOR
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------ street view
     def get_streetview_metadata(self, lat: float, lon: float) -> Dict[str, Any]:
-        """
-        Generates official Google Street View URLs, 360° panorama viewpoint links,
-        and embedded iframe viewer URLs.
-        """
-        pano_web_url = f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}&heading=-45&pitch=10&fov=80"
-        search_web_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-        embed_iframe_url = f"https://maps.google.com/maps?q={lat},{lon}&z=17&output=embed"
-
-        # Static Street View thumbnail if key exists
-        static_thumb_url = ""
+        """Google Maps / Street View links for a point (thumbnail only with an API key)."""
+        thumb = ""
         if self.api_key:
-            static_thumb_url = (
-                f"https://maps.googleapis.com/maps/api/streetview?"
-                f"size=600x300&location={lat},{lon}&heading=150&pitch=-10&key={self.api_key}"
-            )
-        else:
-            # High-resolution dynamic satellite thumbnail via CartoDB/OSM
-            static_thumb_url = f"https://staticmap.openstreetmap.de/staticmap.php?center={lat},{lon}&zoom=17&size=600x300&maptype=mapnik"
-
+            thumb = (f"https://maps.googleapis.com/maps/api/streetview?size=600x300&location={lat},{lon}"
+                     f"&heading=150&pitch=-10&key={self.api_key}")
         return {
             "status": "OK",
-            "provider": "Google Street View 360° Platform",
+            "provider": "Google Maps links",
             "latitude": lat,
             "longitude": lon,
-            "google_street_view_url": pano_web_url,
-            "google_maps_search_url": search_web_url,
-            "google_maps_embed_url": embed_iframe_url,
-            "streetview_thumbnail_url": static_thumb_url
+            "google_street_view_url": f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}&heading=-45&pitch=10&fov=80",
+            "google_maps_search_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}",
+            "google_maps_embed_url": f"https://maps.google.com/maps?q={lat},{lon}&z=17&output=embed",
+            "streetview_thumbnail_url": thumb,
         }
 
-    # -------------------------------------------------------------------------
-    # INTERNAL GEOMETRIC & POLYLINE UTILITIES
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        """Great-circle distance in meters."""
-        r = 6371000.0
-        phi1 = math.radians(lat1)
-        phi2 = math.radians(lat2)
-        dphi = math.radians(lat2 - lat1)
-        dlam = math.radians(lon2 - lon1)
-        a = math.sin(dphi/2.0)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlam/2.0)**2
-        return 2.0 * r * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
-
-    def _generate_synthetic_road_polyline(self, lat1: float, lon1: float,
-                                          lat2: float, lon2: float,
-                                          avoid_defects: bool,
-                                          known_defects: Optional[List[Dict[str, Any]]]) -> List[List[float]]:
-        """Generates a realistic piecewise highway polyline between two GPS points."""
-        steps = 15
-        coords = []
-        
-        # Midpoint with a natural road curve offset
-        mid_lat = (lat1 + lat2) / 2.0
-        mid_lon = (lon1 + lon2) / 2.0
-        curve_offset = 0.0025 if avoid_defects else 0.0008
-
-        for i in range(steps + 1):
-            t = i / float(steps)
-            # Quadratic Bezier along corridor
-            lat = (1.0 - t)**2 * lat1 + 2.0 * (1.0 - t) * t * (mid_lat + curve_offset) + t**2 * lat2
-            lon = (1.0 - t)**2 * lon1 + 2.0 * (1.0 - t) * t * (mid_lon - curve_offset) + t**2 * lon2
-            coords.append([round(lat, 6), round(lon, 6)])
-
-        return coords
-
-    def _apply_pothole_detour(self, polyline: List[List[float]], defects: List[Dict[str, Any]]) -> List[List[float]]:
-        """Applies a safety deflection vector to avoid passing through severe potholes."""
-        modified = []
-        for pt in polyline:
-            p_lat, p_lon = pt[0], pt[1]
-            shift_lat, shift_lon = 0.0, 0.0
-            for d in defects:
-                d_lat = d.get("lat", 0.0)
-                d_lon = d.get("lon", d.get("lng", 0.0))
-                dist = self._haversine(p_lat, p_lon, d_lat, d_lon)
-                if dist < 40.0:  # within 40m of pothole
-                    # push away perpendicular to line
-                    angle = math.atan2(p_lon - d_lon, p_lat - d_lat)
-                    shift_lat += math.cos(angle) * 0.0004
-                    shift_lon += math.sin(angle) * 0.0004
-            modified.append([round(p_lat + shift_lat, 6), round(p_lon + shift_lon, 6)])
-        return modified
-
+    # ---------------------------------------------------------------- utility
     @staticmethod
     def _decode_polyline(encoded: str) -> List[List[float]]:
-        """Decodes Google's Encoded Polyline Algorithm into [lat, lng] array."""
-        points = []
-        index = 0
-        lat = 0
-        lng = 0
-        length = len(encoded)
-
-        while index < length:
-            b = 0
-            shift = 0
-            result = 0
-            while True:
-                b = ord(encoded[index]) - 63
-                index += 1
-                result |= (b & 0x1f) << shift
-                shift += 5
-                if b < 0x20:
-                    break
-            dlat = ~(result >> 1) if (result & 1) else (result >> 1)
-            lat += dlat
-
-            shift = 0
-            result = 0
-            while True:
-                b = ord(encoded[index]) - 63
-                index += 1
-                result |= (b & 0x1f) << shift
-                shift += 5
-                if b < 0x20:
-                    break
-            dlng = ~(result >> 1) if (result & 1) else (result >> 1)
-            lng += dlng
-
+        """Decodes Google's encoded polyline format into [lat, lng] pairs."""
+        points, index, lat, lng = [], 0, 0, 0
+        while index < len(encoded):
+            for is_lng in (False, True):
+                shift = result = 0
+                while True:
+                    b = ord(encoded[index]) - 63
+                    index += 1
+                    result |= (b & 0x1F) << shift
+                    shift += 5
+                    if b < 0x20:
+                        break
+                delta = ~(result >> 1) if (result & 1) else (result >> 1)
+                if is_lng:
+                    lng += delta
+                else:
+                    lat += delta
             points.append([round(lat * 1e-5, 6), round(lng * 1e-5, 6)])
-
         return points
 
-# Singleton instance
+
 google_maps_service = GoogleMapsService()

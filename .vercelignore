@@ -1,6 +1,13 @@
-datasets/
+# Training data stays out of the deployment (the function only runs inference
+# with the committed models in checkpoints/). The small IMU validation split is
+# kept so /api/v1/telemetry/imu can serve real sample windows.
+datasets/*
+!datasets/04_mobile_imu_telemetry_100hz/
+datasets/04_mobile_imu_telemetry_100hz/imu_shock_100hz_train.npz
+datasets/04_mobile_imu_telemetry_100hz/imu_telemetry_sample.csv
 scratch/
 tests/
+.venv/
 *.bat
 *.pptx
 *.pdf

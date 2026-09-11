@@ -32,11 +32,13 @@ class FleetDeduplicationEngine:
         c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
         return R * c
 
-    def ingest_fleet_detection(self, bus_id, lat, lon, defect_class, severity_pci, area_m2, image_timestamp=None):
+    def ingest_fleet_detection(self, bus_id, lat, lon, defect_class, severity_pci, area_m2, image_timestamp=None, enrich_location=True):
         """
         Ingests a detection from any bus in the fleet.
         If near an existing defect (<= threshold), merges it, updates confirmation count and timestamp.
-        Otherwise, registers a new unique defect.
+        Otherwise, registers a new unique defect. enrich_location=False skips
+        the (network) address/elevation lookup - used for startup fixtures so
+        a cold start never waits on external services.
         """
         now = image_timestamp or time.time()
         self.total_reports_ingested += 1
@@ -84,10 +86,12 @@ class FleetDeduplicationEngine:
             geocode_source = "unavailable"
 
             try:
+                if not enrich_location:
+                    raise LookupError("location enrichment skipped")
                 from services.google_maps_service import google_maps_service
                 geo = google_maps_service.reverse_geocode(lat, lon)
                 formatted_address = geo.get("formatted_address")
-                geocode_source = geo.get("provider", "geocoding_service")
+                geocode_source = geo.get("provider") or "unavailable"
                 elev = google_maps_service.get_elevation(lat, lon)
                 elevation_m = elev.get("elevation_meters")
                 drainage_risk = elev.get("drainage_risk_category")

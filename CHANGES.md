@@ -1,13 +1,11 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
-This zip contains only the directories that were rewritten this pass:
-`models/`, `pipeline/`, `api/`, `services/`, `training/`, `data/`.
-`tests/`, `datasets/*.py` scripts, `README.md`, and the frontend
-(`index.html` / `road_shield_frontend.html`) were intentionally left
-untouched, per the original scope for this pass.
-
-Unzip on top of your existing checkout — it only replaces files in
-those six folders.
+The rewrite covers `models/`, `pipeline/`, `api/`, `services/`,
+`training/`, `data/`, plus the trained models in `checkpoints/`,
+`requirements.txt` and the Vercel config.
+`tests/`, `datasets/*.py` scripts and `README.md` were intentionally left
+untouched. The frontend was only changed to stop hard-coding the local
+API address (see "Vercel deployment").
 
 ## What changed and why
 
@@ -94,9 +92,38 @@ dataset) — reports that honestly instead of faking it.
   stats, model registry). All endpoints now call into the real,
   rewritten models above. Every endpoint path is unchanged, for
   frontend and `tests/test_api_server.py` compatibility.
-- `google_maps_service.py` — only docstrings were cleaned up; the real
-  three-tier fallback (Google Maps API key → live OSM Nominatim →
-  offline Indian-highway gazetteer) was already genuine and unchanged.
+- `google_maps_service.py` — rewritten. An earlier version of these
+  notes called this file's fallbacks genuine; that was wrong. When no
+  Google key was set it invented elevations from a sine/cosine formula,
+  returned the same four made-up "nearby facilities" (hospital, depot,
+  police post) at fixed offsets from any point, answered unknown searches
+  with Silk Board, drew fake curved routes with invented turn
+  instructions, and labelled every address outside its table as
+  "Bengaluru". Now each lookup uses a real source (Google → OpenStreetMap
+  Nominatim / OSRM / Overpass → Open-Meteo elevation) and reports
+  `UNAVAILABLE`, or a clearly labelled straight-line / city-level
+  estimate, when none answers. Pothole avoidance now picks, among the
+  router's real alternative routes, the one passing the fewest known
+  defects instead of nudging line coordinates off the road. Drainage risk
+  is a documented local-relief heuristic (point vs. ring 250 m away).
+
+## Vercel deployment
+
+- `vercel.json`: removed the 15 MB `maxLambdaSize` cap, which the real
+  scikit-learn / SciPy / scikit-image / OpenCV stack cannot fit under.
+  Python functions on Vercel may be up to 500 MB uncompressed; this stack
+  is roughly 400 MB, so it should fit, but it is close to the limit.
+- `.vercelignore`: training datasets are still excluded, except the small
+  IMU validation split so `/api/v1/telemetry/imu` can serve real windows.
+- On Vercel the deployed files are read-only, so the server writes runtime
+  files (feedback log, exported specs) to `/tmp`, `/api/v1/training/launch`
+  returns a clear 503 (train locally, commit `checkpoints/`, redeploy), and
+  endpoints that need the photo datasets return 503 instead of crashing.
+- Startup no longer calls external geocoding services (demo defects are
+  geocoded lazily on first map load), so cold starts don't wait on them.
+- Frontend: 9 API calls that were hard-coded to `http://127.0.0.1:8000`
+  now use the page's own origin, so the dashboard talks to the Vercel
+  backend when served from Vercel (and still to the local server locally).
 
 ## Honest limitations, stated plainly
 
