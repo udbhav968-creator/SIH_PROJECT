@@ -311,7 +311,20 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/v1/models/registry":
-            self._send_json(200, edge_exporter.export_all_to_open_spec())
+            # Read-only: the dashboard polls this, so it must not rewrite files
+            # on every call. Exporting is /api/v1/models/export-edge-spec's job.
+            spec_path = os.path.join(CKPT_DIR, "road_shield_open_model_spec.json")
+            header_path = os.path.join(CKPT_DIR, "road_shield_edge_inference.h")
+            if not (os.path.exists(spec_path) and os.path.exists(header_path)):
+                self._send_json(200, edge_exporter.export_all_to_open_spec())
+                return
+            with open(spec_path, "r", encoding="utf-8") as fh:
+                spec = json.load(fh)
+            self._send_json(200, {
+                "spec_json_path": spec_path,
+                "c_header_path": header_path,
+                "models_exported": list(spec.get("models", {}).keys()),
+            })
             return
 
         if path == "/api/v1/ledger/defects":

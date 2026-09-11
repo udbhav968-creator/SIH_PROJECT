@@ -26,8 +26,17 @@ class CVCavityDetector:
 
     def __init__(self, target_size=(640, 480)):
         self.target_w, self.target_h = target_size
-        self._hog = cv2.HOGDescriptor()
-        self._hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+        # OpenCV 5 dropped HOGDescriptor from the main package. Rather than
+        # crash the whole server over one optional detector, run without
+        # pedestrian detection and say so (see pedestrian_detector_available).
+        self._hog = None
+        if hasattr(cv2, "HOGDescriptor"):
+            self._hog = cv2.HOGDescriptor()
+            self._hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+
+    @property
+    def pedestrian_detector_available(self):
+        return self._hog is not None
 
     def decode_image(self, image_input):
         if isinstance(image_input, str):
@@ -55,6 +64,8 @@ class CVCavityDetector:
         Runs OpenCV's pretrained HOG+SVM person detector. Returns a list of
         detections; empty list if nobody is in frame - we don't invent one.
         """
+        if self._hog is None:
+            return []
         H, W = img_np.shape[:2]
         bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
         # winStride/scale tuned for dashcam-style frames; padding helps catch
