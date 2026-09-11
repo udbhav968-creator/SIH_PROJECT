@@ -44,6 +44,26 @@
     "negative": 0,
     "background": 0,
     "manhole": 0,
-    "shadow": 0
+    "shadow": 0,
+    "d01": 1,
+    "d11": 1,
+    "d0w0": 1,
+    "d43": 4,
+    "d44": 4,
+    "d50": 5,
+    "repair": 0,
+    "block crack": 1,
+    "linear crack": 1,
+    "lateral crack": 1,
+    "wheel mark part": 1,
+    "construction joint part": 1,
+    "rutting": 1,
+    "separation": 1,
+    "white line blur": 4,
+    "cross walk blur": 4,
+    "utility hole": 0,
+    "manhole cover": 0,
+    "standing water": 3,
+    "waterlog": 3
   }
 }

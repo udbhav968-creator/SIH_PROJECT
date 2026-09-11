@@ -83,6 +83,12 @@ class DeepInferencePipeline:
         # HOG/LBP + SVM baseline. Which one answered is reported downstream.
         from models.deep_vision_net import load_best_vision_model
         self.vision_model, self.vision_backend = load_best_vision_model(self.ckpt_dir, verbose=False)
+
+        # COCO-pretrained object detector (people, vehicles, signs). Optional:
+        # when its weights or onnxruntime are absent the stage is skipped and
+        # the pipeline says so, rather than guessing what is in frame.
+        from models.onnx_object_detector import ONNXObjectDetector
+        self.object_detector = ONNXObjectDetector(checkpoints_dir=self.ckpt_dir)
         if self.vision_backend == "none":
             print("[WARN] No trained vision model found - run training/train_deep_vision.py "
                   "(deep) or training/train_vision.py (baseline).")
@@ -140,12 +146,38 @@ class DeepInferencePipeline:
         if std_intensity < 6.5:
             return self._reject_non_pavement(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
 
-        # STAGE 3: region proposals (real classical CV, no trained model)
-        pedestrians = self.cv_detector.detect_pedestrians(img_np)
+        # STAGE 3a: COCO object detection (people, vehicles, traffic control)
+        scene_objects, scene_summary = [], {"available": False,
+                                            "reason": "No detector weights - run scripts/fetch_detector.py"}
+        if self.object_detector.is_ready:
+            try:
+                scene_objects = self.object_detector.detect(img_np)
+                scene_summary = self.object_detector.summarise(scene_objects)
+                scene_summary["available"] = True
+            except Exception as e:
+                scene_summary = {"available": False, "reason": f"detector error: {e}"}
+
+        # STAGE 3b: region proposals (classical CV) + people. The CNN detector's
+        # person boxes are used when it ran; the HOG+SVM detector is the fallback.
+        person_boxes = [d for d in scene_objects if d["class_name"] == "person"]
+        if person_boxes:
+            pedestrians = [{
+                "bbox_pixels": d["bbox_pixels"],
+                "bbox_normalized": d["bbox_normalized"],
+                "pedestrian_id": i + 1,
+                "confidence": d["confidence"],
+                "distance_meters": round(max(1.5, 22.0 * (1.0 - ((d["bbox_pixels"][1] + d["bbox_pixels"][3]) / float(H)) ** 0.85)), 1),
+                "detector": d.get("detector", "onnx_coco_detector"),
+            } for i, d in enumerate(person_boxes)]
+        else:
+            pedestrians = self.cv_detector.detect_pedestrians(img_np)
         bboxes = self.cv_detector.extract_salient_regions(img_np, excluded_boxes=pedestrians)
 
         if not bboxes and not pedestrians:
-            return self._normal_road(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
+            normal = self._normal_road(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
+            normal["scene_objects"] = scene_objects
+            normal["scene_summary"] = scene_summary
+            return normal
 
         # STAGE 4: pedestrian entries (real HOG+SVM detections, no classifier involved)
         detections = [self._build_pedestrian_entry(p) for p in pedestrians]
@@ -264,6 +296,9 @@ class DeepInferencePipeline:
                 "pedestrians_detected_count": len(ped_detections),
                 "pedestrian_alert_level": primary_pedestrian.get("alert_level") if primary_pedestrian else "NO_PEDESTRIAN_HAZARD",
             },
+            "scene_objects": scene_objects,
+            "scene_summary": scene_summary,
+            "vision_backend": self.vision_backend,
             "latency_ms": elapsed_ms,
         }
 

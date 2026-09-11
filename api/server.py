@@ -216,6 +216,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 "timestamp_utc": int(time.time()),
                 "models": {
                     "vision_distress_net": (f"LOADED ({VISION_BACKEND})" if vision_model.is_ready else "NOT_TRAINED"),
+                    "coco_object_detector": (deep_pipeline.object_detector.backend
+                                             if deep_pipeline.object_detector.is_ready
+                                             else "NOT_INSTALLED (scripts/fetch_detector.py)"),
                     "imu_shock_classifier": "LOADED" if imu_model.is_ready else "NOT_TRAINED",
                     "bayesian_fusion_gate": "READY",
                     "ipm_homography_engine": "READY",
@@ -975,6 +978,36 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # ----------------------------------------------------------------------
         # Pedestrian-situation risk (deterministic rules over caller-supplied facts)
         # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
+        # COCO object detection (people, vehicles, traffic control) - real
+        # inference over published weights, or an honest "not installed".
+        # ----------------------------------------------------------------------
+        if path == "/api/v1/detect/objects":
+            detector = deep_pipeline.object_detector
+            if not detector.is_ready:
+                self._send_json(503, {
+                    "error": "No detector weights on this server.",
+                    "fix": "python -m scripts.fetch_detector   (downloads COCO-pretrained YOLO and exports ONNX)",
+                    "detector": detector.describe(),
+                })
+                return
+            img_b64 = body.get("image_base64")
+            if not img_b64:
+                self._send_json(400, {"error": "Missing image_base64."})
+                return
+            try:
+                img_np = cv_detector.decode_image(img_b64)
+                conf = float(body.get("confidence_threshold", detector.conf_threshold))
+                keep = body.get("classes")
+                objects = detector.detect(img_np, conf_threshold=conf, keep_classes=set(keep) if keep else None)
+                out = detector.summarise(objects)
+                out["objects"] = objects
+                out["latency_ms"] = round((time.time() - t0) * 1000.0, 3)
+                self._send_json(200, out)
+            except Exception as e:
+                self._send_json(500, {"error": f"Detection failed: {e}"})
+            return
+
         if path == "/api/v1/pedestrian/detect":
             ped_count = body.get("pedestrian_count", 0)
             is_school_zone = body.get("is_school_zone", False)

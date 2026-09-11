@@ -187,6 +187,14 @@
         </div>
       </div>
 
+      <div class="card rounded-2xl p-5 fade-up">
+        <div class="flex items-center gap-2 mb-3">
+          <h3 class="text-sm font-bold">What else is in frame</h3>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono">COCO detector</span>
+        </div>
+        <div id="sceneBody" class="text-[12px] text-slate-400">Waiting for an image.</div>
+      </div>
+
       <div id="sensorCard" class="card rounded-2xl p-5 fade-up">
         <div class="flex items-center gap-2 mb-3">
           <h3 class="text-sm font-bold">Sensor fusion</h3>
@@ -436,7 +444,7 @@ function drawResult(imgSrc, detections) {
     (detections || []).forEach(d => {
       const bb = d.bbox_normalized; if (!bb) return;
       const [x, y, w, h] = [bb[0] * canvas.width, bb[1] * canvas.height, bb[2] * canvas.width, bb[3] * canvas.height];
-      const color = CLASS_COLORS[d.class_name] || '#f59e0b';
+      const color = d.colour_hex || CLASS_COLORS[d.class_name] || '#f59e0b';
       ctx.lineWidth = Math.max(2, canvas.width / 320); ctx.strokeStyle = color;
       ctx.shadowColor = color; ctx.shadowBlur = 14;
       ctx.strokeRect(x, y, w, h);
@@ -526,8 +534,28 @@ function renderAnalysis(res, imgSrc) {
     </div>
     <p class="text-[11px] text-slate-500 mt-3">${imu.available ? '' : 'With no accelerometer data for this frame the engine says so, rather than inferring a second sensor from the camera.'}</p>`;
 
+  // scene objects (people, vehicles, signs) come from the COCO detector
+  const scene = res.scene_summary || {};
+  const sceneObjs = res.scene_objects || [];
+  const sceneEl = document.getElementById('sceneBody');
+  if (!scene.available) {
+    sceneEl.innerHTML = `<p class="text-[12px] text-slate-500">Object detector not installed on this server — road-damage analysis only.
+      <span class="block text-[11px] mt-1 font-mono">${scene.reason || ''}</span></p>`;
+  } else if (!sceneObjs.length) {
+    sceneEl.innerHTML = '<p class="text-[12px] text-slate-500">No people, vehicles or signs found in this frame.</p>';
+  } else {
+    sceneEl.innerHTML = `
+      <div class="flex flex-wrap gap-2 mb-3">
+        ${Object.entries(scene.counts_by_class || {}).map(([k, v]) => `
+          <span class="px-2.5 py-1 rounded-lg bg-ink-950/70 border border-slate-800 text-[11.5px] font-mono">
+            <span class="text-slate-200 font-bold">${v}×</span> <span class="text-slate-400">${k}</span></span>`).join('')}
+      </div>
+      ${scene.vulnerable_alert ? `<p class="text-[12px] text-rose-400 font-semibold">⚠ ${scene.vulnerable_road_users} vulnerable road user(s) in frame — pedestrian, cyclist or two-wheeler.</p>` : ''}
+      <p class="text-[10.5px] text-slate-500 mt-2 font-mono">${scene.detector || ''}</p>`;
+  }
+
   const dets = (res.all_detections || []).length ? res.all_detections : (primary ? [primary] : []);
-  if (imgSrc) drawResult(imgSrc, dets);
+  if (imgSrc) drawResult(imgSrc, dets.concat(sceneObjs));
 }
 
 async function analyseBase64(b64, imgSrc) {
