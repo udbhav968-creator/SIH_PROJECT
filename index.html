@@ -731,11 +731,21 @@ async function loadModelCard() {
         <p class="text-[10.5px] text-slate-500 mt-2 font-mono">${rep.classifier || ''}</p>
         <p class="text-[10.5px] text-slate-500">${extra}</p></div>`);
     };
-    const v = m.vision || m.vision_report, i = m.imu || m.imu_report;
-    push('Vision classifier', v, v ? `${v.held_out_validation_photos ?? '—'} held-out photos · ${v.train_photos ?? '—'} training photos` : '');
+    const v = m.vision || m.vision_report, i = m.imu || m.imu_report, deep = m.deep_vision;
+    if (deep && deep.test) {
+      const t = deep.test, sp = deep.split || {};
+      cards.push(`<div class="rounded-xl bg-ink-950/60 border border-amber-600/40 p-4">
+        <p class="text-[11px] uppercase tracking-wider text-amber-500">Fine-tuned CNN · held-out test</p>
+        <p class="text-3xl font-extrabold font-mono text-amber-400 mt-1">${(t.accuracy * 100).toFixed(1)}%</p>
+        <p class="text-[11px] text-slate-400">macro-F1 ${t.macro_f1} · random guess ${(deep.random_guess_baseline * 100).toFixed(1)}%</p>
+        <p class="text-[10.5px] text-slate-500 mt-2 font-mono">${deep.model || ''}</p>
+        <p class="text-[10.5px] text-slate-500">${sp.test_images ?? '—'} test images from ${sp.test_groups ?? '—'} unseen photographs</p></div>`);
+    }
+    push('Vision baseline (HOG+SVM)', v, v ? `${v.held_out_validation_photos ?? '—'} held-out photos · ${v.train_photos ?? '—'} training photos` : '');
     push('IMU shock classifier', i, i ? `${i.held_out_validation_windows ?? '—'} held-out windows` : '');
     grid.innerHTML = cards.join('') || '<p class="text-[12px] text-slate-500">No training report on disk yet.</p>';
-    const cm = v && v.confusion_matrix, names = v && v.class_names;
+    const deepCm = m.deep_vision && m.deep_vision.test && m.deep_vision.test.confusion_matrix;
+    const cm = deepCm || (v && v.confusion_matrix), names = (m.deep_vision && m.deep_vision.class_names) || (v && v.class_names);
     if (cm && names) {
       const max = Math.max(...cm.flat(), 1);
       document.getElementById('confusion').innerHTML =

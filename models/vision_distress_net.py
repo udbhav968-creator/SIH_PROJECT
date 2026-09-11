@@ -159,11 +159,24 @@ class VisionDistressNet:
     def predict_deep(self, X):
         """Rich per-sample forensic output: entropy, IRC standard, severity, color, top-3."""
         preds, conf, probs = self.predict(X)
+        return self.format_probabilities(probs)
+
+    def format_probabilities(self, probs):
+        """
+        Turns an (n_samples, n_classes) probability array into this project's
+        per-detection dictionary. Kept separate from predict() so that any
+        classifier producing probabilities for the same classes - including
+        the fine-tuned CNN in models/deep_vision_net.py - reports results in
+        exactly the same shape.
+        """
+        probs = np.asarray(probs, dtype=np.float64)
+        if probs.ndim == 1:
+            probs = probs.reshape(1, -1)
         results = []
-        for i in range(len(preds)):
+        for i in range(probs.shape[0]):
             p_vec = probs[i]
-            pred_id = int(preds[i])
-            c = float(conf[i])
+            pred_id = int(np.argmax(p_vec))
+            c = float(p_vec[pred_id])
             entropy = float(-np.sum(p_vec * np.log2(p_vec + 1e-10)))
             uncertainty = "LOW_UNCERTAINTY" if entropy < 1.0 else ("MODERATE_UNCERTAINTY" if entropy < 2.0 else "HIGH_UNCERTAINTY_OOD")
 

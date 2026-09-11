@@ -78,12 +78,14 @@ class DeepInferencePipeline:
 
         self.cv_detector = CVCavityDetector(target_size=(640, 480))
 
-        self.vision_model = VisionDistressNet()
-        vis_ckpt = os.path.join(self.ckpt_dir, "vision_distress_model.joblib")
-        if os.path.exists(vis_ckpt):
-            self.vision_model.load(vis_ckpt)
-        else:
-            print(f"[WARN] Vision model not found at: {vis_ckpt} - run training/train_vision.py first.")
+        # Prefer the fine-tuned CNN when its weights are on disk and a runtime
+        # (ONNX Runtime or PyTorch) is installed; otherwise fall back to the
+        # HOG/LBP + SVM baseline. Which one answered is reported downstream.
+        from models.deep_vision_net import load_best_vision_model
+        self.vision_model, self.vision_backend = load_best_vision_model(self.ckpt_dir, verbose=False)
+        if self.vision_backend == "none":
+            print("[WARN] No trained vision model found - run training/train_deep_vision.py "
+                  "(deep) or training/train_vision.py (baseline).")
 
         self.imu_model = IMUShockClassifier()
         imu_ckpt = os.path.join(self.ckpt_dir, "imu_shock_model.joblib")

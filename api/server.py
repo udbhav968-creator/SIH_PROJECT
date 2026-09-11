@@ -72,8 +72,8 @@ WRITABLE_DIR = CKPT_DIR if (_ckpt_writable and not IS_SERVERLESS) else os.path.j
 
 print("[AI Server] Loading trained models from:", CKPT_DIR)
 
-vision_model = VisionDistressNet(model_path=os.path.join(CKPT_DIR, "vision_distress_model.joblib"))
-print("  ✓ Vision distress classifier", "loaded" if vision_model.is_ready else "NOT TRAINED YET (run training/train_vision.py)")
+from models.deep_vision_net import load_best_vision_model
+vision_model, VISION_BACKEND = load_best_vision_model(CKPT_DIR)
 
 imu_model = IMUShockClassifier(model_path=os.path.join(CKPT_DIR, "imu_shock_model.joblib"))
 print("  ✓ IMU shock classifier", "loaded" if imu_model.is_ready else "NOT TRAINED YET (run training/train_imu.py)")
@@ -215,7 +215,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 "status": "ONLINE",
                 "timestamp_utc": int(time.time()),
                 "models": {
-                    "vision_distress_net": "LOADED" if vision_model.is_ready else "NOT_TRAINED",
+                    "vision_distress_net": (f"LOADED ({VISION_BACKEND})" if vision_model.is_ready else "NOT_TRAINED"),
                     "imu_shock_classifier": "LOADED" if imu_model.is_ready else "NOT_TRAINED",
                     "bayesian_fusion_gate": "READY",
                     "ipm_homography_engine": "READY",
@@ -310,14 +310,17 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
 
         # ---------------- Training / models ----------------
         if path == "/api/v1/training/metrics":
-            vis_report = os.path.join(CKPT_DIR, "vision_distress_report.json")
-            imu_report = os.path.join(CKPT_DIR, "imu_shock_report.json")
-            out = {}
-            for name, path_ in (("vision", vis_report), ("imu", imu_report)):
+            out = {"active_vision_backend": VISION_BACKEND}
+            reports = (
+                ("vision", os.path.join(CKPT_DIR, "vision_distress_report.json")),
+                ("imu", os.path.join(CKPT_DIR, "imu_shock_report.json")),
+                ("deep_vision", os.path.join(CKPT_DIR, "deep_vision_report.json")),
+            )
+            for name, path_ in reports:
                 if os.path.exists(path_):
                     with open(path_, "r", encoding="utf-8") as f:
                         out[name] = json.load(f)
-                else:
+                elif name != "deep_vision":
                     out[name] = {"status": "NOT_YET_TRAINED"}
             self._send_json(200, out)
             return
