@@ -1,88 +1,81 @@
-import sys
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
 """
-Training pipeline for Model M4 (100 Hz IMU Shock Classifier).
+Trains Model M4 (IMUShockClassifier) on the real logged windows in
+datasets/04_mobile_imu_telemetry_100hz/imu_shock_100hz_{train,val}.npz and
+reports genuine held-out validation metrics (the val.npz file is never
+touched during fitting).
+
+Run directly: python -m training.train_imu
 """
+
 import os
 import sys
-import numpy as np
+import json
+import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from data.dataset_generator import generate_imu_dataset
-from data.data_loader import train_val_split
+import numpy as np
+
 from models.imu_shock_classifier import IMUShockClassifier
 
-def run_training(epochs=20, batch_size=64, save_dir=None):
-    if save_dir is None:
-        save_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints"))
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "datasets", "04_mobile_imu_telemetry_100hz"))
+CKPT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints"))
+MODEL_PATH = os.path.join(CKPT_DIR, "imu_shock_model.joblib")
+REPORT_PATH = os.path.join(CKPT_DIR, "imu_shock_report.json")
+
+
+def _load_split(name):
+    path = os.path.join(DATA_DIR, f"imu_shock_100hz_{name}.npz")
+    data = np.load(path)
+    return data["imu_signals"], data["labels"]
+
+
+def run_training(save_dir=None):
+    save_dir = save_dir or CKPT_DIR
     os.makedirs(save_dir, exist_ok=True)
-    
-    print("[M4 IMU Shock Classifier] Generating 100 Hz tri-axial accelerometer data...")
-    X_raw, y = generate_imu_dataset(num_samples=4000, timesteps=100, seed=42)
-    
-    X_tr_raw, X_val_raw, y_tr, y_val = train_val_split(X_raw, y, val_ratio=0.2, seed=42)
-    
-    print("  Extracting multi-scale temporal dynamic features...")
-    feats_tr = IMUShockClassifier.extract_temporal_features(X_tr_raw)
-    feats_val = IMUShockClassifier.extract_temporal_features(X_val_raw)
-    
-    # Feature normalization
-    mean = np.mean(feats_tr, axis=0, keepdims=True)
-    std = np.std(feats_tr, axis=0, keepdims=True) + 1e-5
-    feats_tr = (feats_tr - mean) / std
-    feats_val = (feats_val - mean) / std
-    
-    model = IMUShockClassifier(in_features=feats_tr.shape[1], hidden_dims=[64, 32], num_classes=4, lr=0.003)
-    model.feat_mean = mean.astype(np.float32)
-    model.feat_std = std.astype(np.float32)
-    
-    print("  Starting Adam optimization...")
-    history = []
-    for epoch in range(1, epochs + 1):
-        indices = np.random.permutation(len(feats_tr))
-        epoch_losses = []
-        
-        for start_idx in range(0, len(feats_tr), batch_size):
-            b_idx = indices[start_idx:min(start_idx + batch_size, len(feats_tr))]
-            loss = model.train_step(feats_tr[b_idx], y_tr[b_idx])
-            epoch_losses.append(loss)
-            
-        mean_loss = float(np.mean(epoch_losses))
-        
-        # Validation
-        _, _, logits_val = model.forward(feats_val)
-        probs_val = np.exp(logits_val - np.max(logits_val, axis=-1, keepdims=True))
-        probs_val /= np.sum(probs_val, axis=-1, keepdims=True)
-        preds_val = np.argmax(probs_val, axis=-1)
-        val_acc = float(np.mean(preds_val == y_val) * 100.0)
-        
-        pothole_mask = (y_val == 3)
-        pothole_recall = float(np.mean(preds_val[pothole_mask] == 3) * 100.0)
-        
-        history.append({
-            "epoch": epoch,
-            "loss": round(mean_loss, 4),
-            "val_accuracy": round(val_acc, 2),
-            "shock_detection_rate": round(pothole_recall, 2)
-        })
-        
-        if epoch % 5 == 0 or epoch == epochs:
-            print(f"  Epoch {epoch:02d}/{epochs:02d} - Loss: {mean_loss:.4f} - Val Acc: {val_acc:.2f}% - Pothole Shock Recall: {pothole_recall:.2f}%")
-            
-    ckpt_path = os.path.join(save_dir, "imu_shock_weights.npz")
-    model.save_weights(ckpt_path)
-    print(f"  [SUCCESS] Saved checkpoint: {ckpt_path}")
-    
-    return {
+
+    print("[M4 IMU] Loading logged 100Hz accelerometer windows ...")
+    X_train, y_train = _load_split("train")
+    X_val, y_val = _load_split("val")
+    print(f"  train windows: {X_train.shape[0]} | held-out val windows: {X_val.shape[0]}")
+
+    t0 = time.time()
+    model = IMUShockClassifier()
+    model.fit(X_train, y_train)
+    print(f"  trained in {time.time() - t0:.1f}s")
+
+    metrics = model.evaluate(X_val, y_val)
+    print(f"  HELD-OUT validation accuracy: {metrics['accuracy'] * 100:.1f}% "
+          f"(random-guess baseline for {len(IMUShockClassifier.CLASS_NAMES)} classes = "
+          f"{100.0 / len(IMUShockClassifier.CLASS_NAMES):.1f}%)")
+
+    model.save(MODEL_PATH)
+    print(f"  saved trained model -> {MODEL_PATH}")
+
+    report = {
         "model": "IMUShockClassifier",
-        "final_loss": history[-1]["loss"],
-        "val_accuracy": history[-1]["val_accuracy"],
-        "shock_detection_rate": history[-1]["shock_detection_rate"],
-        "checkpoint": ckpt_path
+        "classifier": "StandardScaler -> RandomForestClassifier",
+        "class_names": IMUShockClassifier.CLASS_NAMES,
+        "train_windows": int(X_train.shape[0]),
+        "held_out_validation_windows": int(X_val.shape[0]),
+        "held_out_validation_accuracy": round(metrics["accuracy"], 4),
+        "random_guess_baseline": round(1.0 / len(IMUShockClassifier.CLASS_NAMES), 4),
+        "confusion_matrix": metrics["confusion_matrix"],
+        "per_class_report": metrics["per_class_report"],
+        "data_provenance": (
+            "Simulated 100Hz tri-axial accelerometer windows shipped with this repo "
+            "(datasets/04_mobile_imu_telemetry_100hz) - not field-collected MoRTH fleet "
+            "logs, whatever the dataset's own metadata file claims. Treat this model as "
+            "validated against the simulator, not against real vehicles, until it's "
+            "retrained on genuine sensor logs."
+        ),
+        "trained_at_unix": int(time.time()),
     }
+    with open(REPORT_PATH, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+    print(f"  wrote training report -> {REPORT_PATH}")
+    return report
+
 
 if __name__ == "__main__":
     run_training()

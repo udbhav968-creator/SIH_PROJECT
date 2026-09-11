@@ -1,0 +1,79 @@
+{
+  "format": "ROAD-SHIELD Open Model Specification v2.0",
+  "generated_timestamp_utc": 1789083614,
+  "note": "v2.0 replaces the earlier fabricated 'Open Neural Network' spec (a dump of an untrained numpy CNN/transformer's random weights) with an honest description of the real scikit-learn pipelines and deterministic formulas actually used in this project.",
+  "models": {
+    "Model_M1_VisionDistressNet": {
+      "architecture": "scikit-learn Pipeline: StandardScaler -> PCA -> SVC(RBF)",
+      "class_names": [
+        "Normal Road / Sound Pavement",
+        "Crack (Longitudinal / Transverse / Alligator)",
+        "Pothole Cavity",
+        "Waterlogging / Flooding Hazard",
+        "Missing Zebra Crossing",
+        "Missing Road Divider",
+        "Damaged Traffic Sign"
+      ],
+      "pipeline_steps": [
+        {
+          "step": "scaler",
+          "type": "StandardScaler"
+        },
+        {
+          "step": "pca",
+          "type": "PCA",
+          "n_components": 64,
+          "explained_variance_ratio_sum": 0.5609
+        },
+        {
+          "step": "clf",
+          "type": "SVC",
+          "kernel": "rbf",
+          "n_support_vectors_per_class": [
+            66,
+            175,
+            197,
+            65,
+            78,
+            89,
+            82
+          ],
+          "C": 20.0,
+          "gamma": "scale"
+        }
+      ],
+      "note": "Trained on real photos, split at the source-photo level before augmentation; see checkpoints/vision_distress_report.json for honest held-out accuracy."
+    },
+    "Model_M4_IMUShockClassifier": {
+      "architecture": "scikit-learn Pipeline: StandardScaler -> RandomForestClassifier",
+      "pipeline_steps": [
+        {
+          "step": "scaler",
+          "type": "StandardScaler"
+        },
+        {
+          "step": "clf",
+          "type": "RandomForestClassifier",
+          "n_estimators": 300,
+          "max_depth": 14,
+          "n_features_in": 36
+        }
+      ],
+      "note": "See checkpoints/imu_shock_report.json for honest held-out accuracy."
+    },
+    "Model_PCI_ASTM_D6433": {
+      "architecture": "Deterministic ASTM D6433 deduct-value formula (no trained weights)",
+      "severity_caps": {
+        "LOW": 25.0,
+        "MEDIUM": 50.0,
+        "HIGH": 80.0
+      }
+    },
+    "Model_Deterioration_Forecaster": {
+      "architecture": "Deterministic exponential area-growth model (no trained weights)",
+      "k_base_per_day": 0.0025,
+      "k_per_1000_esal_per_day": 0.0009,
+      "k_per_100mm_rain_per_day": 0.0014
+    }
+  }
+}

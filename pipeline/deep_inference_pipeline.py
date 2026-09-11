@@ -1,19 +1,33 @@
 """
-ROAD-SHIELD Deep Inference Pipeline (v3.0 Production)
-MoRTH / NHAI Certified Autonomous Pavement Intelligence Pipeline
+Deep inference pipeline: orchestrates the real models in this project into
+one end-to-end road-photo audit.
 
-Executes the complete 11-Stage forensic multi-modal stack:
-1. Optical Image Ingestion & Standardization (640x480)
-2. Asphalt Texture Gatekeeper (Rejects non-pavements std < 6.5)
-3. Salient Cavity Contour Extraction & Bounding Box Proposals
-4. Model M1: Neural Vision Distress Classification (64-dim -> D40/D00/D10/D20/Normal)
-5. Model M2: IPM Homography & Metric Surface Area / Depth Estimation
-6. Model M4: 100 Hz IMU Shock Net Correlation (Vertical dynamics Delta a_z)
-7. Model M5: Recursive Bayesian Dual-Sensor Fusion Gate (Log-odds confirmation)
-8. Model M_PCI: Continuous ASTM D6433 Pavement Condition Index (0 - 100)
-9. Model M_DEGRADE: Monsoon Pavement Deterioration Forecaster (Day 30, 60, 90, 180)
-10. MoRTH Section 500 Civil Volumetric Ledger (rho = 2.40 T/m3, mix cost in INR)
-11. Model M10: MoRTH Cryptographic Work Order Dispatch Agent (SHA-256 tamper seal)
+Stages:
+1. Decode the input image and standardize it to 640x480.
+2. Texture gatekeeper - rejects non-pavement photos via a real luminance
+   standard-deviation check (rolled asphalt has visible grain; screenshots,
+   walls, and flat graphics don't).
+3. Classical CV region proposals (CVCavityDetector): gradient/darkness grid
+   clustering for candidate distress regions, OpenCV's pretrained HOG+SVM
+   detector for pedestrians. Neither step uses a trained model - they're
+   real, standard pre-deep-learning CV techniques.
+4. VisionDistressNet classifies each candidate crop (a real scikit-learn
+   model trained on the project's labeled photos - see
+   training/train_vision.py for its honest, leakage-free held-out accuracy).
+5. IPMHomographyEngine converts pixel boxes to real ground-plane area via
+   pinhole-camera geometry, and prices asphalt tonnage from MoRTH Section
+   500 material rates.
+6. IMUShockClassifier scores a real accelerometer window when the caller
+   supplies one. If no real IMU reading is available, this pipeline reports
+   that plainly instead of fabricating one - the previous version invented
+   an IMU signal by transforming the vision model's own output, which
+   defeated the entire point of having two independent sensors agree.
+7. BayesianFusionGate combines vision + IMU evidence (log-odds).
+8. PavementConditionIndexEngine computes a real ASTM D6433-style PCI from
+   the frame's actual detected distress, not a placeholder score.
+9. PavementDeteriorationForecaster projects area growth over time.
+10. MoRTHDispatchAgent issues a SHA-256-sealed work order for confirmed
+    structural distress.
 """
 import sys
 if hasattr(sys.stdout, "reconfigure"):
@@ -21,13 +35,9 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 import os
-import io
 import time
-import json
-import math
 import hashlib
 import numpy as np
-from PIL import Image
 
 ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ENGINE_ROOT not in sys.path:
@@ -38,82 +48,62 @@ from models.cv_cavity_detector import CVCavityDetector
 from models.ipm_homography_engine import IPMHomographyEngine
 from models.imu_shock_classifier import IMUShockClassifier
 from models.bayesian_fusion_gate import BayesianFusionGate
-from models.pci_regressor_net import PCIRegressorNet
+from models.pci_regressor_net import PavementConditionIndexEngine
 from models.pavement_deterioration_forecaster import PavementDeteriorationForecaster
 from models.morth_dispatch_agent import MoRTHDispatchAgent
 from models.multimodal_transformer_fusion import MultimodalTransformerFusionNet
-from models.automotive_rl_policy_agent import AutomotiveRLPolicyAgent
+from models.automotive_rl_policy_agent import AutomotiveADASPolicyAgent
 from models.automotive_telematics_engine import AutomotiveTelematicsEngine
 
+# Classes that represent an actual surface footprint (crack, pothole,
+# waterlogging) get real IPM-derived area/depth/tonnage math. Classes 4-6
+# (missing zebra crossing, missing divider, damaged sign) are presence/
+# absence findings - there's no "how many square meters of missing paint"
+# to compute, so we report the detection and its IRC remediation reference
+# without inventing an asphalt-repair cost for them.
+AREA_CLASSES = {1, 2, 3}
+
+# There is no rut-bar or profilometer in this project, so rutting/IRI are
+# reported as a documented proxy correlated with detected cavity severity,
+# not a real physical measurement. This mirrors the honesty note already in
+# pci_regressor_net.py for the deduct-value curves themselves.
+ASSUMED_FRAME_PAVEMENT_AREA_M2 = 25.0  # rough visible-pavement extent in one dashcam frame, for density-% estimates
+
+
 class DeepInferencePipeline:
-    """
-    End-to-end 12-Stage Deep Inference Pipeline for Project ROAD-SHIELD.
-    Processes real-world road defect photographs, dashcam frames, multi-modal telemetry,
-    and Automotive ADAS / Active Chassis closed-loop Reinforcement Learning control.
-    """
+    """Wires the project's real models together into one road-photo/telemetry audit."""
 
     def __init__(self, checkpoints_dir=None):
         self.ckpt_dir = checkpoints_dir or os.path.join(ENGINE_ROOT, "checkpoints")
-        
-        # 1. Optical Cavity Extractor & Gatekeeper
+
         self.cv_detector = CVCavityDetector(target_size=(640, 480))
-        
-        # 2. Model M1 Vision Distress Net (Upgraded 10-Class Transformer-CNN)
-        self.vision_model = VisionDistressNet(in_features=64, hidden_dims=[512, 256, 128], num_classes=10)
-        vis_ckpt = os.path.join(self.ckpt_dir, "vision_distress_weights.npz")
+
+        self.vision_model = VisionDistressNet()
+        vis_ckpt = os.path.join(self.ckpt_dir, "vision_distress_model.joblib")
         if os.path.exists(vis_ckpt):
-            self.vision_model.load_weights(vis_ckpt)
+            self.vision_model.load(vis_ckpt)
         else:
-            print(f"[WARN] Vision weights not found at: {vis_ckpt}")
+            print(f"[WARN] Vision model not found at: {vis_ckpt} - run training/train_vision.py first.")
 
-        # 3. Model MM-1 Multimodal Cross-Attention Transformer Fusion Net
-        self.multimodal_net = MultimodalTransformerFusionNet(embed_dim=64, num_classes=10)
-        mm_ckpt = os.path.join(self.ckpt_dir, "multimodal_fusion_weights.npz")
-        if os.path.exists(mm_ckpt):
-            self.multimodal_net.load_weights(mm_ckpt)
+        self.imu_model = IMUShockClassifier()
+        imu_ckpt = os.path.join(self.ckpt_dir, "imu_shock_model.joblib")
+        if os.path.exists(imu_ckpt):
+            self.imu_model.load(imu_ckpt)
+        else:
+            print(f"[WARN] IMU model not found at: {imu_ckpt} - run training/train_imu.py first.")
 
-        # 4. Model RL-1 Automotive ADAS & Active Chassis RL Policy Agent
-        self.rl_agent = AutomotiveRLPolicyAgent(state_dim=32, num_actions=6)
-        rl_ckpt = os.path.join(self.ckpt_dir, "automotive_rl_agent_weights.npz")
-        if os.path.exists(rl_ckpt):
-            self.rl_agent.load_weights(rl_ckpt)
-
-        # 5. Automotive OEM Telematics & CAN Protocol Engine
+        self.ipm_engine = IPMHomographyEngine(camera_height_m=1.45, pitch_deg=18.4)
+        self.bayesian_gate = BayesianFusionGate(prior_pothole_prob=0.05, decision_threshold_log_odds=1.8)
+        self.pci_model = PavementConditionIndexEngine()
+        self.degrade_model = PavementDeteriorationForecaster()
+        self.dispatch_agent = MoRTHDispatchAgent()
+        self.multimodal_net = MultimodalTransformerFusionNet(imu_weight=0.4)
+        self.rl_agent = AutomotiveADASPolicyAgent()
         self.telematics = AutomotiveTelematicsEngine(checkpoints_dir=self.ckpt_dir)
 
-        # 3. Model M2 IPM Homography Engine
-        self.ipm_engine = IPMHomographyEngine(camera_height_m=1.45, pitch_deg=18.4)
-
-        # 4. Model M4 IMU Shock Classifier
-        self.imu_model = IMUShockClassifier(in_features=36, hidden_dims=[64, 32], num_classes=4)
-        imu_ckpt = os.path.join(self.ckpt_dir, "imu_shock_weights.npz")
-        if os.path.exists(imu_ckpt):
-            self.imu_model.load_weights(imu_ckpt)
-        else:
-            print(f"[WARN] IMU weights not found at: {imu_ckpt}")
-
-        # 5. Model M5 Bayesian Fusion Gate
-        self.bayesian_gate = BayesianFusionGate(prior_pothole_prob=0.05, decision_threshold_log_odds=1.8)
-
-        # 6. Model M_PCI ASTM D6433 Regressor Net
-        self.pci_model = PCIRegressorNet(in_features=12, hidden_dims=[64, 32])
-        pci_ckpt = os.path.join(self.ckpt_dir, "pci_regressor_weights.npz")
-        if os.path.exists(pci_ckpt):
-            self.pci_model.load_weights(pci_ckpt)
-        else:
-            print(f"[WARN] PCI weights not found at: {pci_ckpt}")
-
-        # 7. Model M_DEGRADE Pavement Lifecycle Forecaster
-        self.degrade_model = PavementDeteriorationForecaster(in_features=5, hidden_dims=[64, 32])
-        deg_ckpt = os.path.join(self.ckpt_dir, "deterioration_forecaster_weights.npz")
-        if os.path.exists(deg_ckpt):
-            self.degrade_model.load_weights(deg_ckpt)
-        else:
-            print(f"[WARN] Degrade weights not found at: {deg_ckpt}")
-
-        # 8. Model M10 MoRTH Cryptographic Dispatch Agent
-        self.dispatch_agent = MoRTHDispatchAgent()
-
+    # ------------------------------------------------------------------
+    # Single-image audit
+    # ------------------------------------------------------------------
     def audit_image(
         self,
         image_input,
@@ -125,622 +115,113 @@ class DeepInferencePipeline:
         traffic_esal=7500,
         rain_mm=650.0,
         pavement_age_yr=3.5,
-        weather="Dry Clear Dashcam"
     ):
         """
-        Executes the full 11-stage deep pipeline on a single image input:
-        File path, raw bytes, base64 string, PIL Image, or NumPy RGB array.
+        Runs the full pipeline on one image. image_input: file path, raw
+        bytes, base64 string, PIL Image, or NumPy RGB array. imu_series, if
+        given, must be a real (100, 3) accelerometer window - see the IMU
+        stage below for what happens when it's omitted.
         """
         t0 = time.time()
 
-        # ----------------------------------------------------------------------
-        # STAGE 1: Optical Image Ingestion & Resizing
-        # ----------------------------------------------------------------------
+        # STAGE 1: decode + standardize
         img_np = self.cv_detector.decode_image(image_input)
         H, W, _ = img_np.shape
-
-        # ----------------------------------------------------------------------
-        # STAGE 2: Asphalt Texture Gatekeeper (Rejection of Non-Road Images)
-        # ----------------------------------------------------------------------
         gray = 0.299 * img_np[:, :, 0] + 0.587 * img_np[:, :, 1] + 0.114 * img_np[:, :, 2]
+
+        # STAGE 2: texture gatekeeper
         roi_start_y = int(H * 0.35)
         road_gray = gray[roi_start_y:, :]
         mean_intensity = float(np.mean(road_gray))
         std_intensity = float(np.std(road_gray))
 
-        # Real asphalt has granular texture with std >= 6.5.
-        # Flat graphics, screens, indoor walls, or uniform backgrounds have low std.
         if std_intensity < 6.5:
-            elapsed_ms = round((time.time() - t0) * 1000.0, 2)
-            return {
-                "status": "REJECTED_NON_PAVEMENT",
-                "gatekeeper_passed": False,
-                "texture_metrics": {
-                    "road_roi_mean_lum": round(mean_intensity, 2),
-                    "road_roi_std_lum": round(std_intensity, 2),
-                    "threshold_std": 6.5
-                },
-                "reason": f"Optical texture standard deviation ({std_intensity:.2f}) < 6.5 threshold. Rejected non-pavement surface.",
-                "is_distress": False,
-                "detections_count": 0,
-                "primary_distress": {
-                    "class_name": "Non-Pavement Surface (Rejected)",
-                    "is_distress": False,
-                    "confidence": 0.99,
-                    "surface_area_m2": 0.0,
-                    "depth_cm": 0.0,
-                    "bbox_pixels": None,
-                    "bbox_normalized": None
-                },
-                "primary_detection": {
-                    "class_name": "Non-Pavement Surface (Rejected)",
-                    "is_distress": False,
-                    "confidence": 0.99,
-                    "surface_area_m2": 0.0,
-                    "depth_cm": 0.0,
-                    "bbox_pixels": None,
-                    "bbox_normalized": None
-                },
-                "all_detections": [],
-                "corridor_id": corridor_id,
-                "location": {"lat": latitude, "lng": longitude, "chainage_km": chainage_km},
-                "latency_ms": elapsed_ms
-            }
+            return self._reject_non_pavement(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
 
-        # ----------------------------------------------------------------------
-        # STAGE 3: Salient Cavity Contour Extraction & Bounding Boxes
-        # ----------------------------------------------------------------------
-        hint = corridor_id
-        if isinstance(image_input, str) and os.path.exists(image_input):
-            hint += " " + os.path.basename(image_input)
-        pedestrians = self.cv_detector.detect_pedestrians(img_np, image_hint=hint)
+        # STAGE 3: region proposals (real classical CV, no trained model)
+        pedestrians = self.cv_detector.detect_pedestrians(img_np)
         bboxes = self.cv_detector.extract_salient_regions(img_np, excluded_boxes=pedestrians)
 
         if not bboxes and not pedestrians:
-            elapsed_ms = round((time.time() - t0) * 1000.0, 2)
-            return {
-                "status": "ROAD_INSPECTION_NORMAL",
-                "gatekeeper_passed": True,
-                "texture_metrics": {
-                    "road_roi_mean_lum": round(mean_intensity, 2),
-                    "road_roi_std_lum": round(std_intensity, 2)
-                },
-                "reason": "Road pavement verified clean; no anomalous cavity or distress contours detected.",
-                "is_distress": False,
-                "detections_count": 0,
-                "primary_distress": {
-                    "class_name": "Normal Road / Sound Pavement",
-                    "is_distress": False,
-                    "confidence": 0.99,
-                    "surface_area_m2": 0.0,
-                    "depth_cm": 0.0,
-                    "bbox_pixels": None,
-                    "bbox_normalized": None
-                },
-                "primary_detection": {
-                    "class_name": "Normal Road / Sound Pavement",
-                    "is_distress": False,
-                    "confidence": 0.99,
-                    "surface_area_m2": 0.0,
-                    "depth_cm": 0.0,
-                    "bbox_pixels": None,
-                    "bbox_normalized": None
-                },
-                "all_detections": [{
-                    "class_name": "Normal Road / Sound Pavement",
-                    "is_distress": False,
-                    "confidence": 0.99,
-                    "surface_area_m2": 0.0,
-                    "depth_cm": 0.0,
-                    "bbox_pixels": None,
-                    "bbox_normalized": None
-                }],
-                "pavement_pci": 96.0,
-                "pci_category": "EXCELLENT",
-                "corridor_id": corridor_id,
-                "location": {"lat": latitude, "lng": longitude, "chainage_km": chainage_km},
-                "latency_ms": elapsed_ms
-            }
+            return self._normal_road(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
 
-        # ----------------------------------------------------------------------
-        # STAGE 4: Model M1 Neural Vision Distress Classification
-        # ----------------------------------------------------------------------
-        cls_names = [
-            "Normal Road / Non-Distress",
-            "D00 Longitudinal Joint Crack",
-            "D10 Transverse Thermal Crack",
-            "D20 Fatigue Alligator Crack",
-            "D40 Severe Cavity / Pothole",
-            "Waterlogging / Flooding Hazard",
-            "Missing Zebra Crossing",
-            "Missing Road Divider",
-            "Damaged Traffic Sign"
-        ]
+        # STAGE 4: pedestrian entries (real HOG+SVM detections, no classifier involved)
+        detections = [self._build_pedestrian_entry(p) for p in pedestrians]
 
-        detections = []
-        for ped in pedestrians:
-            detections.append({
-                "class_id": 9,
-                "class_name": ped["class_name"],
-                "confidence": ped["confidence"],
-                "pedestrian_id": ped.get("pedestrian_id", 1),
-                "hud_label": ped.get("hud_label", "VRU PEDESTRIAN HAZARD"),
-                "color_hex": ped.get("color_hex", "#06b6d4"),
-                "glow_color": ped.get("glow_color", "rgba(6, 182, 212, 0.45)"),
-                "badge_class": ped.get("badge_class", "bg-cyan-950 text-cyan-300 border-cyan-800"),
-                "shannon_entropy_bits": ped.get("shannon_entropy_bits", 0.05),
-                "uncertainty_rating": ped.get("uncertainty_rating", "VULNERABLE_ROAD_USER_CONFIRMED"),
-                "astm_d6433_severity": ped.get("astm_d6433_severity", "N/A_PEDESTRIAN_SAFETY_INCIDENT"),
-                "irc_standard_specification": ped.get("irc_standard_specification", "IRC:103-2012 Guidelines for Pedestrian Facilities: Signalized Pelican Crossing"),
-                "top3_ranked_predictions": ped.get("top3_ranked_predictions", [
-                    {"rank": 1, "class_id": 9, "class_name": ped["class_name"], "probability": ped["confidence"]},
-                    {"rank": 2, "class_id": 0, "class_name": "Clear Roadway", "probability": round(1.0 - ped["confidence"], 4)},
-                    {"rank": 3, "class_id": 0, "class_name": "Normal Road", "probability": 0.001}
-                ]),
-                "deterioration_velocity_sqcm_per_day": 0.0,
-                "carbon_footprint_kg_co2e": 0.0,
-                "monsoon_vulnerability_index": 0.0,
-                "is_distress": False,
-                "is_pedestrian": True,
-                "alert_level": ped["alert_level"],
-                "recommendation": ped["recommendation"],
-                "bbox_pixels": ped["bbox_pixels"],
-                "bbox_normalized": ped["bbox_normalized"],
-                "distance_meters": ped["distance_meters"],
-                "surface_area_m2": 0.0,
-                "depth_cm": 0.0,
-                "volumetric_m3": 0.0,
-                "morth_tonnage_t": 0.0,
-                "repair_cost_inr": 0.0,
-                "probabilities": {"Normal Road / Non-Distress": 0.98},
-                "physical_dimensions": ped["physical_dimensions"]
-            })
-
+        # STAGE 4/5: VisionDistressNet classification + IPM geometry per candidate region
         for bbox in bboxes:
-            feat_vec = self.cv_detector.extract_feature_vector(img_np, bbox)
-            X_vis = np.array([feat_vec], dtype=np.float32)
-            preds, conf_arr, probs_arr, geo_preds = self.vision_model.predict(X_vis)
-            
-            bx, by, bw, bh = bbox[:4]
-            cluster_type = bbox[5] if len(bbox) > 5 else 4
-            patch_gray = gray[by:by+bh, bx:bx+bw]
-            patch_mean = float(np.mean(patch_gray)) if patch_gray.size > 0 else mean_intensity
-            dark_contrast = (mean_intensity - patch_mean) / max(1.0, mean_intensity)
-
-            aspect = float(bw) / max(1.0, float(bh))
-            min_dim = min(bw, bh)
-            box_area = bw * bh
-            nn_cls = int(preds[0]) if len(preds) > 0 else 4
-            nn_conf = float(conf_arr[0]) if len(conf_arr) > 0 else 0.95
-
-            # A 2D crater footprint (pothole cavity) has spatial width and height, unlike linear cracks
-            is_2d_cavity = (min_dim >= 25 and box_area >= 1800 and aspect <= 2.8)
-
-            if cluster_type == 4 or nn_cls in [4, 5] or (is_2d_cavity and nn_cls not in [1, 2]):
-                cls_id = 4
-                conf = max(0.945, nn_conf if nn_cls == 4 else 0.954)
-            elif nn_cls in [1, 2, 3]:
-                cls_id = nn_cls
-                conf = max(0.90, nn_conf)
-            else:
-                if aspect > 2.2 and min_dim < 28:
-                    cls_id = 2
-                    conf = 0.915
-                elif aspect < 0.45 and min_dim < 28:
-                    cls_id = 1
-                    conf = 0.908
-                else:
-                    cls_id = 3
-                    conf = 0.932
-
-            probs = np.zeros(9, dtype=np.float32)
-            probs[cls_id] = conf
-            probs[0] = round(1.0 - conf, 4)
-
-            if cls_id == 0:
-                continue
-
-            # ------------------------------------------------------------------
-            # STAGE 5: Model M2 IPM Homography & Metric Ground Dimensions
-            # ------------------------------------------------------------------
-            is_dist = (cls_id > 0)
-            
-            # Metric Inverse Perspective Mapping
-            _, ground_y = self.ipm_engine.pixel_to_ground(bx + bw / 2.0, by + bh / 2.0)
-            dist_m = max(1.8, min(30.0, float(ground_y)))
-            
-            # Surface area calculation via IPM homography
-            pixel_area = bw * bh
-            scale_factor = (dist_m / 10.0) ** 2
-            area_m2 = round(max(0.15, min(8.5, (pixel_area / 45000.0) * scale_factor * 2.2)), 2) if is_dist else 0.0
-            
-            # Calibrated depth based on class:
-            if cls_id == 4:  # D40 Pothole Cavity
-                depth_cm = round(max(3.5, min(14.0, 7.5 * (dist_m / 8.0) * (dark_contrast + 0.5))), 1)
-            elif is_dist:  # Crack types
-                depth_cm = round(max(1.5, min(4.5, 2.5 * (1.0 - (probs[0] * 0.5)))), 1)
-            else:
-                depth_cm = 0.0
-                
-            vol_m3 = round(area_m2 * (depth_cm / 100.0), 4)
-            tonnage_t = round(vol_m3 * 2.40, 3)
-            repair_cost_inr = round(tonnage_t * 7500.0, 2)
-
-            bx_norm = round(bx / float(W), 4)
-            by_norm = round(by / float(H), 4)
-            bw_norm = round(bw / float(W), 4)
-            bh_norm = round(bh / float(H), 4)
-
-            alt_cls = 3 if cls_id == 4 else 4
-            cls_colors = {
-                4: "#f59e0b",
-                3: "#f43f5e",
-                2: "#a855f7",
-                1: "#ec4899",
-                0: "#10b981"
-            }
-            if hasattr(self.vision_model, "predict_deep"):
-                deep_pred = self.vision_model.predict_deep(X_vis)[0]
-                dp_cls = deep_pred.get("class_id")
-                if dp_cls == cls_id:
-                    shannon_entropy = deep_pred["shannon_entropy_bits"]
-                    uncertainty_rating = deep_pred["uncertainty_rating"]
-                    astm_severity = deep_pred["astm_d6433_severity"]
-                    irc_spec = deep_pred["irc_standard_specification"]
-                    top3_ranks = deep_pred["top3_ranked_predictions"]
-                else:
-                    shannon_entropy = 0.28
-                    uncertainty_rating = "LOW_UNCERTAINTY"
-                    astm_severity = "HIGH" if cls_id == 4 else ("MEDIUM" if conf > 0.70 else "LOW")
-                    irc_spec = self.vision_model.IRC_STANDARDS.get(cls_id, "IRC:82-2015 Clause 4.2: Mechanical Pot-Hole Patching with Bituminous Concrete (BC) & VG-30 Tack Coat")
-                    top3_ranks = [
-                        {"rank": 1, "class_id": cls_id, "class_name": cls_names[cls_id], "probability": round(conf, 4), "color_hex": cls_colors.get(cls_id, "#f59e0b")},
-                        {"rank": 2, "class_id": alt_cls, "class_name": cls_names[alt_cls], "probability": round(max(0.015, (1.0 - conf) * 0.85), 4), "color_hex": cls_colors.get(alt_cls, "#f43f5e")},
-                        {"rank": 3, "class_id": 0, "class_name": cls_names[0], "probability": round(max(0.005, (1.0 - conf) * 0.15), 4), "color_hex": "#10b981"}
-                    ]
-            else:
-                shannon_entropy = 0.28
-                uncertainty_rating = "LOW_UNCERTAINTY"
-                astm_severity = "HIGH" if cls_id == 4 else ("MEDIUM" if conf > 0.70 else "LOW")
-                irc_spec = self.vision_model.IRC_STANDARDS.get(cls_id, "IRC:82-2015 Clause 4.2: Mechanical Pot-Hole Patching with Bituminous Concrete (BC) & VG-30 Tack Coat")
-                top3_ranks = [
-                    {"rank": 1, "class_id": cls_id, "class_name": cls_names[cls_id], "probability": round(conf, 4), "color_hex": cls_colors.get(cls_id, "#f59e0b")},
-                    {"rank": 2, "class_id": alt_cls, "class_name": cls_names[alt_cls], "probability": round(max(0.015, (1.0 - conf) * 0.85), 4), "color_hex": cls_colors.get(alt_cls, "#f43f5e")},
-                    {"rank": 3, "class_id": 0, "class_name": cls_names[0], "probability": round(max(0.005, (1.0 - conf) * 0.15), 4), "color_hex": "#10b981"}
-                ]
-
-            deterioration_vel = round(max(15.0, area_m2 * 120.0 * (rain_mm / 500.0)), 1) if cls_id == 4 else round(max(5.0, area_m2 * 45.0 * (rain_mm / 500.0)), 1)
-            carbon_kg = round(tonnage_t * 62.5, 2)
-            monsoon_vuln = round(min(1.0, (rain_mm / 1000.0) * (depth_cm / 8.0)), 2)
-
-            detections.append({
-                "bbox_pixels": [bx, by, bw, bh],
-                "bbox_normalized": [bx_norm, by_norm, bw_norm, bh_norm],
-                "class_id": cls_id,
-                "class_name": cls_names[cls_id],
-                "confidence": round(conf, 4),
-                "shannon_entropy_bits": shannon_entropy,
-                "uncertainty_rating": uncertainty_rating,
-                "astm_d6433_severity": astm_severity,
-                "irc_standard_specification": irc_spec,
-                "top3_ranked_predictions": top3_ranks,
-                "deterioration_velocity_sqcm_per_day": deterioration_vel,
-                "carbon_footprint_kg_co2e": carbon_kg,
-                "monsoon_vulnerability_index": monsoon_vuln,
-                "is_distress": is_dist,
-                "distance_meters": round(float(dist_m), 1),
-                "surface_area_m2": area_m2,
-                "depth_cm": depth_cm,
-                "volumetric_m3": vol_m3,
-                "morth_tonnage_t": tonnage_t,
-                "repair_cost_inr": repair_cost_inr,
-                "physical_dimensions": {
-                    "surface_area_m2": area_m2,
-                    "depth_cm": depth_cm,
-                    "bitumen_volume_m3": vol_m3,
-                    "morth_compacted_tonnage_t": tonnage_t,
-                    "estimated_repair_cost_inr": repair_cost_inr
-                },
-                "probabilities": {cls_names[i]: round(float(probs[i]), 4) for i in range(len(probs))}
-            })
+            entry = self._classify_region(img_np, gray, bbox, W, H, mean_intensity)
+            if entry is not None:
+                detections.append(entry)
 
         if not detections:
-            detections.append({
-                "class_id": 0,
-                "class_name": "Normal Road / Sound Pavement",
-                "confidence": 0.985,
-                "shannon_entropy_bits": 0.12,
-                "uncertainty_rating": "LOW_UNCERTAINTY",
-                "astm_d6433_severity": "NONE",
-                "irc_standard_specification": "IRC:82-2015 Clause 3.1: Routine Visual Survey - Non-Distress Stable Pavement",
-                "top3_ranked_predictions": [
-                    {"rank": 1, "class_id": 0, "class_name": "Normal Road / Sound Pavement", "probability": 0.985},
-                    {"rank": 2, "class_id": 1, "class_name": "D00 Longitudinal", "probability": 0.008},
-                    {"rank": 3, "class_id": 2, "class_name": "D10 Transverse", "probability": 0.005}
-                ],
-                "deterioration_velocity_sqcm_per_day": 0.0,
-                "carbon_footprint_kg_co2e": 0.0,
-                "monsoon_vulnerability_index": 0.0,
-                "is_distress": False,
-                "distance_meters": 0.0,
-                "surface_area_m2": 0.0,
-                "depth_cm": 0.0,
-                "volumetric_m3": 0.0,
-                "morth_tonnage_t": 0.0,
-                "repair_cost_inr": 0.0,
-                "probabilities": {cls_names[0]: 0.985},
-                "bbox_pixels": None,
-                "bbox_normalized": None,
-                "physical_dimensions": {
-                    "surface_area_m2": 0.0,
-                    "depth_cm": 0.0,
-                    "bitumen_volume_m3": 0.0,
-                    "morth_compacted_tonnage_t": 0.0,
-                    "estimated_repair_cost_inr": 0.0
-                }
-            })
+            detections.append(self._normal_road_entry())
 
-        # Separate Pedestrians (VRU Safety) and Road Distress Objects
         ped_detections = [d for d in detections if d.get("is_pedestrian")]
         distress_detections = [d for d in detections if d.get("is_distress")]
 
         primary_pedestrian = ped_detections[0] if ped_detections else None
         if distress_detections:
-            sorted_distress = sorted(
-                distress_detections, 
-                key=lambda d: (
-                    d.get("class_id") == 4, 
-                    d.get("surface_area_m2", 0.0), 
-                    d.get("confidence", 0.0)
-                ), 
-                reverse=True
-            )
-            primary_distress = sorted_distress[0]
+            primary_distress = sorted(
+                distress_detections,
+                key=lambda d: (d.get("class_id") == 2, d.get("surface_area_m2", 0.0), d.get("confidence", 0.0)),
+                reverse=True,
+            )[0]
         else:
             primary_distress = detections[0]
 
         primary = primary_pedestrian if primary_pedestrian is not None else primary_distress
-        has_dual_targets = (len(ped_detections) > 0 and len(distress_detections) > 0)
-        dual_target_summary = ""
-        if has_dual_targets:
-            if len(ped_detections) > 1:
-                dual_target_summary = (
-                    f"CRITICAL CO-OCCURRENCE: {len(ped_detections)} Vulnerable Pedestrians (Closest: {primary_pedestrian['distance_meters']}m) "
-                    f"and Road Surface Distress ({primary_distress['class_name']} - {primary_distress['surface_area_m2']} m²) "
-                    f"detected simultaneously! Triggering multi-VRU ADAS slowdown and defect bypass."
-                )
-            else:
-                dual_target_summary = (
-                    f"CRITICAL CO-OCCURRENCE: Vulnerable Pedestrian ({primary_pedestrian['class_name']}) "
-                    f"and Road Surface Distress ({primary_distress['class_name']} - {primary_distress['surface_area_m2']} m²) "
-                    f"detected simultaneously! Triggering dual ADAS slowdown and defect bypass."
-                )
-        elif len(ped_detections) > 1:
-            dual_target_summary = (
-                f"MULTI-VRU SAFETY ALERT: {len(ped_detections)} Pedestrians detected on roadway "
-                f"(Closest: {primary_pedestrian['distance_meters']}m). Autonomous slowdown chime and emergency braking active."
-            )
+        has_dual_targets = bool(ped_detections) and bool(distress_detections)
+        dual_target_summary = self._dual_target_summary(ped_detections, distress_detections, primary_pedestrian, primary_distress)
 
-        # ----------------------------------------------------------------------
-        # STAGE 6: Model M4 100 Hz IMU Shock Telemetry Correlation
-        # ----------------------------------------------------------------------
-        if imu_series is not None:
-            raw_imu = np.array(imu_series, dtype=np.float32)
-            if raw_imu.ndim == 2:
-                raw_imu = np.expand_dims(raw_imu, axis=0)
-            delta_z = float(np.max(raw_imu[0, :, 2]) - np.min(raw_imu[0, :, 2]))
-        else:
-            # Generate dynamically correlated shock matching optical depth of road distress
-            rng = np.random.RandomState(int(primary_distress["surface_area_m2"] * 100) + int(primary_distress["depth_cm"] * 10))
-            raw_imu = np.zeros((1, 100, 3), dtype=np.float32)
-            raw_imu[0, :, 0] = rng.normal(0, 0.2, 100)
-            raw_imu[0, :, 1] = rng.normal(0, 0.2, 100)
-            raw_imu[0, :, 2] = 9.81 + rng.normal(0, 0.3, 100)
-            
-            if primary_distress["class_id"] == 4:
-                # Severe Pothole impact pulse
-                shock_amp = min(18.0, 3.5 + primary_distress["depth_cm"] * 0.85)
-                raw_imu[0, 45:55, 2] += shock_amp
-                delta_z = float(shock_amp)
-            elif primary_distress["is_distress"]:
-                # Mild crack ripple
-                shock_amp = 1.8 + primary_distress["depth_cm"] * 0.2
-                raw_imu[0, 48:52, 2] += shock_amp
-                delta_z = float(shock_amp)
-            else:
-                delta_z = 0.5
+        # STAGE 6: IMU shock correlation - only real telemetry, never fabricated
+        imu_report, delta_z, p_imu, imu_available = self._run_imu_stage(imu_series)
 
-        imu_preds, imu_pothole_conf, imu_probs = self.imu_model.predict(raw_imu)
-        imu_cls_id = int(imu_preds[0])
-        imu_cls_name = IMUShockClassifier.CLASS_NAMES[imu_cls_id]
-        p_imu = float(imu_pothole_conf[0])
+        # STAGE 7: Bayesian dual-sensor fusion
+        p_vis = primary_distress.get("probabilities", {}).get("Pothole Cavity", 0.05)
+        fusion_res = self.bayesian_gate.fuse(p_visual=p_vis, p_imu_shock=p_imu, delta_z_ms2=delta_z)
+        fusion_res["imu_evidence_source"] = "real_sensor_window" if imu_available else "no_real_imu_data_neutral_prior"
 
-        # ----------------------------------------------------------------------
-        # STAGE 7: Model M5 Recursive Bayesian Dual-Sensor Fusion Gate
-        # ----------------------------------------------------------------------
-        p_vis = primary_distress["probabilities"].get(cls_names[4], primary_distress["confidence"] if primary_distress["class_id"] == 4 else 0.05)
-        fusion_res = self.bayesian_gate.fuse(
-            p_visual=p_vis,
-            p_imu_shock=p_imu,
-            delta_z_ms2=delta_z
-        )
+        # STAGE 8: real ASTM D6433-style PCI from this frame's actual detections
+        pci_result, rutting_mm, iri_roughness = self._compute_pci(detections, pavement_age_yr)
 
-        # ----------------------------------------------------------------------
-        # STAGE 8: Model M_PCI Continuous ASTM D6433 Pavement Condition Scoring
-        # ----------------------------------------------------------------------
-        # Vector: [d00_cnt, d00_sev, d10_cnt, d10_sev, d20_area, d20_sev, d40_cnt, d40_area, d40_depth, rutting, iri, age]
-        d00_cnt = sum(1.0 for d in detections if d["class_id"] == 1)
-        d10_cnt = sum(1.0 for d in detections if d["class_id"] == 2)
-        d20_area = sum(d["surface_area_m2"] for d in detections if d["class_id"] == 3)
-        d40_cnt = sum(1.0 for d in detections if d["class_id"] == 4)
-        d40_area = sum(d["surface_area_m2"] for d in detections if d["class_id"] == 4)
-        d40_depth = max([d["depth_cm"] for d in detections if d["class_id"] == 4], default=0.0)
-
-        # Rutting & IRI roughness correlated with cavity density
-        rutting_mm = min(25.0, 3.0 + d40_cnt * 3.5 + d20_area * 0.8)
-        iri_roughness = min(9.0, 1.8 + d40_cnt * 0.9 + d40_depth * 0.15)
-
-        X_pci = np.array([[
-            d00_cnt, d00_cnt * 3.0,
-            d10_cnt, d10_cnt * 2.5,
-            d20_area, 2.0 if d20_area > 0 else 0.0,
-            d40_cnt, d40_area, d40_depth,
-            rutting_mm, iri_roughness, pavement_age_yr
-        ]], dtype=np.float32)
-
-        pci_score = float(self.pci_model.predict(X_pci)[0])
-        pci_category, pci_desc = self.pci_model.get_rating_category(pci_score)
-
-        # ----------------------------------------------------------------------
-        # STAGE 9: Model M_DEGRADE Monsoon Deterioration Forecaster
-        # ----------------------------------------------------------------------
+        # STAGE 9: deterioration forecast
         degrade_report = self.degrade_model.predict_lifecycle_roi(
-            init_area_m2=max(0.5, primary_distress["surface_area_m2"]),
-            depth_cm=max(3.0, primary_distress["depth_cm"]),
+            init_area_m2=max(0.5, primary_distress.get("surface_area_m2", 0.0)),
+            depth_cm=max(3.0, primary_distress.get("depth_cm", 0.0)),
             esal_trucks=traffic_esal,
             rain_mm=rain_mm,
-            age_yr=pavement_age_yr
+            age_yr=pavement_age_yr,
         )
 
-        # ----------------------------------------------------------------------
-        # STAGE 10: MoRTH Section 500 Civil Volumetric Ledger
-        # ----------------------------------------------------------------------
-        total_tonnage = round(float(sum(d["morth_tonnage_t"] for d in detections)), 3)
-        total_repair_inr = round(float(sum(d["repair_cost_inr"] for d in detections)), 2)
+        # MoRTH civil ledger (sum of real per-detection material costing)
+        total_tonnage = round(float(sum(d.get("morth_tonnage_t", 0.0) for d in detections)), 3)
+        total_repair_inr = round(float(sum(d.get("repair_cost_inr", 0.0) for d in detections)), 2)
 
-        # ----------------------------------------------------------------------
-        # STAGE 11: Model M10 MoRTH Cryptographic Work Order Dispatch Agent
-        # ----------------------------------------------------------------------
+        # STAGE 10/11: sealed work order for confirmed structural distress
         work_order = None
-        if primary_distress["is_distress"]:
+        if primary_distress.get("is_distress") and primary_distress.get("class_id") in AREA_CLASSES:
             work_order = self.dispatch_agent.generate_work_order(
                 corridor_id=corridor_id,
                 latitude=latitude,
                 longitude=longitude,
                 distress_class=primary_distress["class_name"],
-                area_sqm=primary_distress["surface_area_m2"],
-                depth_cm=primary_distress["depth_cm"],
-                pci_score=int(pci_score)
+                area_sqm=primary_distress.get("surface_area_m2", 0.0),
+                depth_cm=primary_distress.get("depth_cm", 0.0),
+                pci_score=int(pci_result["pci_score"]),
             )
-            # Verify cryptographic seal
-            seal_valid = self.dispatch_agent.verify_work_order_seal(work_order)
-            work_order["seal_verification_status"] = "SEAL_VERIFIED_AUTHENTIC" if seal_valid else "INVALID_SEAL"
-
-        # Multi-target accurate hypothesis ranking for deep forensic summary
-        if has_dual_targets and primary_pedestrian is not None and primary_distress is not None:
-            top3_scene_hypotheses = [
-                {
-                    "rank": 1,
-                    "class_id": 9,
-                    "class_name": primary_pedestrian.get("class_name", "Child / Pedestrian Hazard (Vulnerable Road User)"),
-                    "probability": round(float(primary_pedestrian.get("confidence", 0.988)), 4)
-                },
-                {
-                    "rank": 2,
-                    "class_id": primary_distress.get("class_id", 4),
-                    "class_name": primary_distress.get("class_name", "D40 Severe Cavity / Pothole"),
-                    "probability": round(float(primary_distress.get("confidence", 0.954)), 4)
-                },
-                {
-                    "rank": 3,
-                    "class_id": 0,
-                    "class_name": "Normal Road / Non-Distress",
-                    "probability": 0.005
-                }
-            ]
-        elif primary_pedestrian is not None and not primary_distress.get("is_distress"):
-            top3_scene_hypotheses = [
-                {
-                    "rank": 1,
-                    "class_id": 9,
-                    "class_name": primary_pedestrian.get("class_name", "Child / Pedestrian Hazard (Vulnerable Road User)"),
-                    "probability": round(float(primary_pedestrian.get("confidence", 0.988)), 4)
-                },
-                {
-                    "rank": 2,
-                    "class_id": 0,
-                    "class_name": "Normal Road / Non-Distress",
-                    "probability": 0.010
-                },
-                {
-                    "rank": 3,
-                    "class_id": 4,
-                    "class_name": "D40 Cavity / Pothole",
-                    "probability": 0.002
-                }
-            ]
-        else:
-            # Pure Road Distress or Non-Distress Scene (Guaranteed no pedestrian contamination)
-            dist_cls = primary_distress.get("class_id", 4)
-            dist_conf = float(primary_distress.get("confidence", 0.954))
-            dist_name = primary_distress.get("class_name", cls_names[dist_cls] if dist_cls < len(cls_names) else "D40 Severe Cavity / Pothole")
-            dist_colors = {4: "#f59e0b", 3: "#f43f5e", 2: "#a855f7", 1: "#ec4899", 0: "#10b981"}
-            
-            if primary_distress.get("is_distress", True) and dist_cls > 0:
-                alt_cls = 3 if dist_cls == 4 else 4
-                top3_scene_hypotheses = [
-                    {
-                        "rank": 1,
-                        "class_id": dist_cls,
-                        "class_name": dist_name,
-                        "probability": round(dist_conf, 4),
-                        "color_hex": dist_colors.get(dist_cls, "#f59e0b")
-                    },
-                    {
-                        "rank": 2,
-                        "class_id": alt_cls,
-                        "class_name": cls_names[alt_cls] if alt_cls < len(cls_names) else "D20 Fatigue Alligator Crack",
-                        "probability": round(max(0.015, (1.0 - dist_conf) * 0.85), 4),
-                        "color_hex": dist_colors.get(alt_cls, "#f43f5e")
-                    },
-                    {
-                        "rank": 3,
-                        "class_id": 0,
-                        "class_name": "Normal Road / Sound Pavement",
-                        "probability": round(max(0.005, (1.0 - dist_conf) * 0.15), 4),
-                        "color_hex": "#10b981"
-                    }
-                ]
-            else:
-                top3_scene_hypotheses = [
-                    {
-                        "rank": 1,
-                        "class_id": 0,
-                        "class_name": "Normal Road / Sound Pavement",
-                        "probability": round(dist_conf, 4),
-                        "color_hex": "#10b981"
-                    },
-                    {
-                        "rank": 2,
-                        "class_id": 1,
-                        "class_name": "D00 Longitudinal Joint Crack",
-                        "probability": round(max(0.010, (1.0 - dist_conf) * 0.65), 4),
-                        "color_hex": "#ec4899"
-                    },
-                    {
-                        "rank": 3,
-                        "class_id": 2,
-                        "class_name": "D10 Transverse Thermal Crack",
-                        "probability": round(max(0.005, (1.0 - dist_conf) * 0.35), 4),
-                        "color_hex": "#a855f7"
-                    }
-                ]
+            work_order["seal_verification_status"] = (
+                "SEAL_VERIFIED_AUTHENTIC" if self.dispatch_agent.verify_work_order_seal(work_order) else "INVALID_SEAL"
+            )
 
         elapsed_ms = round((time.time() - t0) * 1000.0, 2)
 
         return {
             "status": "ANALYSIS_COMPLETE",
             "gatekeeper_passed": True,
-            "texture_metrics": {
-                "road_roi_mean_lum": round(mean_intensity, 2),
-                "road_roi_std_lum": round(std_intensity, 2)
-            },
+            "texture_metrics": {"road_roi_mean_lum": round(mean_intensity, 2), "road_roi_std_lum": round(std_intensity, 2)},
             "corridor_id": corridor_id,
-            "location": {
-                "lat": latitude,
-                "lng": longitude,
-                "chainage_km": chainage_km
-            },
+            "location": {"lat": latitude, "lng": longitude, "chainage_km": chainage_km},
             "is_distress": len(distress_detections) > 0,
             "vulnerable_safety_alert": len(ped_detections) > 0,
             "pedestrians_count": len(ped_detections),
@@ -751,18 +232,16 @@ class DeepInferencePipeline:
             "primary_pedestrian": primary_pedestrian,
             "primary_detection": primary,
             "all_detections": detections,
-            "imu_shock_telemetry": {
-                "shock_classification": imu_cls_name,
-                "peak_delta_z_ms2": round(delta_z, 2),
-                "pothole_shock_probability": round(p_imu, 4)
-            },
+            "imu_shock_telemetry": imu_report,
             "bayesian_sensor_fusion": fusion_res,
             "astm_d6433_pci": {
-                "pci_score": round(pci_score, 1),
-                "rating_category": pci_category,
-                "description": pci_desc,
+                "pci_score": pci_result["pci_score"],
+                "rating_category": pci_result["rating_category"],
+                "description": pci_result["description"],
+                "deduct_values": pci_result["deduct_values"],
                 "rutting_mm": round(rutting_mm, 1),
-                "iri_roughness": round(iri_roughness, 2)
+                "iri_roughness": round(iri_roughness, 2),
+                "note": "Per-frame proxy PCI (single dashcam frame), not a full-segment ASTM D6433 survey.",
             },
             "monsoon_deterioration_forecast": degrade_report,
             "morth_civil_ledger": {
@@ -770,33 +249,269 @@ class DeepInferencePipeline:
                 "compaction_factor": 1.15,
                 "total_bitumen_tonnage_t": total_tonnage,
                 "mix_rate_inr_per_tonne": 7500.0,
-                "total_estimated_repair_inr": total_repair_inr
+                "total_estimated_repair_inr": total_repair_inr,
             },
             "cryptographic_work_order": work_order,
             "deep_forensic_intelligence": {
-                "shannon_entropy_bits": primary.get("shannon_entropy_bits", 0.25),
+                "shannon_entropy_bits": primary.get("shannon_entropy_bits", 0.0),
                 "epistemic_uncertainty_rating": primary.get("uncertainty_rating", "LOW_UNCERTAINTY"),
-                "astm_d6433_severity": primary_distress.get("astm_d6433_severity", "HIGH" if primary_distress.get("class_id") == 4 else "LOW"),
-                "irc_standard_specification": primary.get("irc_standard_specification", "IRC:82-2015 Clause 4.2"),
-                "top3_ranked_distress_hypotheses": top3_scene_hypotheses,
-                "structural_deterioration_velocity_sqcm_per_day": primary_distress.get("deterioration_velocity_sqcm_per_day", 0.0),
-                "embodied_carbon_footprint_kg_co2e": primary_distress.get("carbon_footprint_kg_co2e", 0.0),
-                "monsoon_risk_multiplier": primary_distress.get("monsoon_vulnerability_index", 0.0),
+                "astm_d6433_severity": primary_distress.get("astm_d6433_severity", "NONE"),
+                "irc_standard_specification": primary.get("irc_standard_specification", ""),
+                "top3_ranked_distress_hypotheses": primary.get("top3_ranked_predictions", []),
                 "has_pedestrian_hazard": primary_pedestrian is not None,
                 "pedestrians_detected_count": len(ped_detections),
-                "pedestrian_alert_level": primary_pedestrian.get("alert_level") if primary_pedestrian else "NO_PEDESTRIAN_HAZARD"
+                "pedestrian_alert_level": primary_pedestrian.get("alert_level") if primary_pedestrian else "NO_PEDESTRIAN_HAZARD",
             },
-            "latency_ms": elapsed_ms
+            "latency_ms": elapsed_ms,
         }
 
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    def _build_pedestrian_entry(self, ped):
+        """Wraps a real HOG+SVM pedestrian detection into the shared detection schema."""
+        dist_m = ped["distance_meters"]
+        if dist_m <= 8.0:
+            alert_level, recommendation = "CRITICAL", "Emergency braking / evasive maneuver recommended."
+        elif dist_m <= 18.0:
+            alert_level, recommendation = "HIGH", "Reduce speed and monitor closely."
+        else:
+            alert_level, recommendation = "ADVISORY", "Pedestrian visible ahead; maintain awareness."
+
+        return {
+            "class_id": VisionDistressNet.PEDESTRIAN_CLASS_ID,
+            "class_name": "Pedestrian / Vulnerable Road User",
+            "confidence": ped["confidence"],
+            "pedestrian_id": ped.get("pedestrian_id", 1),
+            "detector": ped.get("detector", "opencv_hog_svm_person_detector"),
+            "is_distress": False,
+            "is_pedestrian": True,
+            "alert_level": alert_level,
+            "recommendation": recommendation,
+            "bbox_pixels": ped["bbox_pixels"],
+            "bbox_normalized": ped["bbox_normalized"],
+            "distance_meters": dist_m,
+            "surface_area_m2": 0.0,
+            "depth_cm": 0.0,
+            "morth_tonnage_t": 0.0,
+            "repair_cost_inr": 0.0,
+            "irc_standard_specification": VisionDistressNet.IRC_STANDARDS.get(VisionDistressNet.PEDESTRIAN_CLASS_ID, ""),
+        }
+
+    def _classify_region(self, img_np, gray, bbox, W, H, mean_intensity):
+        """Crops one candidate region, runs the real vision classifier, and (for
+        crack/pothole/waterlogging) prices the repair via real IPM geometry."""
+        bx, by, bw, bh = bbox[:4]
+        crop = img_np[by : by + bh, bx : bx + bw]
+        if crop.size == 0:
+            return None
+
+        pred = self.vision_model.predict_image(crop)
+        cls_id = pred["class_id"]
+        if cls_id == 0:
+            return None  # classifier says this region isn't actually a distress after all
+
+        bx_norm, by_norm = round(bx / float(W), 4), round(by / float(H), 4)
+        bw_norm, bh_norm = round(bw / float(W), 4), round(bh / float(H), 4)
+
+        area_m2 = depth_cm = vol_m3 = tonnage_t = repair_cost_inr = 0.0
+        dist_m = 0.0
+        if cls_id in AREA_CLASSES:
+            _, ground_y = self.ipm_engine.pixel_to_ground(bx + bw / 2.0, by + bh / 2.0)
+            dist_m = max(1.8, min(30.0, float(ground_y)))
+            area_m2 = self.ipm_engine.calculate_surface_area_sqm(bx, by, bw, bh)
+
+            if cls_id == 2:  # Pothole Cavity - depth estimated from patch darkness relative to surroundings
+                patch_gray = gray[by : by + bh, bx : bx + bw]
+                patch_mean = float(np.mean(patch_gray)) if patch_gray.size > 0 else mean_intensity
+                dark_contrast = max(0.0, (mean_intensity - patch_mean) / max(1.0, mean_intensity))
+                # Coarse monocular estimate, not a measured depth - no stereo/LiDAR in this project.
+                depth_cm = round(max(2.0, min(14.0, 6.0 * (dist_m / 8.0) * (dark_contrast + 0.5))), 1)
+            elif cls_id == 1:  # Crack - shallow by definition; scale mildly with classifier confidence
+                depth_cm = round(max(0.5, min(4.0, 1.5 + pred["confidence"] * 2.0)), 1)
+            # Waterlogging (3): area is meaningful (hazard extent), depth is not asphalt depth.
+
+            if cls_id in (1, 2):  # only crack/pothole get an asphalt repair costing
+                materials = self.ipm_engine.estimate_repair_materials(area_m2, depth_cm=max(depth_cm, 1.0))
+                vol_m3 = materials["volume_m3"]
+                tonnage_t = materials["required_mass_tonnes"]
+                repair_cost_inr = round(materials["total_cost_inr"], 2)
+
+        return {
+            "bbox_pixels": [bx, by, bw, bh],
+            "bbox_normalized": [bx_norm, by_norm, bw_norm, bh_norm],
+            "class_id": cls_id,
+            "class_name": pred["class_name"],
+            "confidence": pred["confidence"],
+            "shannon_entropy_bits": pred["shannon_entropy_bits"],
+            "uncertainty_rating": pred["uncertainty_rating"],
+            "astm_d6433_severity": pred["astm_d6433_severity"],
+            "irc_standard_specification": pred["irc_standard_specification"],
+            "top3_ranked_predictions": pred["top3_ranked_predictions"],
+            "is_distress": cls_id in AREA_CLASSES,
+            "distance_meters": round(dist_m, 1),
+            "surface_area_m2": round(area_m2, 2),
+            "depth_cm": depth_cm,
+            "volumetric_m3": vol_m3,
+            "morth_tonnage_t": tonnage_t,
+            "repair_cost_inr": repair_cost_inr,
+            "physical_dimensions": {
+                "surface_area_m2": round(area_m2, 2),
+                "depth_cm": depth_cm,
+                "bitumen_volume_m3": vol_m3,
+                "morth_compacted_tonnage_t": tonnage_t,
+                "estimated_repair_cost_inr": repair_cost_inr,
+            },
+            "probabilities": pred["all_class_probabilities"],
+        }
+
+    def _normal_road_entry(self):
+        return {
+            "class_id": 0,
+            "class_name": "Normal Road / Sound Pavement",
+            "confidence": 0.99,
+            "shannon_entropy_bits": 0.0,
+            "uncertainty_rating": "LOW_UNCERTAINTY",
+            "astm_d6433_severity": "NONE",
+            "irc_standard_specification": VisionDistressNet.IRC_STANDARDS.get(0, ""),
+            "top3_ranked_predictions": [],
+            "is_distress": False,
+            "distance_meters": 0.0,
+            "surface_area_m2": 0.0,
+            "depth_cm": 0.0,
+            "morth_tonnage_t": 0.0,
+            "repair_cost_inr": 0.0,
+            "probabilities": {"Normal Road / Sound Pavement": 0.99},
+            "bbox_pixels": None,
+            "bbox_normalized": None,
+        }
+
+    def _dual_target_summary(self, ped_detections, distress_detections, primary_pedestrian, primary_distress):
+        if ped_detections and distress_detections:
+            count_note = f"{len(ped_detections)} pedestrians" if len(ped_detections) > 1 else primary_pedestrian["class_name"]
+            return (
+                f"Co-occurring hazard: {count_note} (closest {primary_pedestrian['distance_meters']}m) "
+                f"and {primary_distress['class_name']} ({primary_distress.get('surface_area_m2', 0.0)} m^2) in the same frame."
+            )
+        if len(ped_detections) > 1:
+            return f"{len(ped_detections)} pedestrians detected (closest {primary_pedestrian['distance_meters']}m)."
+        return ""
+
+    def _run_imu_stage(self, imu_series):
+        """
+        Only ever scores a real accelerometer window. If none is supplied,
+        this reports that honestly instead of deriving a fake one from the
+        vision result - which is what the earlier version of this pipeline
+        did, and which made "dual-sensor confirmation" meaningless (the two
+        sensors were never actually independent).
+        """
+        if imu_series is None or not self.imu_model.is_ready:
+            reason = "No real IMU telemetry provided for this frame." if imu_series is None else "IMU model not loaded."
+            return (
+                {"available": False, "reason": reason, "shock_classification": None, "peak_delta_z_ms2": 0.0, "pothole_shock_probability": 0.0},
+                0.0,
+                self.bayesian_gate.prior_p,  # neutral: fall back to the prior, not a fabricated confirmation
+                False,
+            )
+
+        raw_imu = np.asarray(imu_series, dtype=np.float32)
+        if raw_imu.ndim == 2:
+            raw_imu = np.expand_dims(raw_imu, axis=0)
+        delta_z = float(np.max(raw_imu[0, :, 2]) - np.min(raw_imu[0, :, 2]))
+
+        preds, pothole_conf, _ = self.imu_model.predict(raw_imu)
+        cls_name = IMUShockClassifier.CLASS_NAMES[int(preds[0])]
+        p_imu = float(pothole_conf[0])
+        return (
+            {"available": True, "shock_classification": cls_name, "peak_delta_z_ms2": round(delta_z, 2), "pothole_shock_probability": round(p_imu, 4)},
+            delta_z,
+            p_imu,
+            True,
+        )
+
+    def _compute_pci(self, detections, pavement_age_yr):
+        crack_area = sum(d.get("surface_area_m2", 0.0) for d in detections if d.get("class_id") == 1)
+        crack_count = sum(1 for d in detections if d.get("class_id") == 1)
+        pothole_area = sum(d.get("surface_area_m2", 0.0) for d in detections if d.get("class_id") == 2)
+        pothole_count = sum(1 for d in detections if d.get("class_id") == 2)
+
+        crack_severities = [d["astm_d6433_severity"] for d in detections if d.get("class_id") == 1 and d.get("astm_d6433_severity") not in (None, "NONE")]
+        pothole_severities = [d["astm_d6433_severity"] for d in detections if d.get("class_id") == 2 and d.get("astm_d6433_severity") not in (None, "NONE")]
+        crack_severity = crack_severities[0] if crack_severities else "LOW"
+        pothole_severity = pothole_severities[0] if pothole_severities else "MEDIUM"
+
+        crack_density_pct = min(100.0, (crack_area / ASSUMED_FRAME_PAVEMENT_AREA_M2) * 100.0)
+        pothole_density_pct = min(100.0, (pothole_area / ASSUMED_FRAME_PAVEMENT_AREA_M2) * 100.0)
+
+        # Documented proxy, not a measured rut-bar/profilometer reading (see module docstring).
+        rutting_mm = min(25.0, 3.0 + pothole_count * 3.5 + crack_area * 0.8)
+        iri_roughness = min(9.0, 1.8 + pothole_count * 0.9)
+
+        result = self.pci_model.compute(
+            crack_density_pct=crack_density_pct,
+            crack_severity=crack_severity,
+            pothole_count=pothole_count,
+            pothole_density_pct=pothole_density_pct,
+            pothole_severity=pothole_severity,
+            rutting_mm=rutting_mm,
+            iri_roughness=iri_roughness,
+            age_yr=pavement_age_yr,
+        )
+        return result, rutting_mm, iri_roughness
+
+    def _reject_non_pavement(self, mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0):
+        elapsed_ms = round((time.time() - t0) * 1000.0, 2)
+        placeholder = {
+            "class_name": "Non-Pavement Surface (Rejected)",
+            "is_distress": False,
+            "confidence": 0.99,
+            "surface_area_m2": 0.0,
+            "depth_cm": 0.0,
+            "bbox_pixels": None,
+            "bbox_normalized": None,
+        }
+        return {
+            "status": "REJECTED_NON_PAVEMENT",
+            "gatekeeper_passed": False,
+            "texture_metrics": {"road_roi_mean_lum": round(mean_intensity, 2), "road_roi_std_lum": round(std_intensity, 2), "threshold_std": 6.5},
+            "reason": f"Optical texture standard deviation ({std_intensity:.2f}) < 6.5 threshold. Rejected non-pavement surface.",
+            "is_distress": False,
+            "detections_count": 0,
+            "primary_distress": placeholder,
+            "primary_detection": placeholder,
+            "all_detections": [],
+            "corridor_id": corridor_id,
+            "location": {"lat": latitude, "lng": longitude, "chainage_km": chainage_km},
+            "latency_ms": elapsed_ms,
+        }
+
+    def _normal_road(self, mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0):
+        elapsed_ms = round((time.time() - t0) * 1000.0, 2)
+        entry = self._normal_road_entry()
+        return {
+            "status": "ROAD_INSPECTION_NORMAL",
+            "gatekeeper_passed": True,
+            "texture_metrics": {"road_roi_mean_lum": round(mean_intensity, 2), "road_roi_std_lum": round(std_intensity, 2)},
+            "reason": "Road pavement verified; no anomalous cavity or distress contours detected.",
+            "is_distress": False,
+            "detections_count": 0,
+            "primary_distress": entry,
+            "primary_detection": entry,
+            "all_detections": [entry],
+            "pavement_pci": 96.0,
+            "pci_category": "EXCELLENT",
+            "corridor_id": corridor_id,
+            "location": {"lat": latitude, "lng": longitude, "chainage_km": chainage_km},
+            "latency_ms": elapsed_ms,
+        }
+
+    # ------------------------------------------------------------------
+    # Batch processing
+    # ------------------------------------------------------------------
     def process_batch(self, image_source, max_samples=None, corridor_id="NH-44", **kwargs):
-        """
-        Processes a directory of images or a list of image paths.
-        Aggregates civil engineering statistics, total tonnage, total costs, and quality scores.
-        """
+        """Processes a directory of images or a list of image paths, aggregating civil-engineering statistics."""
         t0 = time.time()
-        
-        # Determine image paths
+
         if isinstance(image_source, str) and os.path.isdir(image_source):
             valid_exts = {".jpg", ".jpeg", ".png", ".bmp"}
             image_paths = [
@@ -823,16 +538,10 @@ class DeepInferencePipeline:
 
         for idx, img_path in enumerate(image_paths):
             try:
-                rec = self.audit_image(
-                    image_input=img_path,
-                    corridor_id=corridor_id,
-                    chainage_km=100.0 + idx * 0.25,
-                    **kwargs
-                )
+                rec = self.audit_image(image_input=img_path, corridor_id=corridor_id, chainage_km=100.0 + idx * 0.25, **kwargs)
                 rec["image_path"] = img_path
                 rec["image_name"] = os.path.basename(img_path)
                 records.append(rec)
-
                 latencies.append(rec.get("latency_ms", 0.0))
 
                 if rec["gatekeeper_passed"]:
@@ -847,13 +556,8 @@ class DeepInferencePipeline:
                         pci_scores.append(rec.get("pavement_pci", 95.0))
                 else:
                     total_non_pavement_rejected += 1
-
             except Exception as e:
-                records.append({
-                    "image_path": img_path,
-                    "status": f"ERROR: {str(e)}",
-                    "gatekeeper_passed": False
-                })
+                records.append({"image_path": img_path, "status": f"ERROR: {str(e)}", "gatekeeper_passed": False})
 
         walltime_s = round(time.time() - t0, 3)
         avg_latency = round(float(np.mean(latencies)), 2) if latencies else 0.0
@@ -869,25 +573,22 @@ class DeepInferencePipeline:
                 "total_repair_budget_inr": round(float(total_cost_inr), 2),
                 "mean_pavement_pci": mean_pci,
                 "mean_inference_latency_ms": avg_latency,
-                "total_batch_walltime_s": walltime_s
+                "total_batch_walltime_s": walltime_s,
             },
-            "records": records
+            "records": records,
         }
 
     def verify_pipeline_integrity(self):
-        """Verifies integrity and presence of all 4 neural checkpoints and engine models."""
+        """Checks that the trained model artifacts this pipeline depends on actually exist on disk."""
         expected = [
-            ("Model M1 Vision Distress", "vision_distress_weights.npz"),
-            ("Model M4 IMU ShockNet", "imu_shock_weights.npz"),
-            ("Model M_PCI Regressor", "pci_regressor_weights.npz"),
-            ("Model M_DEGRADE Forecaster", "deterioration_forecaster_weights.npz")
+            ("Model M1 VisionDistressNet", "vision_distress_model.joblib"),
+            ("Model M4 IMUShockClassifier", "imu_shock_model.joblib"),
         ]
         status = {}
         all_ok = True
         for name, fname in expected:
             fpath = os.path.join(self.ckpt_dir, fname)
-            exists = os.path.exists(fpath)
-            if exists:
+            if os.path.exists(fpath):
                 size_kb = round(os.path.getsize(fpath) / 1024.0, 1)
                 with open(fpath, "rb") as f:
                     digest = hashlib.sha256(f.read()).hexdigest()
@@ -895,8 +596,15 @@ class DeepInferencePipeline:
             else:
                 status[name] = {"status": "MISSING"}
                 all_ok = False
+        status["Model PCI / Deterioration engines"] = {
+            "status": "N/A_FORMULA_BASED",
+            "note": "Deterministic ASTM D6433 / growth-model engines have no trained weights to verify.",
+        }
         return {"all_models_verified": all_ok, "models": status}
 
+    # ------------------------------------------------------------------
+    # Automotive incident evaluation (ADAS policy + CAN + fusion)
+    # ------------------------------------------------------------------
     def evaluate_automotive_incident(
         self,
         hazard_class_id=0,
@@ -907,14 +615,14 @@ class DeepInferencePipeline:
         pothole_depth_mm=0.0,
         imu_z_shock_ms2=0.2,
         lateral_lane_margin_m=1.2,
-        is_wet=False
+        is_wet=False,
     ):
         """
-        Closed-loop Automotive OEM Incident Evaluation:
-        1. Evaluates Automotive RL Policy Agent for ADAS / Active Suspension decisions
-        2. Generates ISO 11898-1 / J1939 CAN-Bus packet
-        3. Fuses cross-modal sensor tokens via MM-1 Transformer
-        Returns complete telemetry, actuation commands, and functional safety ratings.
+        1. AutomotiveADASPolicyAgent picks an ADAS/active-suspension action
+           (deterministic rule table over real physics - see that module).
+        2. AutomotiveTelematicsEngine encodes the decision as a real CAN frame.
+        3. MultimodalLateFusionNet combines the caller-supplied hazard
+           classification with the caller-supplied IMU shock reading.
         """
         rl_res = self.rl_agent.evaluate_telemetry_state(
             hazard_class_id=hazard_class_id,
@@ -925,38 +633,37 @@ class DeepInferencePipeline:
             pothole_depth_mm=pothole_depth_mm,
             imu_z_shock_ms2=imu_z_shock_ms2,
             lateral_lane_margin_m=lateral_lane_margin_m,
-            is_wet=is_wet
+            is_wet=is_wet,
         )
 
         can_frame = self.telematics.generate_adas_can_packet(
             rl_decision=rl_res,
             hazard_class_id=hazard_class_id,
             ttc_sec=rl_res["telemetry_metrics"]["time_to_collision_sec"],
-            speed_kmh=vehicle_speed_kmh
+            speed_kmh=vehicle_speed_kmh,
         )
 
-        # Cross-attention multimodal verification
-        v_vis = np.zeros(64, dtype=np.float32)
-        v_vis[hazard_class_id * 6 : hazard_class_id * 6 + 6] = float(confidence) * 2.5
-        v_imu = np.zeros(36, dtype=np.float32)
-        v_imu[0:4] = float(imu_z_shock_ms2)
-        v_dep = np.zeros(16, dtype=np.float32)
-        v_dep[0:4] = float(pothole_depth_mm) / 100.0
-        v_can = np.zeros(12, dtype=np.float32)
-        v_can[0] = float(vehicle_speed_kmh) / 100.0
-        v_env = np.zeros(8, dtype=np.float32)
-        v_env[0] = float(surface_friction_mu)
+        # Build a real probability vector from the caller-supplied hazard
+        # class + confidence (not a random tensor standing in for imaginary
+        # LiDAR/CAN-bus sensors - see multimodal_transformer_fusion.py).
+        n_classes = len(VisionDistressNet.CLASS_NAMES) + 1
+        vision_probs = np.full(n_classes, (1.0 - confidence) / max(1, n_classes - 1), dtype=np.float64)
+        vision_probs[min(hazard_class_id, n_classes - 1)] = confidence
+        vision_probs = vision_probs / vision_probs.sum()
 
-        mm_res = self.multimodal_net.predict_multimodal(v_vis, v_imu, v_dep, v_can, v_env)
+        # A single peak-shock scalar (not a full 100-sample window) can only
+        # support a coarse heuristic, not the trained IMUShockClassifier -
+        # documented here rather than silently treated as equivalent to it.
+        imu_pothole_prob = float(np.clip(imu_z_shock_ms2 / 8.0, 0.0, 1.0))
+
+        mm_res = self.multimodal_net.fuse(vision_probs, imu_pothole_prob=imu_pothole_prob, imu_shock_ms2=imu_z_shock_ms2)
 
         return {
             "rl_policy_decision": rl_res,
             "can_bus_telemetry": can_frame,
             "multimodal_fusion_status": mm_res,
-            "automotive_standards": [
-                "ISO 26262 ASIL-D Functional Safety",
-                "SAE J1939 / ISO 11898-1 CAN 2.0B",
-                "MISRA-C:2012 Real-Time C++20 Header"
-            ]
+            "automotive_standards_referenced": [
+                "ISO 26262 ASIL-D functional-safety decision structure (rule table, not certified)",
+                "SAE J1939 / ISO 11898-1 CAN 2.0B frame format",
+            ],
         }
-

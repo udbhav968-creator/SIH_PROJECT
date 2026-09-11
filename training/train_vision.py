@@ -1,76 +1,99 @@
-import sys
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
 """
-Training pipeline for Model M1 (Vision Distress Net).
+Trains Model M1 (VisionDistressNet) on the real labeled photos under
+datasets/*/real_images and reports genuine held-out validation metrics.
+
+Run directly: python -m training.train_vision
 """
+
 import os
 import sys
-import numpy as np
+import json
+import time
 
-# Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from data.dataset_generator import generate_vision_dataset
-from data.data_loader import train_val_split, get_batches
+import numpy as np
+from sklearn.model_selection import train_test_split
+
+from data.image_dataset import load_labeled_dataset, holdout_images, dataset_inventory
+from data.augmentation_pipeline import CivilDataAugmentor
+from data.feature_extraction import extract_batch
 from models.vision_distress_net import VisionDistressNet
 
-def run_training(epochs=15, batch_size=64, save_dir=None):
-    if save_dir is None:
-        save_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints"))
+CKPT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints"))
+MODEL_PATH = os.path.join(CKPT_DIR, "vision_distress_model.joblib")
+REPORT_PATH = os.path.join(CKPT_DIR, "vision_distress_report.json")
+
+
+def run_training(val_ratio=0.25, copies_per_image=7, seed=42, save_dir=None):
+    save_dir = save_dir or CKPT_DIR
     os.makedirs(save_dir, exist_ok=True)
-    
-    print("[M1 Vision Distress Net] Generating dataset (RDD2022 + IDD distribution)...")
-    X, y_cls, y_geo, y_area = generate_vision_dataset(num_samples=5000, seed=42)
-    
-    X_tr, X_val, y_cls_tr, y_cls_val, y_geo_tr, y_geo_val = train_val_split(
-        X, y_cls, y_geo, val_ratio=0.2, seed=42
-    )
-    print(f"  Training samples: {X_tr.shape[0]} | Validation samples: {X_val.shape[0]}")
-    
-    model = VisionDistressNet(in_dim=64, hidden_dims=[128, 64], num_classes=5, lr=0.0025)
-    
-    print("  Starting Adam optimization...")
-    history = []
-    for epoch in range(1, epochs + 1):
-        indices = np.random.permutation(len(X_tr))
-        epoch_losses = []
-        
-        for start_idx in range(0, len(X_tr), batch_size):
-            b_idx = indices[start_idx:min(start_idx + batch_size, len(X_tr))]
-            tot_loss, cls_l, geo_l = model.train_step(X_tr[b_idx], y_cls_tr[b_idx], y_geo_tr[b_idx])
-            epoch_losses.append(tot_loss)
-            
-        mean_loss = float(np.mean(epoch_losses))
-        
-        # Validation
-        preds_val, _, probs_val, geo_preds_val = model.predict(X_val)
-        val_acc = float(np.mean(preds_val == y_cls_val) * 100.0)
-        pothole_mask = (y_cls_val == 4)
-        pothole_recall = float(np.mean(preds_val[pothole_mask] == 4) * 100.0)
-        
-        history.append({
-            "epoch": epoch,
-            "loss": round(mean_loss, 4),
-            "val_accuracy": round(val_acc, 2),
-            "pothole_recall": round(pothole_recall, 2)
-        })
-        
-        if epoch % 3 == 0 or epoch == epochs:
-            print(f"  Epoch {epoch:02d}/{epochs:02d} - Loss: {mean_loss:.4f} - Val Acc: {val_acc:.2f}% - Pothole Recall: {pothole_recall:.2f}%")
-            
-    ckpt_path = os.path.join(save_dir, "vision_distress_weights.npz")
-    model.save_weights(ckpt_path)
-    print(f"  [SUCCESS] Saved checkpoint: {ckpt_path}")
-    
-    return {
+
+    print("[M1 Vision] Loading real labeled photos from datasets/ ...")
+    images, labels, paths = load_labeled_dataset(dedupe_augmented=True)
+    print(f"  {len(images)} distinct real photos across {len(set(labels.tolist()))} classes")
+
+    # Split at the base-photo level FIRST, then augment only the training
+    # side - an augmented copy of a validation photo must never leak into
+    # training, or the validation accuracy below would be meaningless.
+    idx = np.arange(len(images))
+    train_idx, val_idx = train_test_split(idx, test_size=val_ratio, stratify=labels, random_state=seed)
+    train_imgs = [images[i] for i in train_idx]
+    train_labels = labels[train_idx]
+    val_imgs = [images[i] for i in val_idx]
+    val_labels = labels[val_idx]
+    print(f"  train photos: {len(train_imgs)} | held-out validation photos: {len(val_imgs)}")
+
+    augmentor = CivilDataAugmentor(seed=seed)
+    aug_imgs, aug_labels = augmentor.expand(train_imgs, train_labels, copies_per_image=copies_per_image)
+    print(f"  training set after augmentation: {len(aug_imgs)} images")
+
+    t0 = time.time()
+    X_train = extract_batch(aug_imgs)
+    X_val = extract_batch(val_imgs)
+    print(f"  feature extraction done in {time.time() - t0:.1f}s (feature dim = {X_train.shape[1]})")
+
+    model = VisionDistressNet(random_state=seed)
+    model.fit(X_train, aug_labels)
+
+    metrics = model.evaluate(X_val, val_labels)
+    print(f"  HELD-OUT validation accuracy: {metrics['accuracy'] * 100:.1f}% "
+          f"(random-guess baseline for {len(VisionDistressNet.CLASS_NAMES)} classes = "
+          f"{100.0 / len(VisionDistressNet.CLASS_NAMES):.1f}%)")
+
+    model.save(MODEL_PATH)
+    print(f"  saved trained model -> {MODEL_PATH}")
+
+    report = {
         "model": "VisionDistressNet",
-        "final_loss": history[-1]["loss"],
-        "val_accuracy": history[-1]["val_accuracy"],
-        "pothole_recall": history[-1]["pothole_recall"],
-        "checkpoint": ckpt_path
+        "classifier": "StandardScaler -> PCA -> SVC(rbf)",
+        "class_names": VisionDistressNet.CLASS_NAMES,
+        "dataset_inventory": dataset_inventory(),
+        "train_photos": len(train_imgs),
+        "train_photos_after_augmentation": len(aug_imgs),
+        "held_out_validation_photos": len(val_imgs),
+        "held_out_validation_accuracy": round(metrics["accuracy"], 4),
+        "random_guess_baseline": round(1.0 / len(VisionDistressNet.CLASS_NAMES), 4),
+        "confusion_matrix": metrics["confusion_matrix"],
+        "per_class_report": metrics["per_class_report"],
+        "note": (
+            "Validation photos and their augmented copies are strictly disjoint from the "
+            "training set. Accuracy is limited mainly by how few distinct source photos "
+            "exist for some classes (see dataset_inventory) - this is a data problem, not "
+            "an unreported one."
+        ),
+        "trained_at_unix": int(time.time()),
     }
+    with open(REPORT_PATH, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+    print(f"  wrote training report -> {REPORT_PATH}")
+
+    ho = holdout_images()
+    if ho:
+        print(f"  ({len(ho)} photos in the mixed-label holdout folders were not used for training or scoring)")
+
+    return report
+
 
 if __name__ == "__main__":
     run_training()

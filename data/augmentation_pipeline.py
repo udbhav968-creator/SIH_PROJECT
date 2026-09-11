@@ -1,84 +1,82 @@
 """
-ROAD-SHIELD Civil Domain Data Augmentation Pipeline
-Implements 4-Way Mosaic, CutMix Distress Injection, Optical Weather Simulator
-(Monsoon rain streaks, nocturnal sodium lighting, specular glare), and IMU Suspension Noise.
+Real pixel-level augmentation for the small pavement photo dataset.
+
+Earlier versions of this file (and the "aug_mega_*" files sitting in
+datasets/*/real_images) were not actual augmentations - they were exact
+byte-for-byte duplicate copies of the same photo, just renamed, to make the
+dataset folder look bigger than it is. That's worse than useless for
+training: duplicates that end up split across train/val leak the answer and
+inflate validation accuracy.
+
+This version does real, cheap image transforms with PIL/OpenCV: flips,
+small rotations, brightness/contrast jitter, and mild Gaussian noise. Nothing
+fancy, but every output pixel actually differs from the input.
 """
+
 import numpy as np
+import cv2
+
 
 class CivilDataAugmentor:
-    """Advanced multi-modal augmentation engine for pavement inspection."""
-    
+    """Generates real augmented copies of a road photo for training."""
+
     def __init__(self, seed=42):
         self.rng = np.random.RandomState(seed)
-        
-    def mosaic_4way(self, features_list, labels_list):
-        """
-        Simulates 4-way mosaic distress synthesis by spatially combining 
-        quadrants of 4 distinct road pavement feature vectors.
-        """
-        if len(features_list) < 4:
-            return features_list[0], labels_list[0]
-            
-        dim = features_list[0].shape[0]
-        q_dim = dim // 4
-        
-        mosaic_feat = np.concatenate([
-            features_list[0][:q_dim],
-            features_list[1][q_dim:2*q_dim],
-            features_list[2][2*q_dim:3*q_dim],
-            features_list[3][3*q_dim:dim]
-        ])
-        
-        # Primary label is taken from the most severe distress quadrant (max class id)
-        max_label = max(labels_list[:4])
-        return mosaic_feat.astype(np.float32), max_label
 
-    def cutmix_distress(self, background_feat, distress_patch_feat, patch_ratio=0.35):
-        """
-        Injects a high-severity distress patch (e.g. D40 Pothole) into a sound pavement vector.
-        """
-        mixed = background_feat.copy()
-        dim = len(background_feat)
-        patch_len = int(dim * patch_ratio)
-        start_idx = self.rng.randint(0, dim - patch_len + 1)
-        mixed[start_idx:start_idx+patch_len] = distress_patch_feat[start_idx:start_idx+patch_len]
-        return mixed.astype(np.float32)
+    def _random_flip(self, img):
+        if self.rng.rand() < 0.5:
+            img = np.ascontiguousarray(img[:, ::-1, :])
+        return img
 
-    def simulate_monsoon_weather(self, optical_features, rain_intensity=0.8):
-        """
-        Applies rain streak scattering, specular standing water glare, and surface darkening.
-        """
-        augmented = optical_features.copy()
-        # Surface darkening from wet asphalt
-        augmented *= (1.0 - 0.25 * rain_intensity)
-        # Specular water reflection peaks
-        num_glare_spots = max(1, int(len(augmented) * 0.15))
-        glare_indices = self.rng.choice(len(augmented), num_glare_spots, replace=False)
-        augmented[glare_indices] += (0.6 * rain_intensity)
-        # High frequency rain streak noise
-        rain_noise = self.rng.normal(0.0, 0.05 * rain_intensity, size=augmented.shape)
-        augmented = np.clip(augmented + rain_noise, 0.0, 1.0)
-        return augmented.astype(np.float32)
+    def _random_rotation(self, img, max_deg=8):
+        angle = self.rng.uniform(-max_deg, max_deg)
+        h, w = img.shape[:2]
+        m = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), angle, 1.0)
+        return cv2.warpAffine(img, m, (w, h), borderMode=cv2.BORDER_REFLECT_101)
 
-    def simulate_night_sodium_lighting(self, optical_features):
-        """
-        Simulates low-lux nocturnal conditions with yellow-amber sodium vapor lamp attenuation.
-        """
-        augmented = optical_features.copy()
-        # Attenuate overall lux
-        augmented *= 0.45
-        # Add non-uniform spotlight falloff
-        falloff = np.linspace(0.8, 0.3, len(augmented))
-        augmented *= falloff
-        return np.clip(augmented, 0.0, 1.0).astype(np.float32)
+    def _random_brightness_contrast(self, img, brightness=0.20, contrast=0.20):
+        alpha = 1.0 + self.rng.uniform(-contrast, contrast)  # contrast gain
+        beta = self.rng.uniform(-brightness, brightness) * 255.0  # brightness shift
+        out = img.astype(np.float32) * alpha + beta
+        return np.clip(out, 0, 255).astype(np.uint8)
 
-    def simulate_imu_suspension_dynamics(self, imu_features, vehicle_speed_kmh=60.0):
+    def _random_noise(self, img, sigma=6.0):
+        noise = self.rng.normal(0, sigma, img.shape)
+        return np.clip(img.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+
+    def _random_crop_resize(self, img, min_scale=0.85):
+        h, w = img.shape[:2]
+        scale = self.rng.uniform(min_scale, 1.0)
+        ch, cw = int(h * scale), int(w * scale)
+        y0 = self.rng.randint(0, max(1, h - ch + 1))
+        x0 = self.rng.randint(0, max(1, w - cw + 1))
+        crop = img[y0 : y0 + ch, x0 : x0 + cw]
+        return cv2.resize(crop, (w, h), interpolation=cv2.INTER_LINEAR)
+
+    def augment(self, img):
+        """Applies a random combination of the transforms above to one image."""
+        out = img
+        out = self._random_flip(out)
+        out = self._random_rotation(out)
+        out = self._random_crop_resize(out)
+        out = self._random_brightness_contrast(out)
+        if self.rng.rand() < 0.5:
+            out = self._random_noise(out)
+        return out
+
+    def expand(self, images, labels, copies_per_image=6):
         """
-        Injects vehicle chassis harmonic vibration (12-25 Hz) and pavement roughness drift.
+        Given a list of real images and their labels, returns an expanded
+        (images, labels) pair containing the originals plus `copies_per_image`
+        genuinely-augmented variants of each. Caller is responsible for
+        keeping this expansion inside a single train/val split (never split
+        an original and its augmented copies across train and val).
         """
-        augmented = imu_features.copy()
-        # Speed-dependent vibration magnitude
-        vib_amp = (vehicle_speed_kmh / 100.0) * 0.12
-        noise = self.rng.normal(0.0, vib_amp, size=imu_features.shape)
-        augmented += noise
-        return augmented.astype(np.float32)
+        out_images, out_labels = [], []
+        for img, label in zip(images, labels):
+            out_images.append(img)
+            out_labels.append(label)
+            for _ in range(copies_per_image):
+                out_images.append(self.augment(img))
+                out_labels.append(label)
+        return out_images, np.array(out_labels, dtype=np.int64)

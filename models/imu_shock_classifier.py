@@ -1,161 +1,115 @@
 """
-Model M4: 100 Hz 3-Axis IMU Shock Classifier
-Extracts multi-scale temporal dynamic features from sliding 100-sample windows
-and classifies them into [Smooth, Expansion Joint, Rumble Strip, Pothole Impact].
+Model M4: 100 Hz 3-axis IMU shock classifier.
+
+Turns a 1-second window (100 samples x 3 axes) of accelerometer readings into
+one of four classes: smooth asphalt, expansion joint, rumble strip, or a
+pothole impact. The time -> feature step (extract_temporal_features) is
+plain, well-understood signal processing (mean/std/energy/zero-crossing-rate/
+jerk per axis); the classifier on top of it is a real scikit-learn model
+trained on datasets/04_mobile_imu_telemetry_100hz.
 """
+
+import os
 import numpy as np
+import joblib
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
-def gelu(x):
-    return 0.5 * x * (1.0 + np.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3.0))))
-
-def gelu_grad(x):
-    s = np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3.0))
-    t = np.tanh(s)
-    ds = np.sqrt(2.0 / np.pi) * (1.0 + 3.0 * 0.044715 * np.power(x, 2.0))
-    return 0.5 * (1.0 + t) + 0.5 * x * (1.0 - t**2) * ds
-
-def softmax(x):
-    e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
-    return e_x / np.sum(e_x, axis=-1, keepdims=True)
 
 class IMUShockClassifier:
     CLASS_NAMES = ["Smooth Asphalt", "Expansion Joint", "Rumble Strip", "Pothole Impact"]
-    
-    def __init__(self, in_features=36, hidden_dims=[64, 32], num_classes=4, lr=0.003, seed=42):
-        np.random.seed(seed)
-        self.lr = lr
-        self.num_classes = num_classes
-        
-        dims = [in_features] + hidden_dims + [num_classes]
-        self.weights = []
-        self.biases = []
-        self.m_w, self.v_w = [], []
-        self.m_b, self.v_b = [], []
-        
-        for i in range(len(dims) - 1):
-            w = np.random.randn(dims[i], dims[i+1]).astype(np.float32) * np.sqrt(2.0 / dims[i])
-            b = np.zeros((1, dims[i+1]), dtype=np.float32)
-            self.weights.append(w)
-            self.biases.append(b)
-            self.m_w.append(np.zeros_like(w))
-            self.v_w.append(np.zeros_like(w))
-            self.m_b.append(np.zeros_like(b))
-            self.v_b.append(np.zeros_like(b))
-            
-        self.beta1, self.beta2, self.eps = 0.9, 0.999, 1e-8
-        self.t = 0
-        self.feat_mean = np.zeros((1, in_features), dtype=np.float32)
-        self.feat_std = np.ones((1, in_features), dtype=np.float32)
+    POTHOLE_CLASS_ID = 3
+
+    def __init__(self, model_path=None, n_estimators=300, random_state=42):
+        self.n_estimators = n_estimators
+        self.random_state = random_state
+        self.pipeline = None
+        if model_path and os.path.exists(model_path):
+            self.load(model_path)
+
+    @property
+    def is_ready(self):
+        return self.pipeline is not None
 
     @staticmethod
     def extract_temporal_features(X_raw):
-        """
-        Converts (B, 100, 3) raw time series into 36 high-order temporal dynamics features.
-        """
+        """(B, T, 3) raw accelerometer window -> (B, 36) real time-domain features."""
+        X_raw = np.asarray(X_raw, dtype=np.float32)
         B, T, C = X_raw.shape
         feats = []
         for c in range(C):
             sig = X_raw[:, :, c]
-            mean = np.mean(sig, axis=1, keepdims=True)
-            std = np.std(sig, axis=1, keepdims=True)
-            var = np.var(sig, axis=1, keepdims=True)
-            mx = np.max(sig, axis=1, keepdims=True)
-            mn = np.min(sig, axis=1, keepdims=True)
+            mean = sig.mean(axis=1, keepdims=True)
+            std = sig.std(axis=1, keepdims=True)
+            var = sig.var(axis=1, keepdims=True)
+            mx = sig.max(axis=1, keepdims=True)
+            mn = sig.min(axis=1, keepdims=True)
             ptp = mx - mn
-            # Zero crossing rate around mean
             centered = sig - mean
             zcr = np.mean(np.abs(np.diff(np.sign(centered), axis=1)) > 0, axis=1, keepdims=True)
-            # Energy
             energy = np.mean(sig**2, axis=1, keepdims=True)
-            # Derivative (jerk)
             diff1 = np.diff(sig, axis=1)
             jerk_max = np.max(np.abs(diff1), axis=1, keepdims=True)
             jerk_mean = np.mean(np.abs(diff1), axis=1, keepdims=True)
-            # Half-window power ratio (asymmetry)
-            p1 = np.mean(sig[:, :T//2]**2, axis=1, keepdims=True)
-            p2 = np.mean(sig[:, T//2:]**2, axis=1, keepdims=True)
+            p1 = np.mean(sig[:, : T // 2] ** 2, axis=1, keepdims=True)
+            p2 = np.mean(sig[:, T // 2 :] ** 2, axis=1, keepdims=True)
             ratio = (p2 + 1e-5) / (p1 + 1e-5)
-            
             feats.extend([mean, std, var, mx, mn, ptp, zcr, energy, jerk_max, jerk_mean, p1, ratio])
-            
         return np.concatenate(feats, axis=1).astype(np.float32)
 
-    def forward(self, feats):
-        activations = [feats]
-        pre_acts = []
-        for i in range(len(self.weights) - 1):
-            z = activations[-1] @ self.weights[i] + self.biases[i]
-            pre_acts.append(z)
-            a = gelu(z)
-            activations.append(a)
-        logits = activations[-1] @ self.weights[-1] + self.biases[-1]
-        return activations, pre_acts, logits
-
-    def predict(self, X_raw):
-        feats = self.extract_temporal_features(X_raw)
-        feats = (feats - self.feat_mean) / (self.feat_std + 1e-5)
-        _, _, logits = self.forward(feats)
-        probs = softmax(logits)
-        preds = np.argmax(probs, axis=-1)
-        pothole_conf = probs[:, 3]
-        return preds, pothole_conf, probs
-
-    def train_step(self, feats, y):
-        self.t += 1
-        B = feats.shape[0]
-        activations, pre_acts, logits = self.forward(feats)
-        probs = softmax(logits)
-        loss = -np.mean(np.log(probs[np.arange(B), y] + 1e-8))
-        
-        d_out = probs.copy()
-        d_out[np.arange(B), y] -= 1.0
-        d_out /= B
-        
-        d_a = d_out
-        for i in reversed(range(len(self.weights))):
-            a_prev = activations[i]
-            if i == len(self.weights) - 1:
-                d_z = d_a
-            else:
-                d_z = d_a * gelu_grad(pre_acts[i])
-                
-            d_w = a_prev.T @ d_z
-            d_b = np.sum(d_z, axis=0, keepdims=True)
-            
-            if i > 0:
-                d_a = d_z @ self.weights[i].T
-                
-            self._adam_update(self.weights[i], d_w, self.m_w[i], self.v_w[i])
-            self._adam_update(self.biases[i], d_b, self.m_b[i], self.v_b[i])
-            
-        return loss
-
-    def _adam_update(self, param, grad, m, v):
-        m[:] = self.beta1 * m + (1 - self.beta1) * grad
-        v[:] = self.beta2 * v + (1 - self.beta2) * (grad**2)
-        m_hat = m / (1 - self.beta1**self.t)
-        v_hat = v / (1 - self.beta2**self.t)
-        param -= self.lr * m_hat / (np.sqrt(v_hat) + self.eps)
-
-    def save_weights(self, path):
-        np.savez_compressed(
-            path,
-            w0=self.weights[0], b0=self.biases[0],
-            w1=self.weights[1], b1=self.biases[1],
-            w2=self.weights[2], b2=self.biases[2],
-            feat_mean=self.feat_mean,
-            feat_std=self.feat_std
+    def _build_pipeline(self):
+        return Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "clf",
+                    RandomForestClassifier(
+                        n_estimators=self.n_estimators,
+                        max_depth=14,
+                        class_weight="balanced",
+                        random_state=self.random_state,
+                        n_jobs=-1,
+                    ),
+                ),
+            ]
         )
 
-    def load_weights(self, path):
-        data = np.load(path)
-        self.weights[0] = data["w0"]
-        self.biases[0] = data["b0"]
-        self.weights[1] = data["w1"]
-        self.biases[1] = data["b1"]
-        self.weights[2] = data["w2"]
-        self.biases[2] = data["b2"]
-        if "feat_mean" in data:
-            self.feat_mean = data["feat_mean"]
-        if "feat_std" in data:
-            self.feat_std = data["feat_std"]
+    def fit(self, X_raw, y):
+        feats = self.extract_temporal_features(X_raw)
+        self.pipeline = self._build_pipeline()
+        self.pipeline.fit(feats, np.asarray(y, dtype=np.int64))
+        return self
+
+    def evaluate(self, X_raw, y):
+        if not self.is_ready:
+            raise RuntimeError("Model has not been trained or loaded yet.")
+        feats = self.extract_temporal_features(X_raw)
+        preds = self.pipeline.predict(feats)
+        y = np.asarray(y, dtype=np.int64)
+        return {
+            "accuracy": float(accuracy_score(y, preds)),
+            "confusion_matrix": confusion_matrix(y, preds).tolist(),
+            "per_class_report": classification_report(y, preds, target_names=self.CLASS_NAMES, output_dict=True, zero_division=0),
+        }
+
+    def predict(self, X_raw):
+        """X_raw: (B, 100, 3). Returns (pred_ids, pothole_confidence, prob_matrix)."""
+        if not self.is_ready:
+            raise RuntimeError("Model has not been trained or loaded yet - call fit() or load().")
+        feats = self.extract_temporal_features(X_raw)
+        probs_partial = self.pipeline.predict_proba(feats)
+        full_probs = np.zeros((probs_partial.shape[0], len(self.CLASS_NAMES)), dtype=np.float32)
+        for i, cls in enumerate(self.pipeline.named_steps["clf"].classes_):
+            full_probs[:, cls] = probs_partial[:, i]
+        preds = np.argmax(full_probs, axis=-1)
+        pothole_conf = full_probs[:, self.POTHOLE_CLASS_ID]
+        return preds, pothole_conf, full_probs
+
+    def save(self, path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        joblib.dump(self.pipeline, path)
+
+    def load(self, path):
+        self.pipeline = joblib.load(path)

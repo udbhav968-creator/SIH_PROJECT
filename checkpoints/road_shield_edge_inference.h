@@ -1,48 +1,43 @@
 /*
- * ROAD-SHIELD Embedded Edge Neural Inference Header (C99 / C++ Compatible)
- * High-performance, zero-dependency embedded inference for MoRTH Patrol Vehicles.
- * Authority: MoRTH / NHAI SIH2026-MORTH-TRANS-018
+ * ROAD-SHIELD embedded formula library (C99 / C++ compatible).
+ *
+ * Ports the deterministic ASTM D6433 PCI deduct-value curve and the
+ * pavement deterioration growth model to dependency-free C for
+ * microcontroller / roadside-unit deployment.
+ *
+ * This header does NOT implement the scikit-learn SVM / RandomForest
+ * classifiers used elsewhere in this project - real on-device inference
+ * for those needs their fitted parameters (support vectors, tree splits)
+ * exported separately alongside a small inference runtime, which is a
+ * real but separate engineering task from this header.
  */
 #ifndef ROAD_SHIELD_EDGE_INFERENCE_H
 #define ROAD_SHIELD_EDGE_INFERENCE_H
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <math.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-static inline void edge_relu(float* vec, int len) {
-    for (int i = 0; i < len; i++) {
-        if (vec[i] < 0.0f) vec[i] = 0.0f;
-    }
+/* Saturating exponential deduct-value curve, ASTM D6433 style. */
+static inline float rs_pci_deduct_value(float severity_cap, float density_pct) {
+    return severity_cap * (1.0f - expf(-0.06f * density_pct));
 }
 
-static inline void edge_softmax(const float* in, float* out, int len) {
-    float max_val = in[0];
-    for (int i = 1; i < len; i++) {
-        if (in[i] > max_val) max_val = in[i];
-    }
-    float sum = 0.0f;
-    for (int i = 0; i < len; i++) {
-        out[i] = expf(in[i] - max_val);
-        sum += out[i];
-    }
-    float inv_sum = (sum > 1e-7f) ? (1.0f / sum) : 1.0f;
-    for (int i = 0; i < len; i++) {
-        out[i] *= inv_sum;
-    }
-}
-
-static inline float morth_calculate_asphalt_tonnage(float area_m2, float depth_cm) {
+/* Asphalt tonnage for a rectangular patch: area(m^2) * depth(m) * density(t/m^3). */
+static inline float rs_asphalt_tonnage(float area_m2, float depth_cm, float density_t_per_m3) {
     float vol_m3 = area_m2 * (depth_cm / 100.0f);
-    return vol_m3 * 2.40f;
+    return vol_m3 * density_t_per_m3;
+}
+
+/* Exponential crack/pothole area growth over `days`, given a per-day rate k. */
+static inline float rs_forecast_area(float init_area_m2, float k_per_day, float days) {
+    return init_area_m2 * expf(k_per_day * days);
 }
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // ROAD_SHIELD_EDGE_INFERENCE_H
+#endif /* ROAD_SHIELD_EDGE_INFERENCE_H */

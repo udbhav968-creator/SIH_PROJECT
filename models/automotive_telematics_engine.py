@@ -1,12 +1,17 @@
 """
-ROAD-SHIELD Automotive Telematics & Protocol Engine (v1.0 OEM Production)
-Standards Compliance: SAE J1939, ISO 11898-1 (CAN 2.0B), ISO 26262 ASIL-D, MISRA-C:2012
+Automotive telematics / CAN-bus protocol helper.
 
-Handles:
-1. CAN-Bus frame generation & J1939 Parameter Group Number (PGN) mapping
-2. Vector CAN DBC (Database CAN) generator for CANoe / CANalyzer / Kvaser
-3. Real-time C++20 Header-Only Embedded ECU Driver exporter (MISRA-compliant, zero heap allocation)
-4. Telemetry simulation stream generator for automotive cockpits
+Encodes ADAS decisions into CAN frames following the SAE J1939 / ISO 11898-1
+(CAN 2.0B) byte layout, and exports a matching Vector DBC file plus a
+single-header C++ reference implementation for a real-time ECU. The frame
+layout and the C++ arbitration logic follow ISO 26262 ASIL severity-level
+conventions, but neither has gone through an actual MISRA static-analysis
+pass or a certification body - describe it as "styled after" those
+standards, not "certified", until it has.
+
+get_simulated_telemetry_snapshot() at the bottom generates canned demo
+scenarios for the cockpit dashboard UI - it is a fixture for exercising the
+UI, not a reading from a real vehicle.
 """
 
 import os
@@ -72,7 +77,8 @@ class AutomotiveTelematicsEngine:
         steer_deg = setpoints.get("steer_offset_deg", 0.0)
         b5 = int(min(127, max(-128, int(steer_deg * 10)))) & 0xFF
 
-        asil_byte = 0x04 if hazard_class_id == 9 else (0x02 if hazard_class_id == 4 else 0x00)
+        # hazard_class_id 7 = pedestrian/VRU, 2 = pothole (see VisionDistressNet.CLASS_NAMES)
+        asil_byte = 0x04 if hazard_class_id == 7 else (0x02 if hazard_class_id == 2 else 0x00)
         b6 = asil_byte
 
         # Rolling counter + simple parity nibble
@@ -139,7 +145,7 @@ BO_ 418383107 ACTIVE_SUSPENSION_TELEMETRY: 8 ACTIVE_CHASSIS
  SG_ Surface_Friction_Mu : 40|8@1+ (0.01,0) [0|1.0] "" ROAD_SHIELD_ADAS
  SG_ Vertical_Shock_Az : 48|16@1+ (0.01,-50) [-50|50] "m/s2" ROAD_SHIELD_ADAS
 
-VAL_ 419234050 Hazard_Class 0 "Normal_Road" 1 "Longitudinal_Crack" 2 "Transverse_Crack" 3 "Alligator_Crack" 4 "Pothole_D40" 5 "Waterlogging" 6 "Missing_Zebra" 7 "Road_Divider" 8 "Traffic_Sign" 9 "Pedestrian_VRU" ;
+VAL_ 419234050 Hazard_Class 0 "Normal_Road" 1 "Crack" 2 "Pothole" 3 "Waterlogging" 4 "Missing_Zebra" 5 "Missing_Divider" 6 "Damaged_Sign" 7 "Pedestrian_VRU" ;
 VAL_ 419234050 RL_Action_Cmd 0 "MAINTAIN_CRUISE" 1 "ACTIVE_SUSPENSION_PRE_DAMPING" 2 "ADAS_SPEED_MODULATION" 3 "EMERGENCY_BRAKE_AEB" 4 "MICRO_EVASIVE_LANE_NUDGE" 5 "MUNICIPAL_V2X_DISPATCH" ;
 VAL_ 419234050 ASIL_Safety_Level 0 "ASIL_QM" 1 "ASIL_A" 2 "ASIL_B" 4 "ASIL_D" ;
 """
@@ -154,10 +160,13 @@ VAL_ 419234050 ASIL_Safety_Level 0 "ASIL_QM" 1 "ASIL_A" 2 "ASIL_B" 4 "ASIL_D" ;
         Zero dynamic heap allocation (noexcept, static constexpr), MISRA-C:2012 & ISO 26262 ASIL-D compliant.
         """
         cpp_header = """// ============================================================================
-// ROAD-SHIELD Automotive Embedded Real-Time ECU Inference Driver (C++20)
-// MoRTH / NHAI / Tier-1 OEM Standard (ISO 26262 ASIL-D Compliant)
+// ROAD-SHIELD Embedded Reference ECU Driver (C++20)
+// Frame layout and severity levels follow SAE J1939 / ISO 26262 ASIL
+// conventions; this has not gone through MISRA static analysis or formal
+// safety certification - treat as a reference implementation, not a
+// certified automotive component.
 // Target Hardware: Infineon AURIX TC399, NXP S32G, TI Jacinto 7, NVIDIA DRIVE
-// Zero heap allocations (no dynamic memory), no exceptions, MISRA-C:2012 certified.
+// No dynamic heap allocation, no exceptions.
 // ============================================================================
 
 #ifndef ROAD_SHIELD_AUTOMOTIVE_ECU_H
@@ -172,15 +181,13 @@ namespace road_shield::automotive {
 
 enum class HazardClass : uint8_t {
     NORMAL_ROAD = 0,
-    LONGITUDINAL_CRACK = 1,
-    TRANSVERSE_CRACK = 2,
-    ALLIGATOR_CRACK = 3,
-    POTHOLE_D40 = 4,
-    WATERLOGGING = 5,
-    MISSING_ZEBRA = 6,
-    ROAD_DIVIDER = 7,
-    TRAFFIC_SIGN = 8,
-    CHILD_PEDESTRIAN_VRU = 9
+    CRACK = 1,
+    POTHOLE = 2,
+    WATERLOGGING = 3,
+    MISSING_ZEBRA = 4,
+    MISSING_DIVIDER = 5,
+    DAMAGED_SIGN = 6,
+    PEDESTRIAN_VRU = 7
 };
 
 enum class RLAction : uint8_t {
@@ -247,7 +254,7 @@ public:
         const float ttc = computeTimeToCollision(distance_m, speed_kmh);
 
         // ASIL-D Rule: Absolute priority to Vulnerable Road User (Child/Pedestrian)
-        if (hazard == HazardClass::CHILD_PEDESTRIAN_VRU) {
+        if (hazard == HazardClass::PEDESTRIAN_VRU) {
             cmd.target_deceleration_ms2 = -8.5f; // Maximum autonomous brake
             cmd.suspension_pre_lift_mm = 0.0f;
             cmd.steering_nudge_deg = 0.0f;
@@ -258,7 +265,7 @@ public:
         }
 
         // Severe Pothole Cavity Mitigation
-        if (hazard == HazardClass::POTHOLE_D40) {
+        if (hazard == HazardClass::POTHOLE) {
             if (cavity_depth_mm >= 40.0f && ttc < 2.5f) {
                 cmd.target_deceleration_ms2 = -2.0f;
                 cmd.suspension_pre_lift_mm = 25.0f; // Raise air suspension to prevent bottoming out
@@ -325,7 +332,7 @@ public:
         scenarios = {
             "highway_pothole": {
                 "scenario_title": "High-Speed Highway Pothole Approach (95 km/h)",
-                "hazard_class_id": 4,
+                "hazard_class_id": 2,
                 "hazard_name": "Pothole_Cavity_D40",
                 "hazard_distance_m": 38.5,
                 "vehicle_speed_kmh": 94.2,
@@ -338,7 +345,7 @@ public:
             },
             "vru_pedestrian": {
                 "scenario_title": "Vulnerable Child / Pedestrian Hazard Crossing (45 km/h)",
-                "hazard_class_id": 9,
+                "hazard_class_id": 7,
                 "hazard_name": "Child_Pedestrian_Hazard_VRU",
                 "hazard_distance_m": 18.2,
                 "vehicle_speed_kmh": 46.5,
@@ -351,7 +358,7 @@ public:
             },
             "rain_waterlogging": {
                 "scenario_title": "Monsoon Submerged Aquaplaning Risk (60 km/h)",
-                "hazard_class_id": 5,
+                "hazard_class_id": 3,
                 "hazard_name": "Monsoon_Waterlogging",
                 "hazard_distance_m": 29.0,
                 "vehicle_speed_kmh": 61.0,
@@ -377,7 +384,7 @@ public:
             },
             "alligator_cracking": {
                 "scenario_title": "Severe Structural Alligator Fatigue (50 km/h)",
-                "hazard_class_id": 3,
+                "hazard_class_id": 1,
                 "hazard_name": "Alligator_Crack_D20",
                 "hazard_distance_m": 24.5,
                 "vehicle_speed_kmh": 52.0,

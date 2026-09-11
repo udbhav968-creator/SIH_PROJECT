@@ -1,7 +1,10 @@
 """
-Fleet Deduplication Engine: Spatial-Temporal Clustering for Public Transport Fleet
-Aggregates detections across multiple buses (e.g. Bus-101, Bus-204) passing the same physical location.
-Uses Haversine spatial proximity (threshold ~8 meters) to deduplicate and update severity.
+Fleet deduplication: spatial clustering of defect reports from multiple buses.
+
+When several buses (or the same bus on repeat trips) photograph the same
+pothole, this merges those reports into one persistent defect record instead
+of double-counting it, using real Haversine great-circle distance against a
+proximity threshold (default 8m, roughly GPS accuracy under tree cover).
 """
 import math
 import time
@@ -12,6 +15,7 @@ class FleetDeduplicationEngine:
         # Registry of persistent ground-truth defects: {defect_id: defect_record}
         self.defect_registry = {}
         self.next_defect_id = 1001
+        self.total_reports_ingested = 0  # every ingest_fleet_detection call, matched or not
 
     @staticmethod
     def haversine_distance(lat1, lon1, lat2, lon2):
@@ -35,6 +39,7 @@ class FleetDeduplicationEngine:
         Otherwise, registers a new unique defect.
         """
         now = image_timestamp or time.time()
+        self.total_reports_ingested += 1
         matched_id = None
         min_dist = float('inf')
         
@@ -67,22 +72,27 @@ class FleetDeduplicationEngine:
             new_id = f"DEF-BLR-{self.next_defect_id}"
             self.next_defect_id += 1
 
-            # Google Maps & Geospatial enrichment
+            # Map links are just coordinate-based URLs, always real. Address/
+            # elevation/drainage come from a real geocoding lookup when one
+            # succeeds; when it doesn't, we say so rather than filling in a
+            # plausible-looking but made-up address or elevation.
             google_maps_url = f"https://www.google.com/maps/search/?api=1&query={round(lat, 6)},{round(lon, 6)}"
             street_view_url = f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={round(lat, 6)},{round(lon, 6)}"
-            formatted_address = ""
-            elevation_m = 915.0
-            drainage_risk = "OPTIMAL_DRAINAGE"
+            formatted_address = None
+            elevation_m = None
+            drainage_risk = None
+            geocode_source = "unavailable"
 
             try:
                 from services.google_maps_service import google_maps_service
                 geo = google_maps_service.reverse_geocode(lat, lon)
-                formatted_address = geo.get("formatted_address", "")
+                formatted_address = geo.get("formatted_address")
+                geocode_source = geo.get("provider", "geocoding_service")
                 elev = google_maps_service.get_elevation(lat, lon)
-                elevation_m = elev.get("elevation_meters", 915.0)
-                drainage_risk = elev.get("drainage_risk_category", "OPTIMAL_DRAINAGE")
+                elevation_m = elev.get("elevation_meters")
+                drainage_risk = elev.get("drainage_risk_category")
             except Exception:
-                formatted_address = f"Corridor KM {abs(round(lat*10, 1))}, Bengaluru Urban Hub, Karnataka 560001"
+                pass
 
             self.defect_registry[new_id] = {
                 "defect_id": new_id,
@@ -98,6 +108,7 @@ class FleetDeduplicationEngine:
                 "last_seen_timestamp": now,
                 "is_verified_hotspot": False,
                 "address": formatted_address,
+                "geocode_source": geocode_source,
                 "google_maps_url": google_maps_url,
                 "street_view_url": street_view_url,
                 "elevation_m": elevation_m,
@@ -117,4 +128,16 @@ class FleetDeduplicationEngine:
     def get_all_deduplicated_defects(self):
         """Returns the deduplicated list for GIS map visualization."""
         return list(self.defect_registry.values())
+
+    def get_deduplication_stats(self):
+        """Real dedup efficiency from actual ingested/registered counts - not a fixed placeholder."""
+        unique_defects = len(self.defect_registry)
+        dedup_pct = 0.0
+        if self.total_reports_ingested > 0:
+            dedup_pct = round(100.0 * (1.0 - unique_defects / float(self.total_reports_ingested)), 1)
+        return {
+            "total_reports_ingested": self.total_reports_ingested,
+            "unique_defects_registered": unique_defects,
+            "deduplication_efficiency_pct": dedup_pct,
+        }
 

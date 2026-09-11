@@ -1,12 +1,16 @@
 """
-ROAD-SHIELD Spatial-Temporal Multi-Object Video Tracker
-Implements persistent IoU-based defect tracking across multi-frame dashcam video sequences.
-Prevents duplicate defect counts as vehicles pass over cavities, and computes real-time looming metrics.
+Multi-frame defect tracker for dashcam video.
+
+A minimal IoU-based tracker (the same greedy-matching idea behind SORT):
+associates each frame's detections with existing tracks by highest IoU,
+ages out tracks that haven't been seen recently, and keeps a running count
+of distinct potholes/cracks seen across a clip so the same cavity isn't
+counted once per frame as the vehicle drives over it.
 """
 import numpy as np
 
 class SpatialTemporalVideoTracker:
-    """Multi-frame defect tracker with spatial trajectory smoothing and anti-double-counting."""
+    """Frame-to-frame IoU tracker with stale-track eviction and de-duplicated counts."""
 
     def __init__(self, iou_threshold=0.25, max_age_frames=5):
         self.iou_thresh = iou_threshold

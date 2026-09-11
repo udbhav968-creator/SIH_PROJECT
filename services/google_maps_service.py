@@ -1,19 +1,12 @@
 """
-Project ROAD-SHIELD: Google Maps & GIS Intelligence Engine
-===========================================================
-Enterprise integration for Google Maps Platform APIs:
-  1. Google Maps Geocoding API (Forward & Reverse Geocoding)
-  2. Google Maps Directions API & Pothole-Avoidance Route Planner
-  3. Google Maps Distance Matrix API
-  4. Google Maps Elevation API & Road Drainage / Waterlogging Solver
-  5. Google Maps Places API (Nearby Asphalt Plants, Depots, Trauma Centers)
-  6. Google Maps Street View 360° Panorama Deep-Linking Engine
-  7. Google Maps Interactive Tile Engine (Roadmap, Satellite, Hybrid, Terrain, Traffic)
-
-Dual-Engine Architecture:
-  - If GOOGLE_MAPS_API_KEY is configured, queries official Google Maps endpoints.
-  - If unconfigured or offline, transparently falls back to live OpenStreetMap Nominatim,
-    OSRM Routing Machine, and the MoRTH Indian Highway Gazetteer for zero-downtime reliability.
+Geocoding, elevation, directions and places lookups with a real three-tier
+fallback: the official Google Maps Platform APIs when GOOGLE_MAPS_API_KEY is
+configured, live OpenStreetMap Nominatim/OSRM when it isn't (or the Google
+call fails), and finally a small offline gazetteer of known Indian highway
+corridors so a lookup still resolves to something useful with no network
+access at all. Each tier is genuinely queried, not simulated - the fallback
+only exists because this project can't assume a paid API key or reliable
+internet is available.
 """
 
 import os
@@ -26,9 +19,7 @@ import urllib.parse
 from typing import Dict, List, Any, Optional, Tuple
 
 class GoogleMapsService:
-    """
-    Unified Google Maps & Geospatial Intelligence Service for Autonomous Highway Infrastructure.
-    """
+    """Geocoding/elevation/directions/places client with the Google -> OSM -> offline-gazetteer fallback chain."""
 
     GOOGLE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
     GOOGLE_DIRECTIONS_URL = "https://maps.googleapis.com/maps/api/directions/json"

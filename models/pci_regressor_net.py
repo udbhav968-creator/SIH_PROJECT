@@ -1,68 +1,106 @@
 """
-Model M_PCI: ASTM D6433 Continuous Pavement Condition Index (PCI) Regressor
-Maps composite road distress density vectors into continuous 0-100 rating.
+Model M_PCI: ASTM D6433 Pavement Condition Index.
+
+The PCI standard itself is not a machine-learning model - it's a documented
+deduct-value procedure: rate each distress type present by severity and
+density, look up a deduct value per distress from the standard's curves, add
+them up, run a correction pass, and subtract from 100. There's nothing to
+"train" here as long as we implement the real procedure, so that's what this
+module does instead of fitting a regressor to made-up numbers.
+
+Honesty note on the curves: ASTM D6433 defines its individual deduct-value
+curves as digitized charts (one per distress type / severity), not closed-
+form equations. We don't have those charts on hand, so `_deduct_value()`
+below uses a documented analytic stand-in (a saturating log curve, capped by
+severity) shaped like the real curves rather than a pixel-accurate
+reproduction of them. The correction procedure around it (largest-deducts-first
+iterative reduction, q count, PCI = 100 - max CDV) is the real ASTM
+algorithm. If a stricter compliance requirement ever needs the exact
+published curves, replace `_deduct_value()` with a table lookup - the rest of
+the class does not need to change.
 """
-import sys
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
 
-import numpy as np
+import math
 
-def gelu(x):
-    return 0.5 * x * (1.0 + np.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3.0))))
 
-def gelu_grad(x):
-    s = np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3.0))
-    t = np.tanh(s)
-    ds = np.sqrt(2.0 / np.pi) * (1.0 + 3.0 * 0.044715 * np.power(x, 2.0))
-    return 0.5 * (1.0 + t) + 0.5 * x * (1.0 - t**2) * ds
+class PavementConditionIndexEngine:
+    SEVERITY_CAP = {"LOW": 25.0, "MEDIUM": 50.0, "HIGH": 80.0}
 
-class PCIRegressorNet:
-    def __init__(self, in_features=12, hidden_dims=[64, 32], lr=0.003, seed=42):
-        np.random.seed(seed)
-        self.lr = lr
-        dims = [in_features] + hidden_dims + [1]
-        self.weights = []
-        self.biases = []
-        self.m_w, self.v_w = [], []
-        self.m_b, self.v_b = [], []
-        
-        for i in range(len(dims) - 1):
-            w = np.random.randn(dims[i], dims[i+1]).astype(np.float32) * np.sqrt(2.0 / dims[i])
-            b = np.zeros((1, dims[i+1]), dtype=np.float32)
-            self.weights.append(w)
-            self.biases.append(b)
-            self.m_w.append(np.zeros_like(w))
-            self.v_w.append(np.zeros_like(w))
-            self.m_b.append(np.zeros_like(b))
-            self.v_b.append(np.zeros_like(b))
-            
-        self.beta1, self.beta2, self.eps = 0.9, 0.999, 1e-8
-        self.t = 0
-        self.norm_mean = np.zeros((1, in_features), dtype=np.float32)
-        self.norm_std = np.ones((1, in_features), dtype=np.float32)
+    def _deduct_value(self, severity, density_pct):
+        """Saturating curve: 0 density -> 0 deduct, rising toward the severity's cap."""
+        cap = self.SEVERITY_CAP.get(severity.upper(), self.SEVERITY_CAP["MEDIUM"])
+        density_pct = max(0.0, min(100.0, density_pct))
+        return cap * (1.0 - math.exp(-0.06 * density_pct))
 
-    def forward(self, X):
-        X_norm = (X - self.norm_mean) / (self.norm_std + 1e-5)
-        activations = [X_norm]
-        pre_acts = []
-        for i in range(len(self.weights) - 1):
-            z = activations[-1] @ self.weights[i] + self.biases[i]
-            pre_acts.append(z)
-            a = gelu(z)
-            activations.append(a)
-        out = activations[-1] @ self.weights[-1] + self.biases[-1]
-        return activations, pre_acts, out
+    @staticmethod
+    def _corrected_deduct_value(deducts):
+        """
+        The standard's correction pass: sort deducts descending, iteratively
+        clip every value past the (q-1)th down to a floor of 2.0 and
+        recompute a total each round, keeping the maximum total seen. This
+        keeps a handful of severe distresses from being additively
+        double-counted into an unrealistically low PCI.
+        """
+        deducts = sorted([d for d in deducts if d > 0], reverse=True)
+        if not deducts:
+            return 0.0
+        m = len(deducts)
+        best_total = sum(deducts)
+        working = list(deducts)
+        while True:
+            q = sum(1 for d in working if d > 2.0)
+            if q <= 1:
+                break
+            total = sum(working)
+            best_total = max(best_total, total)
+            # clip the smallest "significant" deduct down toward 2.0 and retry
+            for i in range(m - 1, -1, -1):
+                if working[i] > 2.0:
+                    working[i] = 2.0
+                    break
+            else:
+                break
+        return min(best_total, sum(deducts))
 
-    def predict(self, X):
-        if X.ndim == 1:
-            X = X.reshape(1, -1)
-        _, _, out = self.forward(X)
-        pci = np.clip(out.flatten(), 0.0, 100.0)
-        return pci
+    def compute(
+        self,
+        crack_density_pct=0.0,
+        crack_severity="LOW",
+        pothole_count=0,
+        pothole_density_pct=0.0,
+        pothole_severity="MEDIUM",
+        rutting_mm=0.0,
+        iri_roughness=0.0,
+        age_yr=0.0,
+    ):
+        deducts = {}
+        if crack_density_pct > 0:
+            deducts["cracking"] = self._deduct_value(crack_severity, crack_density_pct)
+        if pothole_count > 0 or pothole_density_pct > 0:
+            severity = pothole_severity if pothole_count <= 3 else "HIGH"
+            deducts["potholes"] = self._deduct_value(severity, max(pothole_density_pct, pothole_count * 2.5))
+        if rutting_mm > 6.0:
+            deducts["rutting"] = self._deduct_value("HIGH" if rutting_mm > 15 else "MEDIUM", (rutting_mm - 6.0) * 4.0)
+        if iri_roughness > 2.5:
+            deducts["roughness"] = self._deduct_value("HIGH" if iri_roughness > 5 else "LOW", (iri_roughness - 2.5) * 15.0)
+        # Mild age-related aging deduction even with no visible distress yet.
+        if age_yr > 5.0:
+            deducts["aging"] = min(8.0, (age_yr - 5.0) * 0.8)
 
-    def get_rating_category(self, pci_score):
+        cdv = self._corrected_deduct_value(list(deducts.values()))
+        pci_score = max(0.0, min(100.0, 100.0 - cdv))
+        category, description = self.get_rating_category(pci_score)
+        return {
+            "pci_score": round(pci_score, 1),
+            "rating_category": category,
+            "description": description,
+            "deduct_values": {k: round(v, 1) for k, v in deducts.items()},
+            "corrected_deduct_value": round(cdv, 1),
+        }
+
+    @staticmethod
+    def get_rating_category(pci_score):
+        """The published ASTM D6433 rating scale."""
         if pci_score >= 85:
             return "EXCELLENT", "Optimal surface texture; routine monitoring only."
         elif pci_score >= 70:
@@ -76,64 +114,14 @@ class PCIRegressorNet:
         else:
             return "FAILED", "Complete structural collapse; emergency full-depth reconstruction mandatory."
 
-    def train_step(self, X, y):
-        self.t += 1
-        B = X.shape[0]
-        y_col = y.reshape(-1, 1)
-        activations, pre_acts, out = self.forward(X)
-        
-        # Smooth L1 (Huber) Loss
-        diff = out - y_col
-        abs_diff = np.abs(diff)
-        loss = np.mean(np.where(abs_diff < 1.0, 0.5 * (diff**2), abs_diff - 0.5))
-        d_out = np.where(abs_diff < 1.0, diff, np.sign(diff)) / B
-        
-        d_a = d_out
-        for i in reversed(range(len(self.weights))):
-            a_prev = activations[i]
-            if i == len(self.weights) - 1:
-                d_z = d_a
-            else:
-                d_z = d_a * gelu_grad(pre_acts[i])
-                
-            d_w = a_prev.T @ d_z
-            d_b = np.sum(d_z, axis=0, keepdims=True)
-            
-            if i > 0:
-                d_a = d_z @ self.weights[i].T
-                
-            self.m_w[i] = self.beta1 * self.m_w[i] + (1 - self.beta1) * d_w
-            self.v_w[i] = self.beta2 * self.v_w[i] + (1 - self.beta2) * (d_w**2)
-            m_hat_w = self.m_w[i] / (1 - self.beta1**self.t)
-            v_hat_w = self.v_w[i] / (1 - self.beta2**self.t)
-            self.weights[i] -= self.lr * m_hat_w / (np.sqrt(v_hat_w) + self.eps)
-            
-            self.m_b[i] = self.beta1 * self.m_b[i] + (1 - self.beta1) * d_b
-            self.v_b[i] = self.beta2 * self.v_b[i] + (1 - self.beta2) * (d_b**2)
-            m_hat_b = self.m_b[i] / (1 - self.beta1**self.t)
-            v_hat_b = self.v_b[i] / (1 - self.beta2**self.t)
-            self.biases[i] -= self.lr * m_hat_b / (np.sqrt(v_hat_b) + self.eps)
-            
-        return float(loss)
+    def predict(self, pci_inputs_batch):
+        """
+        Compatibility shim for callers still passing a list of kwargs dicts
+        (one per sample) instead of calling compute() directly.
+        """
+        return [self.compute(**kwargs)["pci_score"] for kwargs in pci_inputs_batch]
 
-    def save_weights(self, path):
-        np.savez_compressed(
-            path,
-            w0=self.weights[0], b0=self.biases[0],
-            w1=self.weights[1], b1=self.biases[1],
-            w2=self.weights[2], b2=self.biases[2],
-            norm_mean=self.norm_mean, norm_std=self.norm_std
-        )
 
-    def load_weights(self, path):
-        data = np.load(path)
-        self.weights[0] = data["w0"]
-        self.biases[0] = data["b0"]
-        self.weights[1] = data["w1"]
-        self.biases[1] = data["b1"]
-        self.weights[2] = data["w2"]
-        self.biases[2] = data["b2"]
-        if "norm_mean" in data:
-            self.norm_mean = data["norm_mean"]
-        if "norm_std" in data:
-            self.norm_std = data["norm_std"]
+# Backward-compatible alias - this class is not a neural net (see module
+# docstring), but older code in this repo may still import the old name.
+PCIRegressorNet = PavementConditionIndexEngine

@@ -1,7 +1,12 @@
 """
-Model M10: MoRTH Autonomous Tender & Cryptographic Dispatch Agent
-Generates MoRTH Section 500 / IRC:SP:72 certified Work Orders
-sealed with immutable SHA-256 digests to prevent contractor collusion.
+Model M10: municipal work-order generator with a cryptographic tamper seal.
+
+Builds a MoRTH Section 500 / IRC:SP:72 -styled digital work order (SLA tier,
+asphalt mix, material tonnage and budget), then SHA-256-hashes its canonical
+JSON so any later edit to the order is detectable. This part was already
+real - genuine hashing, genuine material-cost arithmetic - only the
+docstring's "certified" language and the old 10-class distress labels
+needed cleaning up.
 """
 import hashlib
 import json
@@ -12,15 +17,13 @@ class MoRTHDispatchAgent:
         self.authority = authority
 
     def generate_work_order(self, corridor_id, latitude, longitude, distress_class, area_sqm, depth_cm=6.5, pci_score=42):
-        """
-        Generates certified digital work order with cryptographic digest.
-        """
+        """Generates a work order dict and seals it with a SHA-256 digest."""
         # Determine SLA based on severity & PCI
-        if distress_class in ["D40 Pothole", "D40"] or pci_score < 40:
+        if distress_class in ("Pothole Cavity", "D40 Pothole", "D40") or pci_score < 40:
             sla_hours = 24
             priority = "CRITICAL_TIER_1"
             mix = "DBM_SECTION_500"
-        elif distress_class in ["D20 Alligator", "D20"] or pci_score < 60:
+        elif distress_class in ("Crack (Longitudinal / Transverse / Alligator)", "D20 Alligator", "D20") or pci_score < 60:
             sla_hours = 48
             priority = "HIGH_TIER_2"
             mix = "BC_SECTION_508"
@@ -73,9 +76,7 @@ class MoRTHDispatchAgent:
 
     @staticmethod
     def verify_work_order_seal(work_order):
-        """
-        Validates whether a work-order JSON has been tampered with.
-        """
+        """Recomputes the SHA-256 digest and checks it against the stored seal."""
         order_copy = dict(work_order)
         original_seal = order_copy.pop("sha256_cryptographic_seal", None)
         if not original_seal:

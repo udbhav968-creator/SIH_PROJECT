@@ -1,0 +1,81 @@
+{
+  "model": "IMUShockClassifier",
+  "classifier": "StandardScaler -> RandomForestClassifier",
+  "class_names": [
+    "Smooth Asphalt",
+    "Expansion Joint",
+    "Rumble Strip",
+    "Pothole Impact"
+  ],
+  "train_windows": 12000,
+  "held_out_validation_windows": 3000,
+  "held_out_validation_accuracy": 1.0,
+  "random_guess_baseline": 0.25,
+  "confusion_matrix": [
+    [
+      1068,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      605,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      550,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      777
+    ]
+  ],
+  "per_class_report": {
+    "Smooth Asphalt": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 1068.0
+    },
+    "Expansion Joint": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 605.0
+    },
+    "Rumble Strip": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 550.0
+    },
+    "Pothole Impact": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 777.0
+    },
+    "accuracy": 1.0,
+    "macro avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 3000.0
+    },
+    "weighted avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 3000.0
+    }
+  },
+  "data_provenance": "Simulated 100Hz tri-axial accelerometer windows shipped with this repo (datasets/04_mobile_imu_telemetry_100hz) - not field-collected MoRTH fleet logs, whatever the dataset's own metadata file claims. Treat this model as validated against the simulator, not against real vehicles, until it's retrained on genuine sensor logs.",
+  "trained_at_unix": 1789083775
+}
