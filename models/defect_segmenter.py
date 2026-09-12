@@ -159,10 +159,19 @@ class DefectSegmenter:
             # configuration that reported zebra crossings as potholes. A machine
             # in that state looks like it is working.
             self.load_error = str(e)
+            # Read the training version from the SIDECAR report, not from the
+            # blob. The obvious version - reload the blob and read its
+            # sklearn_version key - cannot work: the blob is what just failed to
+            # unpickle, so the second attempt fails identically and the
+            # diagnostic reports None for the one field that explains the error.
+            # Observed in the field: "sklearn_trained_with: None" next to "No
+            # module named '_loss'", which together say nothing.
             trained_with = None
+            report_path = os.path.splitext(self.model_path)[0] + "_report.json"
             try:
-                import joblib as _jl
-                trained_with = (_jl.load(self.model_path) or {}).get("sklearn_version")
+                import json as _json
+                with open(report_path, "r", encoding="utf-8") as _fh:
+                    trained_with = _json.load(_fh).get("sklearn_version")
             except Exception:
                 pass
             try:
@@ -175,10 +184,14 @@ class DefectSegmenter:
                 "error": str(e),
                 "sklearn_here": here,
                 "sklearn_trained_with": trained_with,
-                "likely_cause": ("scikit-learn version mismatch - a pickled estimator "
-                                 "is not portable across versions"
-                                 if trained_with and trained_with != here
-                                 else "unreadable model file"),
+                "likely_cause": (
+                    f"scikit-learn version mismatch: trained on {trained_with}, "
+                    f"running {here}. A pickled estimator is not portable across versions."
+                    if trained_with and trained_with != here else
+                    "scikit-learn version mismatch (the error names a private module that "
+                    "moved between versions); retraining resolves it"
+                    if "No module named" in str(e) else
+                    "unreadable model file"),
                 "fix": "python -m training.train_segmenter --images 2000",
             }
             print(f"[DefectSegmenter] could not load {self.model_path}: {e}")

@@ -241,6 +241,54 @@ def sample_pixels(feats, label, per_class, rng, sound_multiplier=3):
     return np.concatenate(xs), np.concatenate(ys)
 
 
+def cap_pixels(X, y, max_pixels, rng):
+    """
+    Uniform subsample down to `max_pixels`, preserving class proportions.
+
+    Not a nicety. scikit-learn bins the matrix, then holds gradients and
+    hessians per class, and the refit after hard-negative mining briefly holds
+    the old matrix and the new one at once. On a laptop with the full dataset
+    that reached about 1.3 GB and died with:
+
+        numpy._core._exceptions._ArrayMemoryError: Unable to allocate 24.7 MiB
+
+    Uniform sampling keeps every class in the same proportion it already had,
+    so the cap costs a little data and changes nothing about the balance.
+    """
+    n = X.shape[0]
+    if max_pixels <= 0 or n <= max_pixels:
+        return X, y
+    keep = rng.choice(n, max_pixels, replace=False)
+    keep.sort()                       # sorted indices copy far faster
+    print(f"  capping {n:,} -> {max_pixels:,} pixels "
+          f"({X.nbytes / 1e6:.0f} MB -> {X[keep].nbytes / 1e6:.0f} MB)")
+    return X[keep], y[keep]
+
+
+def fit_with_headroom(make_clf, X, y, rng, label="fit"):
+    """
+    Fit, and if memory runs out, halve the sample and say so rather than dying.
+
+    A training run that fails at minute nine of twelve has wasted the whole nine
+    minutes. Halving the data costs accuracy, and the run reports that it did so
+    rather than quietly producing a model trained on less than was asked for.
+    """
+    import gc
+    while True:
+        try:
+            clf = make_clf()
+            clf.fit(X, y)
+            return clf, X.shape[0]
+        except MemoryError:
+            if X.shape[0] <= 500_000:
+                raise
+            half = X.shape[0] // 2
+            print(f"  [{label}] out of memory at {X.shape[0]:,} pixels - "
+                  f"retrying with {half:,}", flush=True)
+            X, y = cap_pixels(X, y, half, rng)
+            gc.collect()
+
+
 def mine_hard_negatives(clf, recs, thresholds, rng, per_image=1500, max_images=220):
     """
     The pixels the model still gets wrong on clean roads, fed back as sound.
@@ -275,10 +323,10 @@ def mine_hard_negatives(clf, recs, thresholds, rng, per_image=1500, max_images=2
             continue
         take = min(per_image, wrong.size)
         pick = rng.choice(wrong, take, replace=False) if wrong.size > take else wrong
-        xs.append(feats[pick])
+        xs.append(feats[pick].astype(np.float32, copy=False))
         ys.append(np.full(pick.size, CLASS_SOUND, dtype=np.uint8))
     if not xs:
-        return None, None, {"images": len(mined_per_image), "false_pixels_found": 0}
+        return None, None, {"images_mined": len(mined_per_image), "false_pixels_found": 0}
     X, y = np.concatenate(xs), np.concatenate(ys)
     stats = {
         "images_mined": len(mined_per_image),
@@ -466,6 +514,15 @@ def main():
                          "(kept so the negatives can be shown to matter)")
     ap.add_argument("--no-mining", action="store_true",
                     help="skip the hard-negative mining pass")
+    ap.add_argument("--max-pixels", type=int, default=4_500_000,
+                    help="hard cap on training pixels. 7.2M float64 needs ~620 MB for the "
+                         "feature matrix alone, and the refit briefly holds two copies; "
+                         "that ran a laptop out of memory mid-fit.")
+    ap.add_argument("--clean-pixel-share", type=float, default=0.35,
+                    help="clean-road pixels as a share of the sound class. Left uncapped, a "
+                         "large negatives folder drowns the defect classes: on one machine "
+                         "clean photographs were 39%% of all training pixels and pothole "
+                         "validation IoU fell from 0.146 to 0.098.")
     args = ap.parse_args()
     if args.quick:
         args.images = 200
@@ -517,6 +574,26 @@ def main():
     X, y, t0 = [], [], time.time()
     all_train = [(r, False) for r in train_recs] + [(r, True) for r in neg_train]
     n_neg_px = 0
+
+    # How many sound pixels each clean photograph may contribute.
+    #
+    # Every clean photograph is 100% sound, so giving each the same budget a
+    # defect photograph spends on sound makes the negatives scale with however
+    # many happen to be on disk. That is fine at 279 of them and wrong at 1,846:
+    # measured on a machine with the full dataset, clean photographs became 39%
+    # of all training pixels and pothole validation IoU dropped from 0.146 to
+    # 0.098. The model was being taught mostly that roads are fine.
+    #
+    # So the negatives get a fixed SHARE of the sound class instead of a fixed
+    # budget per photograph, and the share is a flag so it can be argued with.
+    defect_sound_px = len(train_recs) * args.per_class_pixels * 3
+    target_clean_px = int(args.clean_pixel_share * defect_sound_px)
+    neg_budget = max(150, target_clean_px // max(1, len(neg_train))) if neg_train else 0
+    if neg_train:
+        print(f"  clean-road budget: {neg_budget:,} px from each of {len(neg_train)} "
+              f"photographs (~{target_clean_px:,} px, {args.clean_pixel_share:.0%} of the "
+              f"sound class)")
+
     for i, (rec, is_neg) in enumerate(all_train):
         raw = cv2.imread(rec["path"])
         if raw is None:
@@ -524,10 +601,12 @@ def main():
         img = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
         feats, _ = extract_pixel_features(img)
         label = rasterise(rec)
-        # A clean photograph contributes only sound pixels, so it gets the same
-        # per-image budget a defect photograph spends on sound. Giving it more
-        # would drown the defect classes; giving it none is what produced the bug.
-        xs, ys = sample_pixels(feats, label, args.per_class_pixels, rng)
+        if is_neg:
+            # Only the sound class exists here; the budget is the share computed
+            # above, divided evenly across the clean photographs.
+            xs, ys = sample_pixels(feats, label, neg_budget, rng, sound_multiplier=1)
+        else:
+            xs, ys = sample_pixels(feats, label, args.per_class_pixels, rng)
         if xs is not None:
             X.append(xs)
             y.append(ys)
@@ -536,19 +615,28 @@ def main():
         if (i + 1) % 100 == 0:
             print(f"    {i + 1}/{len(all_train)} photographs featurised "
                   f"({time.time() - t0:.0f}s)", flush=True)
-    X = np.concatenate(X)
+    # float32 halves the feature matrix. The extra precision buys nothing here -
+    # the features are colour channels, gradients and local statistics - and the
+    # refit briefly holds two copies, which is where a laptop ran out of memory.
+    X = np.concatenate(X).astype(np.float32, copy=False)
     y = np.concatenate(y)
+    n_sampled = int(X.shape[0])
+    X, y = cap_pixels(X, y, args.max_pixels, rng)
     counts = {int(c): int((y == c).sum()) for c in np.unique(y)}
     print(f"  {X.shape[0]:,} training pixels, {X.shape[1]} features, per class {counts}")
     if n_neg_px:
-        print(f"  of which {n_neg_px:,} come from clean photographs "
-              f"({100.0 * n_neg_px / X.shape[0]:.1f}%)")
+        share = n_neg_px / float(n_sampled)
+        print(f"  of which {share:.1%} came from clean photographs "
+              f"({n_neg_px:,} of {n_sampled:,} sampled, before any cap)")
+    print(f"  feature matrix {X.nbytes / 1e6:.0f} MB as {X.dtype}")
 
-    clf = HistGradientBoostingClassifier(
-        max_iter=250, learning_rate=0.1, max_depth=None, l2_regularization=1.0,
-        early_stopping=True, validation_fraction=0.1, random_state=args.seed)
+    def make_clf():
+        return HistGradientBoostingClassifier(
+            max_iter=250, learning_rate=0.1, max_depth=None, l2_regularization=1.0,
+            early_stopping=True, validation_fraction=0.1, random_state=args.seed)
+
     t1 = time.time()
-    clf.fit(X, y)
+    clf, n_used = fit_with_headroom(make_clf, X, y, rng, label="fit 1")
     print(f"  trained in {time.time() - t1:.0f}s ({clf.n_iter_} boosting iterations)")
 
     print("  calibrating decision thresholds (pass 1) ...")
@@ -565,14 +653,20 @@ def main():
               f"{mining['images_mined']} clean photographs "
               f"({mining['false_pixels_per_image_mean']:.0f} per photograph)")
         if hx is not None:
-            X = np.concatenate([X, hx])
+            import gc
+            # Drop the first model BEFORE building the bigger matrix. Holding the
+            # old classifier, the old X and the new X at once is what pushed a
+            # laptop over the edge; the old model is not needed again.
+            del clf
+            gc.collect()
+            X = np.concatenate([X, hx.astype(np.float32, copy=False)])
             y = np.concatenate([y, hy])
+            del hx, hy
+            gc.collect()
+            X, y = cap_pixels(X, y, args.max_pixels, rng)
             print(f"    refitting on {X.shape[0]:,} pixels "
-                  f"(+{hx.shape[0]:,} mined)", flush=True)
-            clf = HistGradientBoostingClassifier(
-                max_iter=250, learning_rate=0.1, max_depth=None, l2_regularization=1.0,
-                early_stopping=True, validation_fraction=0.1, random_state=args.seed)
-            clf.fit(X, y)
+                  f"({X.nbytes / 1e6:.0f} MB)", flush=True)
+            clf, _n = fit_with_headroom(make_clf, X, y, rng, label="refit")
             counts = {int(c): int((y == c).sum()) for c in np.unique(y)}
             print(f"    refit in {time.time() - t_m:.0f}s ({clf.n_iter_} iterations)")
             print("  calibrating decision thresholds (pass 2) ...")
@@ -621,6 +715,8 @@ def main():
             "calibration_photographs": len(cal_recs),
             "test_photographs": len(test_recs),
             "training_pixels": int(X.shape[0]),
+            "max_pixels_cap": args.max_pixels,
+            "clean_pixel_share": args.clean_pixel_share,
             "pixels_per_class": counts,
             "source": "DNIT Cracks and Potholes in Road Images - hand-drawn polygons",
             "clean_photographs": {
