@@ -22,12 +22,12 @@
     "logistic": {
       "accuracy": 0.8923,
       "macro_f1": 0.6754,
-      "seconds": 2.1
+      "seconds": 1.2
     },
     "svc_rbf": {
       "accuracy": 0.8692,
       "macro_f1": 0.6091,
-      "seconds": 9.6
+      "seconds": 8.6
     }
   },
   "confusion_matrix": [
@@ -153,7 +153,7 @@
     }
   },
   "split_strategy": "grouped by source photograph; test set scored once",
-  "trained_at_unix": 1789186863,
+  "trained_at_unix": 1789187206,
   "handcrafted_baseline": {
     "accuracy": 0.8256,
     "macro_f1": 0.6423,
