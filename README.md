@@ -13,8 +13,8 @@ code in this repository, and the code that measures it is included.
 
 | Capability | How it works | Status |
 |---|---|---|
-| Road distress classification, 7 classes | ResNet-50 ImageNet embeddings (ONNX Runtime) → class-balanced logistic head | **88.5%** on 243 held-out images from 205 unseen photographs |
-| — same task, fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 87.7% on the identical split; serves when no CNN backbone is on disk |
+| Road distress classification, 7 classes | ResNet-50 ImageNet embeddings (ONNX Runtime) → class-balanced logistic head | **89.2%** on 390 held-out images from 356 unseen photographs |
+| — same task, fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 82.6% on the identical split; serves when no CNN backbone is on disk |
 | Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Working: people, bicycles, cars, buses, trucks, traffic lights, signs |
 | IMU shock classification | 100 Hz tri-axial accelerometer windows → RandomForest | 100% on 3000 windows, **on simulated data** |
 | Defect geometry | Inverse perspective mapping, pixels → m² and depth | Deterministic |
@@ -30,9 +30,9 @@ code in this repository, and the code that measures it is included.
 
 | Test | Result |
 |---|---|
-| Held-out accuracy | **88.5%**, macro-F1 0.846, on 243 images from 205 unseen photographs (random guess 14.3%) |
-| Same split, hand-crafted features | 87.7%, macro-F1 0.840 |
-| Same split, MobileNetV2 embeddings | 83.5%, macro-F1 0.868 |
+| Held-out accuracy | **89.2%**, macro-F1 0.675, on 390 images from 356 unseen photographs (random guess 14.3%) |
+| Same split, hand-crafted features | 82.6%, macro-F1 0.642 |
+| Same split, ResNet-50 + SVC-RBF head | 86.9%, macro-F1 0.609 |
 | Grouped 5-fold cross-validation (baseline features) | 84.1% ± 1.8, macro-F1 0.696 |
 | Leakage audit | 0 cross-class duplicates, 0 groups spanning splits |
 | Calibration (ECE, baseline) | 0.064 |
@@ -46,31 +46,37 @@ and it is scored once.
 
 | Class | Precision | Recall | F1 | Test images |
 |---|---|---|---|---|
-| Normal Road / Sound Pavement | 0.95 | 1.00 | 0.98 | 40 |
-| Crack (Longitudinal / Transverse / Alligator) | 0.90 | 0.88 | 0.89 | 120 |
-| Pothole Cavity | 0.84 | 0.84 | 0.84 | 73 |
-| Waterlogging / Flooding Hazard | 1.00 | 0.50 | 0.67 | 2 |
-| Missing Zebra Crossing | 0.60 | 1.00 | 0.75 | 3 |
-| Missing Road Divider | 1.00 | 0.67 | 0.80 | 3 |
-| Damaged Traffic Sign | 1.00 | 1.00 | 1.00 | 2 |
+| Normal Road / Sound Pavement | 0.98 | 0.90 | 0.94 | 140 |
+| Crack (Longitudinal / Transverse / Alligator) | 0.84 | 0.91 | 0.87 | 120 |
+| Pothole Cavity | 0.89 | 0.90 | 0.90 | 120 |
+| Waterlogging / Flooding Hazard | 0.50 | 1.00 | 0.67 | 2 |
+| Missing Zebra Crossing | 0.25 | 0.33 | 0.29 | 3 |
+| Missing Road Divider | 0.50 | 0.33 | 0.40 | 3 |
+| Damaged Traffic Sign | 1.00 | 0.50 | 0.67 | 2 |
 
 The three classes carrying the workload — normal, crack, pothole — are scored on
-233 of the 243 test images. The other four have two or three test images each, so
-their F1 moves by 0.1 or more on a single image and should not be read as a
-stable measurement. That is a data volume problem, it is visible on the
-dashboard's model card, and it is not hidden behind an averaged number.
+380 of the 390 test images and sit between 0.87 and 0.94 F1. The other four have
+two or three test images each, so their F1 moves by 0.3 or more on a single
+image and is not a stable measurement of anything. Macro-F1 of 0.675 is
+dominated by that noise, which is why both numbers are reported rather than
+whichever one flatters the model. It is a data volume problem, it is visible on
+the dashboard's model card, and it is not hidden behind an average.
 
 ## Data
 
 | # | Class | Images | Distinct photographs |
 |---|---|---|---|
-| 0 | Normal Road / Sound Pavement | 242 | 14 |
-| 1 | Crack (Longitudinal / Transverse / Alligator) | 1230 | 1230 |
-| 2 | Pothole Cavity | 489 | 489 |
+| 0 | Normal Road / Sound Pavement | 1807 | ~1580 |
+| 1 | Crack (Longitudinal / Transverse / Alligator) | 2413 | ~2400 |
+| 2 | Pothole Cavity | 1404 | ~1400 |
 | 3 | Waterlogging / Flooding Hazard | 14 | 14 |
 | 4 | Missing Zebra Crossing | 19 | 19 |
 | 5 | Missing Road Divider | 20 | 20 |
 | 6 | Damaged Traffic Sign | 14 | 14 |
+
+2,373 distinct photographs in total after the Kaggle ingest. The imbalance is
+the point: classes 3-6 are the ones holding macro-F1 down, and no amount of
+modelling substitutes for photographs of them.
 
 **Primary source:** *Cracks and Potholes in Road Images* — 2,235 photographs
 collected by DNIT, the Brazilian federal highway department, with 1,921 crack
@@ -78,6 +84,18 @@ and 564 pothole polygon annotations. Each annotated defect is cropped into a
 training example by `scripts/fetch_cracks_potholes_dataset.py`.
 Original: github.com/biankatpas/Cracks-and-Potholes-in-Road-Images-Dataset ·
 COCO conversion: github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset
+
+**Kaggle:** four datasets pulled through the official API — surface cracks
+(concrete, close range: real crack texture but not road scenes), and three
+pothole/plain-road sets. `virenbr11/pothole-and-plain-rode-images` turned out to
+be 94% a re-upload of `atulyakumar98/pothole-detection-dataset`; 700 of its 739
+images were rejected as perceptual duplicates. That check is the difference
+between an honest score and an inflated one.
+
+A fifth, `andrewmvd/road-sign-detection`, was removed after it went in: it is a
+dataset of road signs, not damaged road signs, so the model learned "a sign is
+present" under a label claiming "this sign is damaged". Removing its 299 images
+raised accuracy from 88.5% to 89.2%.
 
 **Smaller classes:** Wikimedia Commons and Geograph photographs.
 
@@ -104,12 +122,12 @@ Or stage by stage:
 python -m scripts.fetch_cracks_potholes_dataset --limit 2235   # ~70 s, real data
 python -m training.train_mega_suite                            # ~3 min, baseline models
 python -m scripts.fetch_cnn_backbone                           # 98 MB ResNet-50, once
-python -m training.train_cnn_head --compare                    # ~2 min, the 88.5% model
+python -m training.train_cnn_head --compare                    # ~4 min, the 89.2% model
 python -m api.server                                           # http://127.0.0.1:8000/dashboard
 ```
 
 On startup the server prints which classifier it loaded. `deep CNN embeddings
-(cnn:resnet50+logistic)` is the 88.5% path; `HOG/LBP + SVM baseline` means the
+(cnn:resnet50+logistic)` is the 89.2% path; `HOG/LBP + SVM baseline` means the
 backbone is missing and it fell back. On a slow machine,
 `python -m scripts.fetch_cnn_backbone --model mobilenetv2` is 14 MB and 10 ms
 per image instead of 33, at 83.5% accuracy. A head only ever runs with the
@@ -165,7 +183,8 @@ and reports `UNAVAILABLE` rather than inventing a result.
 | Real training | 36.6% | Genuine classifiers trained on the 133 photographs present |
 | Label conflicts fixed | 79.4% | 20 photographs were filed under three contradictory labels at once |
 | Real dataset added | 83.4% | 133 → 1,800 distinct photographs |
-| ImageNet CNN embeddings | **88.5%** | ResNet-50 replaces hand-written features; every weak class improved, damaged-sign F1 went 0.00 → 1.00 |
+| ImageNet CNN embeddings | 88.5% | ResNet-50 replaces hand-written features |
+| Kaggle ingest + a labelling fix | **89.2%** | 2,373 distinct photographs; removing 299 mislabelled sign images *raised* accuracy |
 
 `scripts/validate_models.py` is what found the label conflicts, by hashing
 every image and looking for the same photograph under different labels.

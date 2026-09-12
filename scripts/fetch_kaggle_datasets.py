@@ -54,6 +54,15 @@ Honest caveats, which belong in the model card too
   many images came from each domain.
 - Kaggle licences vary per dataset. `--verify` prints each licence. Check them
   before publishing results; this script does not decide that for you.
+- REMOVED, and worth explaining: andrewmvd/road-sign-detection was in this
+  catalogue mapped to the Damaged Traffic Sign class. It is a dataset of road
+  signs, not of DAMAGED road signs. Training on it taught the model "a sign is
+  present", while the class it was filed under claims "this sign is damaged" -
+  so a photograph of a perfectly good sign came back labelled damaged, with
+  high confidence. The measured F1 of 0.98 was real and measured the wrong
+  thing. There is no substitute for a dataset of the condition you actually
+  want to classify, and a class must not be filled with the nearest available
+  images just because the folder has a similar name.
 """
 
 import argparse
@@ -121,14 +130,6 @@ CATALOG = [
         "domain": "road",
         "cap": {POTHOLE: 600, NORMAL: 600},
         "folder_overrides": {"pothole": POTHOLE, "plain": NORMAL, "normal": NORMAL},
-    },
-    {
-        "key": "road-sign-damage",
-        "slug": "andrewmvd/road-sign-detection",
-        "about": "Road sign photographs - used for the damaged-sign class's shape prior",
-        "domain": "road",
-        "cap": {SIGN: 300},
-        "folder_overrides": {"images": SIGN, "annotations": None},
     },
 ]
 
