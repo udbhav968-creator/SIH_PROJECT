@@ -1,46 +1,131 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/BEL-SIH%2026124-emerald?style=for-the-badge&logo=india&logoColor=white" />
-  <img src="https://img.shields.io/badge/MoRTH%2FNHAI-Certified-blue?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Python-3.10%2B-yellow?style=for-the-badge&logo=python&logoColor=white" />
-  <img src="https://img.shields.io/badge/Tests-10%2F10%20PASS-brightgreen?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Val%20Accuracy-79.87%25-success?style=for-the-badge" />
-</p>
+# ROAD-SHIELD AI Engine
 
-<h1 align="center">🛡️ ROAD-SHIELD AI Engine</h1>
-<h3 align="center">AI-Powered Mobile Urban Infrastructure Intelligence Platform</h3>
-<h4 align="center">Smart India Hackathon 2026 · Problem Statement SIH26124 · Bharat Electronics Limited (BEL)</h4>
+**Smart India Hackathon 2026 · Problem statement SIH26124 · Bharat Electronics Limited**
+AI-assisted road quality assessment using the public bus fleet as a mobile sensing network.
+
+A road photograph goes in; a classified, measured and costed repair record comes
+out, sealed so it cannot be quietly altered. Every figure below was measured by
+code in this repository, and the code that measures it is included.
 
 ---
 
-## 🏆 Problem Statement (SIH26124)
+## What it actually does
 
-> **Organization:** Bharat Electronics Limited (BEL) — *Ministry of Electronics & Information Technology*  
-> **Theme:** Smart Automation  
-> **Title:** AI-Powered Road Quality Assessment and Urban Safety Monitoring via Public Transport Fleet
+| Capability | How it works | Status |
+|---|---|---|
+| Road distress classification, 7 classes | HOG + LBP + colour features → PCA → class-balanced RBF SVM | **83.4%** on 343 held-out photographs |
+| Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Working: people, bicycles, cars, buses, trucks, traffic lights, signs |
+| IMU shock classification | 100 Hz tri-axial accelerometer windows → RandomForest | 100% on 3000 windows, **on simulated data** |
+| Defect geometry | Inverse perspective mapping, pixels → m² and depth | Deterministic |
+| Repair costing | MoRTH Section 500 bitumen tonnage and rates | Deterministic |
+| Pavement condition index | ASTM D6433 deduct-value procedure | Deterministic |
+| Tamper-proof work orders | SHA-256 seal over the order fields | Verified by tests |
+| Fleet deduplication | Haversine distance clustering of reports | Verified by tests |
+| Repair verification | SSIM + Laplacian variance + perceptual hash | Catches resubmitted photographs |
+| Sensor fusion | Bayesian gate over vision + IMU evidence | Reports "unavailable" when no IMU window exists |
+| GIS services | Google Maps if a key is set, else OpenStreetMap Nominatim / OSRM / Overpass / Open-Meteo | Reports UNAVAILABLE rather than inventing data |
 
-Design and implement an AI/ML-based system that leverages the existing public transport bus fleet as a **mobile sensing network** to:
-- Detect and classify road surface distress (potholes, cracks, waterlogging)
-- Monitor pedestrian safety at school zones and unprotected crosswalks
-- Detect rash driving / hit-and-run incidents via ALPR
-- Deduplicate multi-bus reports using spatial clustering
-- Stream findings to a centralized GIS command system for MoRTH work-order generation
+## Measured performance
 
----
+| Test | Result |
+|---|---|
+| Held-out accuracy | **83.4%** on 343 unseen photographs (random guess 14.3%) |
+| Grouped 5-fold cross-validation | 84.1% ± 1.8, macro-F1 0.696 |
+| Leakage audit | 0 cross-class duplicates, 0 groups spanning splits |
+| Calibration (ECE) | 0.064 |
+| Latency | 15.6 ms features, 257.1 ms full pipeline (p50) |
 
-## 🎯 Key Features
+### Per class
 
-| Feature | Implementation |
-|---------|----------------|
-| **9-Class Road Distress Detection** | VisionDistressNet (Transformer-CNN, 79.87% val acc) |
-| **100Hz IMU Shock Correlation** | MPU-6050 Z-axis telemetry, 4-class classifier |
-| **ASTM D6433 PCI Scoring** | Continuous pavement condition index (0–100) |
-| **180-Day Deterioration Forecast** | Monsoon + ESAL lifecycle prediction |
-| **Urban Traffic Density** | PCU calculation, Urban Congestion Index (UCI) |
-| **ALPR / Rash Driving Detection** | Indian HSRP plate extraction, SHA-256 tamper seal |
-| **Spatial Fleet Deduplication** | Haversine great-circle clustering (≤8m threshold) |
-| **MoRTH Cryptographic Work Orders** | SHA-256 signed BOQ dispatch agents |
-| **Leaflet GIS Dashboard** | Live dark-theme map with defect/fleet/heatmap overlays |
-| **Edge Export** | C++ header + OpenNeural JSON spec for edge deployment |
+| Class | Precision | Recall | F1 | Test images |
+|---|---|---|---|---|
+| Normal Road / Sound Pavement | 1.00 | 0.67 | 0.80 | 3 |
+| Crack (Longitudinal / Transverse / Alligator) | 0.86 | 0.91 | 0.88 | 200 |
+| Pothole Cavity | 0.82 | 0.76 | 0.79 | 122 |
+| Waterlogging / Flooding Hazard | 0.67 | 1.00 | 0.80 | 4 |
+| Missing Zebra Crossing | 0.50 | 0.40 | 0.44 | 5 |
+| Missing Road Divider | 0.50 | 0.40 | 0.44 | 5 |
+| Damaged Traffic Sign | 1.00 | 0.50 | 0.67 | 4 |
+
+Four classes have fewer than 25 images and perform accordingly. That is a data
+volume problem, it is visible on the dashboard's model card, and it is not
+hidden behind an averaged number.
+
+## Data
+
+| # | Class | Images | Distinct photographs |
+|---|---|---|---|
+| 0 | Normal Road / Sound Pavement | 242 | 14 |
+| 1 | Crack (Longitudinal / Transverse / Alligator) | 1230 | 1230 |
+| 2 | Pothole Cavity | 489 | 489 |
+| 3 | Waterlogging / Flooding Hazard | 14 | 14 |
+| 4 | Missing Zebra Crossing | 19 | 19 |
+| 5 | Missing Road Divider | 20 | 20 |
+| 6 | Damaged Traffic Sign | 14 | 14 |
+
+**Primary source:** *Cracks and Potholes in Road Images* — 2,235 photographs
+collected by DNIT, the Brazilian federal highway department, with 1,921 crack
+and 564 pothole polygon annotations. Each annotated defect is cropped into a
+training example by `scripts/fetch_cracks_potholes_dataset.py`.
+Original: github.com/biankatpas/Cracks-and-Potholes-in-Road-Images-Dataset ·
+COCO conversion: github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset
+
+**Smaller classes:** Wikimedia Commons and Geograph photographs.
+
+**Object detection:** COCO, 330,000 images, through the published YOLOv8n weights.
+
+**IMU:** 15,000 windows shipped with this repository. These are **simulated**,
+not recorded from a vehicle, and the model's 100% score should be read in that
+light.
+
+**Not Indian road data.** The photographs are Brazilian. RDD2022 provides
+47,000 annotated images including India and is the obvious next step; the
+downloader is written and waiting on a GPU.
+
+## Running it
+
+```bash
+pip install -r requirements.txt
+python -m scripts.fetch_cracks_potholes_dataset --limit 2235   # ~70 s, real data
+python -m training.train_mega_suite                            # ~3 min
+python -m api.server                                           # http://127.0.0.1:8000/dashboard
+```
+
+Optional extras:
+
+```bash
+python -m scripts.fetch_detector            # COCO object detector (needs ultralytics once)
+python -m scripts.validate_models           # leakage, cross-validation, calibration, latency
+python -m scripts.model_selection           # compare six classifiers on identical folds
+python -m unittest tests.test_road_shield   # 24 regression tests
+python -m training.train_deep_vision        # fine-tune a CNN (needs PyTorch)
+```
+
+A Google Maps key is optional; put it in `checkpoints/google_maps_api_key.txt`
+or set `GOOGLE_MAPS_API_KEY`. Without one the system uses OpenStreetMap.
+
+## How accuracy got here
+
+| Stage | Held-out accuracy | What changed |
+|---|---|---|
+| Inherited code | 36.6% | Models were untrained; some outputs were fabricated |
+| Real training | 36.6% | Genuine classifiers trained on the 133 photographs present |
+| Label conflicts fixed | 79.4% | 20 photographs were filed under three contradictory labels at once |
+| Real dataset added | **83.4%** | 133 → 1,800 distinct photographs |
+
+`scripts/validate_models.py` is what found the label conflicts, by hashing
+every image and looking for the same photograph under different labels.
+
+## Honest limitations
+
+- The classifier is a support vector machine on engineered features, not a
+  neural network. A CNN fine-tuning script is included but needs PyTorch.
+- The photographs are Brazilian, not Indian.
+- The IMU data is simulated.
+- There is no dashcam video in this repository; the system analyses photographs.
+- Four classes have too few examples to work well.
+- No demographic inference is performed on people in frame, by design.
+
 
 ---
 
