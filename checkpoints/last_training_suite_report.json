@@ -1,13 +1,13 @@
 {
   "is_training": false,
-  "run_id": "RUN-1789175304",
+  "run_id": "RUN-1789172383",
   "status": "ALL_MODELS_TRAINED",
   "stage": "TRAINING_IMU_SHOCK_CLASSIFIER",
   "elapsed_seconds": 0.0,
   "results": {
     "vision": {
       "model": "VisionDistressNet",
-      "classifier": "StandardScaler -> PCA -> SVC(rbf)",
+      "classifier": "StandardScaler -> PCA -> SVC(rbf, class-balanced)",
       "class_names": [
         "Normal Road / Sound Pavement",
         "Crack (Longitudinal / Transverse / Alligator)",
@@ -71,7 +71,7 @@
       "train_photos": 1027,
       "train_photos_after_augmentation": 2054,
       "held_out_validation_photos": 343,
-      "held_out_validation_accuracy": 0.8397,
+      "held_out_validation_accuracy": 0.8338,
       "random_guess_baseline": 0.1429,
       "confusion_matrix": [
         [
@@ -94,38 +94,38 @@
         ],
         [
           0,
-          25,
-          97,
+          29,
+          93,
           0,
           0,
           0,
           0
         ],
         [
+          0,
+          0,
+          0,
+          4,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
           0,
           0,
           1,
-          3,
-          0,
-          0,
+          2,
+          2,
           0
         ],
         [
-          0,
-          0,
           0,
           0,
           2,
-          3,
-          0
-        ],
-        [
-          0,
-          0,
-          3,
           0,
           1,
-          1,
+          2,
           0
         ],
         [
@@ -146,21 +146,21 @@
           "support": 3.0
         },
         "Crack (Longitudinal / Transverse / Alligator)": {
-          "precision": 0.8743961352657005,
+          "precision": 0.8578199052132701,
           "recall": 0.905,
-          "f1-score": 0.8894348894348895,
+          "f1-score": 0.8807785888077859,
           "support": 200.0
         },
         "Pothole Cavity": {
-          "precision": 0.8083333333333333,
-          "recall": 0.7950819672131147,
-          "f1-score": 0.8016528925619835,
+          "precision": 0.8157894736842105,
+          "recall": 0.7622950819672131,
+          "f1-score": 0.788135593220339,
           "support": 122.0
         },
         "Waterlogging / Flooding Hazard": {
-          "precision": 0.75,
-          "recall": 0.75,
-          "f1-score": 0.75,
+          "precision": 0.6666666666666666,
+          "recall": 1.0,
+          "f1-score": 0.8,
           "support": 4.0
         },
         "Missing Zebra Crossing": {
@@ -170,9 +170,9 @@
           "support": 5.0
         },
         "Missing Road Divider": {
-          "precision": 0.25,
-          "recall": 0.2,
-          "f1-score": 0.2222222222222222,
+          "precision": 0.5,
+          "recall": 0.4,
+          "f1-score": 0.4444444444444444,
           "support": 5.0
         },
         "Damaged Traffic Sign": {
@@ -181,22 +181,22 @@
           "f1-score": 0.6666666666666666,
           "support": 4.0
         },
-        "accuracy": 0.8396501457725948,
+        "accuracy": 0.8338192419825073,
         "macro avg": {
-          "precision": 0.7403899240855762,
-          "recall": 0.6023926619828259,
-          "f1-score": 0.6534887307614581,
+          "precision": 0.7628965779377354,
+          "recall": 0.6619945355191257,
+          "f1-score": 0.6892099625119544,
           "support": 343.0
         },
         "weighted avg": {
-          "precision": 0.837451585188941,
-          "recall": 0.8396501457725948,
-          "f1-score": 0.8369930926517197,
+          "precision": 0.8331106807545026,
+          "recall": 0.8338192419825073,
+          "f1-score": 0.8309602660220107,
           "support": 343.0
         }
       },
       "note": "Validation photos and their augmented copies are strictly disjoint from the training set. Accuracy is limited mainly by how few distinct source photos exist for some classes (see dataset_inventory) - this is a data problem, not an unreported one.",
-      "trained_at_unix": 1789175402
+      "trained_at_unix": 1789172429
     },
     "imu": {
       "model": "IMUShockClassifier",
@@ -277,7 +277,7 @@
         }
       },
       "data_provenance": "Simulated 100Hz tri-axial accelerometer windows shipped with this repo (datasets/04_mobile_imu_telemetry_100hz) - not field-collected MoRTH fleet logs, whatever the dataset's own metadata file claims. Treat this model as validated against the simulator, not against real vehicles, until it's retrained on genuine sensor logs.",
-      "trained_at_unix": 1789175407
+      "trained_at_unix": 1789172434
     }
   }
 }

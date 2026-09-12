@@ -90,7 +90,7 @@ def run_training(val_ratio=0.25, copies_per_image=7, seed=42, save_dir=None, max
 
     report = {
         "model": "VisionDistressNet",
-        "classifier": "StandardScaler -> PCA -> SVC(rbf)",
+        "classifier": "StandardScaler -> PCA -> SVC(rbf, class-balanced)",
         "class_names": VisionDistressNet.CLASS_NAMES,
         "dataset_inventory": dataset_inventory(),
         "train_photos": len(train_imgs),

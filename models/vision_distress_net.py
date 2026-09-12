@@ -21,6 +21,7 @@ LogisticRegression at this dataset size).
 import os
 import numpy as np
 import joblib
+from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -96,10 +97,32 @@ class VisionDistressNet:
         return self.pipeline is not None
 
     def _build_pipeline(self, n_features, n_samples):
-        # Keep PCA components comfortably below the sample count so we don't
-        # just memorize a ~160-photo dataset. An RBF-kernel SVM on top of the
-        # PCA projection beat a random forest and gradient boosting in a
-        # held-out comparison at this dataset size (see training/train_vision.py).
+        """
+        StandardScaler -> PCA -> class-balanced RBF SVM.
+
+        Chosen by measurement. scripts/model_selection.py compares six
+        classifiers plus a soft-voting ensemble on identical grouped folds;
+        results are in checkpoints/model_selection_report.json. Under that
+        protocol (no augmentation, 4-fold, class 1 capped at 800) a balanced
+        logistic regression scored the best macro-F1:
+
+            logistic (PCA 0.99, C=0.5)   accuracy 80.7%   macro-F1 0.745
+            HistGradientBoosting         accuracy 74.7%   macro-F1 0.607
+            soft-vote ensemble of three  accuracy 76.0%   macro-F1 0.627
+            SVC(rbf)                     accuracy 76.5%   macro-F1 0.491
+            RandomForest                 accuracy 62.6%   macro-F1 0.349
+
+        Under the *production* protocol - augmented training set, the split
+        that training/train_vision.py actually uses - the ordering reverses:
+        the SVM reaches 83.4% accuracy and macro-F1 0.67 against logistic
+        regression's 77.8% and 0.58. Augmentation changes which model wins,
+        which is worth knowing rather than hiding.
+
+        The SVM is kept because it wins under the protocol this project
+        actually ships. The ensemble was tried and lost; its members' errors
+        were correlated, so it is not used simply because three models sound
+        better than one.
+        """
         n_components = max(8, min(64, n_features, n_samples - 1))
         return Pipeline(
             [

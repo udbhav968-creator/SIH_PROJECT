@@ -451,7 +451,15 @@ class DeepInferencePipeline:
                 False,
             )
 
-        raw_imu = np.asarray(imu_series, dtype=np.float32)
+        # Accept an (N, 3) array, the (window, label) pair returned by
+        # data.dataset_generator.sample_real_imu_window, or a dict wrapping one.
+        series = imu_series
+        if isinstance(series, dict):
+            series = series.get("imu_series", series.get("window"))
+        if isinstance(series, (tuple, list)) and len(series) == 2 and np.ndim(series[1]) == 0:
+            series = series[0]
+
+        raw_imu = np.asarray(series, dtype=np.float32)
         if raw_imu.ndim == 2:
             raw_imu = np.expand_dims(raw_imu, axis=0)
         delta_z = float(np.max(raw_imu[0, :, 2]) - np.min(raw_imu[0, :, 2]))

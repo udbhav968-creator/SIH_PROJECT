@@ -1,0 +1,76 @@
+{
+  "generated_unix": 1789172258,
+  "folds": 4,
+  "n_images": 1598,
+  "per_class_counts": {
+    "0": 242,
+    "1": 800,
+    "2": 489,
+    "3": 14,
+    "4": 19,
+    "5": 20,
+    "6": 14
+  },
+  "class_names": [
+    "Normal Road / Sound Pavement",
+    "Crack (Longitudinal / Transverse / Alligator)",
+    "Pothole Cavity",
+    "Waterlogging / Flooding Hazard",
+    "Missing Zebra Crossing",
+    "Missing Road Divider",
+    "Damaged Traffic Sign"
+  ],
+  "results": {
+    "svc_rbf": {
+      "accuracy_mean": 0.7647133458646617,
+      "accuracy_std": 0.016210695050346613,
+      "macro_f1_mean": 0.4906302105455491,
+      "macro_f1_std": 0.03672513759648222,
+      "seconds": 17.9
+    },
+    "svc_tuned": {
+      "accuracy_mean": 0.7647117794486216,
+      "accuracy_std": 0.015740568032975855,
+      "macro_f1_mean": 0.4708455136518672,
+      "macro_f1_std": 0.025872647452413588,
+      "seconds": 20.6
+    },
+    "hist_gb": {
+      "accuracy_mean": 0.747203947368421,
+      "accuracy_std": 0.05234264331768308,
+      "macro_f1_mean": 0.6071548292140189,
+      "macro_f1_std": 0.03901252473972158,
+      "seconds": 9.1
+    },
+    "random_forest": {
+      "accuracy_mean": 0.62578007518797,
+      "accuracy_std": 0.009177353929576412,
+      "macro_f1_mean": 0.34864545112918827,
+      "macro_f1_std": 0.038278090426381674,
+      "seconds": 14.3
+    },
+    "svc_balanced": {
+      "accuracy_mean": 0.7647133458646617,
+      "accuracy_std": 0.015003280592564972,
+      "macro_f1_mean": 0.49075039462757597,
+      "macro_f1_std": 0.03742196182653467,
+      "seconds": 18.2
+    },
+    "logistic_wide": {
+      "accuracy_mean": 0.8072760025062657,
+      "accuracy_std": 0.02055073819940336,
+      "macro_f1_mean": 0.7448098902003026,
+      "macro_f1_std": 0.018223894982909775,
+      "seconds": 11.7
+    },
+    "logistic": {
+      "accuracy_mean": 0.8028853383458647,
+      "accuracy_std": 0.015989538213114256,
+      "macro_f1_mean": 0.7295326414837282,
+      "macro_f1_std": 0.027165059623483787,
+      "seconds": 11.3
+    }
+  },
+  "winner": "logistic_wide",
+  "selection_metric": "macro F1 over grouped folds"
+}

@@ -1,7 +1,7 @@
 {
-  "generated_unix": 1789169385,
-  "n_images": 361,
-  "n_distinct_photographs": 133,
+  "generated_unix": 1789171070,
+  "n_images": 2028,
+  "n_distinct_photographs": 1800,
   "class_names": [
     "Normal Road / Sound Pavement",
     "Crack (Longitudinal / Transverse / Alligator)",
@@ -11,106 +11,166 @@
     "Missing Road Divider",
     "Damaged Traffic Sign"
   ],
+  "leakage": {
+    "images_hashed": 2028,
+    "near_duplicate_pairs_same_class": 2287,
+    "near_duplicate_pairs_cross_class": 0,
+    "cross_class_examples": [],
+    "group_overlap_between_splits": {
+      "train_val": 0,
+      "train_test": 0,
+      "val_test": 0
+    },
+    "verdict": "CLEAN"
+  },
   "cross_validation": {
     "folds": 5,
     "per_fold": [
       {
         "fold": 1,
-        "train": 277,
-        "test": 84,
-        "accuracy": 0.4048,
-        "macro_f1": 0.4437
+        "train": 1612,
+        "test": 416,
+        "accuracy": 0.8077,
+        "macro_f1": 0.6736
       },
       {
         "fold": 2,
-        "train": 279,
-        "test": 82,
-        "accuracy": 0.8902,
-        "macro_f1": 0.6383
+        "train": 1629,
+        "test": 399,
+        "accuracy": 0.8596,
+        "macro_f1": 0.6885
       },
       {
         "fold": 3,
-        "train": 296,
-        "test": 65,
-        "accuracy": 0.5385,
-        "macro_f1": 0.5147
+        "train": 1629,
+        "test": 399,
+        "accuracy": 0.8421,
+        "macro_f1": 0.7889
       },
       {
         "fold": 4,
-        "train": 296,
-        "test": 65,
-        "accuracy": 0.8769,
-        "macro_f1": 0.7096
+        "train": 1630,
+        "test": 398,
+        "accuracy": 0.8417,
+        "macro_f1": 0.6441
       },
       {
         "fold": 5,
-        "train": 296,
-        "test": 65,
-        "accuracy": 0.8923,
-        "macro_f1": 0.7593
+        "train": 1612,
+        "test": 416,
+        "accuracy": 0.8534,
+        "macro_f1": 0.6851
       }
     ],
-    "accuracy_mean": 0.7205,
-    "accuracy_std": 0.2077,
-    "macro_f1_mean": 0.6131,
-    "macro_f1_std": 0.1181,
+    "accuracy_mean": 0.8409,
+    "accuracy_std": 0.018,
+    "macro_f1_mean": 0.696,
+    "macro_f1_std": 0.049,
     "random_guess_baseline": 0.1429
   },
   "calibration": {
-    "expected_calibration_error": 0.2271,
-    "maximum_calibration_error": 0.4791,
-    "brier_score": 0.4164,
+    "expected_calibration_error": 0.0636,
+    "maximum_calibration_error": 0.2634,
+    "brier_score": 0.2961,
     "reliability_table": [
-      {
-        "bin": "0.2-0.3",
-        "n": 4,
-        "mean_confidence": 0.271,
-        "actual_accuracy": 0.75,
-        "gap": -0.479
-      },
       {
         "bin": "0.3-0.4",
         "n": 4,
-        "mean_confidence": 0.357,
-        "actual_accuracy": 0.25,
-        "gap": 0.107
+        "mean_confidence": 0.356,
+        "actual_accuracy": 0.5,
+        "gap": -0.144
       },
       {
         "bin": "0.4-0.5",
-        "n": 5,
-        "mean_confidence": 0.447,
-        "actual_accuracy": 0.6,
-        "gap": -0.153
+        "n": 7,
+        "mean_confidence": 0.451,
+        "actual_accuracy": 0.714,
+        "gap": -0.263
       },
       {
         "bin": "0.5-0.6",
-        "n": 31,
-        "mean_confidence": 0.558,
-        "actual_accuracy": 0.226,
-        "gap": 0.332
+        "n": 39,
+        "mean_confidence": 0.55,
+        "actual_accuracy": 0.667,
+        "gap": -0.117
       },
       {
         "bin": "0.6-0.7",
-        "n": 4,
-        "mean_confidence": 0.641,
-        "actual_accuracy": 1.0,
-        "gap": -0.359
+        "n": 77,
+        "mean_confidence": 0.652,
+        "actual_accuracy": 0.597,
+        "gap": 0.054
       },
       {
         "bin": "0.7-0.8",
-        "n": 27,
-        "mean_confidence": 0.777,
-        "actual_accuracy": 0.963,
-        "gap": -0.185
+        "n": 55,
+        "mean_confidence": 0.752,
+        "actual_accuracy": 0.745,
+        "gap": 0.006
       },
       {
         "bin": "0.8-0.9",
-        "n": 41,
-        "mean_confidence": 0.817,
-        "actual_accuracy": 0.976,
-        "gap": -0.159
+        "n": 100,
+        "mean_confidence": 0.855,
+        "actual_accuracy": 0.88,
+        "gap": -0.025
+      },
+      {
+        "bin": "0.9-1.0",
+        "n": 332,
+        "mean_confidence": 0.964,
+        "actual_accuracy": 0.889,
+        "gap": 0.075
       }
     ],
-    "n_evaluated": 116
+    "n_evaluated": 614
+  },
+  "latency": {
+    "feature_extraction": {
+      "p50_ms": 15.6,
+      "p95_ms": 19.1,
+      "p99_ms": 20.2,
+      "mean_ms": 14.0,
+      "n": 40
+    },
+    "full_pipeline": {
+      "p50_ms": 257.1,
+      "p95_ms": 272.7,
+      "p99_ms": 298.4,
+      "mean_ms": 252.7,
+      "n": 40
+    },
+    "throughput_images_per_second_p50": 3.89
+  },
+  "robustness": {
+    "original": {
+      "accuracy": 0.7679,
+      "delta_vs_original": 0.0
+    },
+    "dim (x0.6)": {
+      "accuracy": 0.75,
+      "delta_vs_original": -0.0179
+    },
+    "bright (x1.5)": {
+      "accuracy": 0.7321,
+      "delta_vs_original": -0.0357
+    },
+    "blur r=2": {
+      "accuracy": 0.75,
+      "delta_vs_original": -0.0179
+    },
+    "blur r=4": {
+      "accuracy": 0.7143,
+      "delta_vs_original": -0.0536
+    },
+    "JPEG q=30": {
+      "accuracy": 0.7679,
+      "delta_vs_original": 0.0
+    },
+    "JPEG q=10": {
+      "accuracy": 0.6786,
+      "delta_vs_original": -0.0893
+    },
+    "_n_images": 56
   }
 }
