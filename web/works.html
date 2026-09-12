@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Works &amp; costing — ROAD-SHIELD</title>
+<link rel="stylesheet" href="/web/app.css">
+</head>
+<body data-page="works">
+<div class="wrap">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">Works &amp; costing</h1>
+    <span class="muted small">MoRTH Section 500 tonnage · SHA-256 sealed orders</span>
+  </div>
+
+  <div class="split">
+    <div>
+      <div class="card">
+        <div class="label">issue a work order</div>
+        <div class="grid c2">
+          <div class="field"><label for="cls">Defect class</label>
+            <select id="cls">
+              <option>Pothole Cavity</option>
+              <option>Crack (Longitudinal / Transverse / Alligator)</option>
+              <option>Waterlogging / Flooding Hazard</option>
+            </select></div>
+          <div class="field"><label for="area">Surface area (m²)</label>
+            <input id="area" type="number" step="0.01" value="1.20"></div>
+          <div class="field"><label for="depth">Depth (cm)</label>
+            <input id="depth" type="number" step="0.5" value="6.0"></div>
+          <div class="field"><label for="pci">PCI</label>
+            <input id="pci" type="number" step="1" value="42"></div>
+          <div class="field"><label for="lat">Latitude</label>
+            <input id="lat" type="number" step="0.00001" value="12.97160"></div>
+          <div class="field"><label for="lon">Longitude</label>
+            <input id="lon" type="number" step="0.00001" value="77.59450"></div>
+        </div>
+        <button class="primary" id="issue">Generate sealed work order</button>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="label">tamper demonstration</div>
+        <p class="small muted" style="margin:0 0 10px">
+          Change a field on an issued order and re-verify. The seal is SHA-256 over
+          the order's own fields, so a contractor cannot quietly inflate a bill
+          after issue.
+        </p>
+        <div class="field"><label for="tamper">New budget figure (₹)</label>
+          <input id="tamper" type="number" value="99999"></div>
+        <div style="display:flex;gap:9px;flex-wrap:wrap">
+          <button id="verify" disabled>Verify seal as issued</button>
+          <button id="break" disabled>Tamper, then verify</button>
+        </div>
+        <div id="sealout" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <div id="order">
+      <div class="card"><div class="label">no order yet</div>
+        <p class="small muted" style="margin:0">Issue one on the left.</p></div>
+    </div>
+  </div>
+</div>
+
+<script src="/web/app.js"></script>
+<script>
+let issued = null;
+
+el("issue").addEventListener("click", async () => {
+  setLoading(el("order"), true, "computing tonnage and sealing…");
+  const r = await API.post("/api/v1/dispatch/work-order", {
+    defect_class: el("cls").value,
+    area_m2: parseFloat(el("area").value),
+    depth_cm: parseFloat(el("depth").value),
+    pci: parseFloat(el("pci").value),
+    latitude: parseFloat(el("lat").value),
+    longitude: parseFloat(el("lon").value),
+  });
+  if (!r.ok) { el("order").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`); return; }
+  issued = r.data;
+  el("verify").disabled = false;
+  el("break").disabled = false;
+  renderOrder(r.data);
+});
+
+function renderOrder(d) {
+  const wo = d.work_order || d;
+  const seal = d.seal || d.cryptographic_seal || wo.seal || {};
+  const sealHex = seal.sha256 || seal.seal_sha256 || d.seal_sha256 || "—";
+  el("order").innerHTML = `
+    <div class="card accent">
+      <div class="label">work order · issued</div>
+      <h2 style="margin:2px 0 12px;font-size:1.15rem">${wo.order_id || wo.work_order_id || "—"}</h2>
+      <div class="kv"><span>Defect</span><span>${wo.defect_class || el("cls").value}</span></div>
+      <div class="kv"><span>Area</span><span>${fmt.num(wo.area_m2 ?? el("area").value, 2)} m²</span></div>
+      <div class="kv"><span>Depth</span><span>${fmt.num(wo.depth_cm ?? el("depth").value, 1)} cm</span></div>
+      <div class="kv"><span>Mix</span><span>${wo.bituminous_mix || wo.mix_type || "DBM Section 500"}</span></div>
+      <div class="kv"><span>Tonnage</span><span>${fmt.num(wo.required_mass_tonnes ?? wo.tonnage_t, 4)} t</span></div>
+      <div class="kv"><span>Cost</span><span>${fmt.inr(wo.estimated_cost_inr ?? wo.total_cost_inr ?? wo.budget_inr)}</span></div>
+      <div class="kv"><span>Priority</span><span>${wo.priority || wo.dispatch_priority || "—"}</span></div>
+      <div class="kv"><span>SLA</span><span>${wo.sla_hours ? wo.sla_hours + " h" : (wo.response_sla || "—")}</span></div>
+      <div class="rule" style="margin:12px 0"></div>
+      <div class="label">SHA-256 seal</div>
+      <pre style="word-break:break-all;white-space:pre-wrap">${sealHex}</pre>
+      <p class="small muted" style="margin:9px 0 0">
+        Computed over the order's own fields. Any change to any field produces a
+        different digest, which is what makes the tamper test on the left meaningful.
+      </p>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div class="label">full response</div>
+      <pre style="max-height:280px;overflow:auto">${JSON.stringify(d, null, 2)}</pre>
+    </div>`;
+}
+
+async function doVerify(tampered) {
+  if (!issued) return;
+  const wo = JSON.parse(JSON.stringify(issued.work_order || issued));
+  if (tampered) {
+    const v = parseFloat(el("tamper").value);
+    for (const k of ["estimated_cost_inr", "total_cost_inr", "budget_inr"]) {
+      if (k in wo) wo[k] = v;
+    }
+    if (!("estimated_cost_inr" in wo) && !("total_cost_inr" in wo)) wo.budget_inr = v;
+  }
+  const seal = issued.seal || issued.cryptographic_seal || {};
+  const r = await API.post("/api/v1/dispatch/verify-seal", {
+    work_order: wo,
+    seal_sha256: seal.sha256 || seal.seal_sha256 || issued.seal_sha256,
+  });
+  const ok = r.ok && (r.data.seal_valid ?? r.data.valid ?? r.data.is_valid);
+  el("sealout").innerHTML = `<div class="card" style="border-color:${ok ? "rgba(52,211,153,.45)" : "rgba(251,113,133,.5)"}">
+    <div class="label" style="color:${ok ? "var(--ok)" : "var(--bad)"}">
+      ${tampered ? "after tampering" : "as issued"}</div>
+    <div class="stat sm" style="color:${ok ? "var(--ok)" : "var(--bad)"}">
+      ${ok ? "SEAL VALID" : "SEAL BROKEN"}</div>
+    <p class="small muted" style="margin:6px 0 0">${
+      tampered
+        ? (ok ? "Unexpected — the seal should not survive an edited field."
+              : "The budget was changed after issue and the digest no longer matches. This is the point.")
+        : (ok ? "Unmodified order verifies against its digest."
+              : "Unexpected — an unmodified order should verify.")}</p>
+    <pre style="margin-top:9px;max-height:180px;overflow:auto">${JSON.stringify(r.data, null, 2)}</pre>
+  </div>`;
+}
+
+el("verify").addEventListener("click", () => doVerify(false));
+el("break").addEventListener("click", () => doVerify(true));
+</script>
+</body>
+</html>

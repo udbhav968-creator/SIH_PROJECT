@@ -1,0 +1,78 @@
+name: tests
+
+# Runs the regression suite on every push and pull request.
+#
+# The suite is designed to skip cleanly when trained models are absent rather
+# than fail, because model weights are not in version control - so CI proves
+# the CODE is sound, and the training runs on a machine that has the data.
+# Tests that need a model report as skipped, which is visible and honest,
+# rather than being silently removed to keep the badge green.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check every module imports
+        run: |
+          python -c "
+          import pathlib, importlib, sys
+          bad = []
+          for p in sorted(pathlib.Path('.').glob('*/[a-z]*.py')):
+              if any(x in p.parts for x in ('.venv', 'tests', 'datasets', 'web')):
+                  continue
+              mod = str(p.with_suffix('')).replace('/', '.')
+              try:
+                  importlib.import_module(mod)
+              except SystemExit:
+                  pass
+              except Exception as e:
+                  bad.append(f'{mod}: {type(e).__name__}: {e}')
+          print('\n'.join(bad) if bad else 'all modules import')
+          sys.exit(1 if bad else 0)
+          "
+
+      - name: Regression suite
+        env:
+          OPENBLAS_NUM_THREADS: 2
+          OMP_NUM_THREADS: 2
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Server starts and answers
+        run: |
+          python -m api.server &
+          SERVER=$!
+          for i in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:8000/api/v1/health > /dev/null; then break; fi
+            sleep 3
+          done
+          echo "--- health ---"
+          curl -s http://127.0.0.1:8000/api/v1/health | head -c 600; echo
+          echo "--- pages ---"
+          for p in / /inspect /video /corridor /works /models /data /system; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8000$p")
+            echo "  $code $p"
+            [ "$code" = "200" ] || { echo "page $p did not serve"; kill $SERVER; exit 1; }
+          done
+          kill $SERVER

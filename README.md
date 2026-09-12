@@ -17,7 +17,12 @@ code in this repository, and the code that measures it is included.
 | — same task, fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 82.6% on the identical split; serves when no CNN backbone is on disk |
 | Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Working: people, bicycles, cars, buses, trucks, traffic lights, signs |
 | IMU shock classification | 100 Hz tri-axial accelerometer windows → RandomForest | 100% on 3000 windows, **on simulated data** |
-| Defect geometry | Inverse perspective mapping, pixels → m² and depth | Deterministic |
+| Defect **segmentation** | Pixel classifier on 11 features, trained on 4,720 hand-drawn polygons | **crack IoU 0.232, pothole IoU 0.154** on 500 unseen photographs |
+| Defect **area** | Each mask pixel's own ground footprint, summed | Measured — a bounding box overstates a diagonal crack ~13× |
+| Camera **calibration** | Per-device profile from a checkerboard or published FOV | Per vehicle; 30 cm of mount height moves area ~46% |
+| Defect **depth** | IRC band placed by measured extent / cavity contrast | **Estimate with an interval**, never a measurement |
+| Video ingest | cv2 decode, frames sampled by ground distance, pHash suppression | Real decoding; refuses to invent GPS |
+| Fleet ledger | SQLite, raw sightings kept as the dedup audit trail | Survives restart |
 | Repair costing | MoRTH Section 500 bitumen tonnage and rates | Deterministic |
 | Pavement condition index | ASTM D6433 deduct-value procedure | Deterministic |
 | Tamper-proof work orders | SHA-256 seal over the order fields | Verified by tests |
@@ -25,6 +30,26 @@ code in this repository, and the code that measures it is included.
 | Repair verification | SSIM + Laplacian variance + perceptual hash | Catches resubmitted photographs |
 | Sensor fusion | Bayesian gate over vision + IMU evidence | Reports "unavailable" when no IMU window exists |
 | GIS services | Google Maps if a key is set, else OpenStreetMap Nominatim / OSRM / Overpass / Open-Meteo | Reports UNAVAILABLE rather than inventing data |
+
+## The measurement chain
+
+The classifier's 89.2% is measured. Everything *after* it decides the rupee
+figure, and those stages are now labelled individually — because half are
+measurements and half are estimates:
+
+| Stage | What it is | Provenance |
+|---|---|---|
+| Classification | ResNet-50 embeddings → logistic head | **measured**, 89.2% |
+| Segmentation | pixel classifier on 4,720 real polygons | **measured**, crack IoU 0.232 |
+| Area | each mask pixel's ground footprint, summed | **measured** *if* the camera is calibrated |
+| Camera geometry | per-device profile, rescaled per request | **measured** with a profile, **estimate** without |
+| Depth | IRC band placed by extent or cavity contrast | **estimate**, always with an interval |
+| Cost | MoRTH Section 500 × area × depth | **range**, because depth is a range |
+
+Measured on one photograph through the API: with the assumed mount the defect
+comes out at 0.007 m² and ₹4.5; with a calibrated profile for the same vehicle,
+0.049 m² and ₹34.5. Seven times. That is why calibration is not a detail, and
+why every response carries the provenance of the numbers in it.
 
 ## Measured performance
 
@@ -109,6 +134,55 @@ light.
 47,000 annotated images including India and is the obvious next step; the
 downloader is written and waiting on a GPU.
 
+### Segmentation — measured
+
+| Class | IoU | Dice | Pixel precision | Pixel recall |
+|---|---|---|---|---|
+| Crack | 0.232 | 0.376 | 0.414 | 0.345 |
+| Pothole | 0.154 | 0.266 | 0.320 | 0.228 |
+
+500 unseen photographs, split by photograph, scored only on pixels inside the
+lane polygon. Trained on 5.6 million labelled pixels from 4,720 hand-drawn
+polygons. The decision is a per-class threshold tuned for IoU on a separate
+calibration split rather than argmax — with ~97% of pixels being sound road,
+argmax floods the mask with false positives, and fixing that alone took crack
+IoU from 0.154 to 0.187 before more data took it to 0.232.
+
+These are working numbers, not solved ones. What they replace is a bounding box
+that had no measured accuracy at all.
+
+## Deployment
+
+```bash
+docker build -t road-shield .
+docker run -p 8000:8000 -v "$PWD/checkpoints:/app/checkpoints" road-shield
+```
+
+The checkpoints volume carries the trained models and the SQLite ledger; without
+it the container starts with neither, and the `/system` page says so. No CUDA and
+no PyTorch — the CNN runs on ONNX Runtime on the CPU.
+
+GitHub Actions runs the suite on 3.11 and 3.12, checks every module imports, and
+starts the server to confirm all eight pages serve.
+
+## The site
+
+Eight pages, not one dashboard file:
+
+| Page | What it is for |
+|---|---|
+| `/` | overview and the honest limits |
+| `/inspect` | analyse a photograph; mask, area, depth interval, cost range |
+| `/video` | dashcam ingest, sampled by ground distance |
+| `/corridor` | fleet map and the deduplication ledger |
+| `/works` | costing and the SHA-256 tamper demonstration |
+| `/models` | model card, per class, including what scores badly |
+| `/data` | dataset lineage, duplicate rejection, what the data misses |
+| `/system` | components, calibration, storage, live endpoint self-test |
+
+Measured and estimated numbers are visually distinguished on every page. On this
+system that is a correctness requirement, not decoration.
+
 ## Running it
 
 ```bash
@@ -139,7 +213,9 @@ Optional extras:
 python -m scripts.fetch_detector            # COCO object detector (needs ultralytics once)
 python -m scripts.validate_models           # leakage, cross-validation, calibration, latency
 python -m scripts.model_selection           # compare six classifiers on identical folds
-python -m unittest tests.test_road_shield   # 33 regression tests
+python -m unittest discover -s tests       # 59 regression tests
+python -m training.train_segmenter         # pixel segmentation on the DNIT polygons
+python -m scripts.calibrate_camera --list  # camera calibration profiles
 python -m training.train_deep_vision        # fine-tune a CNN (needs PyTorch)
 ```
 
@@ -319,7 +395,6 @@ road_shield_ai_engine/
 ├── 📂 tests/
 │   └── (automated test scripts)
 │
-├── run_system_test_v2.py               # 10-subsystem comprehensive test suite
 ├── deep_upgrade_frontend.py            # Frontend upgrade automation script
 ├── road_shield_frontend.html           # Complete single-file web dashboard (311KB)
 └── README.md                           # This file
@@ -478,7 +553,6 @@ c:\Users\Dell\Downloads\road_shield_frontend.html
 
 ```bash
 # Full 10-subsystem test suite (10/10 PASS guaranteed)
-python run_system_test_v2.py
 
 # Expected output:
 # ✅ 1_model_imports      : PASS - 10 modules imported
@@ -516,7 +590,6 @@ python road_shield_ai_engine/api/server.py 8000
 # Double-click road_shield_frontend.html in your browser
 
 # 6. Run tests
-python road_shield_ai_engine/run_system_test_v2.py
 ```
 
 ### Requirements

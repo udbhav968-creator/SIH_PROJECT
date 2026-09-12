@@ -1,39 +1,22 @@
 {
   "version": 2,
-  "name": "road-shield-ai-engine",
   "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": {
-        "runtime": "python3.12"
-      }
-    },
-    {
-      "src": "index.html",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "road_shield_frontend.html",
-      "use": "@vercel/static"
-    }
+    { "src": "api/index.py", "use": "@vercel/python", "config": { "runtime": "python3.12" } },
+    { "src": "web/**", "use": "@vercel/static" },
+    { "src": "index.html", "use": "@vercel/static" }
   ],
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "api/index.py"
-    },
-    {
-      "src": "/dashboard",
-      "dest": "/index.html"
-    },
-    {
-      "src": "/",
-      "dest": "/index.html"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/"
-    }
+    { "src": "/api/(.*)",  "dest": "api/index.py" },
+    { "src": "/web/(.*)",  "dest": "/web/$1" },
+    { "src": "/",          "dest": "/web/index.html" },
+    { "src": "/inspect",   "dest": "/web/inspect.html" },
+    { "src": "/video",     "dest": "/web/video.html" },
+    { "src": "/corridor",  "dest": "/web/corridor.html" },
+    { "src": "/works",     "dest": "/web/works.html" },
+    { "src": "/models",    "dest": "/web/models.html" },
+    { "src": "/data",      "dest": "/web/data.html" },
+    { "src": "/system",    "dest": "/web/system.html" },
+    { "src": "/dashboard", "dest": "/index.html" },
+    { "src": "/(.*)",      "dest": "/web/index.html" }
   ]
 }

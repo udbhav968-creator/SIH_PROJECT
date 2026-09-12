@@ -1,0 +1,297 @@
+{
+  "generated_unix": 1789231963,
+  "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
+  "subsystems": [
+    {
+      "id": "M1",
+      "name": "Vision distress classifier",
+      "architecture": "ResNet-50 (ImageNet, frozen, ONNX Runtime) -> class-balanced logistic head",
+      "role": "7-class road condition classification",
+      "why": "Transfer learning from 1.28M ImageNet images. With ~2,400 road photographs, fine-tuning 25.5M parameters or training a ViT from scratch overfits badly; freezing the backbone and fitting a convex logistic head does not.",
+      "rejected_alternative": "Vision Transformers - low inductive bias, need >100k images. PyTorch - 2+ GB and its DLLs fail to load on the target laptop; ONNX Runtime is 55 MB and runs on any CPU.",
+      "measured": {
+        "held_out_accuracy": 0.8848,
+        "held_out_macro_f1": 0.8455,
+        "test_images": 243,
+        "test_photographs": 205
+      },
+      "evidence": "checkpoints/cnn_head_resnet50_report.json",
+      "reproduce": "python -m training.train_cnn_head --compare",
+      "not_claimed": "Latency is NOT 15.6 ms. Measured 76-97 ms per image for the ResNet-50 embedding on a laptop CPU; 15.6 ms was the old hand-crafted feature extraction and does not apply to this model.",
+      "status_endpoint": "/api/v1/health"
+    },
+    {
+      "id": "M1-fallback",
+      "name": "Hand-crafted feature baseline",
+      "architecture": "HOG + LBP + colour histogram (4,419-d) -> PCA -> class-balanced RBF SVM",
+      "role": "Zero-dependency fallback when no ONNX backbone is on disk",
+      "why": "Pure classical CV. If neural weights are missing or storage is wiped, the camera does not stop classifying.",
+      "measured": {
+        "held_out_accuracy": null,
+        "held_out_macro_f1": null,
+        "pca_components": 64,
+        "pca_variance_retained": 0.4512
+      },
+      "evidence": "checkpoints/cnn_head_resnet50_report.json (scored on the identical split)",
+      "not_claimed": "PCA retains 45.1% of variance at 64 components, measured from the fitted model - NOT 56%."
+    },
+    {
+      "id": "M1-edge",
+      "name": "MobileNetV2 edge alternative",
+      "architecture": "MobileNetV2 (14 MB ONNX) -> logistic head",
+      "role": "Low-power edge deployment (Raspberry Pi, Jetson Nano)",
+      "why": "Depthwise separable convolutions; 14 MB against ResNet-50's 98 MB.",
+      "measured": {
+        "held_out_accuracy": 0.8354,
+        "held_out_macro_f1": 0.8678,
+        "backbone_size_mb": 14.0
+      },
+      "evidence": "checkpoints/cnn_head_mobilenetv2_report.json",
+      "not_claimed": "A head only ever runs with the backbone it was trained on. ResNet-50 and MobileNetV2 embeddings are unrelated vector spaces; the loader pairs them and skips mismatches rather than producing confident nonsense."
+    },
+    {
+      "id": "M_SEG",
+      "name": "Defect segmentation",
+      "architecture": "HistGradientBoosting pixel classifier on 11 vectorised features, trained on defect polygons AND clean-road photographs, with hard-negative mining",
+      "role": "Per-pixel crack/pothole mask, which is what the AREA is computed from",
+      "why": "A bounding box around a diagonal crack overstates its area by about 13x, and area drives tonnage which drives cost. A per-pixel mask gives the defect's own footprint. It also decides where a defect IS, which is now the proposal stage for the whole pipeline.",
+      "rejected_alternative": "argmax over the three classes. With ~97% of pixels sound road that floods the mask; per-class thresholds are tuned for IoU on a split the test set never sees.",
+      "measured": {
+        "crack_iou": 0.2307,
+        "crack_dice": 0.3749,
+        "pothole_iou": 0.1462,
+        "pothole_dice": 0.2551,
+        "test_photographs": 500,
+        "training_pixels": 4746159,
+        "clean_road_false_blob_rate": 0.055,
+        "clean_photographs_scored": 109
+      },
+      "evidence": "checkpoints/defect_segmenter_report.json",
+      "reproduce": "python -m training.train_segmenter --images 2000",
+      "not_claimed": "IoU in the 0.15-0.25 band is a working model, not a solved problem. And IoU is measured ONLY on photographs that contain a defect, so it is blind to the failure that actually reached users - inventing defects on clean roads. That is now measured separately: 5.5% of held-out clean photographs still produce a false blob, down from 57.8%. Zebra crossings specifically are still 67% (4 of 6 scored) because only 19 zebra photographs exist in this dataset, from a handful of scenes. That is too thin to call solved and is not called solved.",
+      "status_endpoint": "/api/v1/segmentation/status"
+    },
+    {
+      "id": "M_DET",
+      "name": "Scene object detector",
+      "architecture": "YOLOv8n, COCO 80 classes, ONNX Runtime",
+      "role": "Pedestrians, cyclists, vehicles, traffic lights and signs near a defect",
+      "why": "Single-stage, 12.8 MB, runs on CPU. Detects that a person is PRESENT and how far away, without storing any biometric identity - DPDP-compatible.",
+      "rejected_alternative": "Faster R-CNN - two-stage, far too slow on an edge CPU. Facial recognition - rejected outright as invasive.",
+      "measured": {
+        "weights_size_mb": 12.8,
+        "classes": 80,
+        "trained_on": "COCO, ~330,000 images (pretrained)"
+      },
+      "not_claimed": "This is a COCO detector: it has NO pavement class. It does not find potholes. Defect localisation is the segmenter's job.",
+      "status_endpoint": "/api/v1/health"
+    },
+    {
+      "id": "M4",
+      "name": "IMU shock classifier",
+      "architecture": "RandomForest, 300 trees, 36 statistical features per 100 Hz window",
+      "role": "POTHOLE_IMPACT / EXPANSION_JOINT / RUMBLE_STRIP / SMOOTH_ROAD",
+      "why": "Suspension vibration is periodic and noisy. RMS, peak-to-peak, crest factor, kurtosis and spectral power separate a sharp impact from a repetitive wave. Tree ensembles are immune to the noise and need no sequence buffer.",
+      "rejected_alternative": "LSTM / 1D CNN - slow, vanishing gradients, needless here.",
+      "measured": {
+        "held_out_accuracy": 1.0,
+        "n_estimators": 300,
+        "feature_dim": 36
+      },
+      "not_claimed": "The data is SIMULATED, not recorded from a vehicle. The accuracy figure demonstrates the code works and says nothing about a real bus."
+    },
+    {
+      "id": "M2",
+      "name": "Metric geometry",
+      "architecture": "Inverse perspective mapping, calibrated pinhole homography",
+      "role": "Pixels -> square metres of road",
+      "why": "Deterministic projection with known mount height, pitch and focal length. Each mask pixel contributes its own ground footprint, which depends on its row - a pixel near the horizon covers far more road than one at the bumper.",
+      "rejected_alternative": "MiDaS / Depth-Anything - predict RELATIVE, unitless depth. They cannot tell you square metres, which is what a bill needs.",
+      "measured": {
+        "assumed_vs_calibrated_area_m2": [
+          0.007,
+          0.049
+        ],
+        "assumed_vs_calibrated_cost_inr": [
+          4.5,
+          34.5
+        ],
+        "note": "same photograph, same defect, through the live API"
+      },
+      "not_claimed": "There is NO +/-3.2% metric error figure. Nothing in this project measures a real pothole with a tape, so no such error can be computed. Any percentage accuracy claim on area is unfounded. What IS reported is the provenance: measured mask on a calibrated camera, or estimate from an assumed mount.",
+      "status_endpoint": "/api/v1/calibration/profiles"
+    },
+    {
+      "id": "M_CALIB",
+      "name": "Camera calibration",
+      "architecture": "Per-device JSON profile from a checkerboard or published field of view",
+      "role": "The four numbers every area and cost is derived through",
+      "why": "Height 1.45 m, pitch 18.4 deg and fx 1120 were constants in the source - every bus assumed to carry an identically mounted camera. Intrinsics are in pixels, so a profile is also rescaled to whatever resolution an image actually arrives at.",
+      "measured": {
+        "mount_height_sensitivity_pct": 46,
+        "note": "30 cm of extra mount height moves the computed area by ~46%"
+      },
+      "reproduce": "python -m scripts.calibrate_camera --device <id> --hfov 78 --width 1280 --height-px 720 --height 1.52 --pitch 16",
+      "not_claimed": "1.45 m / 18.4 deg are ASSUMED DEFAULTS, not measurements from any vehicle. With no profile, every area and cost is explicitly labelled an estimate."
+    },
+    {
+      "id": "M_DEPTH",
+      "name": "Depth estimation",
+      "architecture": "IRC specification band placed by measured extent or cavity contrast",
+      "role": "Repair depth, which tonnage is linear in",
+      "why": "A single photograph carries no depth information - that is geometry, not a limitation of the code. So every estimate carries an interval and its basis, and the interval propagates into a cost range.",
+      "measured": {
+        "is_measurement": false,
+        "example_interval_cm": [
+          2.5,
+          12.0
+        ]
+      },
+      "not_claimed": "NOTHING here is a measurement. The previous crack depth was `1.5 + classifier_confidence * 2.0` - confidence with centimetres written after it - and that is gone. stereo_depth_from_disparity() is the only function permitted to return is_measurement: true, and nothing calls it until a stereo rig exists."
+    },
+    {
+      "id": "M5",
+      "name": "Bayesian sensor fusion",
+      "architecture": "Recursive log-odds gate, prior P=0.05",
+      "role": "Combine visual confidence with mechanical shock evidence",
+      "why": "Oil stains and leaf shadows look like potholes and produce zero axle shock. Log-odds is traceable: a judge can see how much each sensor contributed.",
+      "rejected_alternative": "Neural attention fusion - a black box that learns spurious correlations.",
+      "not_claimed": "When no IMU window exists the gate applies a neutral prior and reports imu_evidence_source: no_real_imu_data_neutral_prior. It does not derive a fake vibration reading from the vision output.",
+      "measured": {}
+    },
+    {
+      "id": "M_PCI",
+      "name": "Pavement Condition Index",
+      "architecture": "ASTM D6433 corrected-deduct-value procedure",
+      "role": "0-100 pavement rating",
+      "why": "The published procedure, not a regressor fitted to invented numbers.",
+      "rejected_alternative": "Deep regression - a highway auditor will reject a hallucinated PCI.",
+      "not_claimed": "The CDV correction procedure is the real ASTM algorithm. The individual DEDUCT CURVES are digitised charts we do not have, so the code uses a documented analytic stand-in shaped like them - stated in pci_regressor_net.py's own docstring. Calling this 'legally certified' would invite an auditor to check and find a substitute curve.",
+      "measured": {}
+    },
+    {
+      "id": "M_DEGRADE",
+      "name": "Deterioration forecast",
+      "architecture": "Physics-constrained monotonic exponential growth",
+      "role": "Defect growth at 30/60/90/180 days under traffic and monsoon",
+      "why": "Roads do not heal; the damage function is constrained to increase.",
+      "not_claimed": "The growth constants are engineering assumptions, not fitted to longitudinal measurements of these roads. It is an order-of-magnitude planning figure.",
+      "measured": {}
+    },
+    {
+      "id": "M_COST",
+      "name": "MoRTH Section 500 costing",
+      "architecture": "tonnage = area x depth x density 2.4 t/m3 x compaction 1.15, x SOR",
+      "role": "Auditable bill of quantities in rupees",
+      "why": "An exact volumetric calculation traceable to material tonnage and government rates.",
+      "rejected_alternative": "A generative cost estimator - hallucinates unverifiable numbers.",
+      "not_claimed": "Cost is linear in BOTH area and depth. Depth is an estimate, so the cost is reported as a RANGE. A single rupee figure from an estimated depth is what loses an audit.",
+      "measured": {}
+    },
+    {
+      "id": "M_SEAL",
+      "name": "Tamper-proof work orders",
+      "architecture": "SHA-256 digest over the canonical order fields",
+      "role": "Detect post-issue alteration of a bill",
+      "why": "Changing one rupee breaks the digest. Zero cost, instant, no chain to maintain.",
+      "rejected_alternative": "Blockchain - gas fees, latency and node maintenance for no added guarantee.",
+      "measured": {
+        "verified_by": "tests/test_road_shield.py WorkOrderSealing"
+      }
+    },
+    {
+      "id": "M_FORENSIC",
+      "name": "Repair verification",
+      "architecture": "SSIM + Laplacian variance + 64-bit DCT perceptual hash",
+      "role": "Catch a contractor resubmitting an old or blurred photograph",
+      "measured": {
+        "phash_threshold_bits": 8,
+        "reencode_distance_bits": "<=2",
+        "half_size_reupload_bits": "<=8",
+        "distinct_photographs_bits": ">=18 (5th percentile)"
+      },
+      "not_claimed": "The threshold was measured over 60 photographs, not chosen by feel."
+    },
+    {
+      "id": "M_LEDGER",
+      "name": "Fleet ledger",
+      "architecture": "SQLite; Haversine proximity deduplication",
+      "role": "Five sightings of one pothole become one defect and one bill",
+      "why": "Raw sightings are stored alongside merged defects, because the evidence that deduplication happened is exactly what a contractor disputes.",
+      "not_claimed": "On a serverless host the database is per-instance and wiped between cold starts; /api/v1/fleet/telemetry says so rather than hiding it.",
+      "status_endpoint": "/api/v1/fleet/telemetry",
+      "measured": {}
+    },
+    {
+      "id": "M_VIDEO",
+      "name": "Video ingest",
+      "architecture": "OpenCV decode, distance-based frame sampling, pHash suppression",
+      "role": "Dashcam footage -> deduplicated defect reports",
+      "why": "At 40 km/h a bus covers 11 m/s. Sampling by frame either misses defects in slow traffic or floods the ledger at speed, so frames are chosen to be a set distance apart on the ground.",
+      "not_claimed": "With no GPS track, frames are analysed but nothing is located or deduplicated, and the response says so. No position is invented.",
+      "measured": {}
+    },
+    {
+      "id": "M_GATE",
+      "name": "Region proposals and false-positive control",
+      "architecture": "candidate regions from connected components of the segmentation mask, filtered by blob size and mean predicted probability; the brightness grid may not raise a crack or pothole when a segmenter is loaded",
+      "role": "Decides which parts of a frame are shown to the classifier at all, and therefore what can ever be reported.",
+      "why": "The original proposal stage was a 16x24 brightness and gradient grid. On a normally textured road most cells fire, merge, and produce ONE box over the whole carriageway - the giant box users saw. A real pothole occupies under 1% of that box, so a gate expressed as a fraction of the box discarded real potholes while passing zebra crossings. A connected component of the mask is a defect-shaped region by construction: tight box, meaningful area, and the classifier sees the defect rather than fifty square metres of road.",
+      "rejected_alternative": "Raising the confidence floor. Measured: floors of 0.45 and 0.60 gave identical results. The classifier is confidently wrong, not hesitantly wrong, because it has seven defect classes and no way to answer 'none of these'. No threshold on a wrong question fixes the answer.",
+      "measured": {
+        "false_positive_rate_before": 0.444,
+        "detection_rate_before": 1.0,
+        "before_note": "the pre-fix build, measured through audit_image()",
+        "max_heuristic_box_fraction": 0.25,
+        "min_component_fraction": 0.004,
+        "min_component_confidence": 0.45,
+        "false_positive_rate": 0.0833,
+        "detection_rate": 0.875,
+        "clean_photographs": 36,
+        "defect_photographs": 24,
+        "measured_through": "pipeline.deep_inference_pipeline.DeepInferencePipeline.audit_image"
+      },
+      "evidence": "checkpoints/proposal_tuning_report.json, checkpoints/detection_quality_report.json",
+      "reproduce": "python -m scripts.tune_proposals && python -m scripts.measure_detection_quality",
+      "not_claimed": "8.3% false positives is better, not solved - 3 of 36 clean photographs are still reported as defective. Detection is 87.5%, so roughly one annotated defect in eight is missed; the system is a repeated fleet survey, so a miss is usually caught on a later pass while a false positive dispatches a crew to a sound road, and the operating point was chosen on that asymmetry rather than on a single headline number. The honest fix is a detector trained on the pothole bounding boxes already sitting in datasets/, which needs a GPU and is not done. Also: an earlier version of this subsystem was reported as fixed on the basis of a harness that reimplemented the pipeline instead of calling it; it reported 27.8% for a build producing 44.4%. That harness is deleted.",
+      "status_endpoint": "/api/v1/claims"
+    }
+  ],
+  "corrections": [
+    {
+      "claim": "+/-3.2% metric error on pothole area",
+      "status": "WITHDRAWN",
+      "reason": "No ground-truth measurement exists anywhere in this project to compute an error against."
+    },
+    {
+      "claim": "15.6 ms CPU latency for the ResNet-50 classifier",
+      "status": "CORRECTED",
+      "reason": "76-97 ms per image measured. 15.6 ms was the old hand-crafted feature extraction."
+    },
+    {
+      "claim": "PCA retains 56% of variance",
+      "status": "CORRECTED to 45.1%",
+      "reason": "Measured from the fitted model: 64 components, explained_variance_ratio_.sum() = 0.4512."
+    },
+    {
+      "claim": "ASTM D6433 implementation is legally certified",
+      "status": "QUALIFIED",
+      "reason": "The CDV procedure is the real algorithm; the deduct curves are an analytic stand-in for charts we do not have."
+    },
+    {
+      "claim": "Geometry basis h=1.45 m, theta=18.4 deg",
+      "status": "QUALIFIED",
+      "reason": "Assumed defaults, not measured on a vehicle. Now a labelled fallback behind per-device calibration."
+    },
+    {
+      "claim": "Reported defects are trustworthy without a gate",
+      "status": "FIXED (partially), after a wrong fix",
+      "reason": "First reported fixed at 27.8% false positives. That number came from a harness that reimplemented the region loop instead of calling audit_image(); measured through the real entry point the same build was producing 44.4%. Root cause was the proposal stage and a segmenter that had never seen road paint without a defect in frame. Rebuilt: clean photographs in training, hard-negative mining, mask-based proposals. Now 11.1% false positives with 95.8% detection, measured through audit_image(). Still not zero, and not claimed to be."
+    },
+    {
+      "claim": "27.8% false positives after the segmentation gate",
+      "status": "WITHDRAWN",
+      "reason": "Measured by a harness that reimplemented the pipeline's region loop rather than calling audit_image(). The same build measured through the real entry point was producing 44.4%. The harness is deleted and replaced by scripts/measure_detection_quality.py, which calls audit_image() and nothing else."
+    }
+  ]
+}

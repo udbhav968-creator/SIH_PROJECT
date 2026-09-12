@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture &amp; claims — ROAD-SHIELD</title>
+<link rel="stylesheet" href="/web/app.css">
+<style>
+  body[data-page="architecture"] { --accent: #f0a92b; --accent-soft: rgba(240,169,43,.14); }
+  .sub { border-left: 3px solid var(--ink-700); padding-left: 14px; margin-bottom: 18px; }
+  .sub.live-yes { border-left-color: var(--ok); }
+  .sub.live-no  { border-left-color: var(--bad); }
+  .sub h3 { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .why { font-size: 13px; margin: 7px 0; }
+  .rejected { font-size: 12.5px; color: var(--slate-400); border-left: 2px solid var(--ink-700);
+              padding-left: 10px; margin: 8px 0; }
+  .notclaimed { font-size: 12.5px; background: rgba(192,132,252,.07);
+                border: 1px solid rgba(192,132,252,.24); border-radius: 8px;
+                padding: 9px 11px; margin-top: 9px; }
+  .notclaimed b { color: var(--estimate); }
+  .measured-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 9px 0; }
+  .measured-row div { font-family: var(--mono); font-size: 12px; }
+  .measured-row span { color: var(--slate-400); }
+  .ascii { font-family: var(--mono); font-size: 11.5px; line-height: 1.45; white-space: pre;
+           overflow-x: auto; color: var(--slate-300); }
+</style>
+</head>
+<body data-page="architecture">
+<div class="wrap">
+
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">Architecture &amp; claims</h1>
+    <span class="muted small">every statement, checked against the engine running right now</span>
+  </div>
+
+  <div class="card accent">
+    <div class="label">the rule</div>
+    <p style="margin:0;font-size:14.5px" id="principle">…</p>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="label">the stack</div>
+    <div class="ascii">┌────────────────────────────────────────────────────────────────────────────┐
+│  PERCEPTION        ResNet-50 (ImageNet, ONNX) + class-balanced logistic    │
+│  SEGMENTATION      pixel classifier on 4,720 hand-drawn polygons          │
+│  VIBRATION         RandomForest, 300 trees, 36 tabular features           │
+│  SAFETY CONTEXT    YOLOv8n, COCO 80-class, ONNX                           │
+│  METRIC GEOMETRY   inverse perspective mapping, per-device calibration    │
+│  DEPTH             IRC band + interval — estimate, never a measurement    │
+│  SENSOR FUSION     recursive log-odds gate, neutral prior when no IMU     │
+│  CIVIL STANDARD    ASTM D6433 corrected-deduct-value procedure            │
+│  LIFECYCLE         physics-constrained monotonic exponential growth       │
+│  BUDGET            MoRTH Section 500 — density × volume × SOR, as a range │
+│  ANTI-FRAUD        SHA-256 digest + SSIM / Laplacian / pHash forensics    │
+│  LEDGER            SQLite, raw sightings kept as the dedup audit trail    │
+└────────────────────────────────────────────────────────────────────────────┘</div>
+  </div>
+
+  <div class="section-head"><h2>Corrections</h2>
+    <span class="muted small">claims that were wrong, and what replaced them</span></div>
+  <div id="corrections"></div>
+
+  <div class="section-head"><h2>Subsystems</h2>
+    <span class="muted small" id="liveCount"></span></div>
+  <div id="subs"></div>
+
+</div>
+
+<script src="/web/app.js"></script>
+<script>
+(async () => {
+  const r = await API.get("/api/v1/claims");
+  if (!r.ok) {
+    el("subs").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`,
+      "The claims registry is served by the engine. Start it with: python -m api.server");
+    return;
+  }
+  const d = r.data;
+  el("principle").textContent = d.principle;
+
+  el("corrections").innerHTML = `<div class="card" style="border-color:rgba(251,113,133,.35)">
+    <div class="table-wrap"><table>
+      <thead><tr><th>claim</th><th>status</th><th>why</th></tr></thead>
+      <tbody>${(d.corrections || []).map(c => `<tr>
+        <td class="small"><del>${c.claim}</del></td>
+        <td><span class="badge ${c.status.startsWith("WITHDRAWN") ? "bad" : "warn"}">${c.status}</span></td>
+        <td class="small muted">${c.reason}</td></tr>`).join("")}</tbody>
+    </table></div>
+    <p class="small muted" style="margin:10px 0 0">
+      These were in an earlier description of this project. They are listed here, in the
+      product, rather than quietly deleted — a system that claims to be honest about its
+      models should be honest about its own documentation too.
+    </p></div>`;
+
+  const subs = d.subsystems || [];
+  const liveN = subs.filter(s => s.live).length;
+  el("liveCount").textContent = `${liveN} of ${subs.length} loaded in this running engine · backend ${d.vision_backend || "—"}`;
+
+  el("subs").innerHTML = subs.map(s => {
+    const m = s.measured || {};
+    const measured = Object.entries(m)
+      .filter(([, v]) => v !== null && v !== undefined && typeof v !== "object")
+      .map(([k, v]) => `<div><span>${k}</span> ${v}</div>`).join("");
+    const pairs = Object.entries(m)
+      .filter(([, v]) => Array.isArray(v))
+      .map(([k, v]) => `<div><span>${k}</span> ${v.join("  →  ")}</div>`).join("");
+    return `<div class="card" style="margin-bottom:14px">
+      <div class="sub ${s.live ? "live-yes" : "live-no"}">
+        <h3>${s.name}
+          <span class="badge neutral mono">${s.id}</span>
+          ${s.live ? '<span class="badge measured">loaded now</span>'
+                   : '<span class="badge bad">not loaded</span>'}</h3>
+        <p class="small mono" style="margin:2px 0 6px;color:var(--accent)">${s.architecture}</p>
+        <p class="small muted" style="margin:0 0 6px">${s.role}</p>
+        ${s.why ? `<p class="why">${s.why}</p>` : ""}
+        ${s.rejected_alternative ? `<div class="rejected"><b>Rejected:</b> ${s.rejected_alternative}</div>` : ""}
+        ${measured || pairs ? `<div class="measured-row">${measured}${pairs}</div>` : ""}
+        ${s.evidence ? `<div class="kv"><span>evidence</span><span class="small">${s.evidence}</span></div>` : ""}
+        ${s.reproduce ? `<div class="kv"><span>reproduce</span><span class="small">${s.reproduce}</span></div>` : ""}
+        ${s.not_claimed ? `<div class="notclaimed"><b>Not claimed:</b> ${s.not_claimed}</div>` : ""}
+      </div></div>`;
+  }).join("");
+})();
+</script>
+</body>
+</html>

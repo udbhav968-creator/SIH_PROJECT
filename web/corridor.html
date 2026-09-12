@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Corridor — ROAD-SHIELD</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/web/app.css">
+</head>
+<body data-page="corridor">
+<div class="wrap wide">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">Corridor</h1>
+    <span class="muted small">fleet reports merged by GPS proximity — five sightings, one pothole, one bill</span>
+  </div>
+
+  <div class="grid c4" id="stats"></div>
+
+  <div class="split" style="margin-top:16px">
+    <div class="card" style="padding:0;overflow:hidden">
+      <div id="map"></div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="label">the ledger</div>
+        <p class="small muted" style="margin:0 0 10px">
+          Each row is one physical defect after deduplication. The confirmation
+          count is how many separate buses reported it.
+        </p>
+        <div id="list"></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="label">why the raw sightings are kept</div>
+        <p class="small" style="margin:0">
+          Storing only merged defects loses the evidence that merging happened — and
+          that evidence is exactly what a contractor disputes. Every raw sighting is
+          written with a foreign key to the defect it merged into, so the dedup rate
+          below is a database query, not a counter that can drift from reality.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/web/app.js"></script>
+<script>
+(async () => {
+  const [tel, gis] = await Promise.all([
+    API.get("/api/v1/fleet/telemetry"),
+    API.get("/api/v1/gis/map-data"),
+  ]);
+
+  if (tel.ok) {
+    const t = tel.data, p = t.persisted || {};
+    el("stats").innerHTML = `
+      <div class="card accent"><div class="label">unique defects</div>
+        <div class="stat">${t.unique_defects_registered ?? "—"}</div>
+        <div class="stat-sub">after GPS deduplication</div></div>
+      <div class="card"><div class="label">raw sightings</div>
+        <div class="stat" style="color:var(--sky)">${p.total_reports ?? t.total_reports_ingested ?? "—"}</div>
+        <div class="stat-sub">${p.merged_reports != null ? p.merged_reports + " merged into an existing defect" : ""}</div></div>
+      <div class="card"><div class="label">deduplication rate</div>
+        <div class="stat" style="color:var(--violet)">${p.deduplication_rate_pct ?? t.deduplication_efficiency_pct ?? "—"}%</div>
+        <div class="stat-sub">reports that were a repeat sighting</div></div>
+      <div class="card"><div class="label">storage</div>
+        <div class="stat sm" style="color:${t.storage === "sqlite" ? "var(--ok)" : "var(--warn)"}">
+          ${t.storage === "sqlite" ? "durable" : "in-memory"}</div>
+        <div class="stat-sub">${p.database ? p.database.split(/[\\/]/).pop() : t.storage || ""}
+          ${p.durable === false ? " · per-instance on serverless" : ""}</div></div>`;
+  }
+
+  const map = L.map("map").setView([12.9716, 77.5946], 14);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+
+  const defects = (gis.ok && (gis.data.defects || gis.data.markers || gis.data.map_markers)) || [];
+  const rows = [];
+  const colours = { "Pothole Cavity": "#fb7185", "Crack": "#f0a92b",
+                    "Waterlogging / Flooding Hazard": "#56a8f5" };
+
+  defects.forEach(d => {
+    const lat = d.lat ?? d.latitude, lon = d.lon ?? d.lng ?? d.longitude;
+    if (lat == null || lon == null) return;
+    const cls = d.defect_class || d.class_name || "defect";
+    const conf = d.confirmation_count ?? 1;
+    const colour = Object.entries(colours).find(([k]) => cls.startsWith(k.split(" ")[0]))?.[1] || "#a3e635";
+    L.circleMarker([lat, lon], {
+      radius: 7 + Math.min(conf, 5) * 2, color: colour, weight: 2,
+      fillColor: colour, fillOpacity: .35,
+    }).addTo(map).bindPopup(
+      `<strong>${cls}</strong><br>${conf} bus report${conf > 1 ? "s" : ""}<br>` +
+      `${d.area_m2 != null ? fmt.num(d.area_m2, 2) + " m²<br>" : ""}` +
+      `<span style="font-family:monospace;font-size:11px">${lat.toFixed(5)}, ${lon.toFixed(5)}</span>`);
+    rows.push({ cls, conf, lat, lon, area: d.area_m2, pci: d.severity_pci,
+                buses: d.reporting_buses || [] });
+  });
+
+  if (rows.length) {
+    map.fitBounds(rows.map(r => [r.lat, r.lon]), { padding: [45, 45] });
+    el("list").innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>class</th><th class="num">buses</th><th class="num">area m²</th><th class="num">PCI</th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td>${r.cls.slice(0, 26)}${r.conf > 1 ? ' <span class="badge measured">confirmed</span>' : ""}</td>
+        <td class="num">${r.conf}</td>
+        <td class="num">${fmt.num(r.area, 2)}</td>
+        <td class="num">${r.pci ?? "—"}</td></tr>`).join("")}</tbody></table></div>`;
+  } else {
+    el("list").innerHTML = `<p class="small muted">No defects in the ledger yet.</p>`;
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model card — ROAD-SHIELD</title>
+<link rel="stylesheet" href="/web/app.css">
+</head>
+<body data-page="models">
+<div class="wrap">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">Model card</h1>
+    <span class="muted small">measured, including the parts that score badly</span>
+  </div>
+
+  <div id="cards" class="grid c3"></div>
+
+  <div class="section-head"><h2>Classification · per class</h2></div>
+  <div id="perclass"></div>
+
+  <div class="section-head"><h2>Segmentation · pixel level</h2>
+    <span class="muted small">trained on 4,720 hand-drawn polygons</span></div>
+  <div id="segbox"></div>
+
+  <div class="section-head"><h2>Confusion matrix</h2>
+    <span class="muted small">rows are truth, columns are prediction</span></div>
+  <div class="card"><div id="confusion" style="overflow-x:auto"></div></div>
+
+  <div class="section-head"><h2>What these numbers do not say</h2></div>
+  <div class="card" style="border-color:rgba(240,169,43,.35)">
+    <ul style="margin:0;padding-left:18px" class="small">
+      <li style="margin-bottom:7px">Accuracy is dominated by three classes that hold almost every test image.
+        macro-F1 is the number that reflects the rare ones, and it is much lower. Both are shown.</li>
+      <li style="margin-bottom:7px">Segmentation IoU in the 0.15–0.25 band is a working model, not a solved
+        problem. It replaces a bounding box that had no measured accuracy at all, and a box
+        around a diagonal crack overstates its area by roughly 13×.</li>
+      <li style="margin-bottom:7px">The IMU classifier's 100% is on <strong>simulated</strong> accelerometer
+        windows. It means the code works; it says nothing about a real vehicle.</li>
+      <li>Photographs are Brazilian and Kaggle sourced. No Indian road data yet.</li>
+    </ul>
+  </div>
+</div>
+
+<script src="/web/app.js"></script>
+<script>
+(async () => {
+  const [m, s] = await Promise.all([
+    API.get("/api/v1/training/metrics"),
+    API.get("/api/v1/segmentation/status"),
+  ]);
+
+  if (!m.ok) { el("cards").innerHTML = errorCard("training metrics unavailable"); return; }
+  const d = m.data;
+  const heads = Object.keys(d).filter(k => k.startsWith("cnn_head_")).map(k => d[k]);
+  const active = heads.find(r => r && r.active) || heads[0];
+  const cards = [];
+
+  heads.forEach(r => {
+    const live = r === active;
+    cards.push(`<div class="card ${live ? "accent" : ""}">
+      <div class="label" style="${live ? "color:var(--accent)" : ""}">
+        ${r.backbone} embeddings → ${r.head}${live ? " · serving" : ""}</div>
+      <div class="stat">${(r.held_out_test_accuracy * 100).toFixed(1)}%</div>
+      <div class="stat-sub">macro-F1 ${r.held_out_test_macro_f1} ·
+        ${r.held_out_test_images} images from ${r.held_out_test_photographs} unseen photographs</div>
+      ${r.handcrafted_baseline ? `<div class="kv" style="margin-top:10px">
+        <span>hand-crafted baseline</span>
+        <span>${(r.handcrafted_baseline.accuracy * 100).toFixed(1)}%</span></div>` : ""}
+    </div>`);
+  });
+
+  const v = d.vision || d.vision_report;
+  if (v) cards.push(`<div class="card">
+    <div class="label">HOG + LBP + SVM · fallback</div>
+    <div class="stat" style="color:var(--slate-300)">${v.held_out_validation_accuracy != null
+      ? (v.held_out_validation_accuracy * 100).toFixed(1) + "%" : "—"}</div>
+    <div class="stat-sub">serves when no CNN backbone is on disk</div></div>`);
+
+  const i = d.imu || d.imu_report;
+  if (i) cards.push(`<div class="card">
+    <div class="label">IMU shock · RandomForest</div>
+    <div class="stat" style="color:var(--warn)">${i.held_out_validation_accuracy != null
+      ? (i.held_out_validation_accuracy * 100).toFixed(1) + "%" : "—"}</div>
+    <div class="stat-sub">on <strong>simulated</strong> windows — read accordingly</div></div>`);
+
+  el("cards").innerHTML = cards.join("");
+
+  // per class
+  if (active?.per_class_report) {
+    const rows = Object.entries(active.per_class_report)
+      .filter(([k, val]) => typeof val === "object" && "f1-score" in val && !k.includes("avg"));
+    el("perclass").innerHTML = `<div class="card"><div class="table-wrap"><table>
+      <thead><tr><th>class</th><th class="num">precision</th><th class="num">recall</th>
+        <th class="num">F1</th><th class="num">test images</th><th>reliability</th></tr></thead>
+      <tbody>${rows.map(([name, x]) => {
+        const n = x.support;
+        const weak = n < 10;
+        return `<tr>
+          <td>${name}</td>
+          <td class="num">${x.precision.toFixed(2)}</td>
+          <td class="num">${x.recall.toFixed(2)}</td>
+          <td class="num" style="color:${x["f1-score"] > .8 ? "var(--ok)" : x["f1-score"] > .5 ? "var(--warn)" : "var(--bad)"}">
+            ${x["f1-score"].toFixed(2)}</td>
+          <td class="num">${n}</td>
+          <td>${weak ? '<span class="badge bad">too few to be stable</span>'
+                     : '<span class="badge measured">meaningful</span>'}</td></tr>`;
+      }).join("")}</tbody></table></div>
+      <p class="small muted" style="margin:10px 0 0">
+        A class with two or three test images moves its own F1 by 0.3 on a single
+        photograph. Those rows are marked rather than averaged away.</p></div>`;
+  }
+
+  // segmentation
+  if (s.ok && s.data.available && s.data.iou) {
+    const io = s.data.iou;
+    el("segbox").innerHTML = `<div class="card">
+      <div class="grid c2">
+        ${["crack", "pothole"].map(k => io[k] ? `<div>
+          <div class="label">${k} · pixel level</div>
+          <div class="stat sm" style="color:var(--accent)">IoU ${io[k].iou}</div>
+          <div class="stat-sub">Dice ${io[k].dice} · precision ${io[k].pixel_precision} ·
+            recall ${io[k].pixel_recall}</div></div>` : "").join("")}
+      </div>
+      <div class="rule" style="margin:14px 0"></div>
+      <div class="kv"><span>Trained on</span><span>${s.data.trained_on?.train_photographs ?? "—"} photographs,
+        ${(s.data.trained_on?.training_pixels ?? 0).toLocaleString()} pixels</span></div>
+      <div class="kv"><span>Held-out</span><span>${s.data.trained_on?.test_photographs ?? "—"} unseen photographs</span></div>
+      <div class="kv"><span>Decision thresholds</span><span>crack ${s.data.thresholds?.crack} · pothole ${s.data.thresholds?.pothole}</span></div>
+      <p class="small muted" style="margin:10px 0 0">
+        Thresholds are tuned for IoU on a calibration split separate from the test set,
+        not by argmax — with 97% of pixels being sound road, argmax floods the mask
+        with false positives.</p></div>`;
+  } else {
+    el("segbox").innerHTML = `<div class="card" style="border-color:rgba(240,169,43,.4)">
+      <div class="label" style="color:var(--warn)">not trained</div>
+      <p class="small" style="margin:0">${s.data?.consequence || ""}</p>
+      <pre style="margin-top:9px">${s.data?.fix || "python -m training.train_segmenter"}</pre></div>`;
+  }
+
+  // confusion
+  const cm = active?.confusion_matrix, names = active?.class_names;
+  if (cm && names) {
+    const max = Math.max(...cm.flat(), 1);
+    el("confusion").innerHTML = `<table style="border-collapse:collapse">
+      <tr><th></th>${names.map(n => `<th style="padding:4px;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);height:92px">${n.split(" ")[0]}</th>`).join("")}</tr>
+      ${cm.map((row, r) => `<tr><td style="padding-right:8px;font-size:10.5px;color:var(--slate-400);white-space:nowrap;text-align:right;border:0">${names[r].split(" ")[0]}</td>
+        ${row.map((val, c) => {
+          const a = val / max;
+          const bg = r === c ? `rgba(52,211,153,${0.12 + a * .8})` : `rgba(251,113,133,${0.08 + a * .7})`;
+          return `<td style="width:30px;height:30px;text-align:center;font-family:var(--mono);font-size:10px;border:1px solid var(--ink-950);background:${bg}">${val || ""}</td>`;
+        }).join("")}</tr>`).join("")}</table>`;
+  }
+})();
+</script>
+</body>
+</html>

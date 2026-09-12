@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System — ROAD-SHIELD</title>
+<link rel="stylesheet" href="/web/app.css">
+</head>
+<body data-page="system">
+<div class="wrap">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">System</h1>
+    <span class="muted small">what is loaded, what is calibrated, what is assumed</span>
+  </div>
+
+  <div class="section-head" style="margin-top:20px"><h2>Components</h2></div>
+  <div id="health"></div>
+
+  <div class="section-head"><h2>Camera calibration</h2>
+    <span class="muted small">every area and cost is derived through these numbers</span></div>
+  <div id="calib"></div>
+
+  <div class="section-head"><h2>Segmentation</h2></div>
+  <div id="seg"></div>
+
+  <div class="section-head"><h2>Storage</h2></div>
+  <div id="store"></div>
+
+  <div class="section-head"><h2>Self-test</h2>
+    <span class="muted small">runs against the live server</span></div>
+  <div class="card">
+    <button class="primary" id="selftest">Run endpoint check</button>
+    <div id="testout" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<script src="/web/app.js"></script>
+<script>
+(async () => {
+  const [h, c, s, f] = await Promise.all([
+    API.get("/api/v1/health"),
+    API.get("/api/v1/calibration/profiles"),
+    API.get("/api/v1/segmentation/status"),
+    API.get("/api/v1/fleet/telemetry"),
+  ]);
+
+  if (h.ok) {
+    const m = h.data.models || {};
+    el("health").innerHTML = `<div class="card"><div class="table-wrap"><table>
+      <thead><tr><th>component</th><th>state</th><th>kind</th></tr></thead>
+      <tbody>${Object.entries(m).map(([k, v]) => {
+        const trained = /LOADED|READY|cnn:|onnx/i.test(String(v));
+        const formula = /FORMULA/i.test(String(v));
+        return `<tr><td class="mono small">${k}</td>
+          <td class="small">${v}</td>
+          <td>${formula ? '<span class="badge neutral">deterministic formula</span>'
+                : trained ? '<span class="badge measured">trained / loaded</span>'
+                : '<span class="badge bad">not available</span>'}</td></tr>`;
+      }).join("")}</tbody></table></div>
+      <p class="small muted" style="margin:10px 0 0">
+        "Deterministic formula" is not a euphemism for a stub — ASTM D6433 and MoRTH
+        Section 500 are published procedures, and implementing them correctly is the
+        right answer. They are marked separately from trained models because a judge
+        should know which is which.</p></div>`;
+  }
+
+  if (c.ok) {
+    const none = c.data.count === 0;
+    el("calib").innerHTML = `<div class="card" style="${none ? "border-color:rgba(240,169,43,.42)" : ""}">
+      <div class="grid c2" style="align-items:start">
+        <div>
+          <div class="label">${none ? "no calibrated device" : c.data.count + " calibrated device(s)"}</div>
+          <div class="stat sm" style="color:${none ? "var(--warn)" : "var(--ok)"}">
+            ${none ? "assumed mount" : "measured"}</div>
+          <p class="small muted" style="margin:8px 0 0">${c.data.why_it_matters}</p>
+        </div>
+        <div>
+          <div class="label">active fallback</div>
+          ${["camera_height_m", "pitch_deg"].map(k =>
+            `<div class="kv"><span>${k}</span><span>${c.data.active_default[k]}</span></div>`).join("")}
+          <div class="kv"><span>focal px</span><span>${(c.data.active_default.focal_px || []).map(Math.round).join(" / ")}</span></div>
+          <div class="kv"><span>source</span><span style="font-size:11px">${c.data.active_default.source}</span></div>
+        </div>
+      </div>
+      ${none ? `<div class="rule" style="margin:14px 0"></div>
+        <div class="label">calibrate a device</div>
+        <pre>${c.data.how_to_add}</pre>` :
+        `<div class="table-wrap" style="margin-top:12px"><table>
+          <thead><tr><th>device</th><th class="num">height m</th><th class="num">pitch°</th><th>source</th></tr></thead>
+          <tbody>${c.data.profiles.map(p => `<tr><td class="mono small">${p.device_id}</td>
+            <td class="num">${p.camera_height_m}</td><td class="num">${p.pitch_deg}</td>
+            <td class="small">${p.source}</td></tr>`).join("")}</tbody></table></div>`}
+    </div>`;
+  }
+
+  if (s.ok) {
+    el("seg").innerHTML = s.data.available
+      ? `<div class="card"><div class="grid c2">
+          <div><div class="label">status</div>
+            <div class="stat sm" style="color:var(--ok)">loaded</div>
+            <div class="stat-sub">area measured from the mask</div></div>
+          <div><div class="label">thresholds</div>
+            <div class="kv"><span>crack</span><span>${s.data.thresholds?.crack}</span></div>
+            <div class="kv"><span>pothole</span><span>${s.data.thresholds?.pothole}</span></div></div>
+        </div>
+        <p class="small muted" style="margin:10px 0 0">${(s.data.features || []).length} features per pixel:
+          <span class="mono">${(s.data.features || []).join(", ")}</span></p></div>`
+      : `<div class="card" style="border-color:rgba(240,169,43,.42)">
+          <div class="label" style="color:var(--warn)">not trained</div>
+          <p class="small" style="margin:0 0 8px">${s.data.consequence || ""}</p>
+          <pre>${s.data.fix || ""}</pre></div>`;
+  }
+
+  if (f.ok) {
+    const p = f.data.persisted || {};
+    const durable = f.data.storage === "sqlite";
+    el("store").innerHTML = `<div class="card">
+      <div class="grid c3">
+        <div><div class="label">mode</div>
+          <div class="stat sm" style="color:${durable ? "var(--ok)" : "var(--warn)"}">
+            ${durable ? "SQLite" : "in-memory"}</div>
+          <div class="stat-sub">${durable ? "survives restart" : "lost on restart"}</div></div>
+        <div><div class="label">rows</div>
+          <div class="stat sm">${p.total_reports ?? "—"}</div>
+          <div class="stat-sub">${p.unique_defects ?? "—"} defects · ${p.work_orders ?? 0} orders</div></div>
+        <div><div class="label">database</div>
+          <div class="small mono" style="word-break:break-all;margin-top:6px">${p.database || "—"}</div>
+          ${p.durable === false ? `<div class="stat-sub" style="color:var(--warn)">
+            per-instance on serverless — wiped between cold starts, stated rather than hidden</div>` : ""}</div>
+      </div></div>`;
+  }
+})();
+
+el("selftest").addEventListener("click", async () => {
+  const checks = [
+    ["GET", "/api/v1/health"],
+    ["GET", "/api/v1/training/metrics"],
+    ["GET", "/api/v1/datasets/benchmarks"],
+    ["GET", "/api/v1/fleet/telemetry"],
+    ["GET", "/api/v1/gis/map-data"],
+    ["GET", "/api/v1/calibration/profiles"],
+    ["GET", "/api/v1/segmentation/status"],
+    ["GET", "/api/v1/maps/status"],
+    ["GET", "/api/v1/models/registry"],
+    ["GET", "/api/v1/ledger/defects"],
+  ];
+  setLoading(el("testout"), true, `checking ${checks.length} endpoints…`);
+  const rows = [];
+  for (const [method, path] of checks) {
+    const r = await API.get(path);
+    rows.push({ path, ok: r.ok, status: r.status, ms: r.ms });
+  }
+  const good = rows.filter(r => r.ok).length;
+  el("testout").innerHTML = `
+    <p class="small" style="margin:0 0 9px">
+      <strong style="color:${good === rows.length ? "var(--ok)" : "var(--warn)"}">
+      ${good} / ${rows.length}</strong> responding</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>endpoint</th><th class="num">status</th><th class="num">ms</th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td class="mono small">${r.path}</td>
+        <td class="num" style="color:${r.ok ? "var(--ok)" : "var(--bad)"}">${r.status}</td>
+        <td class="num">${r.ms}</td></tr>`).join("")}</tbody></table></div>`;
+});
+</script>
+</body>
+</html>

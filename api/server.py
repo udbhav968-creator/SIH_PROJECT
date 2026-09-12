@@ -80,7 +80,11 @@ imu_model = IMUShockClassifier(model_path=os.path.join(CKPT_DIR, "imu_shock_mode
 print("  ✓ IMU shock classifier", "loaded" if imu_model.is_ready else "NOT TRAINED YET (run training/train_imu.py)")
 
 bayesian_gate = BayesianFusionGate(prior_pothole_prob=0.05, decision_threshold_log_odds=1.8)
-ipm_engine = IPMHomographyEngine(camera_height_m=1.45, pitch_deg=18.4)
+# Standalone IPM for the /civil/ipm-tonnage endpoint. Built from the default
+# calibration profile rather than repeating the constants here, so there is one
+# place where an assumed mount is defined and it is labelled as assumed.
+from models.camera_calibration import DEFAULT_PROFILE as _DEFAULT_CALIB
+ipm_engine = IPMHomographyEngine.from_calibration(_DEFAULT_CALIB)
 forensic_embedder = ForensicMetricEmbedder(hash_size=16, duplicate_hamming_threshold=6)
 texture_auditor = ForensicTextureAuditor()
 dispatch_agent = MoRTHDispatchAgent()
@@ -98,15 +102,29 @@ alpr_tracker = ALPRIncidentTracker()
 deep_pipeline = DeepInferencePipeline(CKPT_DIR)
 print("  ✓ Deep inference pipeline initialized.")
 
-fleet_dedup_engine = FleetDeduplicationEngine(proximity_threshold_meters=10.0)
-# Seed a handful of demo defects so the GIS map isn't empty on a fresh
-# server start - these are labeled fixture data below, not live telemetry.
-fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9716, 77.5946, "Pothole Cavity", 42.0, 1.85, enrich_location=False)
-fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.97163, 77.59457, "Pothole Cavity", 38.0, 2.10, enrich_location=False)  # ~5 m away -> merges into the first, confirming it
-fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9750, 77.5980, "Waterlogging / Flooding Hazard", 35.0, 5.20, enrich_location=False)
-fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-308", 12.9680, 77.5910, "Missing Zebra Crossing", 60.0, 3.40, enrich_location=False)
-fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.9800, 77.6050, "Damaged Traffic Sign", 55.0, 0.80, enrich_location=False)
-print("  ✓ Fleet deduplication engine initialized (seeded with 5 demo reports).")
+# The ledger is durable: a municipality's repair backlog cannot live in a
+# process's memory. On a serverless filesystem the database goes to the
+# writable tmp directory and is therefore per-instance, which is reported
+# honestly by /api/v1/fleet/telemetry rather than hidden.
+from pipeline.defect_store import DefectStore
+defect_store = DefectStore(os.path.join(WRITABLE_DIR, "road_shield.db"))
+fleet_dedup_engine = FleetDeduplicationEngine(proximity_threshold_meters=10.0,
+                                              store=defect_store)
+
+# Seed demo defects ONLY when the ledger is empty. Re-seeding on every start
+# would duplicate fixtures into a durable store, which is exactly the bug
+# deduplication exists to prevent.
+if not fleet_dedup_engine.defect_registry:
+    fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9716, 77.5946, "Pothole Cavity", 42.0, 1.85, enrich_location=False)
+    fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.97163, 77.59457, "Pothole Cavity", 38.0, 2.10, enrich_location=False)  # ~5 m away -> merges into the first, confirming it
+    fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9750, 77.5980, "Waterlogging / Flooding Hazard", 35.0, 5.20, enrich_location=False)
+    fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-308", 12.9680, 77.5910, "Missing Zebra Crossing", 60.0, 3.40, enrich_location=False)
+    fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.9800, 77.6050, "Damaged Traffic Sign", 55.0, 0.80, enrich_location=False)
+    print(f"  ✓ Fleet ledger created and seeded with 5 demo reports "
+          f"-> {defect_store.db_path}")
+else:
+    print(f"  ✓ Fleet ledger loaded: {len(fleet_dedup_engine.defect_registry)} defects "
+          f"from {defect_store.db_path}")
 
 active_feedback_counter = 0
 video_trackers = {}
@@ -123,6 +141,33 @@ def find_or_export_artifact(filename):
     edge_exporter.export_all_to_open_spec(output_dir=WRITABLE_DIR)
     candidate = os.path.join(WRITABLE_DIR, filename)
     return candidate if os.path.exists(candidate) else None
+
+
+# ------------------------------------------------------------------------------
+# Static site
+# ------------------------------------------------------------------------------
+WEB_DIR = os.path.join(ENGINE_ROOT, "web")
+
+# Clean URLs -> files in web/. Keeping this explicit rather than mapping any
+# path to any file means the server cannot be talked into reading outside the
+# web directory, which a naive static handler usually can.
+PAGE_ROUTES = {
+    "/": "index.html",
+    "/inspect": "inspect.html",
+    "/corridor": "corridor.html",
+    "/works": "works.html",
+    "/models": "models.html",
+    "/data": "data.html",
+    "/system": "system.html",
+    "/video": "video.html",
+    "/architecture": "architecture.html",
+}
+STATIC_TYPES = {
+    ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8", ".json": "application/json",
+    ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg",
+    ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
+}
 
 
 def get_session_tracker(session_id="default", reset=False):
@@ -149,6 +194,30 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self._send_cors_headers()
         self.end_headers()
+
+    def _serve_static(self, name):
+        """
+        Serve one file from web/. Returns True if it was served.
+
+        `name` is a bare filename that has already been resolved from a route
+        or a /web/ prefix; the realpath check is belt and braces against a
+        path that escapes the directory anyway.
+        """
+        safe = os.path.basename(name)
+        full = os.path.realpath(os.path.join(WEB_DIR, safe))
+        if not full.startswith(os.path.realpath(WEB_DIR)) or not os.path.isfile(full):
+            return False
+        ext = os.path.splitext(full)[1].lower()
+        with open(full, "rb") as fh:
+            content = fh.read()
+        self.send_response(200)
+        self.send_header("Content-Type", STATIC_TYPES.get(ext, "application/octet-stream"))
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(content)
+        return True
 
     def _send_json(self, status_code, data):
         def _json_serial(obj):
@@ -197,18 +266,30 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         t0 = time.time()
 
         accept_header = self.headers.get("Accept", "")
-        if path in ["/dashboard", "/frontend", "/gui", "/app"] or (path == "/" and "text/html" in accept_header):
-            frontend_path = os.path.join(ENGINE_ROOT, "road_shield_frontend.html")
-            if os.path.exists(frontend_path):
-                with open(frontend_path, "rb") as f:
-                    content = f.read()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(content)))
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.end_headers()
-                self.wfile.write(content)
+        # ---------------- static site ----------------
+        # The frontend is a real multi-page site under web/, not one HTML file.
+        # Each page is served by name; unknown names fall through to the API.
+        page = PAGE_ROUTES.get(path)
+        if page is None and path.startswith("/web/"):
+            page = os.path.basename(path)
+        if page:
+            served = self._serve_static(page)
+            if served:
                 return
+        if path in ("/dashboard", "/frontend", "/gui", "/app") or (path == "/" and "text/html" in accept_header):
+            # Legacy single-file dashboard, kept so old links keep working.
+            for candidate in ("index.html", "road_shield_frontend.html"):
+                fp = os.path.join(ENGINE_ROOT, candidate)
+                if os.path.exists(fp):
+                    with open(fp, "rb") as f:
+                        content = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(content)))
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
 
         if path in ["/", "/api/v1/health"]:
             self._send_json(200, {
@@ -304,10 +385,11 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
 
         if path == "/api/v1/fleet/telemetry":
             stats = fleet_dedup_engine.get_deduplication_stats()
+            # Pass the storage facts through unchanged. Whether the ledger is
+            # durable, and where it lives, is exactly the sort of thing a pilot
+            # needs to know and a demo tends to hide.
             self._send_json(200, {
-                "unique_defects_registered": stats["unique_defects_registered"],
-                "total_reports_ingested": stats["total_reports_ingested"],
-                "deduplication_efficiency_pct": stats["deduplication_efficiency_pct"],
+                **stats,
                 "fleet_status": "DEMO_SEED_DATA_NO_LIVE_GPS_FEED",
             })
             return
@@ -336,6 +418,75 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 blob["active"] = bool(loaded.get("backbone") == blob.get("backbone"))
                 out[key] = blob
             self._send_json(200, out)
+            return
+
+        if path == "/api/v1/calibration/profiles":
+            from models.camera_calibration import CALIB_DIR, DEFAULT_PROFILE, describe, list_profiles
+            profiles = list_profiles()
+            self._send_json(200, {
+                "profiles": [describe(p, "calibrated") for p in profiles],
+                "count": len(profiles),
+                "directory": CALIB_DIR,
+                "active_default": describe(DEFAULT_PROFILE, "default"),
+                "why_it_matters": (
+                    "Every area, tonnage and cost is derived by projecting pixels onto "
+                    "the ground plane using these numbers. Without a calibrated profile "
+                    "the system assumes one mount for every vehicle; mounting the same "
+                    "camera 30 cm higher changes a computed area by about 46%."),
+                "how_to_add": "python -m scripts.calibrate_camera --device <id> "
+                              "--hfov <deg> --width <px> --height-px <px> "
+                              "--height <m> --pitch <deg>",
+            })
+            return
+
+        if path == "/api/v1/claims":
+            # The claims registry, served live so every statement this project
+            # makes can be checked against the engine that is actually running -
+            # including the ones that were withdrawn or corrected.
+            claims_path = os.path.join(CKPT_DIR, "claims.json")
+            if not os.path.exists(claims_path):
+                self._send_json(404, {"error": "claims.json not present",
+                                      "fix": "python -m scripts.build_claims"})
+                return
+            with open(claims_path, "r", encoding="utf-8") as fh:
+                claims = json.load(fh)
+            # Attach LIVE status to each subsystem, so the page shows what is
+            # loaded right now rather than what a document says should be.
+            live = {
+                "M1": bool(vision_model.is_ready),
+                "M1-fallback": os.path.exists(os.path.join(CKPT_DIR, "vision_distress_model.joblib")),
+                "M1-edge": os.path.exists(os.path.join(CKPT_DIR, "cnn_backbone_mobilenetv2.onnx")),
+                "M_SEG": bool(getattr(deep_pipeline, "segmenter", None)
+                              and deep_pipeline.segmenter.is_ready),
+                "M_DET": bool(deep_pipeline.object_detector.is_ready),
+                "M4": bool(imu_model.is_ready),
+                "M2": True, "M_CALIB": True, "M_DEPTH": True, "M5": True,
+                "M_PCI": True, "M_DEGRADE": True, "M_COST": True,
+                "M_SEAL": True, "M_FORENSIC": True,
+                "M_LEDGER": fleet_dedup_engine.store is not None,
+                "M_VIDEO": True,
+                "M_GATE": bool(getattr(deep_pipeline, "segmenter", None)
+                               and deep_pipeline.segmenter.is_ready),
+            }
+            for sub in claims.get("subsystems", []):
+                sub["live"] = live.get(sub["id"])
+            claims["served_by"] = "live engine"
+            claims["vision_backend"] = VISION_BACKEND
+            self._send_json(200, claims)
+            return
+
+        if path == "/api/v1/segmentation/status":
+            seg = getattr(deep_pipeline, "segmenter", None)
+            if seg is None or not seg.is_ready:
+                self._send_json(200, {
+                    "available": False,
+                    "area_method": "bounding-box corners projected to the ground plane",
+                    "consequence": "A box around a diagonal crack overstates its area by "
+                                   "roughly an order of magnitude, and cost is linear in area.",
+                    "fix": "python -m training.train_segmenter",
+                })
+                return
+            self._send_json(200, {"available": True, **seg.describe()})
             return
 
         if path == "/api/v1/datasets/benchmarks":
@@ -797,7 +948,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": "Missing image_base64 payload"})
                 return
             try:
-                analysis = deep_pipeline.audit_image(image_input=img_b64, corridor_id=highway)
+                analysis = deep_pipeline.audit_image(
+                    image_input=img_b64, corridor_id=highway,
+                    device_id=body.get("device_id"))
                 analysis["latency_ms"] = round((time.time() - t0) * 1000.0, 3)
                 self._send_json(200, analysis)
             except Exception as e:
@@ -926,6 +1079,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             rain_mm = float(body.get("rain_mm", 650.0))
             age_yr = float(body.get("age_years", 3.5))
             imu_series = body.get("imu_series")  # only used if the caller supplies a real (100,3) window
+            device_id = body.get("device_id")  # camera calibration profile, if the caller has one
 
             if not image_input:
                 default_pothole = os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "real_images", "1014628_RS_386_386RS124739_30065_RAW.jpg")
@@ -946,10 +1100,58 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     traffic_esal=traffic_esal,
                     rain_mm=rain_mm,
                     pavement_age_yr=age_yr,
+                    device_id=device_id,
                 )
                 self._send_json(200, audit_result)
             except Exception as e:
                 self._send_json(500, {"error": f"Deep pipeline audit failed: {str(e)}"})
+            return
+
+        if path == "/api/v1/video/ingest":
+            # Decodes a real video file, samples frames by ground distance and
+            # feeds them through the pipeline into the durable ledger.
+            src = body.get("video_path") or body.get("path")
+            if not src:
+                self._send_json(400, {
+                    "error": "video_path is required",
+                    "note": "This endpoint reads a video file from the server's "
+                            "filesystem. Uploading multi-hundred-megabyte dashcam "
+                            "footage through a JSON body is the wrong shape for the "
+                            "problem; in a fleet deployment the bus uploads to "
+                            "object storage and this is handed the key.",
+                })
+                return
+            if not os.path.isfile(src):
+                self._send_json(404, {"error": f"no such video: {src}"})
+                return
+            try:
+                from pipeline.video_ingest import VideoIngestor
+                ing = VideoIngestor(deep_pipeline, fleet_dedup_engine)
+                summary = ing.process(
+                    src,
+                    gps_track=body.get("gps_track"),
+                    bus_id=body.get("bus_id", "UNKNOWN"),
+                    sample_every_m=float(body.get("sample_every_m", 8.0)),
+                    sample_every_s=float(body.get("sample_every_s", 1.0)),
+                    max_frames=int(body.get("max_frames", 200)),
+                    device_id=body.get("device_id"),
+                )
+                # The frame-by-frame list can be enormous; return it only if asked.
+                if not body.get("include_frames"):
+                    summary["detections"] = summary["detections"][:25]
+                    summary["detections_truncated_to"] = 25
+                self._send_json(200, summary)
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            return
+
+        if path == "/api/v1/video/probe":
+            src = body.get("video_path") or body.get("path")
+            if not src or not os.path.isfile(src):
+                self._send_json(404, {"error": f"no such video: {src}"})
+                return
+            from pipeline.video_ingest import VideoIngestor
+            self._send_json(200, VideoIngestor.probe(src))
             return
 
         if path == "/api/v1/pipeline/deep-audit-batch":

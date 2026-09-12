@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video ingest — ROAD-SHIELD</title>
+<link rel="stylesheet" href="/web/app.css">
+</head>
+<body data-page="video">
+<div class="wrap">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">Video ingest</h1>
+    <span class="muted small">dashcam footage sampled by ground distance, deduplicated into the ledger</span>
+  </div>
+
+  <div class="split">
+    <div>
+      <div class="card">
+        <div class="label">run a video through the pipeline</div>
+        <p class="small muted" style="margin:0 0 12px">
+          The server reads the file from its own filesystem. Pushing a
+          multi-hundred-megabyte dashcam file through a JSON body is the wrong
+          shape for the problem — in a fleet deployment the bus uploads to object
+          storage and this endpoint is handed the key.
+        </p>
+        <div class="field"><label for="path">Video path on the server</label>
+          <input id="path" placeholder="/path/to/dashcam.mp4"></div>
+        <div class="grid c2">
+          <div class="field"><label for="bus">Bus ID</label><input id="bus" value="KA01F1234"></div>
+          <div class="field"><label for="every">Sample every … metres</label>
+            <input id="every" type="number" step="1" value="8"></div>
+          <div class="field"><label for="maxf">Max frames</label>
+            <input id="maxf" type="number" value="120"></div>
+          <div class="field"><label for="dev">Calibration profile</label>
+            <select id="dev"><option value="">none — assumed mount</option></select></div>
+        </div>
+        <div class="field">
+          <label for="gps">GPS track (JSON: <span class="mono">[{"t":0,"lat":..,"lon":..}, …]</span>)</label>
+          <textarea id="gps" rows="4" placeholder='[{"t":0,"lat":12.9716,"lon":77.5946},{"t":30,"lat":12.9750,"lon":77.5946}]'></textarea>
+        </div>
+        <div style="display:flex;gap:9px;flex-wrap:wrap">
+          <button id="probe">Probe file</button>
+          <button class="primary" id="run">Ingest</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="label">how frames are chosen</div>
+        <p class="small" style="margin:0 0 9px"><strong style="color:var(--white)">By distance, not by frame.</strong>
+          At 40 km/h a bus covers 11 m every second. Sampling every frame spends
+          95% of the compute on near-identical views; sampling every N frames
+          either misses defects in slow traffic or floods the ledger at speed.
+          With a GPS track, frames are chosen to be roughly the set distance apart
+          on the ground.</p>
+        <p class="small" style="margin:0"><strong style="color:var(--white)">Then hashed.</strong>
+          Consecutive frames of the same defect look alike, so each candidate is
+          perceptually hashed against the last twelve accepted frames and skipped
+          if it is a near-duplicate — before the expensive inference runs.</p>
+      </div>
+    </div>
+
+    <div id="out">
+      <div class="card"><div class="label">no run yet</div>
+        <p class="small muted" style="margin:0">
+          Give a path to a video file the server can read. Without a GPS track the
+          frames are still analysed, but nothing is located or deduplicated — and
+          the result says so rather than inventing a position.</p></div>
+    </div>
+  </div>
+</div>
+
+<script src="/web/app.js"></script>
+<script>
+(async () => {
+  const r = await API.get("/api/v1/calibration/profiles");
+  if (r.ok) (r.data.profiles || []).forEach(p => {
+    const o = document.createElement("option");
+    o.value = p.device_id; o.textContent = p.device_id;
+    el("dev").appendChild(o);
+  });
+})();
+
+el("probe").addEventListener("click", async () => {
+  const r = await API.post("/api/v1/video/probe", { video_path: el("path").value });
+  el("out").innerHTML = r.ok
+    ? `<div class="card"><div class="label">file</div>
+        ${Object.entries(r.data).map(([k, v]) => `<div class="kv"><span>${k}</span><span>${v}</span></div>`).join("")}</div>`
+    : errorCard(r.data.error || `HTTP ${r.status}`);
+});
+
+el("run").addEventListener("click", async () => {
+  let gps = null;
+  const raw = el("gps").value.trim();
+  if (raw) {
+    try { gps = JSON.parse(raw); }
+    catch { el("out").innerHTML = errorCard("GPS track is not valid JSON"); return; }
+  }
+  setLoading(el("out"), true, "decoding and analysing…");
+  const payload = {
+    video_path: el("path").value,
+    bus_id: el("bus").value,
+    sample_every_m: parseFloat(el("every").value),
+    max_frames: parseInt(el("maxf").value, 10),
+  };
+  if (gps) payload.gps_track = gps;
+  if (el("dev").value) payload.device_id = el("dev").value;
+
+  const r = await API.post("/api/v1/video/ingest", payload);
+  if (!r.ok) {
+    el("out").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`, r.data.note);
+    return;
+  }
+  const d = r.data;
+  el("out").innerHTML = `
+    <div class="card accent">
+      <div class="label">${d.video.path} · ${d.video.duration_s}s @ ${d.video.fps} fps</div>
+      <div class="grid c2" style="margin-top:8px">
+        <div><div class="label">frames analysed</div><div class="stat sm">${d.frames_analysed}</div>
+          <div class="stat-sub">of ${d.video.frame_count} decoded</div></div>
+        <div><div class="label">defect frames</div>
+          <div class="stat sm" style="color:var(--warn)">${d.defect_frames}</div>
+          <div class="stat-sub">${d.unique_defects_after_dedup != null
+            ? d.unique_defects_after_dedup + " unique after dedup" : "not deduplicated — no GPS"}</div></div>
+      </div>
+      <div class="rule" style="margin:13px 0"></div>
+      <div class="kv"><span>Sampling</span><span>${d.sampling.mode}
+        ${d.sampling.sample_every_m ? "· " + d.sampling.sample_every_m + " m" : "· " + d.sampling.sample_every_s + " s"}</span></div>
+      <div class="kv"><span>Skipped as near-duplicates</span><span>${d.frames_skipped_as_near_duplicates}</span></div>
+      <div class="kv"><span>GPS fixes</span><span>${d.gps.fixes}</span></div>
+      <div class="kv"><span>Time per analysed frame</span><span>${d.ms_per_analysed_frame} ms</span></div>
+      <div class="kv"><span>Total</span><span>${d.seconds_elapsed} s</span></div>
+      ${d.gps.note ? `<p class="small" style="margin:10px 0 0;color:var(--warn)">${d.gps.note}</p>` : ""}
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div class="label">frames${d.detections_truncated_to ? ` · first ${d.detections_truncated_to}` : ""}</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th class="num">t</th><th>class</th><th class="num">conf</th>
+          <th class="num">area m²</th><th>position</th></tr></thead>
+        <tbody>${d.detections.map(x => `<tr>
+          <td class="num">${x.timestamp_s}s</td>
+          <td>${(x.class_name || "—").slice(0, 24)}</td>
+          <td class="num">${x.confidence ? (x.confidence * 100).toFixed(0) + "%" : "—"}</td>
+          <td class="num">${fmt.num(x.area_m2, 3)}</td>
+          <td class="mono small">${x.lat != null ? x.lat.toFixed(5) + ", " + x.lon.toFixed(5) : "—"}</td>
+        </tr>`).join("")}</tbody></table></div>
+    </div>`;
+});
+</script>
+</body>
+</html>

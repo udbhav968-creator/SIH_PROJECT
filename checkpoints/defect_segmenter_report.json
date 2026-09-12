@@ -1,0 +1,104 @@
+{
+  "model": "HistGradientBoosting pixel classifier on 11 hand-designed features",
+  "features": [
+    "L",
+    "a",
+    "b",
+    "grad_mag",
+    "laplacian_abs",
+    "std_5",
+    "std_15",
+    "L_minus_local_mean_31",
+    "row_v_norm",
+    "col_offset_norm",
+    "L_minus_image_mean"
+  ],
+  "working_resolution": [
+    320,
+    200
+  ],
+  "thresholds": {
+    "crack": 0.55,
+    "pothole": 0.3
+  },
+  "decision_rule": "per-class probability threshold tuned for IoU on a calibration split, not argmax",
+  "trained_on": {
+    "photographs_total": 2000,
+    "train_photographs": 1260,
+    "calibration_photographs": 240,
+    "test_photographs": 500,
+    "training_pixels": 4746159,
+    "pixels_per_class": {
+      "0": 3844396,
+      "1": 760996,
+      "2": 140767
+    },
+    "source": "DNIT Cracks and Potholes in Road Images - hand-drawn polygons",
+    "clean_photographs": {
+      "folders": [
+        "05_morth_civil_hard_negatives",
+        "10_missing_zebra_crossing",
+        "11_missing_road_divider"
+      ],
+      "train": 142,
+      "calibration": 28,
+      "test": 109,
+      "pixels_contributed": 383400,
+      "why": "Every DNIT photograph contains a defect, so the first version of this model had never seen fresh white paint on dark asphalt without a defect nearby. It called zebra crossings potholes."
+    },
+    "hard_negative_mining": {
+      "images_mined": 142,
+      "false_pixels_found": 71312,
+      "false_pixels_per_image_mean": 502.2,
+      "pixels_added_to_training": 58996,
+      "ran": true
+    }
+  },
+  "split_strategy": "defect photographs split by photograph; clean photographs split by SOURCE scene, so augmented crops of one scene never cross the split",
+  "scored_on": "pixels inside the lane polygon only; sky and verge excluded",
+  "iou": {
+    "crack": {
+      "iou": 0.2307,
+      "dice": 0.3749,
+      "pixel_precision": 0.3679,
+      "pixel_recall": 0.3822,
+      "true_pixels": 581391,
+      "predicted_pixels": 604013
+    },
+    "pothole": {
+      "iou": 0.1462,
+      "dice": 0.2551,
+      "pixel_precision": 0.2504,
+      "pixel_recall": 0.2599,
+      "true_pixels": 147076,
+      "predicted_pixels": 152656
+    }
+  },
+  "false_positives_on_clean_roads": {
+    "clean_photographs_scored": 109,
+    "min_blob_px": 250,
+    "pixel_rate_crack": 0.00648,
+    "pixel_rate_pothole": 0.0023,
+    "photo_rate_any_blob": 0.055,
+    "per_folder": {
+      "05_morth_civil_hard_negatives": {
+        "photos": 100,
+        "flagged": 0,
+        "rate": 0.0
+      },
+      "10_missing_zebra_crossing": {
+        "photos": 6,
+        "flagged": 4,
+        "rate": 0.667
+      },
+      "11_missing_road_divider": {
+        "photos": 3,
+        "flagged": 2,
+        "rate": 0.667
+      }
+    }
+  },
+  "why_two_metrics": "IoU is measured only on photographs that contain a defect, so it cannot detect a model that invents defects on clean roads. That failure is what users actually saw, so it is measured separately on photographs held out of training.",
+  "inference_ms_per_image": 764.4,
+  "trained_at_unix": 1789205899
+}

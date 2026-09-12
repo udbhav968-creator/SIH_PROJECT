@@ -40,6 +40,12 @@ class IPMHomographyEngine:
         self.pitch_rad = float(np.radians(pitch_deg))
         self.fx, self.fy, self.cx, self.cy = float(fx), float(fy), float(cx), float(cy)
 
+    @classmethod
+    def from_calibration(cls, profile):
+        """Build from a camera_calibration profile dict."""
+        return cls(camera_height_m=profile["camera_height_m"], pitch_deg=profile["pitch_deg"],
+                   fx=profile["fx"], fy=profile["fy"], cx=profile["cx"], cy=profile["cy"])
+
     def pixel_to_ground(self, u, v):
         """Pixel (u, v) -> ground-plane (x, y) meters. y = forward distance, x = lateral offset."""
         alpha = np.arctan((v - self.cy) / self.fy)
@@ -61,6 +67,59 @@ class IPMHomographyEngine:
         ys = [c[1] for c in corners]
         area = 0.5 * abs(np.dot(xs, np.roll(ys, 1)) - np.dot(ys, np.roll(xs, 1)))
         return float(np.clip(area, 0.05, 25.0))
+
+    # ------------------------------------------------------------------
+    def row_pixel_area_m2(self, image_height, image_width, row_stride=1):
+        """
+        Ground area of ONE pixel, per image row.
+
+        Perspective means a pixel near the bottom of the frame covers a few
+        square centimetres of road and a pixel near the horizon covers square
+        metres. Any area computed by counting pixels has to weight them by row,
+        or it is meaningless. Returned as an array indexed by row so a mask can
+        be turned into an area with a single dot product.
+        """
+        rows = np.arange(0, image_height, row_stride, dtype=np.float64)
+        u0, u1 = self.cx - 0.5, self.cx + 0.5
+        out = np.zeros(rows.shape[0], dtype=np.float64)
+        for i, v in enumerate(rows):
+            (x0, y0) = self.pixel_to_ground(u0, v - 0.5)
+            (x1, y1) = self.pixel_to_ground(u1, v - 0.5)
+            (_x2, y2) = self.pixel_to_ground(u0, v + 0.5)
+            width_m = abs(x1 - x0)
+            depth_m = abs(y2 - y0)
+            out[i] = width_m * depth_m
+        return out
+
+    def mask_area_m2(self, mask, max_area_m2=25.0):
+        """
+        Ground area of a boolean pixel mask - a measurement, not a box estimate.
+
+        Each pixel contributes the ground area of its own footprint, which
+        depends on its row. This is what replaces
+        `calculate_surface_area_sqm`'s four-corner rectangle: a defect is
+        rarely rectangular, and a padded box around a diagonal crack can
+        overstate its area several times over.
+
+        Returns (area_m2, diagnostics). The clip is reported rather than
+        applied silently, because a clipped area means the geometry has gone
+        out of its valid range and the number should not be trusted.
+        """
+        m = np.asarray(mask, dtype=bool)
+        if m.ndim != 2:
+            raise ValueError("mask must be 2-D")
+        h, w = m.shape
+        per_row = self.row_pixel_area_m2(h, w)
+        counts = m.sum(axis=1).astype(np.float64)
+        raw = float(np.dot(counts, per_row))
+        clipped = float(np.clip(raw, 0.0, max_area_m2))
+        return clipped, {
+            "raw_area_m2": round(raw, 4),
+            "clipped": bool(raw > max_area_m2),
+            "mask_pixels": int(m.sum()),
+            "image_shape": [int(h), int(w)],
+            "method": "per-pixel ground footprint summed over the segmentation mask",
+        }
 
     def compute_asphalt_procurement(self, area_sqm, depth_cm=6.5, mix_type="DBM_SECTION_500", compaction_margin=1.15):
         """M = Area (m^2) * Depth (m) * Density (T/m^3) * compaction margin."""

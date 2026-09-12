@@ -10,12 +10,31 @@ import math
 import time
 
 class FleetDeduplicationEngine:
-    def __init__(self, proximity_threshold_meters=8.0):
+    """
+    Spatial deduplication of fleet defect reports.
+
+    Pass a `store` (pipeline.defect_store.DefectStore) to make the ledger
+    durable. Without one the behaviour is exactly as before - an in-memory
+    registry that dies with the process - which is fine for tests and wrong
+    for anything a municipality would rely on.
+
+    With a store, the registry is loaded from disk on construction and every
+    sighting is written back, merged or not. The raw sightings matter as much
+    as the merged defects: they are the evidence that a pothole was reported
+    five times and billed once.
+    """
+
+    def __init__(self, proximity_threshold_meters=8.0, store=None):
         self.proximity_threshold_m = proximity_threshold_meters
+        self.store = store
         # Registry of persistent ground-truth defects: {defect_id: defect_record}
         self.defect_registry = {}
         self.next_defect_id = 1001
         self.total_reports_ingested = 0  # every ingest_fleet_detection call, matched or not
+        if store is not None:
+            self.defect_registry = store.load_defects()
+            self.next_defect_id = store.next_defect_id()
+            self.total_reports_ingested = store.stats()["total_reports"]
 
     @staticmethod
     def haversine_distance(lat1, lon1, lat2, lon2):
@@ -62,6 +81,11 @@ class FleetDeduplicationEngine:
             rec["severity_pci"] = round((rec["severity_pci"] * 0.7) + (severity_pci * 0.3), 2)
             rec["area_m2"] = round(max(rec["area_m2"], area_m2), 2)
             rec["is_verified_hotspot"] = (rec["confirmation_count"] >= 2)
+            if self.store is not None:
+                self.store.upsert_defect(rec)
+                self.store.record_report(bus_id, lat, lon, defect_class, area_m2, severity_pci,
+                                         matched_id, merged=True, distance_m=min_dist,
+                                         reported_at=now)
             return {
                 "action": "DEDUPLICATED_AND_UPDATED",
                 "defect_id": matched_id,
@@ -118,6 +142,10 @@ class FleetDeduplicationEngine:
                 "elevation_m": elevation_m,
                 "drainage_risk": drainage_risk
             }
+            if self.store is not None:
+                self.store.upsert_defect(self.defect_registry[new_id])
+                self.store.record_report(bus_id, lat, lon, defect_class, area_m2, severity_pci,
+                                         new_id, merged=False, distance_m=0.0, reported_at=now)
             return {
                 "action": "REGISTERED_NEW_DEFECT",
                 "defect_id": new_id,
@@ -139,9 +167,15 @@ class FleetDeduplicationEngine:
         dedup_pct = 0.0
         if self.total_reports_ingested > 0:
             dedup_pct = round(100.0 * (1.0 - unique_defects / float(self.total_reports_ingested)), 1)
-        return {
+        out = {
             "total_reports_ingested": self.total_reports_ingested,
             "unique_defects_registered": unique_defects,
             "deduplication_efficiency_pct": dedup_pct,
+            "storage": "sqlite" if self.store is not None else "in-memory (lost on restart)",
         }
+        if self.store is not None:
+            # Counts queried from the tables, which cannot drift from the rows
+            # the way an incremented counter can.
+            out["persisted"] = self.store.stats()
+        return out
 

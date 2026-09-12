@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data lineage — ROAD-SHIELD</title>
+<link rel="stylesheet" href="/web/app.css">
+</head>
+<body data-page="data">
+<div class="wrap">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">Data lineage</h1>
+    <span class="muted small">where every training image came from, and what was rejected</span>
+  </div>
+
+  <div class="grid c4" id="counts"></div>
+
+  <div class="section-head"><h2>Sources</h2></div>
+  <div class="card">
+    <div class="table-wrap"><table>
+      <thead><tr><th>source</th><th>obtained by</th><th>classes fed</th><th class="num">kept</th><th>note</th></tr></thead>
+      <tbody>
+        <tr><td><strong>DNIT</strong><br><span class="small muted">Brazilian federal highway dept.</span></td>
+            <td class="small">direct download; 2,235 photographs, 4,720 polygon annotations, each defect cropped</td>
+            <td class="small">crack, pothole, normal</td>
+            <td class="num">1,667</td>
+            <td class="small">primary source. Also the <strong>only</strong> source with polygons — the segmenter is trained on these</td></tr>
+        <tr><td><code>arunrk7/surface-crack-detection</code></td><td class="small">Kaggle API</td>
+            <td class="small">crack, normal</td><td class="num">2,376</td>
+            <td class="small"><span class="badge warn">domain gap</span> concrete, close range — real crack texture, not road scenes</td></tr>
+        <tr><td><code>atulyakumar98/pothole-detection-dataset</code></td><td class="small">Kaggle API</td>
+            <td class="small">pothole, normal</td><td class="num">676</td><td class="small">road photographs</td></tr>
+        <tr><td><code>andrewmvd/pothole-detection</code></td><td class="small">Kaggle API</td>
+            <td class="small">pothole</td><td class="num">572</td>
+            <td class="small">ships PASCAL VOC boxes we do not yet train a detector on</td></tr>
+        <tr><td><code>virenbr11/pothole-and-plain-rode-images</code></td><td class="small">Kaggle API</td>
+            <td class="small">pothole, normal</td><td class="num">39</td>
+            <td class="small"><span class="badge bad">700 of 739 rejected</span> ~94% a re-upload of the set above</td></tr>
+        <tr><td>Wikimedia Commons / Geograph</td><td class="small">manual</td>
+            <td class="small">waterlogging, zebra, divider, sign</td><td class="num">67</td>
+            <td class="small">the four starved classes</td></tr>
+        <tr><td>IMU accelerometer windows</td><td class="small">in repository</td>
+            <td class="small">4 shock classes</td><td class="num">15,000</td>
+            <td class="small"><span class="badge bad">simulated</span> not recorded from a vehicle</td></tr>
+        <tr style="opacity:.55"><td><del><code>andrewmvd/road-sign-detection</code></del></td>
+            <td class="small">Kaggle API</td><td class="small"><del>damaged sign</del></td>
+            <td class="num">removed</td>
+            <td class="small">a dataset of <em>road signs</em>, not <em>damaged</em> ones. The model had learned
+              "a sign is present" under a label claiming "this sign is broken". Removing its 299
+              images <strong>raised</strong> accuracy 88.5% → 89.2%</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="section-head"><h2>Integrity controls</h2>
+    <span class="muted small">what stops a number being flattering rather than true</span></div>
+  <div class="grid c2">
+    <div class="card">
+      <div class="label">near-duplicate rejection</div>
+      <p class="small" style="margin:0 0 10px">Every incoming image is perceptually hashed (64-bit DCT pHash) and
+      dropped if it is within 8 bits of anything already held. Several Kaggle pothole
+      sets are re-uploads of each other; without this the same photograph lands in
+      both training and test.</p>
+      <div class="kv"><span>re-encode at q80</span><span>≤ 2 bits</span></div>
+      <div class="kv"><span>half-size re-upload</span><span>≤ 8 bits</span></div>
+      <div class="kv"><span>genuinely different photos</span><span>≥ 18 bits (5th pct)</span></div>
+      <p class="small muted" style="margin:10px 0 0">Threshold set to 8 — measured over 60 photographs, not guessed.</p>
+    </div>
+    <div class="card">
+      <div class="label">label-conflict audit</div>
+      <p class="small" style="margin:0 0 10px">Finds photographs filed under more than one class. This was the bug
+      that held accuracy at 36.6%: 20 photographs, 2,006 files, sitting under three
+      contradictory labels at once.</p>
+      <div class="kv"><span>conflicting photographs found</span><span>20</span></div>
+      <div class="kv"><span>files quarantined</span><span>2,006</span></div>
+      <div class="kv"><span>accuracy after the fix</span><span>36.6% → 79.4%</span></div>
+      <p class="small muted" style="margin:10px 0 0">Run by <code>scripts/fix_label_conflicts.py</code>, pinned by a test.</p>
+    </div>
+    <div class="card">
+      <div class="label">grouped splitting</div>
+      <p class="small" style="margin:0">Train/test is split by <strong>source photograph</strong>, not by file. An
+      augmented copy can never land on the other side of the split from its original —
+      which would inflate accuracy by tens of points and is the single most common way
+      a road-defect model reports a number it has not earned.</p>
+    </div>
+    <div class="card">
+      <div class="label">what the data does not cover</div>
+      <ul class="small" style="margin:0;padding-left:17px">
+        <li>No Indian road photographs. RDD2022 is the obvious next step.</li>
+        <li>No night, heavy rain or glare conditions in any quantity.</li>
+        <li>Four classes have 14–20 source photographs — no architecture fixes that.</li>
+        <li>No real accelerometer data from a moving vehicle.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-head"><h2>On disk right now</h2></div>
+  <div id="inv"></div>
+</div>
+
+<script src="/web/app.js"></script>
+<script>
+(async () => {
+  const r = await API.get("/api/v1/datasets/benchmarks");
+  if (!r.ok) { el("inv").innerHTML = errorCard("dataset inventory unavailable"); return; }
+  const inv = r.data.labeled_photo_classes || r.data.labeled_classes || {};
+  const entries = Object.entries(inv);
+  const totalImgs = entries.reduce((a, [, v]) => a + (v.usable_photos || 0), 0);
+  const totalSrc = entries.reduce((a, [, v]) => a + (v.distinct_source_photos || 0), 0);
+
+  el("counts").innerHTML = `
+    <div class="card accent"><div class="label">images on disk</div>
+      <div class="stat">${totalImgs.toLocaleString()}</div></div>
+    <div class="card"><div class="label">distinct photographs</div>
+      <div class="stat" style="color:var(--sky)">${totalSrc.toLocaleString()}</div>
+      <div class="stat-sub">what the split actually groups by</div></div>
+    <div class="card"><div class="label">classes</div>
+      <div class="stat" style="color:var(--violet)">${entries.length}</div></div>
+    <div class="card"><div class="label">IMU windows</div>
+      <div class="stat" style="color:var(--warn)">15,000</div>
+      <div class="stat-sub">simulated</div></div>`;
+
+  el("inv").innerHTML = `<div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>class</th><th class="num">images</th><th class="num">distinct photographs</th><th>status</th></tr></thead>
+    <tbody>${entries.map(([k, v]) => {
+      const src = v.distinct_source_photos || 0;
+      return `<tr><td>${k}</td>
+        <td class="num">${(v.usable_photos || 0).toLocaleString()}</td>
+        <td class="num">${src.toLocaleString()}</td>
+        <td>${src < 30 ? '<span class="badge bad">starved</span>'
+              : src < 300 ? '<span class="badge warn">thin</span>'
+              : '<span class="badge measured">adequate</span>'}</td></tr>`;
+    }).join("")}</tbody></table></div>
+    <p class="small muted" style="margin:10px 0 0">
+      "Distinct photographs" is the column that matters. Augmented copies inflate the
+      image count without adding information, and the split groups by the photograph.
+    </p></div>`;
+})();
+</script>
+</body>
+</html>

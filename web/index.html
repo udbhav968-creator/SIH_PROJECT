@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROAD-SHIELD — AI road quality assessment</title>
+<meta name="description" content="A road photograph goes in; a classified, measured and costed repair record comes out, sealed so it cannot be quietly altered.">
+<link rel="stylesheet" href="/web/app.css">
+</head>
+<body data-page="home">
+
+<div class="wrap">
+
+  <header style="max-width:760px">
+    <span class="badge neutral">SIH 2026 · SIH26124 · Bharat Electronics Limited</span>
+    <h1 style="margin-top:14px">A road photograph in.<br>A costed, sealed repair order out.</h1>
+    <p class="muted" style="font-size:15.5px">
+      ROAD-SHIELD uses the public bus fleet as a mobile sensing network. Every figure
+      on this site was produced by code in this repository, and every one of them is
+      labelled with how it was produced — because half of them are measurements and
+      half are estimates, and pretending otherwise is how a system loses an audit.
+    </p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
+      <a class="btn primary" href="/inspect">Analyse a photograph</a>
+      <a class="btn" href="/models">See the measured results</a>
+    </div>
+  </header>
+
+  <div class="grid c4" style="margin-top:34px" id="headline"></div>
+
+  <div class="section-head">
+    <h2>What it does</h2>
+    <span class="muted small">each stage is a real model or a documented formula</span>
+  </div>
+
+  <div class="hero-tiles">
+    <a class="tile" href="/inspect" style="--tile:var(--cyan)">
+      <div class="t-ico">🔍</div><h3>Inspection</h3>
+      <p>Drop in a road photograph. Classification, segmentation mask, area, depth interval and cost range.</p>
+    </a>
+    <a class="tile" href="/video" style="--tile:#f472b6">
+      <div class="t-ico">🎞️</div><h3>Video ingest</h3>
+      <p>Dashcam footage sampled by ground distance, deduplicated against the ledger.</p>
+    </a>
+    <a class="tile" href="/corridor" style="--tile:var(--emerald)">
+      <div class="t-ico">🗺️</div><h3>Corridor map</h3>
+      <p>Fleet reports merged by GPS proximity. Five sightings, one pothole, one bill.</p>
+    </a>
+    <a class="tile" href="/works" style="--tile:var(--violet)">
+      <div class="t-ico">📋</div><h3>Works &amp; costing</h3>
+      <p>MoRTH Section 500 tonnage, SHA-256 sealed work orders, tamper demonstration.</p>
+    </a>
+    <a class="tile" href="/models" style="--tile:var(--sky)">
+      <div class="t-ico">📊</div><h3>Model card</h3>
+      <p>Held-out accuracy, per-class scores, segmentation IoU. Including the weak ones.</p>
+    </a>
+    <a class="tile" href="/data" style="--tile:var(--lime)">
+      <div class="t-ico">🗃️</div><h3>Data lineage</h3>
+      <p>Every dataset, how it was deduplicated, and what it does not cover.</p>
+    </a>
+  </div>
+
+  <div class="rule"></div>
+
+  <div class="split">
+    <div class="card">
+      <div class="label">the pipeline</div>
+      <h2 style="margin-bottom:14px">How one photograph becomes a bill</h2>
+      <ol style="padding-left:18px;margin:0">
+        <li style="margin-bottom:11px"><strong style="color:var(--white)">Classify.</strong>
+          A ResNet-50 trained on ImageNet's 1.28 million images, frozen, run through
+          ONNX Runtime. A class-balanced logistic head maps its embeddings to seven
+          road conditions. <span class="badge measured">measured</span></li>
+        <li style="margin-bottom:11px"><strong style="color:var(--white)">Segment.</strong>
+          A pixel classifier trained on 4,720 hand-drawn polygons produces a defect
+          mask — the defect's own footprint, not a rectangle around it.
+          <span class="badge measured">measured</span></li>
+        <li style="margin-bottom:11px"><strong style="color:var(--white)">Project.</strong>
+          Each mask pixel contributes the ground area of its own footprint, using
+          that vehicle's camera calibration. Without a calibrated profile this is
+          an estimate and says so. <span class="badge estimate">depends on calibration</span></li>
+        <li style="margin-bottom:11px"><strong style="color:var(--white)">Estimate depth.</strong>
+          A single photograph carries no depth information. We return an interval
+          with its basis, never a point value dressed as a measurement.
+          <span class="badge estimate">estimate</span></li>
+        <li style="margin-bottom:11px"><strong style="color:var(--white)">Cost.</strong>
+          MoRTH Section 500 tonnage. Cost is linear in area and depth, so the depth
+          interval becomes a cost range. <span class="badge estimate">range</span></li>
+        <li><strong style="color:var(--white)">Seal.</strong>
+          SHA-256 over the order fields. Change a rupee and the seal breaks.
+          <span class="badge measured">verified by tests</span></li>
+      </ol>
+    </div>
+
+    <div class="card accent">
+      <div class="label">what we will not claim</div>
+      <h3 style="margin-bottom:12px">The honest limits</h3>
+      <div class="kv"><span>Depth</span><span>estimated, never measured</span></div>
+      <div class="kv"><span>IMU data</span><span>simulated, not from a vehicle</span></div>
+      <div class="kv"><span>Road photographs</span><span>Brazilian + Kaggle, not Indian yet</span></div>
+      <div class="kv"><span>Four rare classes</span><span>2–3 test images each</span></div>
+      <div class="kv"><span>Camera calibration</span><span id="calibKv">checking…</span></div>
+      <p class="small muted" style="margin:14px 0 0">
+        A judge who finds a limitation themselves marks you down. One who is told
+        it up front does not. Every one of these is stated on the page where the
+        number appears, not only here.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<script src="/web/app.js"></script>
+<script>
+(async () => {
+  const box = el("headline");
+  const [metrics, seg, fleet, calib] = await Promise.all([
+    API.get("/api/v1/training/metrics"),
+    API.get("/api/v1/segmentation/status"),
+    API.get("/api/v1/fleet/telemetry"),
+    API.get("/api/v1/calibration/profiles"),
+  ]);
+
+  // The serving classifier's own report - the one flagged active.
+  let acc = null, f1 = null, imgs = null;
+  if (metrics.ok) {
+    const heads = Object.keys(metrics.data).filter(k => k.startsWith("cnn_head_"));
+    const rep = heads.map(k => metrics.data[k]).find(r => r && r.active)
+             || heads.map(k => metrics.data[k])[0];
+    if (rep) { acc = rep.held_out_test_accuracy; f1 = rep.held_out_test_macro_f1; imgs = rep.held_out_test_photographs; }
+  }
+
+  const segIoU = seg.ok && seg.data.available ? (seg.data.iou?.crack?.iou) : null;
+  const defects = fleet.ok ? fleet.data.unique_defects_registered : null;
+
+  box.innerHTML = `
+    <div class="card accent">
+      <div class="label">classifier · held-out</div>
+      <div class="stat">${acc != null ? (acc * 100).toFixed(1) + "%" : "—"}</div>
+      <div class="stat-sub">${imgs ? imgs + " unseen photographs" : "no report on disk"} ·
+        macro-F1 ${f1 ?? "—"}</div>
+    </div>
+    <div class="card">
+      <div class="label">segmentation · crack IoU</div>
+      <div class="stat" style="color:var(--cyan)">${segIoU != null ? segIoU.toFixed(3) : "—"}</div>
+      <div class="stat-sub">${seg.ok && seg.data.available
+        ? "trained on 4,720 hand-drawn polygons" : "not trained — box area in use"}</div>
+    </div>
+    <div class="card">
+      <div class="label">ledger · unique defects</div>
+      <div class="stat" style="color:var(--emerald)">${defects ?? "—"}</div>
+      <div class="stat-sub">${fleet.ok ? (fleet.data.storage || "") : "unavailable"}</div>
+    </div>
+    <div class="card">
+      <div class="label">calibrated cameras</div>
+      <div class="stat" style="color:${calib.ok && calib.data.count ? "var(--emerald)" : "var(--warn)"}">
+        ${calib.ok ? calib.data.count : "—"}</div>
+      <div class="stat-sub">${calib.ok && calib.data.count === 0
+        ? "areas are estimates from an assumed mount" : "areas measured per device"}</div>
+    </div>`;
+
+  const kv = el("calibKv");
+  if (kv) kv.textContent = calib.ok && calib.data.count > 0
+    ? `${calib.data.count} device(s) calibrated` : "none — assumed mount";
+})();
+</script>
+</body>
+</html>

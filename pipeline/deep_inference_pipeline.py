@@ -100,7 +100,29 @@ class DeepInferencePipeline:
         else:
             print(f"[WARN] IMU model not found at: {imu_ckpt} - run training/train_imu.py first.")
 
-        self.ipm_engine = IPMHomographyEngine(camera_height_m=1.45, pitch_deg=18.4)
+        # Geometry comes from a calibration profile rather than constants. With
+        # no profile on disk this resolves to the historical assumed mount and
+        # says so in every result, instead of presenting an assumption as a
+        # measurement. See models/camera_calibration.py.
+        from models.camera_calibration import describe as describe_calibration, resolve as resolve_calibration
+        self._resolve_calibration = resolve_calibration
+        self._describe_calibration = describe_calibration
+        self.calibration, self.calibration_provenance = resolve_calibration(None)
+        self.ipm_engine = IPMHomographyEngine.from_calibration(self.calibration)
+
+        # Pixel-level segmentation, when a model has been trained. Without it
+        # the older bounding-box area is used and the result is labelled as
+        # such - a box around a diagonal crack overstates its area by an order
+        # of magnitude, so which method answered is not a detail.
+        try:
+            from models.defect_segmenter import DefectSegmenter
+            self.segmenter = DefectSegmenter()
+            if self.segmenter.is_ready:
+                print(f"  ✓ Defect segmenter: pixel masks "
+                      f"({self.segmenter.thresholds})")
+        except Exception as e:
+            print(f"[WARN] segmenter unavailable: {e}")
+            self.segmenter = None
         self.bayesian_gate = BayesianFusionGate(prior_pothole_prob=0.05, decision_threshold_log_odds=1.8)
         self.pci_model = PavementConditionIndexEngine()
         self.degrade_model = PavementDeteriorationForecaster()
@@ -123,6 +145,7 @@ class DeepInferencePipeline:
         traffic_esal=7500,
         rain_mm=650.0,
         pavement_age_yr=3.5,
+        device_id=None,
     ):
         """
         Runs the full pipeline on one image. image_input: file path, raw
@@ -136,6 +159,22 @@ class DeepInferencePipeline:
         img_np = self.cv_detector.decode_image(image_input)
         H, W, _ = img_np.shape
         gray = 0.299 * img_np[:, :, 0] + 0.587 * img_np[:, :, 1] + 0.114 * img_np[:, :, 2]
+
+        # Intrinsics are in pixels, so a profile calibrated at one resolution is
+        # simply wrong at another. Rescale per request.
+        calib, provenance = self._resolve_calibration(device_id, width_px=W, height_px=H)
+        ipm = IPMHomographyEngine.from_calibration(calib)
+        self.ipm_engine = ipm
+        self.calibration, self.calibration_provenance = calib, provenance
+
+        # One segmentation pass for the whole frame; regions index into it.
+        seg_out = None
+        if getattr(self, "segmenter", None) is not None and self.segmenter.is_ready:
+            try:
+                seg_out = self.segmenter.segment(img_np)
+            except Exception as e:
+                print(f"[WARN] segmentation failed, falling back to box area: {e}")
+        self._seg_out = seg_out
 
         # STAGE 2: texture gatekeeper
         roi_start_y = int(H * 0.35)
@@ -171,7 +210,16 @@ class DeepInferencePipeline:
             } for i, d in enumerate(person_boxes)]
         else:
             pedestrians = self.cv_detector.detect_pedestrians(img_np)
-        bboxes = self.cv_detector.extract_salient_regions(img_np, excluded_boxes=pedestrians)
+        # Crack and pothole candidates come from the segmenter's mask; the
+        # brightness scan supplies everything the segmenter has no class for
+        # (waterlogging, signage, markings) and is the whole proposal stage when
+        # no segmenter is loaded. See _segmentation_proposals for why.
+        seg_boxes = self._segmentation_proposals(H, W)
+        heuristic = self.cv_detector.extract_salient_regions(img_np, excluded_boxes=pedestrians)
+        if seg_boxes:
+            heuristic = [b for b in heuristic
+                         if not any(self._boxes_overlap(b, sb) for sb in seg_boxes)]
+        bboxes = seg_boxes + heuristic
 
         if not bboxes and not pedestrians:
             normal = self._normal_road(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
@@ -299,6 +347,25 @@ class DeepInferencePipeline:
             "scene_objects": scene_objects,
             "scene_summary": scene_summary,
             "vision_backend": self.vision_backend,
+            # Provenance of the geometry. Any area or cost in this response was
+            # produced by this camera model; without a calibrated profile they
+            # are estimates from an assumed mount, and this block says so rather
+            # than letting the numbers imply otherwise.
+            "camera_calibration": self._describe_calibration(self.calibration,
+                                                             self.calibration_provenance),
+            "segmentation": ({
+                "available": True,
+                "crack_pixels": seg_out.get("crack_px_full"),
+                "pothole_pixels": seg_out.get("pothole_px_full"),
+                "defect_fraction": seg_out.get("defect_fraction"),
+                "area_method": "per-pixel ground footprint over the mask",
+            } if seg_out else {
+                "available": False,
+                "area_method": "bounding-box corners projected to the ground plane",
+                "note": "No segmenter on disk. Train one with "
+                        "training/train_segmenter.py - a box around a diagonal "
+                        "crack overstates its area by roughly an order of magnitude.",
+            }),
             "latency_ms": elapsed_ms,
         }
 
@@ -335,9 +402,216 @@ class DeepInferencePipeline:
             "irc_standard_specification": VisionDistressNet.IRC_STANDARDS.get(VisionDistressNet.PEDESTRIAN_CLASS_ID, ""),
         }
 
+    def _region_mask(self, cls_id, bx, by, bw, bh, H, W):
+        """
+        The segmentation mask restricted to one candidate region.
+
+        Returns a full-frame boolean array that is True only inside the box AND
+        only where the segmenter called that pixel this defect class. Anything
+        the segmenter did not claim is excluded, which is the whole point: the
+        area becomes the defect's own footprint rather than the rectangle a
+        heuristic drew around it.
+
+        None when no segmenter is loaded, or the class has no mask equivalent
+        (waterlogging, signs and markings are not in the segmenter's three
+        classes).
+        """
+        import numpy as _np
+        seg = getattr(self, "_seg_out", None)
+        if seg is None:
+            return None
+        seg_cls = {1: 1, 2: 2}.get(cls_id)      # crack -> 1, pothole -> 2
+        if seg_cls is None:
+            return None
+        mask = seg["mask"]
+        if mask.shape[:2] != (H, W):
+            import cv2
+            mask = cv2.resize(mask, (W, H), interpolation=cv2.INTER_NEAREST)
+        window = _np.zeros((H, W), dtype=bool)
+        y0, y1 = max(0, by), min(H, by + bh)
+        x0, x1 = max(0, bx), min(W, bx + bw)
+        if y1 <= y0 or x1 <= x0:
+            return None
+        window[y0:y1, x0:x1] = True
+        return window & (mask == seg_cls)
+
+    # ---- how a mask blob becomes a candidate region -----------------------
+    #
+    # Both knobs are swept end-to-end in scripts.tune_proposals - through
+    # audit_image(), not through a copy of the region loop - and the curve is
+    # written to checkpoints/proposal_tuning_report.json. Measured over 36 clean
+    # and 24 annotated photographs:
+    #
+    #   size    conf     false positives      defects found
+    #   0.002   0.40     22/36  (61.1%)       23/24  (95.8%)
+    #   0.002   0.55      6/36  (16.7%)       22/24  (91.7%)
+    #   0.002   0.70      4/36  (11.1%)       23/24  (95.8%)   <- committed
+    #   0.008   0.70      4/36  (11.1%)       21/24  (87.5%)
+    #   0.030   0.85      4/36  (11.1%)       21/24  (87.5%)
+    #
+    # 4/36 is the floor: no setting in the grid goes below it, so those four
+    # photographs are not fixed by filtering and are not claimed to be.
+    # Tightening past 0.002/0.70 buys nothing and costs detection.
+    #
+    # Size, as a fraction of the segmenter's WORKING frame (320x200 = 64,000 px)
+    # rather than an absolute pixel count - an absolute count would mean a
+    # stricter filter on a phone photo than on a dashcam frame, for no reason.
+    MIN_COMPONENT_FRACTION = 0.004
+    # Mean predicted probability inside the blob. A blob whose pixels each
+    # barely cleared the decision threshold is a scatter, not a pothole, and a
+    # binary mask cannot tell the two apart.
+    MIN_COMPONENT_CONFIDENCE = 0.45
+    # No frame contains this many separate repairs. Past it, the segmenter is
+    # confused about the whole surface and the frame is not evidence.
+    MAX_COMPONENTS = 8
+    # A crack or pothole proposed by the brightness grid may not be bigger than
+    # this share of the frame. Measured: the grid was producing boxes at 0.61
+    # and they were being priced as single repairs.
+    MAX_HEURISTIC_BOX_FRACTION = 0.25
+
+    def _segmentation_proposals(self, H, W):
+        """
+        Candidate regions taken from the segmenter's own mask, not from
+        brightness.
+
+        The original proposal stage was a 16x24 grid of gradient and darkness
+        scores, merged by connected components. On a normally textured road most
+        cells fire, the components merge, and the result is ONE box covering the
+        whole carriageway. That box is what appeared over a whole road in
+        testing, and because it is enormous, the fraction of it that any real
+        pothole occupies is under 1% - which is why a segmentation gate
+        expressed as a fraction of the box threw away real potholes while
+        letting zebra crossings through. The box was the bug, not the threshold.
+
+        A connected component of the mask is a defect-shaped region by
+        construction. It gives a tight box, so the area computed from it is the
+        defect's own footprint, the crop handed to the classifier contains the
+        defect rather than fifty square metres of road, and the two models are
+        being asked about the same object.
+
+        The brightness scan is still used, but only for the classes the
+        segmenter has no pixels for - waterlogging, signage, markings - and as
+        the fallback when no segmenter is loaded at all.
+        """
+        import cv2
+        import numpy as _np
+        seg = getattr(self, "_seg_out", None)
+        if seg is None:
+            return []
+        mask = seg.get("mask_work")
+        if mask is None:                       # older cached segmenter output
+            mask = seg["mask"]
+        mh, mw = mask.shape[:2]
+        frame_px = float(mh * mw)
+        sx, sy = W / float(mw), H / float(mh)
+        min_px = max(12, int(self.MIN_COMPONENT_FRACTION * frame_px))
+        proba = {1: seg.get("proba_crack"), 2: seg.get("proba_pothole")}
+
+        out = []
+        for seg_cls, kind in ((1, 1), (2, 2)):          # crack -> 1, pothole -> 2
+            binary = (mask == seg_cls).astype(_np.uint8)
+            if not binary.any():
+                continue
+            # Close one-pixel gaps so a dashed crack is one component rather
+            # than forty. 3x3 is deliberately small: a bigger kernel would weld
+            # separate potholes into a single box and overstate the repair.
+            binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE,
+                                      cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+            n, lab, st, _cen = cv2.connectedComponentsWithStats(binary, 8)
+            for i in range(1, n):
+                area = int(st[i, cv2.CC_STAT_AREA])
+                if area < min_px:
+                    continue
+                pm = proba.get(seg_cls)
+                mean_p = float(pm[lab == i].mean()) if pm is not None else 1.0
+                if mean_p < self.MIN_COMPONENT_CONFIDENCE:
+                    continue
+                x = int(st[i, cv2.CC_STAT_LEFT] * sx)
+                y = int(st[i, cv2.CC_STAT_TOP] * sy)
+                w = max(8, int(st[i, cv2.CC_STAT_WIDTH] * sx))
+                h = max(8, int(st[i, cv2.CC_STAT_HEIGHT] * sy))
+                # A little context around the defect; the classifier was trained
+                # on crops that include some surrounding road.
+                px, py = int(w * 0.15), int(h * 0.15)
+                x0, y0 = max(0, x - px), max(0, y - py)
+                x1, y1 = min(W, x + w + px), min(H, y + h + py)
+                if x1 - x0 < 8 or y1 - y0 < 8:
+                    continue
+                out.append([x0, y0, x1 - x0, y1 - y0, mean_p * area, kind,
+                            "segmentation", round(mean_p, 4),
+                            round(area / frame_px, 5)])
+        out.sort(key=lambda b: -b[4])
+        return out[: self.MAX_COMPONENTS]
+
+    @staticmethod
+    def _boxes_overlap(a, b, thresh=0.30):
+        ax, ay, aw, ah = a[:4]
+        bx, by, bw, bh = b[:4]
+        ix = max(0, min(ax + aw, bx + bw) - max(ax, bx))
+        iy = max(0, min(ay + ah, by + bh) - max(ay, by))
+        inter = ix * iy
+        if inter <= 0:
+            return False
+        return inter / float(min(aw * ah, bw * bh) or 1) > thresh
+
+    # A region must have at least this fraction of its pixels claimed by the
+    # segmenter before it is reported as that defect.
+    #
+    # 0.01 is measured, not chosen by feel. scripts/tune_detection_gate.py
+    # sweeps it against 36 clean photographs (zebra crossings, sound pavement,
+    # dividers) and 24 defect photographs, and prints BOTH error rates:
+    #
+    #   gate    false positives      defects still found
+    #   0.00    15/36  (41.7%)       24/24  (100.0%)   <- the bug
+    #   0.01    10/36  (27.8%)       23/24  ( 95.8%)   <- committed
+    #   0.06     6/36  (16.7%)       11/24  ( 45.8%)   halves detection
+    #   0.50     0/36  ( 0.0%)        0/24  (  0.0%)   silences everything
+    #
+    # Raising it further trades away far more detection than it buys in
+    # precision. 27.8% false positives is still high, and no threshold fixes
+    # that - the region proposals come from a brightness heuristic, and the
+    # real answer is a detector trained on the pothole bounding boxes already
+    # sitting in datasets/. That is a GPU job, and it is not done.
+    SEGMENTER_GATE_FRACTION = 0.01
+    # Below this, the classifier is not confident enough to assert anything.
+    MIN_REPORT_CONFIDENCE = 0.45
+
+    def _region_defect_fraction(self, cls_id, bx, by, bw, bh, H, W):
+        """
+        What fraction of this region the segmenter actually calls this defect.
+
+        Returns None when there is no segmenter or the class has no mask
+        equivalent, in which case the caller must not gate on it.
+        """
+        mask = self._region_mask(cls_id, bx, by, bw, bh, H, W)
+        if mask is None:
+            return None
+        area = max(1, min(H, by + bh) - max(0, by)) * max(1, min(W, bx + bw) - max(0, bx))
+        return float(mask.sum()) / float(area)
+
     def _classify_region(self, img_np, gray, bbox, W, H, mean_intensity):
-        """Crops one candidate region, runs the real vision classifier, and (for
-        crack/pothole/waterlogging) prices the repair via real IPM geometry."""
+        """
+        Crops one candidate region, classifies it, and prices the repair.
+
+        Two gates stand between a candidate region and a reported defect,
+        because the region proposals come from a brightness heuristic that
+        fires on any high-contrast structure - a zebra crossing's stripes are
+        the highest-contrast thing on a road, and a lane marking's edge looks
+        like a crack to a threshold.
+
+        1. CONFIDENCE. The classifier must be at least MIN_REPORT_CONFIDENCE
+           sure. A 48% call is not a finding.
+
+        2. SEGMENTATION AGREEMENT. The segmenter is trained on 4,720 hand-drawn
+           polygons and therefore knows what crack and pothole pixels actually
+           look like. If it claims almost none of the region, the classifier is
+           reading texture that is not a defect, and the region is dropped.
+
+        The second gate is the one that matters. The classifier was trained on
+        photographs of defects and is applied to arbitrary crops, so asking it
+        "is this a defect at all?" is asking a question it was never trained to
+        answer. The segmenter was trained on exactly that question, per pixel.
+        """
         bx, by, bw, bh = bbox[:4]
         crop = img_np[by : by + bh, bx : bx + bw]
         if crop.size == 0:
@@ -348,24 +622,81 @@ class DeepInferencePipeline:
         if cls_id == 0:
             return None  # classifier says this region isn't actually a distress after all
 
+        if float(pred.get("confidence", 0.0)) < self.MIN_REPORT_CONFIDENCE:
+            return None
+
+        from_segmenter = len(bbox) > 6 and bbox[6] == "segmentation"
+        if cls_id in (1, 2) and not from_segmenter:
+            # WHERE a crack or pothole is, is the segmenter's question. The
+            # brightness grid merges into one rectangle over the whole
+            # carriageway on any textured road - it was producing boxes at 0.61
+            # of the frame and those were being priced as single repairs - so
+            # when a segmenter is loaded the grid may not raise a crack or a
+            # pothole at all. It still supplies the classes the segmenter has no
+            # pixels for: waterlogging, signage, markings.
+            #
+            # Measured through audit_image() over 36 clean and 24 annotated
+            # photographs, with the grid allowed to raise defects and with it
+            # closed (mask proposals at 0.004 / 0.45 in both cases):
+            #
+            #   grid allowed (size-capped + agreement gate)   19.4% FP   87.5% found
+            #   grid closed                                    8.3% FP   87.5% found
+            #
+            # It contributed four false positives and not one extra detection,
+            # so it is closed. This is not a mute button: closing it at a
+            # stricter mask setting (0.002 / 0.70) DID collapse detection to
+            # 20.8%, which is why both numbers are printed at every setting in
+            # scripts/tune_proposals.py rather than only the flattering one.
+            if getattr(self, "segmenter", None) is not None and self.segmenter.is_ready:
+                return None
+            # No segmenter on disk. The grid is the only proposal source, so it
+            # is allowed to raise defects - but never one covering most of the
+            # frame, and the area it yields is labelled a box estimate
+            # downstream rather than a measurement.
+            box_fraction = (bw * bh) / float(max(1, W * H))
+            if box_fraction > self.MAX_HEURISTIC_BOX_FRACTION:
+                return None
+
         bx_norm, by_norm = round(bx / float(W), 4), round(by / float(H), 4)
         bw_norm, bh_norm = round(bw / float(W), 4), round(bh / float(H), 4)
 
         area_m2 = depth_cm = vol_m3 = tonnage_t = repair_cost_inr = 0.0
         dist_m = 0.0
+        area_method = None
+        area_diag = {}
+        depth_estimate = None
         if cls_id in AREA_CLASSES:
             _, ground_y = self.ipm_engine.pixel_to_ground(bx + bw / 2.0, by + bh / 2.0)
             dist_m = max(1.8, min(30.0, float(ground_y)))
-            area_m2 = self.ipm_engine.calculate_surface_area_sqm(bx, by, bw, bh)
 
-            if cls_id == 2:  # Pothole Cavity - depth estimated from patch darkness relative to surroundings
-                patch_gray = gray[by : by + bh, bx : bx + bw]
-                patch_mean = float(np.mean(patch_gray)) if patch_gray.size > 0 else mean_intensity
-                dark_contrast = max(0.0, (mean_intensity - patch_mean) / max(1.0, mean_intensity))
-                # Coarse monocular estimate, not a measured depth - no stereo/LiDAR in this project.
-                depth_cm = round(max(2.0, min(14.0, 6.0 * (dist_m / 8.0) * (dark_contrast + 0.5))), 1)
-            elif cls_id == 1:  # Crack - shallow by definition; scale mildly with classifier confidence
-                depth_cm = round(max(0.5, min(4.0, 1.5 + pred["confidence"] * 2.0)), 1)
+            # Area, by measurement where a mask exists and by estimate otherwise.
+            region_mask = self._region_mask(cls_id, bx, by, bw, bh, H, W)
+            if region_mask is not None and region_mask.any():
+                area_m2, area_diag = self.ipm_engine.mask_area_m2(region_mask)
+                area_method = "segmentation_mask"
+            else:
+                area_m2 = self.ipm_engine.calculate_surface_area_sqm(bx, by, bw, bh)
+                area_method = "bounding_box_estimate"
+                area_diag = {"note": "No segmentation mask for this region. A box "
+                                     "around a non-rectangular defect overstates its "
+                                     "area - for a diagonal crack, by roughly an "
+                                     "order of magnitude."}
+
+            # Depth: an estimate with an interval, never a function of the
+            # classifier's confidence. See models/depth_estimator.py.
+            from models import depth_estimator
+            if cls_id == 2:
+                depth_estimate = depth_estimator.pothole_depth(
+                    gray, mask=region_mask,
+                    bbox=None if region_mask is not None else (bx, by, bw, bh),
+                    distance_m=dist_m)
+            elif cls_id == 1:
+                extent = None
+                if region_mask is not None and region_mask.size:
+                    extent = float(region_mask.sum()) / float(region_mask.size)
+                depth_estimate = depth_estimator.crack_depth(severity_ratio=extent)
+            if depth_estimate is not None:
+                depth_cm = depth_estimate["depth_cm"]
             # Waterlogging (3): area is meaningful (hazard extent), depth is not asphalt depth.
 
             if cls_id in (1, 2):  # only crack/pothole get an asphalt repair costing
@@ -373,6 +704,16 @@ class DeepInferencePipeline:
                 vol_m3 = materials["volume_m3"]
                 tonnage_t = materials["required_mass_tonnes"]
                 repair_cost_inr = round(materials["total_cost_inr"], 2)
+                # Cost is linear in both area and depth, so the depth interval
+                # maps straight onto a cost interval. Quoting a single rupee
+                # figure from an estimated depth is what loses an audit.
+                if depth_estimate is not None:
+                    lo = self.ipm_engine.estimate_repair_materials(
+                        area_m2, depth_cm=max(depth_estimate["depth_low_cm"], 1.0))
+                    hi = self.ipm_engine.estimate_repair_materials(
+                        area_m2, depth_cm=max(depth_estimate["depth_high_cm"], 1.0))
+                    depth_estimate["repair_cost_low_inr"] = round(lo["total_cost_inr"], 2)
+                    depth_estimate["repair_cost_high_inr"] = round(hi["total_cost_inr"], 2)
 
         return {
             "bbox_pixels": [bx, by, bw, bh],
@@ -387,8 +728,11 @@ class DeepInferencePipeline:
             "top3_ranked_predictions": pred["top3_ranked_predictions"],
             "is_distress": cls_id in AREA_CLASSES,
             "distance_meters": round(dist_m, 1),
-            "surface_area_m2": round(area_m2, 2),
+            "surface_area_m2": round(area_m2, 3),
+            "area_method": area_method,
+            "area_diagnostics": area_diag,
             "depth_cm": depth_cm,
+            "depth_estimate": depth_estimate,
             "volumetric_m3": vol_m3,
             "morth_tonnage_t": tonnage_t,
             "repair_cost_inr": repair_cost_inr,
