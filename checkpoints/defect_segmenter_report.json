@@ -100,5 +100,8 @@
   },
   "why_two_metrics": "IoU is measured only on photographs that contain a defect, so it cannot detect a model that invents defects on clean roads. That failure is what users actually saw, so it is measured separately on photographs held out of training.",
   "inference_ms_per_image": 764.4,
-  "trained_at_unix": 1789205899
+  "trained_at_unix": 1789205899,
+  "sklearn_version": "1.8.0",
+  "joblib_version": "1.5.3",
+  "portability_note": "This file is a pickled scikit-learn estimator. It loads only under a compatible scikit-learn. If it fails, retrain in place: python -m training.train_segmenter --images 2000 (about 12 minutes on a laptop CPU). Nothing else is needed - the training data is in the repository."
 }

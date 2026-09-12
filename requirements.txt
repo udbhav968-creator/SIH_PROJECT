@@ -1,6 +1,12 @@
 numpy>=1.24.0
 pillow>=10.0.0
-scikit-learn>=1.3.0
+# Pickled estimators are NOT portable across scikit-learn minor versions. A
+# segmenter trained on 1.8 failed to load on 1.9 with "No module named '_loss'",
+# the pipeline silently fell back to brightness proposals, and that is the
+# configuration that reports zebra crossings as potholes. The floor is what the
+# code needs; the ceiling is what the shipped checkpoints were trained with.
+# If you raise the ceiling, retrain: python -m training.train_segmenter --images 2000
+scikit-learn>=1.3.0,<1.9
 scikit-image>=0.21.0
 opencv-python-headless>=4.8.0,<5  # 5.x removed cv2.HOGDescriptor (pedestrian detector)
 joblib>=1.3.0

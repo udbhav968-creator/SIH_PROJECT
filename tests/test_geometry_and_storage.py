@@ -355,8 +355,33 @@ class FalsePositiveGate(unittest.TestCase):
         return files[:n]
 
     def _need_segmenter(self):
-        if not (getattr(self.pipe, "segmenter", None) and self.pipe.segmenter.is_ready):
-            self.skipTest("no segmenter - proposals fall back to the brightness grid")
+        """
+        Skip only when no segmenter was ever trained. FAIL when one is on disk
+        and will not load.
+
+        This distinction is the whole point. On a machine with scikit-learn
+        1.9.1 the model trained under 1.8.0 failed to unpickle, the pipeline
+        fell back to brightness proposals - the configuration that reports zebra
+        crossings as potholes - and this suite printed "OK (skipped=7)". A skip
+        that hides a broken install is worse than having no test at all.
+        """
+        seg = getattr(self.pipe, "segmenter", None)
+        if seg is None:
+            self.skipTest("segmenter module not wired into the pipeline")
+        if seg.is_ready:
+            return
+        if getattr(seg, "file_exists", False):
+            d = getattr(seg, "load_error_detail", None) or {}
+            self.fail(
+                "A segmenter model is on disk but will not load, so the pipeline is "
+                "running on brightness proposals and the false-positive fix is NOT "
+                "active on this machine.\n"
+                f"  error                : {d.get('error')}\n"
+                f"  scikit-learn here    : {d.get('sklearn_here')}\n"
+                f"  trained with         : {d.get('sklearn_trained_with')}\n"
+                f"  likely cause         : {d.get('likely_cause')}\n"
+                f"  fix                  : {d.get('fix')}")
+        self.skipTest("no segmenter trained yet - run training.train_segmenter")
 
     # ---------------------------------------------------------------- wiring
     def test_proposal_thresholds_are_the_measured_ones(self):
@@ -488,6 +513,26 @@ class FalsePositiveGate(unittest.TestCase):
 
 
 class SegmenterContract(unittest.TestCase):
+
+    def test_a_model_on_disk_actually_loads(self):
+        """
+        The deployment test.
+
+        Every other segmenter test skips when nothing is loaded, which means a
+        machine where the model file is present but unreadable passes the whole
+        suite while running the buggy fallback. This one fails there, loudly,
+        and names the scikit-learn versions involved.
+        """
+        from models.defect_segmenter import DefectSegmenter
+        seg = DefectSegmenter()
+        if not seg.file_exists:
+            self.skipTest("no segmenter has been trained on this machine yet")
+        self.assertTrue(seg.is_ready,
+                        "checkpoints/defect_segmenter.joblib exists but will not load. "
+                        "The pipeline is silently using brightness proposals, which is "
+                        "the bug this model was trained to fix.\n"
+                        f"  {getattr(seg, 'load_error_detail', None)}")
+
     def test_mask_shape_and_classes(self):
         from models.defect_segmenter import CLASS_CRACK, CLASS_POTHOLE, CLASS_SOUND, DefectSegmenter
         seg = DefectSegmenter()

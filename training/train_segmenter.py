@@ -129,6 +129,22 @@ def load_negatives(limit=None):
     return recs
 
 
+def _sklearn_version():
+    try:
+        import sklearn
+        return sklearn.__version__
+    except Exception:
+        return None
+
+
+def _joblib_version():
+    try:
+        import joblib
+        return joblib.__version__
+    except Exception:
+        return None
+
+
 def load_annotations():
     if not os.path.exists(COCO_PATH):
         sys.exit(f"No annotations at {COCO_PATH}.\n"
@@ -629,6 +645,16 @@ def main():
                             "measured separately on photographs held out of training."),
         "inference_ms_per_image": round(per_image_ms, 1),
         "trained_at_unix": int(time.time()),
+        # Recorded so a load failure on another machine can NAME the cause. A
+        # pickled scikit-learn estimator is not portable across versions, and
+        # the error it raises ("No module named '_loss'") says nothing useful.
+        "sklearn_version": _sklearn_version(),
+        "joblib_version": _joblib_version(),
+        "portability_note": ("This file is a pickled scikit-learn estimator. It loads "
+                             "only under a compatible scikit-learn. If it fails, retrain "
+                             "in place: python -m training.train_segmenter --images 2000 "
+                             "(about 12 minutes on a laptop CPU). Nothing else is needed - "
+                             "the training data is in the repository."),
     }
 
     os.makedirs(CKPT_DIR, exist_ok=True)

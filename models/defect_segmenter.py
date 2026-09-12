@@ -126,8 +126,15 @@ class DefectSegmenter:
         self.model_path = model_path or MODEL_PATH
         self.clf = None
         self.report = None
+        self.load_error = None
+        self.load_error_detail = None
         self.thresholds = dict(self.DEFAULT_THRESHOLDS)
         self._load()
+
+    @property
+    def file_exists(self):
+        """A model is on disk. Distinguishes 'never trained' from 'will not load'."""
+        return os.path.exists(self.model_path)
 
     @property
     def is_ready(self):
@@ -143,7 +150,44 @@ class DefectSegmenter:
             self.report = {k: v for k, v in blob.items() if k != "classifier"}
             self.thresholds = dict(blob.get("thresholds") or self.DEFAULT_THRESHOLDS)
         except Exception as e:
+            # A pickled scikit-learn estimator does not survive a version gap.
+            # Observed: a model trained on 1.8.0, loaded under 1.9.1, fails with
+            # "No module named '_loss'" - an error that names nothing useful.
+            #
+            # This mattered more than a bad message. With no segmenter the
+            # pipeline silently falls back to brightness proposals, which is the
+            # configuration that reported zebra crossings as potholes. A machine
+            # in that state looks like it is working.
+            self.load_error = str(e)
+            trained_with = None
+            try:
+                import joblib as _jl
+                trained_with = (_jl.load(self.model_path) or {}).get("sklearn_version")
+            except Exception:
+                pass
+            try:
+                import sklearn
+                here = sklearn.__version__
+            except Exception:
+                here = "unknown"
+            self.load_error_detail = {
+                "path": self.model_path,
+                "error": str(e),
+                "sklearn_here": here,
+                "sklearn_trained_with": trained_with,
+                "likely_cause": ("scikit-learn version mismatch - a pickled estimator "
+                                 "is not portable across versions"
+                                 if trained_with and trained_with != here
+                                 else "unreadable model file"),
+                "fix": "python -m training.train_segmenter --images 2000",
+            }
             print(f"[DefectSegmenter] could not load {self.model_path}: {e}")
+            if trained_with and trained_with != here:
+                print(f"[DefectSegmenter] trained with scikit-learn {trained_with}, "
+                      f"this environment has {here}")
+            print("[DefectSegmenter] WITHOUT A SEGMENTER the pipeline falls back to "
+                  "brightness proposals, which report zebra crossings as potholes.")
+            print("[DefectSegmenter] fix: python -m training.train_segmenter --images 2000")
 
     # ------------------------------------------------------------------
     def segment(self, image_rgb, min_blob_px=12):
