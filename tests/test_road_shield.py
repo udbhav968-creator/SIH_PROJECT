@@ -86,9 +86,164 @@ class VisionModel(unittest.TestCase):
         path = os.path.join(CKPT, "vision_distress_report.json")
         if not os.path.exists(path):
             self.skipTest("no training report")
-        r = json.load(open(path, encoding="utf-8"))
+        with open(path, encoding="utf-8") as fh:
+            r = json.load(fh)
         self.assertGreater(r["held_out_validation_accuracy"], r["random_guess_baseline"] * 2,
                            "held-out accuracy is not meaningfully above chance")
+
+
+class CNNEmbeddingHead(unittest.TestCase):
+    """
+    A head trained on ResNet-50 embeddings applied to MobileNetV2 vectors would
+    not raise - it would return confident nonsense. These tests pin the pairing.
+    """
+
+    def test_head_never_runs_on_a_foreign_backbone(self):
+        import glob
+        import joblib
+        from models.cnn_embedder import BACKBONES
+        from models.deep_vision_net import CNNHeadClassifier
+        heads = glob.glob(os.path.join(CKPT, "cnn_head_*.joblib"))
+        if not heads:
+            self.skipTest("no CNN head trained")
+        clf = CNNHeadClassifier(checkpoints_dir=CKPT)
+        if not clf.is_ready:
+            self.skipTest("no backbone on disk")
+        self.assertEqual(clf.embedder.name, clf.report["backbone"],
+                         "loaded a head against a backbone it was not trained on")
+        # and the head it chose must be one that exists on disk
+        trained_on = {joblib.load(p).get("backbone") for p in heads}
+        self.assertIn(clf.embedder.name, trained_on)
+        self.assertIn(clf.embedder.name, BACKBONES)
+
+    def test_embedding_dimension_matches_what_the_head_expects(self):
+        from models.deep_vision_net import CNNHeadClassifier
+        clf = CNNHeadClassifier(checkpoints_dir=CKPT)
+        if not clf.is_ready:
+            self.skipTest("no CNN head available")
+        photo = sample_photo()
+        if not photo:
+            self.skipTest("no dataset photo available")
+        from data.image_dataset import load_image
+        vec = clf.embedder.embed(load_image(photo))
+        self.assertEqual(vec.ndim, 1)
+        probs = clf.predict_probabilities(load_image(photo))
+        self.assertEqual(len(probs), len(clf.CLASS_NAMES))
+        self.assertAlmostEqual(float(sum(probs)), 1.0, places=4)
+
+    def test_reported_accuracy_is_on_a_grouped_split(self):
+        import glob
+        import json
+        reports = glob.glob(os.path.join(CKPT, "cnn_head_*_report.json"))
+        if not reports:
+            self.skipTest("no CNN head report")
+        for path in reports:
+            with open(path, encoding="utf-8") as fh:
+                r = json.load(fh)
+            self.assertIn("grouped by source photograph", r["split_strategy"])
+            self.assertGreater(r["held_out_test_accuracy"], r["random_guess_baseline"] * 2)
+            self.assertLessEqual(r["held_out_test_photographs"], r["held_out_test_images"])
+
+
+class KaggleIngest(unittest.TestCase):
+    """
+    The mapping from a Kaggle folder name to one of our seven classes decides
+    what every ingested image is labelled. A wrong rule here silently poisons
+    the training set, so the rules are pinned.
+    """
+
+    def test_folder_names_map_to_the_intended_classes(self):
+        from scripts.fetch_kaggle_datasets import CRACK, NORMAL, POTHOLE, SIGN, classify_path
+        cases = {
+            "train/Positive/00042.jpg": CRACK,
+            "train/Negative/00042.jpg": NORMAL,
+            "dataset/potholes/img_7.png": POTHOLE,
+            "dataset/plain road/img_7.png": NORMAL,
+            "Cracks/alligator/x.jpg": CRACK,
+            "road_sign/stop_12.jpg": SIGN,
+        }
+        for rel, expected in cases.items():
+            self.assertEqual(classify_path(rel, {}), expected, f"{rel} mapped wrongly")
+
+    def test_unrecognised_folders_are_skipped_not_guessed(self):
+        from scripts.fetch_kaggle_datasets import classify_path
+        for rel in ("annotations/x.xml.jpg", "misc/readme_images/logo.png", "x.jpg"):
+            self.assertIsNone(classify_path(rel, {}),
+                              f"{rel} should be skipped, not assigned a class")
+
+    def test_overrides_beat_the_generic_rules(self):
+        from scripts.fetch_kaggle_datasets import POTHOLE, classify_path
+        # "images" means nothing generically, but a dataset can declare it
+        self.assertIsNone(classify_path("images/a.jpg", {}))
+        self.assertEqual(classify_path("images/a.jpg", {"images": POTHOLE}), POTHOLE)
+
+    def _reupload_caught(self, index, path, scale, quality):
+        import io
+        from PIL import Image
+        with Image.open(path) as im:
+            original = im.convert("RGB")
+            index.add(index.hash_image(original))
+            buf = io.BytesIO()
+            size = (max(16, int(original.width * scale)), max(16, int(original.height * scale)))
+            original.resize(size).save(buf, "JPEG", quality=quality)
+            buf.seek(0)
+            with Image.open(buf) as reupload:
+                return index.contains(index.hash_image(reupload.convert("RGB")))
+
+    def test_recompressed_copies_are_always_caught(self):
+        """A re-encoded copy is the common case and must never slip through."""
+        from models.forensic_audit_engine import ForensicDuplicateHasher
+        from scripts.fetch_kaggle_datasets import NearDuplicateIndex
+        from data.image_dataset import sample_photo_path
+        rng = np.random.default_rng(11)
+        caught = 0
+        for _ in range(8):
+            try:
+                path, _c, _n = sample_photo_path(class_id=int(rng.integers(0, 3)))
+            except Exception:
+                self.skipTest("no dataset photos available")
+            index = NearDuplicateIndex(ForensicDuplicateHasher(hash_size=8))
+            caught += self._reupload_caught(index, path, 1.0, 80)
+        self.assertEqual(caught, 8, "a JPEG re-encode was not recognised as a duplicate")
+
+    def test_resized_reuploads_are_caught_at_the_documented_rate(self):
+        """Half-size re-uploads: measured at 100% for the chosen threshold."""
+        from models.forensic_audit_engine import ForensicDuplicateHasher
+        from scripts.fetch_kaggle_datasets import NearDuplicateIndex
+        from data.image_dataset import sample_photo_path
+        rng = np.random.default_rng(23)
+        caught = 0
+        for _ in range(10):
+            try:
+                path, _c, _n = sample_photo_path(class_id=int(rng.integers(0, 3)))
+            except Exception:
+                self.skipTest("no dataset photos available")
+            index = NearDuplicateIndex(ForensicDuplicateHasher(hash_size=8))
+            caught += self._reupload_caught(index, path, 0.5, 55)
+        self.assertGreaterEqual(caught, 9, f"only {caught}/10 half-size re-uploads caught")
+
+    def test_distinct_photographs_are_not_merged(self):
+        """The other half of the trade-off: the threshold must not over-merge."""
+        from models.forensic_audit_engine import ForensicDuplicateHasher
+        from scripts.fetch_kaggle_datasets import NearDuplicateIndex
+        from data.image_dataset import load_image, sample_photo_path
+        from PIL import Image
+        index = NearDuplicateIndex(ForensicDuplicateHasher(hash_size=8))
+        collisions = 0
+        for cls in (0, 1, 2):
+            for _ in range(4):
+                try:
+                    path, _c, _n = sample_photo_path(class_id=cls)
+                except Exception:
+                    self.skipTest("no dataset photos available")
+                with Image.open(path) as im:
+                    digest = index.hash_image(im.convert("RGB"))
+                if index.contains(digest):
+                    collisions += 1
+                index.add(digest)
+        # augmented copies of one source photograph legitimately collide, so a
+        # few are expected; most of 12 draws must still be distinct.
+        self.assertLess(collisions, 6, f"{collisions}/12 distinct photographs collided")
 
 
 class Pipeline(unittest.TestCase):

@@ -13,7 +13,8 @@ code in this repository, and the code that measures it is included.
 
 | Capability | How it works | Status |
 |---|---|---|
-| Road distress classification, 7 classes | HOG + LBP + colour features → PCA → class-balanced RBF SVM | **83.4%** on 343 held-out photographs |
+| Road distress classification, 7 classes | ResNet-50 ImageNet embeddings (ONNX Runtime) → class-balanced logistic head | **88.5%** on 243 held-out images from 205 unseen photographs |
+| — same task, fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 87.7% on the identical split; serves when no CNN backbone is on disk |
 | Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Working: people, bicycles, cars, buses, trucks, traffic lights, signs |
 | IMU shock classification | 100 Hz tri-axial accelerometer windows → RandomForest | 100% on 3000 windows, **on simulated data** |
 | Defect geometry | Inverse perspective mapping, pixels → m² and depth | Deterministic |
@@ -29,27 +30,35 @@ code in this repository, and the code that measures it is included.
 
 | Test | Result |
 |---|---|
-| Held-out accuracy | **83.4%** on 343 unseen photographs (random guess 14.3%) |
-| Grouped 5-fold cross-validation | 84.1% ± 1.8, macro-F1 0.696 |
+| Held-out accuracy | **88.5%**, macro-F1 0.846, on 243 images from 205 unseen photographs (random guess 14.3%) |
+| Same split, hand-crafted features | 87.7%, macro-F1 0.840 |
+| Same split, MobileNetV2 embeddings | 83.5%, macro-F1 0.868 |
+| Grouped 5-fold cross-validation (baseline features) | 84.1% ± 1.8, macro-F1 0.696 |
 | Leakage audit | 0 cross-class duplicates, 0 groups spanning splits |
-| Calibration (ECE) | 0.064 |
-| Latency | 15.6 ms features, 257.1 ms full pipeline (p50) |
+| Calibration (ECE, baseline) | 0.064 |
+| Latency | 33 ms per image for the ResNet-50 embedding, 257 ms full pipeline (p50) |
 
-### Per class
+Reproduce: `python -m training.train_cnn_head --compare`. The test set is split
+by source photograph, so no augmented copy of a training image appears in it,
+and it is scored once.
+
+### Per class — ResNet-50 embeddings + logistic head
 
 | Class | Precision | Recall | F1 | Test images |
 |---|---|---|---|---|
-| Normal Road / Sound Pavement | 1.00 | 0.67 | 0.80 | 3 |
-| Crack (Longitudinal / Transverse / Alligator) | 0.86 | 0.91 | 0.88 | 200 |
-| Pothole Cavity | 0.82 | 0.76 | 0.79 | 122 |
-| Waterlogging / Flooding Hazard | 0.67 | 1.00 | 0.80 | 4 |
-| Missing Zebra Crossing | 0.50 | 0.40 | 0.44 | 5 |
-| Missing Road Divider | 0.50 | 0.40 | 0.44 | 5 |
-| Damaged Traffic Sign | 1.00 | 0.50 | 0.67 | 4 |
+| Normal Road / Sound Pavement | 0.95 | 1.00 | 0.98 | 40 |
+| Crack (Longitudinal / Transverse / Alligator) | 0.90 | 0.88 | 0.89 | 120 |
+| Pothole Cavity | 0.84 | 0.84 | 0.84 | 73 |
+| Waterlogging / Flooding Hazard | 1.00 | 0.50 | 0.67 | 2 |
+| Missing Zebra Crossing | 0.60 | 1.00 | 0.75 | 3 |
+| Missing Road Divider | 1.00 | 0.67 | 0.80 | 3 |
+| Damaged Traffic Sign | 1.00 | 1.00 | 1.00 | 2 |
 
-Four classes have fewer than 25 images and perform accordingly. That is a data
-volume problem, it is visible on the dashboard's model card, and it is not
-hidden behind an averaged number.
+The three classes carrying the workload — normal, crack, pothole — are scored on
+233 of the 243 test images. The other four have two or three test images each, so
+their F1 moves by 0.1 or more on a single image and should not be read as a
+stable measurement. That is a data volume problem, it is visible on the
+dashboard's model card, and it is not hidden behind an averaged number.
 
 ## Data
 
@@ -86,10 +95,25 @@ downloader is written and waiting on a GPU.
 
 ```bash
 pip install -r requirements.txt
+python -m scripts.run_full_pipeline                            # everything below, in one command
+```
+
+Or stage by stage:
+
+```bash
 python -m scripts.fetch_cracks_potholes_dataset --limit 2235   # ~70 s, real data
-python -m training.train_mega_suite                            # ~3 min
+python -m training.train_mega_suite                            # ~3 min, baseline models
+python -m scripts.fetch_cnn_backbone                           # 98 MB ResNet-50, once
+python -m training.train_cnn_head --compare                    # ~2 min, the 88.5% model
 python -m api.server                                           # http://127.0.0.1:8000/dashboard
 ```
+
+On startup the server prints which classifier it loaded. `deep CNN embeddings
+(cnn:resnet50+logistic)` is the 88.5% path; `HOG/LBP + SVM baseline` means the
+backbone is missing and it fell back. On a slow machine,
+`python -m scripts.fetch_cnn_backbone --model mobilenetv2` is 14 MB and 10 ms
+per image instead of 33, at 83.5% accuracy. A head only ever runs with the
+backbone it was trained on — the loader pairs them and skips mismatches.
 
 Optional extras:
 
@@ -97,12 +121,41 @@ Optional extras:
 python -m scripts.fetch_detector            # COCO object detector (needs ultralytics once)
 python -m scripts.validate_models           # leakage, cross-validation, calibration, latency
 python -m scripts.model_selection           # compare six classifiers on identical folds
-python -m unittest tests.test_road_shield   # 24 regression tests
+python -m unittest tests.test_road_shield   # 33 regression tests
 python -m training.train_deep_vision        # fine-tune a CNN (needs PyTorch)
 ```
 
-A Google Maps key is optional; put it in `checkpoints/google_maps_api_key.txt`
-or set `GOOGLE_MAPS_API_KEY`. Without one the system uses OpenStreetMap.
+### Kaggle datasets
+
+```bash
+pip install kaggle                                   # once
+# kaggle.com -> Settings -> API -> Create New Token, save to ~/.kaggle/kaggle.json
+python -m scripts.fetch_kaggle_datasets --verify     # what's reachable, downloads nothing
+python -m scripts.fetch_kaggle_datasets --plan       # downloads, shows the mapping, copies nothing
+python -m scripts.fetch_kaggle_datasets              # ingest
+python -m scripts.fetch_kaggle_datasets --undo       # remove every image it added
+```
+
+Images are filed by the folder names the dataset actually uses - `potholes/`,
+`Positive/`, `plain road/` - not by a layout assumed in advance, and anything
+unrecognised is skipped rather than guessed at. Every candidate is perceptually
+hashed and dropped if it is a near-duplicate of an image already present:
+several Kaggle pothole datasets are re-uploads of each other, and without this
+the same photograph lands in both training and test.
+
+The duplicate threshold is measured, not guessed. Over 60 photographs, 64-bit
+pHash distance between an image and a copy of it was at most 2 bits after a
+JPEG re-encode and at most 8 after a half-size re-upload, while genuinely
+different photographs sat at 18 bits and above.
+
+Surface-crack datasets are close-range concrete, not road scenes. They are
+real crack images and they help, but the domain gap is real; the catalogue
+marks them `domain="concrete"` and the ingest manifest records how many images
+came from each domain.
+
+A Google Maps key is optional and not needed for anything in the demo; without
+one the system uses OpenStreetMap (Nominatim, OSRM, Overpass) and Open-Meteo,
+and reports `UNAVAILABLE` rather than inventing a result.
 
 ## How accuracy got here
 
@@ -111,7 +164,8 @@ or set `GOOGLE_MAPS_API_KEY`. Without one the system uses OpenStreetMap.
 | Inherited code | 36.6% | Models were untrained; some outputs were fabricated |
 | Real training | 36.6% | Genuine classifiers trained on the 133 photographs present |
 | Label conflicts fixed | 79.4% | 20 photographs were filed under three contradictory labels at once |
-| Real dataset added | **83.4%** | 133 → 1,800 distinct photographs |
+| Real dataset added | 83.4% | 133 → 1,800 distinct photographs |
+| ImageNet CNN embeddings | **88.5%** | ResNet-50 replaces hand-written features; every weak class improved, damaged-sign F1 went 0.00 → 1.00 |
 
 `scripts/validate_models.py` is what found the label conflicts, by hashing
 every image and looking for the same photograph under different labels.

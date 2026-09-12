@@ -10,6 +10,9 @@ env/
 
 # Large binary/data files (keep NPZ checkpoints but exclude huge JSON spec)
 checkpoints/road_shield_open_neural_spec.json
+# ResNet-50 is 98 MB - over GitHub's per-file limit and pointless in version
+# control. Fetch it with:  python -m scripts.fetch_cnn_backbone
+checkpoints/cnn_backbone_resnet50.onnx
 *.mp4
 *.avi
 *.mov

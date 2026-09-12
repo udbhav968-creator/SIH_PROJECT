@@ -149,6 +149,112 @@ class DeepVisionNet(VisionDistressNet):
         }
 
 
+class CNNHeadClassifier(VisionDistressNet):
+    """
+    ImageNet CNN embeddings (ONNX Runtime) + the scikit-learn head trained by
+    training/train_cnn_head.py. Same output contract as every other classifier
+    here, so the pipeline and dashboard don't need to know which one answered.
+
+    A head is only usable with the backbone it was trained on - the embedding
+    spaces of ResNet-50 and MobileNetV2 are unrelated, and feeding one head the
+    other's vectors produces confident nonsense. `_load` therefore pairs each
+    saved head with its own backbone file and skips any head whose backbone is
+    missing, rather than silently substituting whatever happens to be on disk.
+    """
+
+    def __init__(self, checkpoints_dir=None):
+        super().__init__()
+        self.ckpt_dir = checkpoints_dir or CKPT_DIR
+        self.backend = None
+        self.head = None
+        self.embedder = None
+        self.report = None
+        self._load()
+
+    @property
+    def is_ready(self):
+        return self.head is not None and self.embedder is not None and self.embedder.is_ready
+
+    def _candidates(self):
+        """Saved heads, newest naming first, de-duplicated by path."""
+        paths = sorted(glob.glob(os.path.join(self.ckpt_dir, "cnn_head_*.joblib")))
+        legacy = os.path.join(self.ckpt_dir, "cnn_head_model.joblib")
+        if os.path.exists(legacy) and legacy not in paths:
+            paths.append(legacy)
+        return paths
+
+    def _load(self):
+        try:
+            import joblib
+            from models.cnn_embedder import BACKBONES, CNNEmbedder
+        except ImportError as e:
+            print(f"[CNNHead] dependency missing: {e}")
+            return
+
+        best = None  # (macro_f1, path, blob, backbone)
+        for path in self._candidates():
+            try:
+                blob = joblib.load(path)
+            except Exception as e:
+                print(f"[CNNHead] {os.path.basename(path)} could not be read: {e}")
+                continue
+            backbone = blob.get("backbone")
+            spec = BACKBONES.get(backbone)
+            if spec is None:
+                continue
+            if not os.path.exists(os.path.join(self.ckpt_dir, spec["file"])):
+                # head trained on a backbone this machine doesn't have - skip it
+                continue
+            # Mean of accuracy and macro-F1. Macro-F1 alone decides on classes
+            # with two or three held-out examples, where a single image moves it
+            # by 0.1; accuracy alone ignores the rare classes entirely.
+            score = 0.5 * (float(blob.get("macro_f1") or 0.0) + float(blob.get("accuracy") or 0.0))
+            if best is None or score > best[0]:
+                best = (score, path, blob, backbone)
+
+        if best is None:
+            if self._candidates():
+                print("[CNNHead] head found but its backbone is missing - "
+                      "run: python -m scripts.fetch_cnn_backbone")
+            return
+
+        _score, path, blob, backbone = best
+        embedder = CNNEmbedder(checkpoints_dir=self.ckpt_dir, prefer=(backbone,))
+        if not embedder.is_ready or embedder.name != backbone:
+            print(f"[CNNHead] backbone {backbone} would not load - falling back")
+            return
+        self.embedder = embedder
+        self.head = blob["head"]
+        self.report = {k: v for k, v in blob.items() if k != "head"}
+        self.backend = f"cnn:{backbone}+{blob.get('head_name', 'head')}"
+
+    def predict_probabilities(self, image_rgb):
+        if not self.is_ready:
+            raise RuntimeError("CNN head not available")
+        vec = self.embedder.embed(image_rgb).reshape(1, -1)
+        if hasattr(self.head, "predict_proba"):
+            return self.head.predict_proba(vec)[0]
+        # decision_function fallback, squashed to a distribution
+        scores = np.asarray(self.head.decision_function(vec)).reshape(-1)
+        e = np.exp(scores - scores.max())
+        return e / e.sum()
+
+    def predict_image(self, image_rgb):
+        probs = self.predict_probabilities(image_rgb)
+        result = self.format_probabilities(np.asarray(probs).reshape(1, -1))[0]
+        result["backend"] = self.backend
+        return result
+
+    def predict_batch(self, images):
+        return [self.predict_image(im) for im in images]
+
+    def describe(self):
+        return {"ready": self.is_ready, "backend": self.backend,
+                "held_out_accuracy": (self.report or {}).get("accuracy"),
+                "held_out_macro_f1": (self.report or {}).get("macro_f1"),
+                "embedder": self.embedder.describe() if self.embedder else None}
+
+
 def load_best_vision_model(checkpoints_dir=None, verbose=True):
     """
     Returns the strongest classifier actually available on disk: the
@@ -156,6 +262,16 @@ def load_best_vision_model(checkpoints_dir=None, verbose=True):
     scikit-learn baseline. The second return value names which one it is.
     """
     ckpt = checkpoints_dir or CKPT_DIR
+
+    # 1. fine-tuned CNN (PyTorch/ONNX), if one was trained
+    # 2. ImageNet CNN embeddings + trained head  <- usually available
+    # 3. hand-crafted features + SVM baseline
+    cnn_head = CNNHeadClassifier(checkpoints_dir=ckpt)
+    if cnn_head.is_ready:
+        if verbose:
+            print(f"  ✓ Vision classifier: deep CNN embeddings ({cnn_head.backend})")
+        return cnn_head, "cnn_embeddings"
+
     deep = DeepVisionNet(checkpoints_dir=ckpt)
     if deep.is_ready:
         if verbose:

@@ -1,5 +1,49 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
+## Latest: deep CNN embeddings replace hand-engineered features
+
+The classifier's input used to be HOG gradients, local binary patterns and
+colour histograms — 4,419 numbers written by hand. It is now the output of a
+ResNet-50 trained on ImageNet's 1.28 million images, run frozen through ONNX
+Runtime, with a class-balanced logistic head learning the mapping onto the seven
+road classes. This is ordinary transfer learning; the only unusual choice is
+ONNX rather than PyTorch, made because PyTorch's DLLs will not load on the
+demo laptop and ONNX Runtime installs everywhere.
+
+Measured on the identical grouped split (243 images from 205 photographs the
+model never saw, scored once):
+
+| Features | Accuracy | macro-F1 |
+|---|---|---|
+| ResNet-50 embeddings → logistic | **88.5%** | 0.846 |
+| ResNet-50 embeddings → SVC-RBF | 90.5% | 0.813 |
+| MobileNetV2 embeddings → logistic | 83.5% | 0.868 |
+| HOG + LBP + colour → SVM (previous) | 87.7% | 0.840 |
+
+Selection is by the mean of accuracy and macro-F1. SVC-RBF has the highest raw
+accuracy but loses two of the rare classes entirely; macro-F1 alone swings by
+0.1 on a single image when four classes have two or three test examples. The
+mean is the compromise, and it is stated here rather than buried, because either
+metric alone could have been quoted to flatter a different model.
+
+Per class, the change fixed exactly what was broken: Damaged Traffic Sign F1
+0.00 → 1.00, Missing Road Divider 0.44 → 0.80, Normal Road 0.80 → 0.98.
+
+New files: `models/cnn_embedder.py`, `training/train_cnn_head.py`,
+`scripts/fetch_cnn_backbone.py`. `models/deep_vision_net.py` gained
+`CNNHeadClassifier`, and `load_best_vision_model` now prefers it over the
+baseline when a backbone is on disk.
+
+A head is only ever paired with the backbone it was trained on. ResNet-50 and
+MobileNetV2 embeddings are unrelated vector spaces, so feeding one head the
+other's vectors would produce confident nonsense with no error; the loader skips
+any head whose backbone file is absent rather than substituting what it finds.
+
+The ResNet-50 file is 98 MB and is not in version control — GitHub rejects files
+that size, and weights do not belong in git. `python -m scripts.fetch_cnn_backbone`
+downloads it from the official ONNX Model Zoo. MobileNetV2 (14 MB) is committed,
+so a fresh clone has a working CNN path with no download at all.
+
 The rewrite covers `models/`, `pipeline/`, `api/`, `services/`,
 `training/`, `data/`, plus the trained models in `checkpoints/`,
 `requirements.txt` and the Vercel config.

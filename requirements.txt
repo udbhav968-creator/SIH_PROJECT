@@ -4,6 +4,9 @@ scikit-learn>=1.3.0
 scikit-image>=0.21.0
 opencv-python-headless>=4.8.0,<5  # 5.x removed cv2.HOGDescriptor (pedestrian detector)
 joblib>=1.3.0
+# Runs the ImageNet CNN feature extractor (models/cnn_embedder.py) and the COCO
+# object detector. Without it both fall back to the hand-crafted-feature path.
+onnxruntime>=1.16.0
 # Optional: licence-plate OCR in models/alpr_incident_tracker.py.
 # Also needs the Tesseract binary installed and on PATH.
 pytesseract>=0.3.10

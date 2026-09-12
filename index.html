@@ -760,6 +760,20 @@ async function loadModelCard() {
         <p class="text-[10.5px] text-slate-500">${extra}</p></div>`);
     };
     const v = m.vision || m.vision_report, i = m.imu || m.imu_report, deep = m.deep_vision;
+    // CNN-embedding heads arrive as cnn_head_<backbone>; the one the server loaded is flagged active.
+    const cnnHeads = Object.keys(m).filter(k => k.startsWith('cnn_head_')).map(k => m[k]);
+    const cnn = cnnHeads.find(r => r && r.active) || cnnHeads[0];
+    for (const rep of cnnHeads) {
+      const live = rep === cnn;
+      cards.push(`<div class="rounded-xl bg-ink-950/60 border ${live ? 'border-amber-500/60' : 'border-slate-800'} p-4">
+        <p class="text-[11px] uppercase tracking-wider ${live ? 'text-amber-500' : 'text-slate-500'}">
+          ${rep.backbone} embeddings → ${rep.head}${live ? ' · serving' : ''}</p>
+        <p class="text-3xl font-extrabold font-mono text-amber-400 mt-1">${(rep.held_out_test_accuracy * 100).toFixed(1)}%</p>
+        <p class="text-[11px] text-slate-400">macro-F1 ${rep.held_out_test_macro_f1} · random guess ${(rep.random_guess_baseline * 100).toFixed(1)}%</p>
+        <p class="text-[10.5px] text-slate-500 mt-2 font-mono">${rep.model || ''}</p>
+        <p class="text-[10.5px] text-slate-500">${rep.held_out_test_images} test images from ${rep.held_out_test_photographs} unseen photographs${
+          rep.handcrafted_baseline ? ` · hand-crafted baseline ${(rep.handcrafted_baseline.accuracy * 100).toFixed(1)}%` : ''}</p></div>`);
+    }
     if (deep && deep.test) {
       const t = deep.test, sp = deep.split || {};
       cards.push(`<div class="rounded-xl bg-ink-950/60 border border-amber-600/40 p-4">
@@ -773,7 +787,9 @@ async function loadModelCard() {
     push('IMU shock classifier', i, i ? `${i.held_out_validation_windows ?? '—'} held-out windows` : '');
     grid.innerHTML = cards.join('') || '<p class="text-[12px] text-slate-500">No training report on disk yet.</p>';
     const deepCm = m.deep_vision && m.deep_vision.test && m.deep_vision.test.confusion_matrix;
-    const cm = deepCm || (v && v.confusion_matrix), names = (m.deep_vision && m.deep_vision.class_names) || (v && v.class_names);
+    // Show the confusion matrix of whichever model is actually serving predictions.
+    const cm = (cnn && cnn.confusion_matrix) || deepCm || (v && v.confusion_matrix);
+    const names = (cnn && cnn.class_names) || (m.deep_vision && m.deep_vision.class_names) || (v && v.class_names);
     if (cm && names) {
       const max = Math.max(...cm.flat(), 1);
       document.getElementById('confusion').innerHTML =

@@ -20,6 +20,7 @@ elif hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 import os
+import glob
 import json
 import time
 import socketserver
@@ -325,6 +326,15 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                         out[name] = json.load(f)
                 elif name != "deep_vision":
                     out[name] = {"status": "NOT_YET_TRAINED"}
+            # CNN-embedding heads, one report per backbone; report the one the
+            # server actually loaded rather than the best-looking file on disk.
+            loaded = getattr(vision_model, "report", None) or {}
+            for cnn_report in sorted(glob.glob(os.path.join(CKPT_DIR, "cnn_head_*_report.json"))):
+                with open(cnn_report, "r", encoding="utf-8") as f:
+                    blob = json.load(f)
+                key = f"cnn_head_{blob.get('backbone', 'unknown')}"
+                blob["active"] = bool(loaded.get("backbone") == blob.get("backbone"))
+                out[key] = blob
             self._send_json(200, out)
             return
 
