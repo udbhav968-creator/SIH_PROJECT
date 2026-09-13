@@ -18,25 +18,22 @@
     200
   ],
   "thresholds": {
-    "crack": 0.5,
-    "pothole": 0.2
+    "crack": 0.55,
+    "pothole": 0.15
   },
   "decision_rule": "per-class probability threshold tuned for IoU on a calibration split, not argmax",
   "trained_on": {
-    "photographs_total": 2000,
-    "train_photographs": 1260,
-    "calibration_photographs": 240,
-    "test_photographs": 500,
-    "training_pixels": 3850055,
-    "max_pixels_cap": 4500000,
-    "pixel_cap_applied": 4500000,
-    "per_class_pixels_used": 590,
-    "memory_note": "2,976 MB free - the requested cap fits",
+    "photographs_total": 600,
+    "train_photographs": 378,
+    "calibration_photographs": 72,
+    "test_photographs": 150,
+    "training_pixels": 1200000,
+    "max_pixels_cap": 1200000,
     "clean_pixel_share": 0.35,
     "pixels_per_class": {
-      "0": 3192870,
-      "1": 543672,
-      "2": 113513
+      "0": 1009056,
+      "1": 161768,
+      "2": 29176
     },
     "source": "DNIT Cracks and Potholes in Road Images - hand-drawn polygons",
     "clean_photographs": {
@@ -45,17 +42,17 @@
         "10_missing_zebra_crossing",
         "11_missing_road_divider"
       ],
-      "train": 1024,
-      "calibration": 300,
-      "test": 522,
-      "pixels_contributed": 780288,
+      "train": 142,
+      "calibration": 28,
+      "test": 109,
+      "pixels_contributed": 357130,
       "why": "Every DNIT photograph contains a defect, so the first version of this model had never seen fresh white paint on dark asphalt without a defect nearby. It called zebra crossings potholes."
     },
     "hard_negative_mining": {
-      "images_mined": 220,
-      "false_pixels_found": 227344,
-      "false_pixels_per_image_mean": 1033.4,
-      "pixels_added_to_training": 182382,
+      "images_mined": 142,
+      "false_pixels_found": 41191,
+      "false_pixels_per_image_mean": 290.1,
+      "pixels_added_to_training": 37105,
       "ran": true
     }
   },
@@ -63,40 +60,50 @@
   "scored_on": "pixels inside the lane polygon only; sky and verge excluded",
   "iou": {
     "crack": {
-      "iou": 0.2338,
-      "dice": 0.379,
-      "pixel_precision": 0.3415,
-      "pixel_recall": 0.4256,
-      "true_pixels": 610039,
-      "predicted_pixels": 760306
+      "iou": 0.2011,
+      "dice": 0.3348,
+      "pixel_precision": 0.3478,
+      "pixel_recall": 0.3227,
+      "true_pixels": 173807,
+      "predicted_pixels": 161250
     },
     "pothole": {
-      "iou": 0.1337,
-      "dice": 0.2359,
-      "pixel_precision": 0.1824,
-      "pixel_recall": 0.3339,
-      "true_pixels": 147007,
-      "predicted_pixels": 269135
+      "iou": 0.1016,
+      "dice": 0.1844,
+      "pixel_precision": 0.1339,
+      "pixel_recall": 0.2963,
+      "true_pixels": 39495,
+      "predicted_pixels": 87402
     }
   },
   "false_positives_on_clean_roads": {
-    "clean_photographs_scored": 120,
+    "clean_photographs_scored": 109,
     "min_blob_px": 250,
-    "pixel_rate_crack": 0.00354,
-    "pixel_rate_pothole": 0.0113,
-    "photo_rate_any_blob": 0.15,
+    "pixel_rate_crack": 0.0034,
+    "pixel_rate_pothole": 0.00729,
+    "photo_rate_any_blob": 0.2202,
     "per_folder": {
       "05_morth_civil_hard_negatives": {
-        "photos": 120,
-        "flagged": 18,
-        "rate": 0.15
+        "photos": 100,
+        "flagged": 20,
+        "rate": 0.2
+      },
+      "10_missing_zebra_crossing": {
+        "photos": 6,
+        "flagged": 2,
+        "rate": 0.333
+      },
+      "11_missing_road_divider": {
+        "photos": 3,
+        "flagged": 2,
+        "rate": 0.667
       }
     }
   },
   "why_two_metrics": "IoU is measured only on photographs that contain a defect, so it cannot detect a model that invents defects on clean roads. That failure is what users actually saw, so it is measured separately on photographs held out of training.",
-  "inference_ms_per_image": 2408.1,
-  "trained_at_unix": 1789241820,
-  "sklearn_version": "1.9.1",
-  "joblib_version": "1.6.0",
+  "inference_ms_per_image": 745.6,
+  "trained_at_unix": 1789237060,
+  "sklearn_version": "1.8.0",
+  "joblib_version": "1.5.3",
   "portability_note": "This file is a pickled scikit-learn estimator. It loads only under a compatible scikit-learn. If it fails, retrain in place: python -m training.train_segmenter --images 2000 (about 12 minutes on a laptop CPU). Nothing else is needed - the training data is in the repository."
 }
