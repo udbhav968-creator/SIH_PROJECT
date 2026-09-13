@@ -241,6 +241,77 @@ def sample_pixels(feats, label, per_class, rng, sound_multiplier=3):
     return np.concatenate(xs), np.concatenate(ys)
 
 
+def available_memory_mb():
+    """
+    Free memory right now, or None if it cannot be determined.
+
+    Used to size the training set to the machine instead of to a constant. A
+    fixed cap that is comfortable on a workstation is fatal on a laptop with a
+    browser open: the field failure was "Unable to allocate 34.3 MiB", which is
+    not a large-array problem, it is a machine with almost nothing left.
+
+    No new dependency - ctypes on Windows, /proc/meminfo on Linux, sysctl on
+    macOS. A training script should not need psutil to avoid crashing.
+    """
+    try:
+        if sys.platform.startswith("win"):
+            import ctypes
+
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong),
+                            ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong),
+                            ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong),
+                            ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong),
+                            ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+            st = MEMORYSTATUSEX()
+            st.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st))
+            # The binding constraint is whichever is smaller: free RAM, or what
+            # the process can still commit.
+            return min(st.ullAvailPhys, st.ullAvailPageFile) / 1e6
+        if sys.platform.startswith("linux"):
+            with open("/proc/meminfo", encoding="utf-8") as fh:
+                for line in fh:
+                    if line.startswith("MemAvailable:"):
+                        return float(line.split()[1]) / 1000.0
+        if sys.platform == "darwin":
+            import subprocess
+            out = subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True)
+            return float(out.strip()) / 1e6 * 0.5      # rough; macOS compresses
+    except Exception:
+        pass
+    return None
+
+
+def affordable_pixels(requested, headroom_fraction=0.12):
+    """
+    How many training pixels this machine can actually hold.
+
+    Each pixel costs 11 float32 features (44 B) plus a label, and scikit-learn
+    then needs the binned copy, per-class gradients and hessians, and working
+    space inside the tree grower - call it 3x the matrix. Taking a small
+    fraction of free memory keeps all of that inside what is available, and
+    leaves the machine usable while it trains.
+
+    Returns (pixels, explanation).
+    """
+    avail = available_memory_mb()
+    if avail is None:
+        return requested, "could not read free memory; using the requested cap"
+    bytes_per_pixel = 11 * 4 + 1
+    affordable = int((avail * 1e6 * headroom_fraction) / bytes_per_pixel)
+    affordable = max(400_000, affordable)
+    if affordable >= requested:
+        return requested, f"{avail:,.0f} MB free - the requested cap fits"
+    return affordable, (f"only {avail:,.0f} MB free, so the cap drops "
+                        f"{requested:,} -> {affordable:,} pixels")
+
+
 def cap_pixels(X, y, max_pixels, rng):
     """
     Uniform subsample down to `max_pixels`, preserving class proportions.
@@ -258,11 +329,20 @@ def cap_pixels(X, y, max_pixels, rng):
     n = X.shape[0]
     if max_pixels <= 0 or n <= max_pixels:
         return X, y
-    keep = rng.choice(n, max_pixels, replace=False)
-    keep.sort()                       # sorted indices copy far faster
-    print(f"  capping {n:,} -> {max_pixels:,} pixels "
-          f"({X.nbytes / 1e6:.0f} MB -> {X[keep].nbytes / 1e6:.0f} MB)")
-    return X[keep], y[keep]
+    # A boolean mask of float32 randoms, NOT rng.choice. Measured on 5.5M rows:
+    # rng.choice(n, k, replace=False) peaks at 80 MB building the index before
+    # the copy even starts. Asking for 80 MB to recover from an out-of-memory
+    # error is how the recovery path crashed in the field. This costs 4n bytes
+    # and lands within a fraction of a percent of the target.
+    import gc
+    frac = max_pixels / float(n)
+    keep = rng.random(n, dtype=np.float32) < frac
+    Xc, yc = X[keep], y[keep]
+    print(f"  capping {n:,} -> {Xc.shape[0]:,} pixels "
+          f"({X.nbytes / 1e6:.0f} MB -> {Xc.nbytes / 1e6:.0f} MB)")
+    del X, y, keep
+    gc.collect()
+    return Xc, yc
 
 
 def fit_with_headroom(make_clf, X, y, rng, label="fit"):
@@ -280,12 +360,20 @@ def fit_with_headroom(make_clf, X, y, rng, label="fit"):
             clf.fit(X, y)
             return clf, X.shape[0]
         except MemoryError:
-            if X.shape[0] <= 500_000:
+            if X.shape[0] <= 300_000:
                 raise
-            half = X.shape[0] // 2
+            # Every other row. A strided slice needs no index array at all, and
+            # because sample_pixels appends one block per class per photograph,
+            # taking every second row keeps both the class balance and the
+            # spread across photographs. Recovering from an out-of-memory error
+            # must not itself ask for memory.
             print(f"  [{label}] out of memory at {X.shape[0]:,} pixels - "
-                  f"retrying with {half:,}", flush=True)
-            X, y = cap_pixels(X, y, half, rng)
+                  f"retrying with {X.shape[0] // 2:,}", flush=True)
+            Xh, yh = np.ascontiguousarray(X[::2]), np.ascontiguousarray(y[::2])
+            del X, y
+            gc.collect()
+            X, y = Xh, yh
+            del Xh, yh
             gc.collect()
 
 
@@ -586,13 +674,38 @@ def main():
     #
     # So the negatives get a fixed SHARE of the sound class instead of a fixed
     # budget per photograph, and the share is a flag so it can be argued with.
-    defect_sound_px = len(train_recs) * args.per_class_pixels * 3
+    # ---- size the sample to the machine, BEFORE collecting anything --------
+    #
+    # The previous version collected 5.5M pixels and then capped to 4.5M. That
+    # means the oversized matrix has to exist first - 242 MB - and the cap then
+    # allocates the copy beside it. On a laptop with little free memory the run
+    # died before the cap could help, and the recovery path died too.
+    #
+    # So the budgets are scaled down here instead, and the matrix is never built
+    # bigger than the machine can hold.
+    pixel_cap, why_cap = affordable_pixels(args.max_pixels)
+    print(f"  memory: {why_cap}")
+
+    per_class = args.per_class_pixels
+    defect_sound_px = len(train_recs) * per_class * 3
     target_clean_px = int(args.clean_pixel_share * defect_sound_px)
     neg_budget = max(150, target_clean_px // max(1, len(neg_train))) if neg_train else 0
+
+    # Crack and pothole pixels are scarcer than the budget asks for, so the
+    # projection below is an upper bound; scaling on it is deliberately
+    # conservative.
+    projected = (len(train_recs) * per_class * 5) + (len(neg_train) * neg_budget)
+    if projected > pixel_cap:
+        scale = pixel_cap / float(projected)
+        per_class = max(120, int(per_class * scale))
+        neg_budget = max(80, int(neg_budget * scale)) if neg_train else 0
+        print(f"  scaling the per-photograph budget by {scale:.2f} "
+              f"({projected:,} projected > {pixel_cap:,} cap): "
+              f"{args.per_class_pixels} -> {per_class} px per class per photograph")
+
     if neg_train:
         print(f"  clean-road budget: {neg_budget:,} px from each of {len(neg_train)} "
-              f"photographs (~{target_clean_px:,} px, {args.clean_pixel_share:.0%} of the "
-              f"sound class)")
+              f"photographs ({args.clean_pixel_share:.0%} share of the sound class)")
 
     for i, (rec, is_neg) in enumerate(all_train):
         raw = cv2.imread(rec["path"])
@@ -606,7 +719,7 @@ def main():
             # above, divided evenly across the clean photographs.
             xs, ys = sample_pixels(feats, label, neg_budget, rng, sound_multiplier=1)
         else:
-            xs, ys = sample_pixels(feats, label, args.per_class_pixels, rng)
+            xs, ys = sample_pixels(feats, label, per_class, rng)
         if xs is not None:
             X.append(xs)
             y.append(ys)
@@ -621,7 +734,7 @@ def main():
     X = np.concatenate(X).astype(np.float32, copy=False)
     y = np.concatenate(y)
     n_sampled = int(X.shape[0])
-    X, y = cap_pixels(X, y, args.max_pixels, rng)
+    X, y = cap_pixels(X, y, pixel_cap, rng)          # belt and braces
     counts = {int(c): int((y == c).sum()) for c in np.unique(y)}
     print(f"  {X.shape[0]:,} training pixels, {X.shape[1]} features, per class {counts}")
     if n_neg_px:
@@ -663,7 +776,7 @@ def main():
             y = np.concatenate([y, hy])
             del hx, hy
             gc.collect()
-            X, y = cap_pixels(X, y, args.max_pixels, rng)
+            X, y = cap_pixels(X, y, pixel_cap, rng)
             print(f"    refitting on {X.shape[0]:,} pixels "
                   f"({X.nbytes / 1e6:.0f} MB)", flush=True)
             clf, _n = fit_with_headroom(make_clf, X, y, rng, label="refit")
@@ -716,6 +829,9 @@ def main():
             "test_photographs": len(test_recs),
             "training_pixels": int(X.shape[0]),
             "max_pixels_cap": args.max_pixels,
+            "pixel_cap_applied": pixel_cap,
+            "per_class_pixels_used": per_class,
+            "memory_note": why_cap,
             "clean_pixel_share": args.clean_pixel_share,
             "pixels_per_class": counts,
             "source": "DNIT Cracks and Potholes in Road Images - hand-drawn polygons",
