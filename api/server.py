@@ -184,6 +184,14 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
 
 
 class RoadShieldAPIHandler(BaseHTTPRequestHandler):
+    """
+    One note on error handling: a client that disconnects mid-response is not an
+    error. Browsers cancel requests constantly - navigating away, closing a tab,
+    a fetch superseded by the next one - and the default handler answers each
+    with a traceback on stdout. During a demonstration that reads as a crash.
+    Those three exceptions are caught and reported as a single quiet line.
+    """
+
 
     def _send_cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -237,11 +245,33 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             payload = json.dumps({"error": f"Serialization error: {str(e)}"}, indent=2)
             status_code = 500
 
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
-        self._send_cors_headers()
-        self.end_headers()
-        self.wfile.write(payload.encode("utf-8"))
+        try:
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json")
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(payload.encode("utf-8"))
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            # The client went away mid-response. Entirely normal - a page
+            # navigated, a tab closed, a fetch was cancelled - and there is
+            # nothing to do about it. Left unhandled it printed a full
+            # WinError 10053 traceback on the console, which looks like a crash
+            # to anyone watching a demo and is not one.
+            self._client_gone = True
+
+    def handle_one_request(self):
+        """Swallow client-side disconnects; let everything else behave normally."""
+        try:
+            return BaseHTTPRequestHandler.handle_one_request(self)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            self.close_connection = True
+
+    def log_error(self, fmt, *args):
+        # BaseHTTPRequestHandler routes broken pipes through here too.
+        msg = fmt % args if args else fmt
+        if any(k in str(msg) for k in ("10053", "10054", "Broken pipe", "aborted", "reset")):
+            return
+        BaseHTTPRequestHandler.log_error(self, fmt, *args)
 
     def _read_json_body(self):
         content_len = int(self.headers.get("Content-Length", 0))
