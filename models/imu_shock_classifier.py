@@ -34,15 +34,9 @@ class IMUShockClassifier:
         return self.pipeline is not None
 
     @staticmethod
-    def extract_temporal_features(X_raw, vehicle_speed_kmh=None):
-        """(B, T, 3) raw accelerometer window -> (B, 36) real time-domain features.
-        When vehicle_speed_kmh is provided, normalizes the z-axis acceleration by (40.0 / v)^0.75
-        so slow deep pothole traversals and fast expansion joint impacts are scaled consistently.
-        """
-        X_raw = np.asarray(X_raw, dtype=np.float32).copy()
-        if vehicle_speed_kmh is not None and float(vehicle_speed_kmh) > 0:
-            speed_ratio = float((40.0 / max(15.0, min(100.0, float(vehicle_speed_kmh)))) ** 0.75)
-            X_raw[:, :, 2] *= speed_ratio
+    def extract_temporal_features(X_raw):
+        """(B, T, 3) raw accelerometer window -> (B, 36) real time-domain features."""
+        X_raw = np.asarray(X_raw, dtype=np.float32)
         B, T, C = X_raw.shape
         feats = []
         for c in range(C):
@@ -100,11 +94,11 @@ class IMUShockClassifier:
             "per_class_report": classification_report(y, preds, target_names=self.CLASS_NAMES, output_dict=True, zero_division=0),
         }
 
-    def predict(self, X_raw, vehicle_speed_kmh=None):
+    def predict(self, X_raw):
         """X_raw: (B, 100, 3). Returns (pred_ids, pothole_confidence, prob_matrix)."""
         if not self.is_ready:
             raise RuntimeError("Model has not been trained or loaded yet - call fit() or load().")
-        feats = self.extract_temporal_features(X_raw, vehicle_speed_kmh=vehicle_speed_kmh)
+        feats = self.extract_temporal_features(X_raw)
         probs_partial = self.pipeline.predict_proba(feats)
         full_probs = np.zeros((probs_partial.shape[0], len(self.CLASS_NAMES)), dtype=np.float32)
         for i, cls in enumerate(self.pipeline.named_steps["clf"].classes_):

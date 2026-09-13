@@ -55,3 +55,8 @@ datasets/*/real_images/cpr_*.jpg
 
 # Google Maps API key file - never commit a key
 checkpoints/google_maps_api_key.txt
+
+# Runtime database - regenerated, machine-specific
+checkpoints/road_shield.db
+checkpoints/road_shield.db-wal
+checkpoints/road_shield.db-shm

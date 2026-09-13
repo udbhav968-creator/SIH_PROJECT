@@ -3,8 +3,7 @@
   "builds": [
     { "src": "api/index.py", "use": "@vercel/python", "config": { "runtime": "python3.12" } },
     { "src": "web/**", "use": "@vercel/static" },
-    { "src": "index.html", "use": "@vercel/static" },
-    { "src": "dashboard.html", "use": "@vercel/static" }
+    { "src": "index.html", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/api/(.*)",  "dest": "api/index.py" },
@@ -17,7 +16,7 @@
     { "src": "/models",    "dest": "/web/models.html" },
     { "src": "/data",      "dest": "/web/data.html" },
     { "src": "/system",    "dest": "/web/system.html" },
-    { "src": "/dashboard", "dest": "/dashboard.html" },
+    { "src": "/dashboard", "dest": "/index.html" },
     { "src": "/(.*)",      "dest": "/web/index.html" }
   ]
 }

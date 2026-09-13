@@ -271,13 +271,6 @@ class DefectSegmenter:
             binary = (labels == cls).astype(np.uint8)
             if binary.sum() == 0:
                 continue
-            if cls == CLASS_CRACK:
-                # Reconnect hairline crack fragments across 1-2px noise gaps
-                binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
-            elif cls == CLASS_POTHOLE and binary.sum() > 400:
-                # Separate touching pothole basins joined by thin false bridges
-                binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-
             n, comp, stats, _cent = cv2.connectedComponentsWithStats(binary, connectivity=8)
             for i in range(1, n):
                 if stats[i, cv2.CC_STAT_AREA] >= min_blob_px:

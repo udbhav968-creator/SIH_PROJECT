@@ -191,7 +191,7 @@ class CNNHeadClassifier(VisionDistressNet):
             print(f"[CNNHead] dependency missing: {e}")
             return
 
-        candidates = []
+        best = None  # (macro_f1, path, blob, backbone)
         for path in self._candidates():
             try:
                 blob = joblib.load(path)
@@ -203,40 +203,52 @@ class CNNHeadClassifier(VisionDistressNet):
             if spec is None:
                 continue
             if not os.path.exists(os.path.join(self.ckpt_dir, spec["file"])):
+                # head trained on a backbone this machine doesn't have - skip it
                 continue
+            # Mean of accuracy and macro-F1. Macro-F1 alone decides on classes
+            # with two or three held-out examples, where a single image moves it
+            # by 0.1; accuracy alone ignores the rare classes entirely.
             score = 0.5 * (float(blob.get("macro_f1") or 0.0) + float(blob.get("accuracy") or 0.0))
-            candidates.append((score, path, blob, backbone))
+            if best is None or score > best[0]:
+                best = (score, path, blob, backbone)
 
-        candidates.sort(key=lambda c: -c[0])
-        if not candidates:
+        if best is None:
             if self._candidates():
                 print("[CNNHead] head found but its backbone is missing - "
                       "run: python -m scripts.fetch_cnn_backbone")
             return
 
-        last_error = ""
-        for score, path, blob, backbone in candidates:
-            embedder = CNNEmbedder(checkpoints_dir=self.ckpt_dir, prefer=(backbone,))
-            if embedder.is_ready and embedder.name == backbone:
-                self.backbone_fallback = None
-                self.embedder = embedder
-                self.head = blob["head"]
-                self.report = {k: v for k, v in blob.items() if k != "head"}
-                self.backend = f"cnn:{backbone}+{blob.get('head_name', 'head')}"
-                return
+        _score, path, blob, backbone = best
+        embedder = CNNEmbedder(checkpoints_dir=self.ckpt_dir, prefer=(backbone,))
+        if not embedder.is_ready or embedder.name != backbone:
+            # Record WHY, and whether the machine or the file is at fault.
+            #
+            # This fallback is silent by design - a missing backbone should not
+            # stop the product - but it swaps the classifier for a different,
+            # weaker one. On a machine that had run out of memory, ONNX Runtime
+            # answered "bad allocation", the hand-crafted path took over, and a
+            # test suite then reported zebra crossings as potholes. The suite was
+            # measuring a model nobody intended to ship.
             err = getattr(embedder, "load_error", "") or ""
-            last_error = err
-            print(f"[CNNHead] backbone {backbone} failed to initialize ({err}) - trying next candidate")
-
-        self.backbone_fallback = {
-            "requested": candidates[0][3],
-            "loaded": None,
-            "error": last_error,
-            "environment_failure": any(k in str(last_error).lower() for k in
-                                       ("bad allocation", "memory", "alloc")),
-        }
-        print("[CNNHead] all CNN backbones failed to load - falling back to classical HOG/LBP model")
-        return
+            self.backbone_fallback = {
+                "requested": backbone,
+                "loaded": getattr(embedder, "name", None),
+                "error": err,
+                "environment_failure": any(k in err.lower() for k in
+                                           ("bad allocation", "memory", "alloc")),
+            }
+            print(f"[CNNHead] backbone {backbone} would not load - falling back")
+            if self.backbone_fallback["environment_failure"]:
+                print("[CNNHead] the reason is MEMORY, not the model file. The "
+                      "hand-crafted classifier is now active, and it is a "
+                      "different, weaker model - any accuracy measured now is "
+                      "not this system's accuracy.")
+            return
+        self.backbone_fallback = None
+        self.embedder = embedder
+        self.head = blob["head"]
+        self.report = {k: v for k, v in blob.items() if k != "head"}
+        self.backend = f"cnn:{backbone}+{blob.get('head_name', 'head')}"
 
     def predict_probabilities(self, image_rgb):
         if not self.is_ready:
@@ -279,15 +291,15 @@ def load_best_vision_model(checkpoints_dir=None, verbose=True):
     cnn_head = CNNHeadClassifier(checkpoints_dir=ckpt)
     if cnn_head.is_ready:
         if verbose:
-            print(f"  [OK] Vision classifier: deep CNN embeddings ({cnn_head.backend})")
+            print(f"  ✓ Vision classifier: deep CNN embeddings ({cnn_head.backend})")
         return cnn_head, "cnn_embeddings"
 
     deep = DeepVisionNet(checkpoints_dir=ckpt)
     if deep.is_ready:
         if verbose:
-            print(f"  [OK] Vision classifier: fine-tuned CNN ({deep.backend})")
+            print(f"  ✓ Vision classifier: fine-tuned CNN ({deep.backend})")
         return deep, "deep_cnn"
     baseline = VisionDistressNet(model_path=os.path.join(ckpt, "vision_distress_model.joblib"))
     if verbose:
-        print("  [OK] Vision classifier:", "HOG/LBP + SVM baseline" if baseline.is_ready else "NOT TRAINED YET")
+        print("  ✓ Vision classifier:", "HOG/LBP + SVM baseline" if baseline.is_ready else "NOT TRAINED YET")
     return baseline, ("sklearn_baseline" if baseline.is_ready else "none")

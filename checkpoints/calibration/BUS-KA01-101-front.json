@@ -1,0 +1,13 @@
+{
+  "device_id": "BUS-KA01-101-front",
+  "camera_height_m": 1.52,
+  "pitch_deg": 16.0,
+  "fx": 790.334180182433,
+  "fy": 790.334180182433,
+  "cx": 640.0,
+  "cy": 360.0,
+  "image_width": 1280,
+  "image_height": 720,
+  "source": "horizontal FOV 78.0 deg, square pixels assumed",
+  "notes": "Ashok Leyland Viking, windscreen mount"
+}

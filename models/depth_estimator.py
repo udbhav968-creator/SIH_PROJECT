@@ -149,27 +149,13 @@ def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
 
     surround = float(np.median(outside))
     cavity = float(np.median(inside))
-    inside_std = float(np.std(inside))
-
-    # Check for specular water reflection: water-filled cavity has near-zero interior texture
-    # and reflects sky light, so optical darkness contrast is inverted or neutralized.
-    is_specular_water = (inside_std < 7.5) and (cavity >= surround - 5.0)
-
     # Relative darkness in [0, 1]. Normalised by the surrounding brightness so
     # the measure is invariant to overall exposure, which it must be: the same
     # pothole photographed at noon and at dusk has the same depth.
     contrast = float(np.clip((surround - cavity) / max(surround, 1.0), 0.0, 0.6)) / 0.6
 
     lo, hi = POTHOLE_PATCH_DEPTH_CM["low"], POTHOLE_PATCH_DEPTH_CM["high"]
-    if is_specular_water:
-        central = 5.0
-        contrast = 0.35
-        method_name = "specular_water_cavity_irc_band"
-        basis_note = "IRC:SP:83 standing water cavity - optical darkness inverted by sky reflection"
-    else:
-        central = lo + contrast * (hi - lo)
-        method_name = "optical_darkness_to_irc_band"
-        basis_note = POTHOLE_PATCH_DEPTH_CM["basis"]
+    central = lo + contrast * (hi - lo)
 
     # Confidence in the METHOD, not in the value: strong contrast means the cue
     # is present, it never means the number is accurate.
@@ -179,16 +165,14 @@ def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
              "cavity_median_intensity": round(cavity, 1),
              "surround_median_intensity": round(surround, 1),
              "region_source": source}
-    if is_specular_water:
-        extra["water_specular_reflection"] = True
     if distance_m is not None:
         extra["distance_m"] = round(float(distance_m), 2)
         if float(distance_m) > 12.0:
             conf *= 0.6
             extra["distance_penalty"] = "beyond 12 m the cue is unreliable"
     return _estimate(central, max(lo, central - span), min(hi, central + span),
-                     method=method_name,
-                     basis=basis_note,
+                     method="optical_darkness_to_irc_band",
+                     basis=POTHOLE_PATCH_DEPTH_CM["basis"],
                      confidence=min(conf, 0.6), driver="measured cavity contrast", **extra)
 
 

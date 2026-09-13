@@ -58,10 +58,33 @@ def _session_options(ort):
     between loading and not.
     """
     opts = ort.SessionOptions()
+
+    # Arena OFF. It reserves a large pool up front and never returns it, which
+    # is right for a server on one fixed shape and wrong for a process holding
+    # several sessions over crops of varying size.
     opts.enable_cpu_mem_arena = False
-    opts.enable_mem_pattern = False
-    opts.intra_op_num_threads = max(1, min(4, (os.cpu_count() or 2)))
+
+    # Memory pattern ON. Disabling it was a guess, and the wrong one: the
+    # pattern planner works out the intermediate tensor layout once and
+    # allocates it as a block, so turning it off replaces one allocation with
+    # many small ones - more fragmentation, not less. The failure that followed
+    # was a Conv node failing mid-inference with 4.8 GB free, which is what
+    # fragmentation looks like rather than exhaustion.
+    opts.enable_mem_pattern = True
+
+    # Threads matter for memory, not just speed: each intra-op thread gets its
+    # own scratch buffers, so eight threads means eight copies of the working
+    # set for no benefit on a request-at-a-time workload.
+    opts.intra_op_num_threads = max(1, min(2, (os.cpu_count() or 2)))
     opts.inter_op_num_threads = 1
+
+    # ORT_DISABLE_ALL keeps the graph as exported. The NCHWc layout transform is
+    # part of the extended optimisations and allocates a transformed copy of
+    # every convolution weight - which is the node that failed. Opting out costs
+    # some speed on a machine that has memory to spare; ROAD_SHIELD_LITE_ORT=1
+    # is for one that does not.
+    if os.environ.get("ROAD_SHIELD_LITE_ORT") == "1":
+        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     return opts
 
 
@@ -70,6 +93,8 @@ class CNNEmbedder:
 
     def __init__(self, checkpoints_dir=None, prefer=("resnet50", "mobilenetv2"), batch_size=16):
         self.load_error = None
+        self.runtime_failures = 0
+        self.last_runtime_error = None
         self.ckpt_dir = checkpoints_dir or CKPT_DIR
         self.batch_size = batch_size
         self.name = None
@@ -144,7 +169,18 @@ class CNNEmbedder:
         if not self.is_ready:
             raise RuntimeError("No CNN backbone on disk. Run scripts/fetch_cnn_backbone.py")
         batch = self.preprocess(image_rgb)[None, ...]
-        return self._session.run(None, {self._input_name: batch})[0][0].astype(np.float32)
+        try:
+            return self._session.run(None, {self._input_name: batch})[0][0].astype(np.float32)
+        except Exception as e:
+            # A session that loaded can still fail on a single inference:
+            # observed as "Non-zero status code returned while running Conv node
+            # ... bad allocation" on a machine with 4.8 GB free. Counting it
+            # matters because the alternative is a quietly missing detection,
+            # and a measurement taken while the model was intermittently failing
+            # is not a measurement.
+            self.runtime_failures += 1
+            self.last_runtime_error = str(e)
+            raise
 
     def embed_batch(self, images, progress_every=0):
         """(N, dim) embeddings. Batched for throughput on CPU."""

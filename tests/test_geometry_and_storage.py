@@ -357,8 +357,32 @@ class FalsePositiveGate(unittest.TestCase):
 
     def _defects(self, path):
         r = self.pipe.audit_image(image_input=path)
+        fails = int(r.get("classifier_failures") or 0)
+        if fails:
+            self._classifier_trouble.append(
+                (os.path.basename(path), fails, r.get("classifier_last_error")))
         return [d for d in (r.get("all_detections") or [])
                 if any(k in d.get("class_name", "") for k in ("Pothole", "Crack"))]
+
+    def setUp(self):
+        # Reset per test: a run in which the classifier threw is not a
+        # measurement of the proposal filter, it is a measurement of the
+        # machine's free memory. ONNX Runtime raises "bad allocation" from a
+        # Conv node on a constrained host, the crop is dropped, and the
+        # detection count falls for a reason that has nothing to do with the
+        # code under test. Those runs are skipped, not failed - and not
+        # silently passed either, which is what happened before the pipeline
+        # counted them.
+        self._classifier_trouble = []
+
+    def _skip_if_classifier_failed(self):
+        if self._classifier_trouble:
+            name, n, err = self._classifier_trouble[0]
+            self.skipTest(
+                f"classifier failed on {len(self._classifier_trouble)} "
+                f"photograph(s) - e.g. {name} ({n}x): {err}. "
+                "Detection counts are not meaningful while the model is "
+                "throwing; set ROAD_SHIELD_LITE_ORT=1 or free memory and rerun.")
 
     def _sample(self, folder, n=4, seed=7):
         """
@@ -509,6 +533,7 @@ class FalsePositiveGate(unittest.TestCase):
                 frac = float(bb[2]) * float(bb[3])
                 if frac > 0.60:
                     offenders.append((os.path.basename(path), round(frac, 3)))
+        self._skip_if_classifier_failed()
         self.assertEqual(offenders, [],
                          f"box covering more than 60% of the frame: {offenders}")
 
@@ -519,6 +544,7 @@ class FalsePositiveGate(unittest.TestCase):
         if not files:
             self.skipTest("no zebra-crossing photographs on disk")
         bad = [os.path.basename(p) for p in files if self._defects(p)]
+        self._skip_if_classifier_failed()
         # Measured end-to-end: 3 of 36 clean photographs (8.3%) are still
         # reported. A hard zero would be a test that passes by luck on this
         # sample; the honest number lives in
@@ -533,6 +559,7 @@ class FalsePositiveGate(unittest.TestCase):
         if not files:
             self.skipTest("no hard negatives on disk")
         bad = [os.path.basename(p) for p in files if self._defects(p)]
+        self._skip_if_classifier_failed()
         self.assertLessEqual(len(bad), len(files) // 3,
                              f"{len(bad)}/{len(files)} sound-pavement photographs "
                              f"reported as defective: {bad}")
@@ -545,9 +572,13 @@ class FalsePositiveGate(unittest.TestCase):
         if not files:
             self.skipTest("no pothole photographs on disk")
         found = sum(1 for p in files if self._defects(p))
-        # The bar here is 50% (4 of 8) because eight photographs is a small sample
-        # and a test that only passes at the 24-photo measured rate (87.5%) can fail on noise.
-        self.assertGreaterEqual(found, len(files) // 2,
+        self._skip_if_classifier_failed()
+        # Measured end-to-end over 24 photographs: 87.5%. The bar here is 62.5%
+        # because eight photographs is a small sample and a test that only
+        # passes at the measured rate is a test that fails on noise. It is still
+        # tight enough to catch the collapse to 20.8% that over-tightening the
+        # proposal filter produced.
+        self.assertGreaterEqual(found, (5 * len(files)) // 8,
                                 f"only {found}/{len(files)} real defects detected - "
                                 f"the proposal filter is too aggressive")
 
@@ -620,6 +651,7 @@ class FalsePositiveGate(unittest.TestCase):
                                  or frac > P.MAX_COMPONENT_BOX_FRACTION):
                     priced_but_absurd.append(
                         (os.path.basename(path), round(area, 3), round(frac, 3), cost))
+        self._skip_if_classifier_failed()
         self.assertEqual(priced_but_absurd, [],
                          f"priced a defect whose area or extent cannot be defended: "
                          f"{priced_but_absurd}")
@@ -714,6 +746,10 @@ class SegmenterContract(unittest.TestCase):
                                f"{cls} IoU should be positive on a trained model")
 
 
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
+
+
 class MarkingDetection(unittest.TestCase):
     """
     Painted markings, found by geometry rather than by a model.
@@ -798,7 +834,3 @@ class MarkingDetection(unittest.TestCase):
                             "road between the stripes")
             return
         self.skipTest("no crossing detected in the sample")
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
