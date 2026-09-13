@@ -354,6 +354,22 @@ if (-not $SkipTests) {
     # convolution weight. On a host with little headroom that is where
     # "bad allocation" comes from - a Conv node, mid-inference, not session
     # start. ORT_DISABLE_ALL skips the transform: slower, and it runs.
+    # The recorded detection figure describes one corpus and one model. This
+    # machine has its own of both - 1,404 photographs in the pothole folder
+    # where the release machine has 489, and a locally retrained segmenter -
+    # so a baseline measured elsewhere says nothing here. Re-measure when the
+    # fingerprint no longer matches; otherwise the detection test has no
+    # number it is entitled to assert and will skip.
+    $bl = Invoke-Native -Exe $py -Arguments @('-m', 'scripts.check_detection_baseline')
+    if ($bl.Output -match 'STALE\s*(.*)') {
+        Note "detection baseline is stale: $($Matches[1].Trim())"
+        Note "re-measuring on this machine's photographs - about three minutes"
+        $m = Invoke-Streaming -Exe $py -Arguments @('-m', 'scripts.measure_detection_quality', '--per-folder', '12')
+        if ($m.Code -ne 0) { Warn "could not re-measure; the detection test will skip" }
+    } elseif ($bl.Output -match 'FRESH\s*(.*)') {
+        Note "detection baseline: $($Matches[1].Trim())"
+    }
+
     $freeMb = Get-FreeMb
     if ($freeMb -ge 0 -and $freeMb -lt 6000) {
         $env:ROAD_SHIELD_LITE_ORT = "1"

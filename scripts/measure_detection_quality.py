@@ -93,6 +93,7 @@ def main():
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
+    from pipeline.corpus_fingerprint import fingerprint
     from pipeline.deep_inference_pipeline import DeepInferencePipeline
     pipe = DeepInferencePipeline(CKPT)
     seg_ready = bool(getattr(pipe, "segmenter", None) and pipe.segmenter.is_ready)
@@ -155,6 +156,11 @@ def main():
         "false_positive_photos": fp, "false_positive_rate": round(fp_rate, 4),
         "detected_photos": hit, "detection_rate": round(det_rate, 4),
         "segmenter_loaded": seg_ready,
+        # What this number is a measurement OF. Without it the figure travels
+        # to a machine with a different corpus and a different model and is
+        # read there as a property of the code. See
+        # pipeline/corpus_fingerprint.py for the failure that taught this.
+        "fingerprint": fingerprint(pipe.segmenter, CLEAN_FOLDERS + DEFECT_FOLDERS),
         "seconds": round(time.time() - t0, 1),
         "rows": rows,
     }

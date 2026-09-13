@@ -100,6 +100,38 @@ class DefectStore:
             cur.executescript(SCHEMA)
 
     # ------------------------------------------------------------------
+    def close(self):
+        """
+        Release the connections this store owns.
+
+        An in-memory store holds its database open for its whole life - that is
+        the point of the shared connection - so a test that builds one and
+        drops it leaks until the interpreter exits, and Python says so six
+        times per run. Idempotent, so calling it twice in a tearDown is safe.
+        """
+        for attr in ("_memory_conn",):
+            conn = getattr(self, attr, None)
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            self._local.conn = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
     def _conn(self):
         if self._memory_conn is not None:
             return self._memory_conn
