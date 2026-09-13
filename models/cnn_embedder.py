@@ -42,6 +42,29 @@ BACKBONES = {
 }
 
 
+def _session_options(ort):
+    """
+    ONNX Runtime options chosen for a machine that is also doing other things.
+
+    The CPU memory ARENA is the important one. By default ORT reserves a large
+    pool up front and never returns it, which is right for a server doing
+    millions of inferences on one fixed shape and wrong here: this process holds
+    several sessions, the crops vary in size, and the arena's reservations
+    stack. Observed on a laptop with 4.7 GB free - not a small machine - ORT
+    still answered "bad allocation" while loading a 98 MB model, because three
+    pipelines had each taken an arena first.
+
+    Disabling it costs a few milliseconds per call and makes the difference
+    between loading and not.
+    """
+    opts = ort.SessionOptions()
+    opts.enable_cpu_mem_arena = False
+    opts.enable_mem_pattern = False
+    opts.intra_op_num_threads = max(1, min(4, (os.cpu_count() or 2)))
+    opts.inter_op_num_threads = 1
+    return opts
+
+
 class CNNEmbedder:
     """ImageNet CNN used as a frozen feature extractor."""
 
@@ -73,9 +96,8 @@ class CNNEmbedder:
             if not os.path.exists(path):
                 continue
             try:
-                opts = ort.SessionOptions()
-                opts.intra_op_num_threads = max(1, min(4, (os.cpu_count() or 2)))
-                self._session = ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
+                self._session = ort.InferenceSession(path, _session_options(ort),
+                                                     providers=["CPUExecutionProvider"])
                 self._input_name = self._session.get_inputs()[0].name
                 self.name = name
                 self.input_size = spec["size"]
@@ -91,7 +113,8 @@ class CNNEmbedder:
         # last resort: any backbone file that happens to be present
         for path in sorted(glob.glob(os.path.join(self.ckpt_dir, "cnn_backbone_*.onnx"))):
             try:
-                self._session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+                self._session = ort.InferenceSession(path, _session_options(ort),
+                                                     providers=["CPUExecutionProvider"])
                 self._input_name = self._session.get_inputs()[0].name
                 self.name = os.path.basename(path)
                 return

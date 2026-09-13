@@ -250,7 +250,20 @@ class Pipeline(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         from pipeline.deep_inference_pipeline import DeepInferencePipeline
-        cls.pipe = DeepInferencePipeline(CKPT)
+        # Share the suite's single engine; see tests/test_geometry_and_storage.py
+        # for why three of them exhausted a machine with 4.7 GB free.
+        # unittest discover imports this as `test_road_shield`, not
+        # `tests.test_road_shield`, so the sibling import has to be tried both
+        # ways or the fallback silently builds a second engine - which is the
+        # thing being avoided.
+        shared = None
+        for mod in ("tests.test_geometry_and_storage", "test_geometry_and_storage"):
+            try:
+                shared = __import__(mod, fromlist=["shared_pipeline"]).shared_pipeline
+                break
+            except Exception:
+                continue
+        cls.pipe = shared() if shared else DeepInferencePipeline(CKPT)
         cls.photo = sample_photo()
 
     def test_audit_returns_the_documented_shape(self):

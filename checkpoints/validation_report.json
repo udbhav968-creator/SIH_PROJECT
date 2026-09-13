@@ -1,7 +1,7 @@
 {
-  "generated_unix": 1789171070,
-  "n_images": 2028,
-  "n_distinct_photographs": 1800,
+  "generated_unix": 1789273898,
+  "n_images": 5691,
+  "n_distinct_photographs": 5463,
   "class_names": [
     "Normal Road / Sound Pavement",
     "Crack (Longitudinal / Transverse / Alligator)",
@@ -12,8 +12,8 @@
     "Damaged Traffic Sign"
   ],
   "leakage": {
-    "images_hashed": 2028,
-    "near_duplicate_pairs_same_class": 2287,
+    "images_hashed": 4000,
+    "near_duplicate_pairs_same_class": 2283,
     "near_duplicate_pairs_cross_class": 0,
     "cross_class_examples": [],
     "group_overlap_between_splits": {
@@ -28,149 +28,125 @@
     "per_fold": [
       {
         "fold": 1,
-        "train": 1612,
-        "test": 416,
-        "accuracy": 0.8077,
-        "macro_f1": 0.6736
+        "train": 4552,
+        "test": 1139,
+        "accuracy": 0.8824,
+        "macro_f1": 0.7312
       },
       {
         "fold": 2,
-        "train": 1629,
-        "test": 399,
-        "accuracy": 0.8596,
-        "macro_f1": 0.6885
+        "train": 4552,
+        "test": 1139,
+        "accuracy": 0.8929,
+        "macro_f1": 0.6679
       },
       {
         "fold": 3,
-        "train": 1629,
-        "test": 399,
-        "accuracy": 0.8421,
-        "macro_f1": 0.7889
+        "train": 4553,
+        "test": 1138,
+        "accuracy": 0.862,
+        "macro_f1": 0.5621
       },
       {
         "fold": 4,
-        "train": 1630,
-        "test": 398,
-        "accuracy": 0.8417,
-        "macro_f1": 0.6441
+        "train": 4553,
+        "test": 1138,
+        "accuracy": 0.9033,
+        "macro_f1": 0.7423
       },
       {
         "fold": 5,
-        "train": 1612,
-        "test": 416,
-        "accuracy": 0.8534,
-        "macro_f1": 0.6851
+        "train": 4554,
+        "test": 1137,
+        "accuracy": 0.8795,
+        "macro_f1": 0.6359
       }
     ],
-    "accuracy_mean": 0.8409,
-    "accuracy_std": 0.018,
-    "macro_f1_mean": 0.696,
-    "macro_f1_std": 0.049,
+    "accuracy_mean": 0.884,
+    "accuracy_std": 0.0138,
+    "macro_f1_mean": 0.6679,
+    "macro_f1_std": 0.066,
     "random_guess_baseline": 0.1429
   },
   "calibration": {
-    "expected_calibration_error": 0.0636,
-    "maximum_calibration_error": 0.2634,
-    "brier_score": 0.2961,
+    "expected_calibration_error": 0.0285,
+    "maximum_calibration_error": 0.2716,
+    "brier_score": 0.163,
     "reliability_table": [
       {
-        "bin": "0.3-0.4",
+        "bin": "0.2-0.3",
         "n": 4,
-        "mean_confidence": 0.356,
-        "actual_accuracy": 0.5,
-        "gap": -0.144
+        "mean_confidence": 0.265,
+        "actual_accuracy": 0.25,
+        "gap": 0.015
+      },
+      {
+        "bin": "0.3-0.4",
+        "n": 10,
+        "mean_confidence": 0.368,
+        "actual_accuracy": 0.4,
+        "gap": -0.032
       },
       {
         "bin": "0.4-0.5",
-        "n": 7,
-        "mean_confidence": 0.451,
-        "actual_accuracy": 0.714,
-        "gap": -0.263
+        "n": 50,
+        "mean_confidence": 0.468,
+        "actual_accuracy": 0.74,
+        "gap": -0.272
       },
       {
         "bin": "0.5-0.6",
-        "n": 39,
-        "mean_confidence": 0.55,
-        "actual_accuracy": 0.667,
-        "gap": -0.117
+        "n": 105,
+        "mean_confidence": 0.56,
+        "actual_accuracy": 0.438,
+        "gap": 0.122
       },
       {
         "bin": "0.6-0.7",
-        "n": 77,
-        "mean_confidence": 0.652,
-        "actual_accuracy": 0.597,
-        "gap": 0.054
+        "n": 104,
+        "mean_confidence": 0.649,
+        "actual_accuracy": 0.779,
+        "gap": -0.13
       },
       {
         "bin": "0.7-0.8",
-        "n": 55,
-        "mean_confidence": 0.752,
-        "actual_accuracy": 0.745,
-        "gap": 0.006
+        "n": 120,
+        "mean_confidence": 0.749,
+        "actual_accuracy": 0.742,
+        "gap": 0.008
       },
       {
         "bin": "0.8-0.9",
-        "n": 100,
-        "mean_confidence": 0.855,
+        "n": 183,
+        "mean_confidence": 0.857,
         "actual_accuracy": 0.88,
-        "gap": -0.025
+        "gap": -0.022
       },
       {
         "bin": "0.9-1.0",
-        "n": 332,
-        "mean_confidence": 0.964,
-        "actual_accuracy": 0.889,
-        "gap": 0.075
+        "n": 1121,
+        "mean_confidence": 0.975,
+        "actual_accuracy": 0.978,
+        "gap": -0.003
       }
     ],
-    "n_evaluated": 614
+    "n_evaluated": 1697
   },
   "latency": {
     "feature_extraction": {
-      "p50_ms": 15.6,
-      "p95_ms": 19.1,
-      "p99_ms": 20.2,
-      "mean_ms": 14.0,
+      "p50_ms": 21.7,
+      "p95_ms": 44.7,
+      "p99_ms": 60.1,
+      "mean_ms": 26.7,
       "n": 40
     },
     "full_pipeline": {
-      "p50_ms": 257.1,
-      "p95_ms": 272.7,
-      "p99_ms": 298.4,
-      "mean_ms": 252.7,
+      "p50_ms": 5646.6,
+      "p95_ms": 6343.9,
+      "p99_ms": 6552.0,
+      "mean_ms": 5671.0,
       "n": 40
     },
-    "throughput_images_per_second_p50": 3.89
-  },
-  "robustness": {
-    "original": {
-      "accuracy": 0.7679,
-      "delta_vs_original": 0.0
-    },
-    "dim (x0.6)": {
-      "accuracy": 0.75,
-      "delta_vs_original": -0.0179
-    },
-    "bright (x1.5)": {
-      "accuracy": 0.7321,
-      "delta_vs_original": -0.0357
-    },
-    "blur r=2": {
-      "accuracy": 0.75,
-      "delta_vs_original": -0.0179
-    },
-    "blur r=4": {
-      "accuracy": 0.7143,
-      "delta_vs_original": -0.0536
-    },
-    "JPEG q=30": {
-      "accuracy": 0.7679,
-      "delta_vs_original": 0.0
-    },
-    "JPEG q=10": {
-      "accuracy": 0.6786,
-      "delta_vs_original": -0.0893
-    },
-    "_n_images": 56
+    "throughput_images_per_second_p50": 0.18
   }
 }

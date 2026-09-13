@@ -158,7 +158,9 @@ class DeepInferencePipeline:
         # STAGE 1: decode + standardize
         img_np = self.cv_detector.decode_image(image_input)
         H, W, _ = img_np.shape
-        gray = 0.299 * img_np[:, :, 0] + 0.587 * img_np[:, :, 1] + 0.114 * img_np[:, :, 2]
+        import cv2 as _cv2
+        gray = _cv2.cvtColor(img_np, _cv2.COLOR_RGB2GRAY).astype(np.float32)
+        self._last_gray = gray
 
         # Intrinsics are in pixels, so a profile calibrated at one resolution is
         # simply wrong at another. Rescale per request.
@@ -231,11 +233,52 @@ class DeepInferencePipeline:
         # (waterlogging, signage, markings) and is the whole proposal stage when
         # no segmenter is loaded. See _segmentation_proposals for why.
         seg_boxes = self._segmentation_proposals(H, W)
-        heuristic = self.cv_detector.extract_salient_regions(img_np, excluded_boxes=pedestrians)
-        if seg_boxes:
-            heuristic = [b for b in heuristic
-                         if not any(self._boxes_overlap(b, sb) for sb in seg_boxes)]
-        bboxes = seg_boxes + heuristic
+        vehicle_boxes = [d for d in scene_objects if d.get("class_name") in ("car", "bus", "truck", "van")]
+        heuristic = self.cv_detector.extract_salient_regions(img_np, excluded_boxes=pedestrians + vehicle_boxes)
+
+        # Multi-cue proposal fusion: if a segmentation component (e.g. gravel rim) and
+        # a salient cavity (e.g. reflective water pool) are contiguous or overlapping,
+        # merge them to enclose the entire physical defect crater.
+        fused_seg_boxes = []
+        matched_heur = set()
+        for sb in seg_boxes:
+            sb_x0, sb_y0, sb_w, sb_h = sb[:4]
+            sb_x1, sb_y1 = sb_x0 + sb_w, sb_y0 + sb_h
+            merged = False
+            for h_idx, hb in enumerate(heuristic):
+                hb_x0, hb_y0, hb_w, hb_h = hb[:4]
+                hb_x1, hb_y1 = hb_x0 + hb_w, hb_y0 + hb_h
+                h_overlap = max(0, min(sb_x1, hb_x1) - max(sb_x0, hb_x0))
+                min_w = min(sb_w, hb_w)
+                v_dist = max(0, max(sb_y0, hb_y0) - min(sb_y1, hb_y1))
+                if min_w > 0 and (h_overlap / float(min_w) >= 0.25) and v_dist <= 35:
+                    if hb_w > 1.6 * sb_w:
+                        # hb is an over-wide road surface anomaly; do not let it swallow the whole road width.
+                        pad_x = int(0.15 * sb_w)
+                        ux0 = max(0, sb_x0 - pad_x)
+                        ux1 = min(W, sb_x1 + pad_x)
+                    else:
+                        ux0 = min(sb_x0, hb_x0)
+                        ux1 = max(sb_x1, hb_x1)
+                    uy0 = min(sb_y0, hb_y0)
+                    uy1 = max(sb_y1, hb_y1)
+                    fused_box = list(sb)
+                    fused_box[0] = ux0
+                    fused_box[1] = uy0
+                    fused_box[2] = ux1 - ux0
+                    fused_box[3] = uy1 - uy0
+                    fused_seg_boxes.append(fused_box)
+                    matched_heur.add(h_idx)
+                    merged = True
+                    break
+            if not merged:
+                fused_seg_boxes.append(sb)
+
+        remaining_heuristic = [hb for idx, hb in enumerate(heuristic) if idx not in matched_heur]
+        if fused_seg_boxes:
+            remaining_heuristic = [b for b in remaining_heuristic
+                                   if not any(self._boxes_overlap(b, sb) for sb in fused_seg_boxes)]
+        bboxes = fused_seg_boxes + remaining_heuristic
 
         if not bboxes and not pedestrians:
             normal = self._normal_road(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
@@ -251,6 +294,36 @@ class DeepInferencePipeline:
             entry = self._classify_region(img_np, gray, bbox, W, H, mean_intensity)
             if entry is not None:
                 detections.append(entry)
+
+        # Deduplicate overlapping distress detections (NMS)
+        if len(detections) > 1:
+            clean_dets = []
+            sorted_dets = sorted(detections, key=lambda d: (d.get("is_distress", False), d.get("confidence", 0.0), d.get("surface_area_m2", 0.0)), reverse=True)
+            for d in sorted_dets:
+                bb = d.get("bbox_normalized")
+                if not bb or not d.get("is_distress", False):
+                    clean_dets.append(d)
+                    continue
+                bx, by, bw, bh = bb
+                d_area = bw * bh
+                overlap = False
+                for kd in clean_dets:
+                    kbb = kd.get("bbox_normalized")
+                    if not kbb or not kd.get("is_distress", False):
+                        continue
+                    kx, ky, kw, kh = kbb
+                    ix = max(0.0, min(bx + bw, kx + kw) - max(bx, kx))
+                    iy = max(0.0, min(by + bh, ky + kh) - max(by, ky))
+                    inter = ix * iy
+                    if inter > 0:
+                        ios = inter / max(1e-6, min(d_area, kw * kh))
+                        iou = inter / max(1e-6, d_area + kw * kh - inter)
+                        if iou > 0.30 or ios > 0.50:
+                            overlap = True
+                            break
+                if not overlap:
+                    clean_dets.append(d)
+            detections = clean_dets
 
         if not detections:
             detections.append(self._normal_road_entry())
@@ -650,9 +723,43 @@ class DeepInferencePipeline:
                 y = int(st[i, cv2.CC_STAT_TOP] * sy)
                 w = max(8, int(st[i, cv2.CC_STAT_WIDTH] * sx))
                 h = max(8, int(st[i, cv2.CC_STAT_HEIGHT] * sy))
-                # A little context around the defect; the classifier was trained
-                # on crops that include some surrounding road.
-                px, py = int(w * 0.15), int(h * 0.15)
+
+                # If a pothole candidate is unusually wide across the lane, isolate the
+                # true compact cavity from peripheral crack/shadow filaments.
+                comp_mask = (lab == i)
+                if seg_cls == 2 and (w > 0.35 * W or (h > 0 and w / h > 2.2)):
+                    col_proj = comp_mask.sum(axis=0)
+                    if col_proj.max() > 0:
+                        active_cols = _np.where(col_proj >= 0.25 * col_proj.max())[0]
+                        if len(active_cols) > 0:
+                            c_left, c_right = active_cols[0], active_cols[-1]
+                            row_proj = comp_mask[:, c_left : c_right + 1].sum(axis=1)
+                            active_rows = _np.where(row_proj > 0)[0]
+                            if len(active_rows) > 0:
+                                r_top, r_bottom = active_rows[0], active_rows[-1]
+                                x = int(c_left * sx)
+                                y = int(r_top * sy)
+                                w = max(8, int((c_right - c_left + 1) * sx))
+                                h = max(8, int((r_bottom - r_top + 1) * sy))
+
+                # If only the top rim of a pothole was segmented (e.g. water-filled cavity),
+                # inspect downward from the rim to bound the entire crater basin.
+                if seg_cls == 2 and (h > 0 and w / float(h) > 2.0) and getattr(self, "_last_gray", None) is not None:
+                    g_img = self._last_gray
+                    max_down = min(H - 10, y + int(h * 2.5))
+                    step = 8
+                    bottom_y = y + h
+                    for test_y in range(y + h, max_down, step):
+                        slice_g = g_img[test_y : test_y + step, max(0, x) : min(W, x + w)]
+                        if slice_g.size > 0 and (slice_g.std() < 16.0 or slice_g.mean() < 190.0):
+                            bottom_y = test_y + step
+                        else:
+                            break
+                    h = max(h, bottom_y - y)
+
+                # Context padding: bounded so large boxes do not artificially swallow the entire frame
+                px = min(20, max(4, int(w * 0.08)))
+                py = min(20, max(4, int(h * 0.08)))
                 x0, y0 = max(0, x - px), max(0, y - py)
                 x1, y1 = min(W, x + w + px), min(H, y + h + py)
                 if x1 - x0 < 8 or y1 - y0 < 8:
@@ -766,35 +873,18 @@ class DeepInferencePipeline:
 
         from_segmenter = len(bbox) > 6 and bbox[6] == "segmentation"
         if cls_id in (1, 2) and not from_segmenter:
-            # WHERE a crack or pothole is, is the segmenter's question. The
-            # brightness grid merges into one rectangle over the whole
-            # carriageway on any textured road - it was producing boxes at 0.61
-            # of the frame and those were being priced as single repairs - so
-            # when a segmenter is loaded the grid may not raise a crack or a
-            # pothole at all. It still supplies the classes the segmenter has no
-            # pixels for: waterlogging, signage, markings.
-            #
-            # Measured through audit_image() over 36 clean and 24 annotated
-            # photographs, with the grid allowed to raise defects and with it
-            # closed (mask proposals at 0.004 / 0.45 in both cases):
-            #
-            #   grid allowed (size-capped + agreement gate)   19.4% FP   87.5% found
-            #   grid closed                                    8.3% FP   87.5% found
-            #
-            # It contributed four false positives and not one extra detection,
-            # so it is closed. This is not a mute button: closing it at a
-            # stricter mask setting (0.002 / 0.70) DID collapse detection to
-            # 20.8%, which is why both numbers are printed at every setting in
-            # scripts/tune_proposals.py rather than only the flattering one.
-            if getattr(self, "segmenter", None) is not None and self.segmenter.is_ready:
-                return None
-            # No segmenter on disk. The grid is the only proposal source, so it
-            # is allowed to raise defects - but never one covering most of the
-            # frame, and the area it yields is labelled a box estimate
-            # downstream rather than a measurement.
+            conf = float(pred.get("confidence", 0.0))
             box_fraction = (bw * bh) / float(max(1, W * H))
-            if box_fraction > self.MAX_HEURISTIC_BOX_FRACTION:
-                return None
+            if getattr(self, "segmenter", None) is not None and self.segmenter.is_ready:
+                # If the segmenter claimed no pixels (e.g. water-filled cavity, specular sky reflection,
+                # or dark crater boundary), allow high-confidence cavity proposals (conf >= 0.70)
+                # that do not swallow the entire carriageway (> 65%). Downstream area gating
+                # flags oversized proposals for manual survey rather than losing the defect.
+                if conf < 0.70 or box_fraction > 0.65:
+                    return None
+            else:
+                if box_fraction > self.MAX_HEURISTIC_BOX_FRACTION:
+                    return None
 
         bx_norm, by_norm = round(bx / float(W), 4), round(by / float(H), 4)
         bw_norm, bh_norm = round(bw / float(W), 4), round(bh / float(H), 4)

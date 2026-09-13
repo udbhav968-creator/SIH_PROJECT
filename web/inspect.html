@@ -147,6 +147,9 @@ el("run").addEventListener("click", async () => {
   lastResult = r.data;
   render(r.data, r.ms);
   draw();
+  if (window.innerWidth <= 900) {
+    el("out").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 });
 
 /* ---------------------------------------------------------------- canvas - */
@@ -164,15 +167,25 @@ function draw() {
   ctx.drawImage(currentImage.img, 0, 0, cv.width, cv.height);
 
   if (!lastResult) return;
-  const dets = lastResult.all_detections || [];
+  const dets = (lastResult.all_detections && lastResult.all_detections.length)
+    ? lastResult.all_detections
+    : (lastResult.primary_detection && lastResult.primary_detection.is_distress ? [lastResult.primary_detection] : []);
 
   if (el("showBox").checked) {
     dets.forEach(d => {
-      const b = d.bbox_pixels;
-      if (!b) return;
-      // bbox is in ORIGINAL image pixels; rescale to canvas
-      const sx = cv.width / currentImage.width, sy = cv.height / currentImage.height;
-      const x = b[0] * sx, y = b[1] * sy, w = b[2] * sx, h = b[3] * sy;
+      let x, y, w, h;
+      if (d.bbox_normalized && d.bbox_normalized.length === 4) {
+        x = d.bbox_normalized[0] * cv.width;
+        y = d.bbox_normalized[1] * cv.height;
+        w = d.bbox_normalized[2] * cv.width;
+        h = d.bbox_normalized[3] * cv.height;
+      } else if (d.bbox_pixels) {
+        const b = d.bbox_pixels;
+        const sx = cv.width / currentImage.width, sy = cv.height / currentImage.height;
+        x = b[0] * sx; y = b[1] * sy; w = b[2] * sx; h = b[3] * sy;
+      } else {
+        return;
+      }
       const measured = d.area_method === "segmentation_mask";
       ctx.strokeStyle = measured ? "#2dd4d4" : "#f0a92b";
       ctx.lineWidth = 2.5;
@@ -196,11 +209,20 @@ function draw() {
   // pavement class and never contributes a defect, an area or a cost.
   const scene = lastResult.scene_objects || [];
   if (el("showScene").checked && scene.length) {
-    const sx = cv.width / currentImage.width, sy = cv.height / currentImage.height;
     scene.forEach(o => {
-      const b = o.bbox_pixels;
-      if (!b) return;
-      const x = b[0] * sx, y = b[1] * sy, w = b[2] * sx, h = b[3] * sy;
+      let x, y, w, h;
+      if (o.bbox_normalized && o.bbox_normalized.length === 4) {
+        x = o.bbox_normalized[0] * cv.width;
+        y = o.bbox_normalized[1] * cv.height;
+        w = o.bbox_normalized[2] * cv.width;
+        h = o.bbox_normalized[3] * cv.height;
+      } else if (o.bbox_pixels) {
+        const b = o.bbox_pixels;
+        const sx = cv.width / currentImage.width, sy = cv.height / currentImage.height;
+        x = b[0] * sx; y = b[1] * sy; w = b[2] * sx; h = b[3] * sy;
+      } else {
+        return;
+      }
       const person = o.class_name === "person";
       ctx.strokeStyle = person ? "#fb7185" : "#94a3b8";
       ctx.lineWidth = person ? 2.5 : 1.8;

@@ -20,6 +20,8 @@ elif hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 import os
+for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ[_var] = "1"
 import glob
 import json
 import time
@@ -77,7 +79,7 @@ from models.deep_vision_net import load_best_vision_model
 vision_model, VISION_BACKEND = load_best_vision_model(CKPT_DIR)
 
 imu_model = IMUShockClassifier(model_path=os.path.join(CKPT_DIR, "imu_shock_model.joblib"))
-print("  ✓ IMU shock classifier", "loaded" if imu_model.is_ready else "NOT TRAINED YET (run training/train_imu.py)")
+print("  [OK] IMU shock classifier", "loaded" if imu_model.is_ready else "NOT TRAINED YET (run training/train_imu.py)")
 
 bayesian_gate = BayesianFusionGate(prior_pothole_prob=0.05, decision_threshold_log_odds=1.8)
 # Standalone IPM for the /civil/ipm-tonnage endpoint. Built from the default
@@ -100,7 +102,7 @@ automotive_telematics = AutomotiveTelematicsEngine(checkpoints_dir=CKPT_DIR)
 traffic_net = UrbanTrafficNet()
 alpr_tracker = ALPRIncidentTracker()
 deep_pipeline = DeepInferencePipeline(CKPT_DIR)
-print("  ✓ Deep inference pipeline initialized.")
+print("  [OK] Deep inference pipeline initialized.")
 
 # The ledger is durable: a municipality's repair backlog cannot live in a
 # process's memory. On a serverless filesystem the database goes to the
@@ -120,10 +122,10 @@ if not fleet_dedup_engine.defect_registry:
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9750, 77.5980, "Waterlogging / Flooding Hazard", 35.0, 5.20, enrich_location=False)
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-308", 12.9680, 77.5910, "Missing Zebra Crossing", 60.0, 3.40, enrich_location=False)
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.9800, 77.6050, "Damaged Traffic Sign", 55.0, 0.80, enrich_location=False)
-    print(f"  ✓ Fleet ledger created and seeded with 5 demo reports "
+    print(f"  [OK] Fleet ledger created and seeded with 5 demo reports "
           f"-> {defect_store.db_path}")
 else:
-    print(f"  ✓ Fleet ledger loaded: {len(fleet_dedup_engine.defect_registry)} defects "
+    print(f"  [OK] Fleet ledger loaded: {len(fleet_dedup_engine.defect_registry)} defects "
           f"from {defect_store.db_path}")
 
 active_feedback_counter = 0

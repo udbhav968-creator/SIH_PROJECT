@@ -190,7 +190,10 @@ class ONNXObjectDetector:
             print("[detector] weights found but onnxruntime is not installed (pip install onnxruntime)")
             return
         try:
-            self._session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+            # Same arena problem as the embedder - see models/cnn_embedder.py.
+            from models.cnn_embedder import _session_options
+            self._session = ort.InferenceSession(path, _session_options(ort),
+                                                 providers=["CPUExecutionProvider"])
             inp = self._session.get_inputs()[0]
             self._input_name = inp.name
             if isinstance(inp.shape[-1], int) and inp.shape[-1] > 0:

@@ -156,8 +156,19 @@ class CVCavityDetector:
 
                 # de-emphasize the far left/right verges, emphasize the wheel path
                 col_weight = 0.40 if (c < 2 or c > 21) else (1.30 if 5 <= c <= 18 else 1.0)
-                pothole_score = dark_diff * 2.5 * col_weight if dark_diff > 14.0 else 0.0
-                crack_score = edge_peak * 2.2 * col_weight if edge_peak > 18.0 else 0.0
+                sub_std = float(sub_gray.std())
+
+                # Discard pitch-black bottom letterbox / watermark banners
+                if abs_y >= H - int(H * 0.07) and float(sub_gray.mean()) < 25.0 and sub_std < 8.0:
+                    continue
+
+                pothole_score = min(75.0, dark_diff * 2.2) * col_weight if dark_diff > 14.0 else 0.0
+                crack_score = min(75.0, edge_peak * 2.0) * col_weight if edge_peak > 20.0 else 0.0
+
+                # Water puddle cavity with specular reflection (smooth surface, neutral saturation, in road ROI)
+                is_water_puddle = (sub_std < 7.5) and (edge_peak < 25.0) and (cell_sat.mean() < 0.16) and (float(sub_gray.mean()) > 35.0)
+                if is_water_puddle and (3 <= c <= 20) and (r >= 2):
+                    pothole_score = max(pothole_score, 50.0 * col_weight)
 
                 if pothole_score >= crack_score and pothole_score > 0:
                     cell_score[r, c], cell_kind[r, c] = pothole_score, 2
@@ -177,15 +188,27 @@ class CVCavityDetector:
             min_r, max_r = cells[:, 0].min(), cells[:, 0].max()
             min_c, max_c = cells[:, 1].min(), cells[:, 1].max()
 
-            bx = max(10, min_c * cell_w - int(cell_w * 0.2))
-            by = max(roi_y0, roi_y0 + min_r * cell_h - int(cell_h * 0.15))
-            bw = min(W - bx - 10, (max_c - min_c + 1) * cell_w + int(cell_w * 0.4))
-            bh = min(H - by - 10, (max_r - min_r + 1) * cell_h + int(cell_h * 0.3))
+            kinds = [int(cell_kind[cr, cc]) for cr, cc in cells]
+            is_pothole_like = kinds.count(2) >= kinds.count(1)
+
+            # If a proposal spans more than 9 of 24 grid columns (> 37% of road width),
+            # isolate the central peak-scoring cluster so thin horizontal crack/shadow wings
+            # or pavement texture do not stretch the bounding box across the entire highway.
+            if (max_c - min_c + 1) > 9:
+                scores_in_comp = [cell_score[cr, cc] for cr, cc in cells]
+                max_s = max(scores_in_comp) if scores_in_comp else 0.0
+                peak_cells = np.array([c for c in cells if cell_score[c[0], c[1]] >= 0.45 * max_s])
+                if len(peak_cells) >= 2:
+                    min_r, max_r = peak_cells[:, 0].min(), peak_cells[:, 0].max()
+                    min_c, max_c = peak_cells[:, 1].min(), peak_cells[:, 1].max()
+
+            bx = max(10, min_c * cell_w - int(cell_w * 0.1))
+            by = max(roi_y0, roi_y0 + min_r * cell_h - int(cell_h * 0.1))
+            bw = min(W - bx - 10, (max_c - min_c + 1) * cell_w + int(cell_w * 0.2))
+            bh = min(H - by - 10, (max_r - min_r + 1) * cell_h + int(cell_h * 0.2))
             if bw <= 0 or bh <= 0:
                 continue
 
-            kinds = [int(cell_kind[cr, cc]) for cr, cc in cells]
-            is_pothole_like = kinds.count(2) >= kinds.count(1)
             mean_score = float(np.mean([cell_score[cr, cc] for cr, cc in cells]))
             boxes.append([int(bx), int(by), int(bw), int(bh), mean_score, 2 if is_pothole_like else 1])
 
