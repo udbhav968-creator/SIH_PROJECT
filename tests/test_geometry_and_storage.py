@@ -411,11 +411,21 @@ class FalsePositiveGate(unittest.TestCase):
         # Both came from scripts/tune_proposals.py sweeping end-to-end through
         # audit_image(). Changing either without re-running that sweep is how
         # the previous regression happened.
-        self.assertAlmostEqual(P.MIN_COMPONENT_FRACTION, 0.004, places=4)
-        self.assertGreater(P.MIN_COMPONENT_FRACTION, 0.0,
-                           "a zero size floor puts ten boxes on a clean road")
-        self.assertLess(P.MIN_COMPONENT_FRACTION, 0.05,
-                        "a large size floor discards every real pothole")
+        # Per class, because a pixel COUNT is shape-dependent: a crack of the
+        # same real extent as a pothole has an order of magnitude fewer pixels.
+        # One shared floor silently made the system pothole-only for thin
+        # cracks - it was discarding blobs of 52 and 107 px against a 256 px
+        # floor.
+        self.assertIsInstance(P.MIN_COMPONENT_FRACTION, dict,
+                              "the size floor must be per class")
+        self.assertAlmostEqual(P.MIN_COMPONENT_FRACTION["pothole"], 0.004, places=4)
+        self.assertAlmostEqual(P.MIN_COMPONENT_FRACTION["crack"], 0.0012, places=5)
+        self.assertLess(P.MIN_COMPONENT_FRACTION["crack"],
+                        P.MIN_COMPONENT_FRACTION["pothole"],
+                        "a crack is thinner than a pothole and needs a lower floor")
+        for name, frac in P.MIN_COMPONENT_FRACTION.items():
+            self.assertGreater(frac, 0.0, f"a zero {name} floor floods a clean road")
+            self.assertLess(frac, 0.05, f"a large {name} floor discards real defects")
 
         # The confidence floor must be a MARGIN, never an absolute probability.
         # An absolute 0.45 measured well on the model trained here (pothole
@@ -685,3 +695,89 @@ class SegmenterContract(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class MarkingDetection(unittest.TestCase):
+    """
+    Painted markings, found by geometry rather than by a model.
+
+    Nineteen zebra photographs is not enough to train a detector on, and a
+    crossing is the most regular structure on any road, so it is measured
+    directly: parallel bright bars with regular spacing.
+    """
+
+    def _sample(self, folder, n, seed=7):
+        import glob
+        import random
+        files = [p for p in sorted(glob.glob(os.path.join(ENGINE_ROOT, "datasets", folder,
+                                                          "**", "*.jpg"), recursive=True))
+                 if "_label_conflicts" not in p]
+        random.Random(seed).shuffle(files)
+        return files[:n]
+
+    def _found(self, paths):
+        import cv2
+        from models.marking_detector import detect_zebra
+        hits = 0
+        for p in paths:
+            img = cv2.imread(p)
+            if img is None:
+                continue
+            if detect_zebra(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))["found"]:
+                hits += 1
+        return hits
+
+    def test_it_does_not_fire_on_plain_pavement(self):
+        """
+        Specificity is the property that makes this worth having. A marking
+        detector that fires on cracked asphalt would add noise to the exact
+        photographs the product exists to analyse.
+        """
+        files = self._sample("02_kaggle_pothole_600", 14) + self._sample("03_crack500_fatigue", 14)
+        if not files:
+            self.skipTest("no defect photographs on disk")
+        hits = self._found(files)
+        self.assertLessEqual(hits, max(2, len(files) // 8),
+                             f"{hits}/{len(files)} defect photographs claimed a painted "
+                             f"marking - the detector is not specific enough to be useful")
+
+    def test_it_finds_some_crossings(self):
+        """
+        Recall is poor and this test says so rather than hiding it: measured at
+        6 of 19. The bar is set at "better than nothing" deliberately, because
+        claiming more would be claiming something not measured.
+        """
+        files = self._sample("10_missing_zebra_crossing", 19)
+        if not files:
+            self.skipTest("no zebra photographs on disk")
+        hits = self._found(files)
+        self.assertGreaterEqual(hits, 3,
+                                f"only {hits}/{len(files)} crossings found - the geometric "
+                                f"test has stopped working altogether")
+
+    def test_paint_mask_covers_bars_and_not_the_road_between(self):
+        """
+        The asphalt BETWEEN stripes is real road and can hold a real pothole.
+        Masking the whole bounding box would blind the system to exactly the
+        defect a pedestrian is most exposed to.
+        """
+        import cv2
+        from models.marking_detector import detect_zebra, paint_mask
+        for p in self._sample("10_missing_zebra_crossing", 19):
+            img = cv2.imread(p)
+            if img is None:
+                continue
+            rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            z = detect_zebra(rgb)
+            if not z["found"]:
+                continue
+            m = paint_mask(rgb, z)
+            b = z["bbox_pixels"]
+            box_area = max(1, b[2] * b[3])
+            covered = int(m[b[1]:b[1] + b[3], b[0]:b[0] + b[2]].sum())
+            self.assertGreater(covered, 0, "the mask covers none of the bars")
+            self.assertLess(covered / box_area, 0.95,
+                            "the mask covers the whole crossing box, including the "
+                            "road between the stripes")
+            return
+        self.skipTest("no crossing detected in the sample")

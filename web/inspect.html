@@ -51,7 +51,10 @@
             <input type="checkbox" id="showMask" checked style="width:auto"> segmentation mask
           </label>
           <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:12.5px">
-            <input type="checkbox" id="showBox" checked style="width:auto"> detection boxes
+            <input type="checkbox" id="showBox" checked style="width:auto"> road defects
+          </label>
+          <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:12.5px">
+            <input type="checkbox" id="showScene" checked style="width:auto"> people &amp; vehicles
           </label>
           <span class="small muted" id="canvasNote"></span>
         </div>
@@ -149,6 +152,7 @@ el("run").addEventListener("click", async () => {
 /* ---------------------------------------------------------------- canvas - */
 el("showMask").addEventListener("change", draw);
 el("showBox").addEventListener("change", draw);
+el("showScene").addEventListener("change", draw);
 
 function draw() {
   if (!currentImage) return;
@@ -184,10 +188,71 @@ function draw() {
       ctx.fillText(label, x + 5, Math.max(13, y - 5));
     });
   }
+  // Scene objects from the COCO detector: people, vehicles, traffic control.
+  //
+  // The engine has always returned these; nothing drew them, so a photograph
+  // with two cars and a pothole showed one box. They are drawn in a different
+  // colour and always dashed, because they are CONTEXT - this detector has no
+  // pavement class and never contributes a defect, an area or a cost.
+  const scene = lastResult.scene_objects || [];
+  if (el("showScene").checked && scene.length) {
+    const sx = cv.width / currentImage.width, sy = cv.height / currentImage.height;
+    scene.forEach(o => {
+      const b = o.bbox_pixels;
+      if (!b) return;
+      const x = b[0] * sx, y = b[1] * sy, w = b[2] * sx, h = b[3] * sy;
+      const person = o.class_name === "person";
+      ctx.strokeStyle = person ? "#fb7185" : "#94a3b8";
+      ctx.lineWidth = person ? 2.5 : 1.8;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(x, y, w, h);
+      ctx.setLineDash([]);
+      const label = `${o.class_name} ${(o.confidence * 100).toFixed(0)}%`;
+      ctx.font = "500 11px ui-monospace, monospace";
+      const tw = ctx.measureText(label).width + 8;
+      ctx.fillStyle = person ? "#fb7185" : "#94a3b8";
+      ctx.fillRect(x, Math.min(cv.height - 17, y + h + 1), tw, 16);
+      ctx.fillStyle = "#0a0f17";
+      ctx.fillText(label, x + 4, Math.min(cv.height - 5, y + h + 13));
+    });
+  }
+
+  // Painted markings - a third layer, drawn in a colour of its own. These are
+  // neither a defect nor a COCO object: they are geometry, found by measuring
+  // parallel evenly-spaced bars rather than by a model.
+  const mk = lastResult.markings;
+  if (el("showScene").checked && mk && mk.found && mk.bbox_pixels) {
+    const sx = cv.width / currentImage.width, sy = cv.height / currentImage.height;
+    const b = mk.bbox_pixels;
+    ctx.strokeStyle = "#c084fc";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([2, 3]);
+    (mk.bars || []).forEach(bar => {
+      ctx.strokeRect(bar.x * sx, bar.y * sy, bar.w * sx, bar.h * sy);
+    });
+    ctx.setLineDash([6, 3]);
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(b[0] * sx, b[1] * sy, b[2] * sx, b[3] * sy);
+    ctx.setLineDash([]);
+    const label = `${mk.class_name} ${(mk.confidence * 100).toFixed(0)}% · ${mk.bar_count} bars`;
+    ctx.font = "600 11px ui-monospace, monospace";
+    const tw = ctx.measureText(label).width + 10;
+    ctx.fillStyle = "#c084fc";
+    ctx.fillRect(b[0] * sx, Math.max(0, b[1] * sy - 17), tw, 17);
+    ctx.fillStyle = "#0a0f17";
+    ctx.fillText(label, b[0] * sx + 5, Math.max(12, b[1] * sy - 5));
+  }
+
   const s = lastResult.segmentation;
-  el("canvasNote").textContent = s && s.available
-    ? `solid box = area measured from the mask · dashed = box estimate`
-    : `dashed boxes: no segmenter, area is a box estimate`;
+  const counts = [];
+  if (dets.length) counts.push(`${dets.length} road defect${dets.length > 1 ? "s" : ""}`);
+  if (scene.length) counts.push(`${scene.length} scene object${scene.length > 1 ? "s" : ""}`);
+  if (mk && mk.found) counts.push(`1 painted marking`);
+  el("canvasNote").textContent =
+    (counts.length ? counts.join(" · ") + " — " : "") +
+    (s && s.available
+      ? `solid = area measured from the mask · dashed amber = box estimate · dashed grey = context, not costed`
+      : `dashed boxes: no segmenter, area is a box estimate`);
 }
 
 /* --------------------------------------------------------------- render -- */

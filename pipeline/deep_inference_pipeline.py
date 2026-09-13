@@ -167,6 +167,22 @@ class DeepInferencePipeline:
         self.ipm_engine = ipm
         self.calibration, self.calibration_provenance = calib, provenance
 
+        # Painted markings, found geometrically. Two uses: they are reported as
+        # objects in their own right, and their pixels are withheld from the
+        # defect proposals. Every false positive in the end-to-end measurement
+        # came from a zebra crossing or a divider - that is, from paint - and
+        # the segmenter cannot separate paint from a cavity on lightness and
+        # contrast alone, because on those features they are the same thing.
+        try:
+            from models import marking_detector
+            self._markings = marking_detector.detect_zebra(
+                img_np, roi_top_fraction=self.ROAD_ROI_TOP_FRACTION)
+            self._paint_mask = (marking_detector.paint_mask(img_np, self._markings)
+                                if self._markings.get("found") else None)
+        except Exception as e:
+            print(f"[WARN] marking detection failed: {e}")
+            self._markings, self._paint_mask = {"found": False}, None
+
         # One segmentation pass for the whole frame; regions index into it.
         seg_out = None
         if getattr(self, "segmenter", None) is not None and self.segmenter.is_ready:
@@ -346,6 +362,7 @@ class DeepInferencePipeline:
             },
             "scene_objects": scene_objects,
             "scene_summary": scene_summary,
+            "markings": getattr(self, "_markings", {"found": False}),
             "vision_backend": self.vision_backend,
             # Provenance of the geometry. Any area or cost in this response was
             # produced by this camera model; without a calibrated profile they
@@ -456,7 +473,31 @@ class DeepInferencePipeline:
     # Size, as a fraction of the segmenter's WORKING frame (320x200 = 64,000 px)
     # rather than an absolute pixel count - an absolute count would mean a
     # stricter filter on a phone photo than on a dashcam frame, for no reason.
-    MIN_COMPONENT_FRACTION = 0.004
+    # Per class, for the same reason the confidence margin is per class: a
+    # pixel COUNT is a shape-dependent quantity.
+    #
+    # A pothole is compact - a 50 cm cavity is a solid blob of several hundred
+    # pixels at working resolution. A crack of the same real extent is two or
+    # three pixels wide, so it has an order of magnitude fewer pixels while
+    # being just as real and just as expensive to seal.
+    #
+    # Measured on the three cracks this filter was missing:
+    #     cpr_1159_2442   biggest crack blob  107 px   floor 256   rejected
+    #     cpr_1144_2411   biggest crack blob   52 px   floor 256   rejected
+    # One floor for both classes silently made the system pothole-only for thin
+    # cracks, which are the majority of pavement distress by length.
+    # Swept end-to-end through audit_image(); the curve is the reason for 0.0012
+    # rather than something rounder:
+    #
+    #     crack floor   false positives   defects found
+    #        0.0006       7/36 (19.4%)     23/24 (95.8%)
+    #        0.0012       4/36 (11.1%)     22/24 (91.7%)   <- committed
+    #        0.0020       4/36 (11.1%)     21/24 (87.5%)
+    #        0.0040       4/36 (11.1%)     21/24 (87.5%)   one floor for both
+    #
+    # 0.0012 costs nothing in precision and recovers four points of detection
+    # over the single shared floor.
+    MIN_COMPONENT_FRACTION = {"crack": 0.0012, "pothole": 0.004}
     # How far above its own decision threshold a blob's MEAN probability must
     # sit before the blob is proposed.
     #
@@ -563,10 +604,26 @@ class DeepInferencePipeline:
         mask = seg.get("mask_work")
         if mask is None:                       # older cached segmenter output
             mask = seg["mask"]
+        # Withhold painted pixels. Only the bars themselves are removed, never
+        # the asphalt between them - that is real road and can hold a real
+        # pothole.
+        paint = getattr(self, "_paint_mask", None)
+        if paint is not None:
+            import cv2 as _cv2
+            pm = paint
+            if pm.shape[:2] != mask.shape[:2]:
+                pm = _cv2.resize(pm.astype(_np.uint8), (mask.shape[1], mask.shape[0]),
+                                 interpolation=_cv2.INTER_NEAREST).astype(bool)
+            mask = mask.copy()
+            mask[pm] = 0
         mh, mw = mask.shape[:2]
         frame_px = float(mh * mw)
         sx, sy = W / float(mw), H / float(mh)
-        min_px = max(12, int(self.MIN_COMPONENT_FRACTION * frame_px))
+        def _min_px_for(name):
+            frac = self.MIN_COMPONENT_FRACTION
+            if isinstance(frac, dict):
+                frac = frac.get(name, 0.004)
+            return max(12, int(float(frac) * frame_px))
         proba = {1: seg.get("proba_crack"), 2: seg.get("proba_pothole")}
 
         out = []
@@ -580,6 +637,7 @@ class DeepInferencePipeline:
             binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE,
                                       cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
             n, lab, st, _cen = cv2.connectedComponentsWithStats(binary, 8)
+            min_px = _min_px_for("crack" if seg_cls == 1 else "pothole")
             for i in range(1, n):
                 area = int(st[i, cv2.CC_STAT_AREA])
                 if area < min_px:
