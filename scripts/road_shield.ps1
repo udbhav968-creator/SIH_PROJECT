@@ -331,7 +331,12 @@ if ($Retrain -or $probe.Output -match "BROKEN") {
                   "    $py -m scripts.fetch_cracks_potholes_dataset --limit 2235`n" +
                   "  Then run this script again.")
         }
+        # A reduced fit is a different model, not the same model trained
+        # faster. One produced here calibrated to {crack 0.5, pothole 0.2} and
+        # measured 54.2% detection where the full fit measures over 90 - and
+        # nothing said so, because the run ended with "all tests pass".
         Warn "first attempt failed - retrying on a smaller sample"
+        $script:ReducedFit = $true
         $t2 = Invoke-Streaming -Exe $py -Arguments @("-m", "training.train_segmenter", "--images", "1200", "--max-pixels", "900000")
         if ($t2.Code -ne 0) {
             Fail ("Training failed twice.`n" +
@@ -342,6 +347,11 @@ if ($Retrain -or $probe.Output -match "BROKEN") {
     }
     $probe2 = Test-Segmenter -Py $py
     if ($probe2.Output -notmatch "READY") { Fail "the segmenter still will not load after training." }
+    if ($script:ReducedFit) {
+        Warn "this model was fitted on a REDUCED sample after the full fit ran out of memory."
+        Warn "it will load and the tests will pass, but it is a weaker model than the"
+        Warn "one the full run produces. Close Chrome and rerun -Retrain when you can."
+    }
     Good "trained and loading"
 } else {
     Good "segmenter loads - the false-positive fix is active here"

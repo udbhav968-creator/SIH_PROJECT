@@ -449,6 +449,10 @@ class FalsePositiveGate(unittest.TestCase):
         files = [p for p in sorted(glob.glob(os.path.join(ENGINE_ROOT, "datasets", folder,
                                                           "**", "*.jpg"), recursive=True))
                  if "_label_conflicts" not in p]
+        # Same corpus policy as the measurement, or the test and the number it
+        # compares against would be drawn from different populations.
+        from pipeline.corpus_policy import filter_paths
+        files, _ = filter_paths(files)
         random.Random(seed).shuffle(files)
         return files[:n]
 
@@ -836,6 +840,10 @@ class MarkingDetection(unittest.TestCase):
         files = [p for p in sorted(glob.glob(os.path.join(ENGINE_ROOT, "datasets", folder,
                                                           "**", "*.jpg"), recursive=True))
                  if "_label_conflicts" not in p]
+        # Same corpus policy as the measurement, or the test and the number it
+        # compares against would be drawn from different populations.
+        from pipeline.corpus_policy import filter_paths
+        files, _ = filter_paths(files)
         random.Random(seed).shuffle(files)
         return files[:n]
 

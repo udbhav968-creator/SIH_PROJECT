@@ -63,6 +63,8 @@ import argparse
 import json
 import os
 import re
+
+from pipeline import corpus_policy
 import sys
 import time
 
@@ -111,6 +113,9 @@ def source_group(path):
     return _AUG_PREFIX.sub("", stem).strip().lower()
 
 
+_NEGATIVES_DROPPED = {}
+
+
 def load_negatives(limit=None):
     """Clean-road photographs, grouped by source so augmentations stay together."""
     import glob as _glob
@@ -121,6 +126,14 @@ def load_negatives(limit=None):
             continue
         for path in sorted(_glob.glob(os.path.join(root, "**", "*.jpg"), recursive=True)):
             if "_label_conflicts" in path:
+                continue
+            # A pixel classifier taught that cracked plaster is clean road is
+            # being taught that a high-contrast linear feature on grey is not a
+            # defect - the feature a road crack presents. See
+            # pipeline/corpus_policy.py.
+            pre = corpus_policy.non_road_source(path) if corpus_policy.filtering_enabled() else None
+            if pre:
+                _NEGATIVES_DROPPED[pre] = _NEGATIVES_DROPPED.get(pre, 0) + 1
                 continue
             recs.append({"path": path, "negative": True, "folder": folder,
                          "group": folder + "/" + source_group(path)})
@@ -863,6 +876,9 @@ def main():
             "pixel_cap_applied": pixel_cap,
             "per_class_pixels_used": per_class,
             "memory_note": why_cap,
+            # The exclusion travels with the number it changed, so nobody has
+            # to take on trust what "clean road" was trained on.
+            "corpus_policy": corpus_policy.policy_record(_NEGATIVES_DROPPED),
             "clean_pixel_share_requested": args.clean_pixel_share,
             "clean_scene_count": n_scenes,
             "clean_scene_diversity": round(diversity, 3),

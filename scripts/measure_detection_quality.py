@@ -57,13 +57,30 @@ DEFECT_FOLDERS = ["02_kaggle_pothole_600", "03_crack500_fatigue"]
 DEFECT_NAMES = ("Pothole", "Crack")
 
 
+DROPPED = {}
+
+
 def sample(folders, n, seed):
+    """
+    Road-scene photographs only.
+
+    Texture close-ups from a concrete surface-crack dataset are excluded on
+    both sides: as clean photographs they measure a domain the product never
+    sees, and as defect photographs they count a miss the product cannot fairly
+    be asked to make - a 227x227 patch has no horizon for the ROI rule and no
+    geometry for the area model. pipeline/corpus_policy.py carries the
+    reasoning and the escape hatch.
+    """
+    from pipeline.corpus_policy import filter_paths
     rng = random.Random(seed)
     out = []
     for f in folders:
         files = [p for p in sorted(glob.glob(os.path.join(ENGINE_ROOT, "datasets", f,
                                                           "**", "*.jpg"), recursive=True))
                  if "_label_conflicts" not in p]
+        files, dropped = filter_paths(files)
+        for k, v in dropped.items():
+            DROPPED[k] = DROPPED.get(k, 0) + v
         if not files:
             continue
         rng.shuffle(files)
@@ -94,6 +111,7 @@ def main():
     args = ap.parse_args()
 
     from pipeline.corpus_fingerprint import fingerprint
+    from pipeline.corpus_policy import policy_record
     from pipeline.deep_inference_pipeline import DeepInferencePipeline
     pipe = DeepInferencePipeline(CKPT)
     seg_ready = bool(getattr(pipe, "segmenter", None) and pipe.segmenter.is_ready)
@@ -161,6 +179,7 @@ def main():
         # read there as a property of the code. See
         # pipeline/corpus_fingerprint.py for the failure that taught this.
         "fingerprint": fingerprint(pipe.segmenter, CLEAN_FOLDERS + DEFECT_FOLDERS),
+        "corpus_policy": policy_record(DROPPED),
         "seconds": round(time.time() - t0, 1),
         "rows": rows,
     }

@@ -43,6 +43,7 @@ def corpus_fingerprint(folders):
     sample differently - and the digest alone hides the more common case,
     which is simply a bigger download.
     """
+    from pipeline.corpus_policy import filter_paths
     out = {}
     for f in folders:
         files = sorted(
@@ -50,6 +51,11 @@ def corpus_fingerprint(folders):
             for p in glob.glob(os.path.join(ENGINE_ROOT, "datasets", f, "**", "*.jpg"),
                                recursive=True)
             if "_label_conflicts" not in p)
+        # The corpus is what the measurement actually drew from. Fingerprinting
+        # the raw folder would let a change to the exclusion policy pass
+        # unnoticed, and the baseline would then describe a population that no
+        # longer exists.
+        files, _ = filter_paths(files)
         out[f] = {"count": len(files), "digest": _sha(files)}
     return out
 
