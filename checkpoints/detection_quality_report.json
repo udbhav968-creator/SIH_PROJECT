@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1789262918,
+  "generated_unix": 1789264274,
   "measured_through": "pipeline.deep_inference_pipeline.DeepInferencePipeline.audit_image",
   "why_not_region_level": "An earlier harness reimplemented the region loop and reported 27.8% false positives for a build that was actually producing 44.4%. Measuring anything but the real entry point measures the harness.",
   "clean_folders": [
@@ -18,7 +18,7 @@
   "detected_photos": 22,
   "detection_rate": 0.9167,
   "segmenter_loaded": true,
-  "seconds": 65.3,
+  "seconds": 65.7,
   "rows": [
     {
       "path": "datasets/10_missing_zebra_crossing/real_images/real_13_FileZebra crossing on Holtdale Approach - geo.jpg",

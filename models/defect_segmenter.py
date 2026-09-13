@@ -128,6 +128,7 @@ class DefectSegmenter:
         self.report = None
         self.load_error = None
         self.load_error_detail = None
+        self.environment_failed = False
         self.thresholds = dict(self.DEFAULT_THRESHOLDS)
         self._load()
 
@@ -179,12 +180,31 @@ class DefectSegmenter:
                 here = sklearn.__version__
             except Exception:
                 here = "unknown"
+            # Distinguish "this model is incompatible" from "this machine is
+            # broken right now". Field failure: a laptop down to 184 MB free
+            # could not even import scikit-learn, so `here` came back "unknown"
+            # and the exception carried an EMPTY message. The old code read that
+            # as a version mismatch and a caller retrained - destroying a working
+            # model to replace it with one trained on 11% of the data.
+            #
+            # An empty error, or an unreadable scikit-learn, is an environment
+            # failure. Retraining cannot fix it and will make things worse,
+            # because training needs far more memory than loading does.
+            environment_failed = (here == "unknown") or (not str(e).strip())
+            self.environment_failed = environment_failed
             self.load_error_detail = {
                 "path": self.model_path,
-                "error": str(e),
+                "error": str(e) or "(no message - typically MemoryError)",
+                "environment_failed": environment_failed,
                 "sklearn_here": here,
                 "sklearn_trained_with": trained_with,
                 "likely_cause": (
+                    "THIS MACHINE, not the model: scikit-learn could not even be "
+                    "read. Almost always memory exhaustion. Do NOT retrain - "
+                    "training needs far more memory than loading, and it would "
+                    "overwrite a model that is probably fine. Free memory first, "
+                    "then try again."
+                    if environment_failed else
                     f"scikit-learn version mismatch: trained on {trained_with}, "
                     f"running {here}. A pickled estimator is not portable across versions."
                     if trained_with and trained_with != here else
@@ -192,10 +212,19 @@ class DefectSegmenter:
                     "moved between versions); retraining resolves it"
                     if "No module named" in str(e) else
                     "unreadable model file"),
-                "fix": "python -m training.train_segmenter --images 2000",
+                "fix": ("free memory and retry - do not retrain"
+                        if environment_failed
+                        else "python -m training.train_segmenter --images 2000"),
             }
-            print(f"[DefectSegmenter] could not load {self.model_path}: {e}")
-            if trained_with and trained_with != here:
+            print(f"[DefectSegmenter] could not load {self.model_path}: "
+                  f"{e or '(no message - typically MemoryError)'}")
+            if environment_failed:
+                print("[DefectSegmenter] scikit-learn itself could not be read. This is "
+                      "the MACHINE, not the model - almost always out of memory.")
+                print("[DefectSegmenter] DO NOT RETRAIN: training needs far more memory "
+                      "than loading, and would overwrite a model that is probably fine.")
+                print("[DefectSegmenter] free memory and try again.")
+            elif trained_with and trained_with != here:
                 print(f"[DefectSegmenter] trained with scikit-learn {trained_with}, "
                       f"this environment has {here}")
             print("[DefectSegmenter] WITHOUT A SEGMENTER the pipeline falls back to "

@@ -498,6 +498,46 @@ class FalsePositiveGate(unittest.TestCase):
                                 f"only {found}/{len(files)} real defects detected - "
                                 f"the proposal filter is too aggressive")
 
+    # --------------------------------------------------- plausible to price
+    def test_an_implausible_area_is_flagged_not_priced(self):
+        """
+        A number that cannot be defended must not carry a rupee figure.
+
+        Measured on a real photograph before this guard: one segmentation blob
+        covering 83% x 84% of the frame was reported as a single 4.273 m2
+        pothole and priced at Rs 2,830. The arithmetic was correct; the answer
+        was nonsense, because the ground-plane projection had been handed a
+        close-up crop rather than a frame from a mounted camera.
+
+        The defect is still REPORTED - a road authority needs to know it is
+        there - but it is sent for manual survey instead of being costed.
+        Dropping it outright was tried and cost 8 points of detection.
+        """
+        self._need_segmenter()
+        from pipeline.deep_inference_pipeline import DeepInferencePipeline as P
+        self.assertLessEqual(P.MAX_SINGLE_REPAIR_AREA_M2, 3.0,
+                             "a single pothole patch is about a metre across")
+        self.assertLessEqual(P.MAX_COMPONENT_BOX_FRACTION, 0.40,
+                             "a region covering most of the frame is not one repair")
+
+        files = self._sample("02_kaggle_pothole_600", 10) + self._sample("03_crack500_fatigue", 6)
+        if not files:
+            self.skipTest("no defect photographs on disk")
+        priced_but_absurd = []
+        for path in files:
+            for d in self._defects(path):
+                cost = float(d.get("repair_cost_inr") or 0.0)
+                area = float(d.get("surface_area_m2") or 0.0)
+                bb = d.get("bbox_normalized") or [0, 0, 0, 0]
+                frac = float(bb[2]) * float(bb[3])
+                if cost > 0 and (area > P.MAX_SINGLE_REPAIR_AREA_M2
+                                 or frac > P.MAX_COMPONENT_BOX_FRACTION):
+                    priced_but_absurd.append(
+                        (os.path.basename(path), round(area, 3), round(frac, 3), cost))
+        self.assertEqual(priced_but_absurd, [],
+                         f"priced a defect whose area or extent cannot be defended: "
+                         f"{priced_but_absurd}")
+
     # ------------------------------------------------------------- reporting
     def test_segmenter_report_measures_clean_road_false_positives(self):
         """IoU is computed only on photographs that contain a defect, so it is

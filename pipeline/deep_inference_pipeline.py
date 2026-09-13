@@ -508,6 +508,17 @@ class DeepInferencePipeline:
     # this share of the frame. Measured: the grid was producing boxes at 0.61
     # and they were being priced as single repairs.
     MAX_HEURISTIC_BOX_FRACTION = 0.25
+    # The same rule for blobs the SEGMENTER proposes. Capping only the
+    # brightness grid was half a fix: measured on a real photograph, one
+    # segmentation component covered 83% x 84% of the frame and was reported as
+    # a single 4.273 m2 pothole priced at Rs 2,830. A component that large is
+    # the segmenter over-claiming a whole road surface, not one repair.
+    MAX_COMPONENT_BOX_FRACTION = 0.25
+    # A single pothole patch under MoRTH Section 500 is a metre or so across.
+    # Past this, the geometry has almost certainly been handed a photograph it
+    # was not designed for - a close-up crop rather than a frame from a mounted
+    # camera - and the honest output is a flag for manual survey, not a price.
+    MAX_SINGLE_REPAIR_AREA_M2 = 2.0
 
     def _segmentation_proposals(self, H, W):
         """
@@ -577,9 +588,20 @@ class DeepInferencePipeline:
                 x1, y1 = min(W, x + w + px), min(H, y + h + py)
                 if x1 - x0 < 8 or y1 - y0 < 8:
                     continue
+                # An oversized component is NOT dropped. Dropping it cost 8
+                # points of detection (91.7% -> 83.3%) and hid real defects: a
+                # road authority needs to know a large defect is there even when
+                # its extent cannot be measured from one photograph.
+                #
+                # It is proposed, and the area check downstream refuses to price
+                # it and flags it for manual survey. Reporting "large defect,
+                # extent uncertain" is useful; reporting "4.273 m2, Rs 2,830" is
+                # worse than useless, and reporting nothing loses the defect.
+                oversized = (((x1 - x0) * (y1 - y0)) / float(W * H)
+                             > self.MAX_COMPONENT_BOX_FRACTION)
                 out.append([x0, y0, x1 - x0, y1 - y0, mean_p * area, kind,
                             "segmentation", round(mean_p, 4),
-                            round(area / frame_px, 5)])
+                            round(area / frame_px, 5), oversized])
         out.sort(key=lambda b: -b[4])
         return out[: self.MAX_COMPONENTS]
 
@@ -739,7 +761,40 @@ class DeepInferencePipeline:
                 depth_cm = depth_estimate["depth_cm"]
             # Waterlogging (3): area is meaningful (hazard extent), depth is not asphalt depth.
 
-            if cls_id in (1, 2):  # only crack/pothole get an asphalt repair costing
+            # Is this a plausible single repair at all?
+            #
+            # Everything downstream - tonnage, rupees, the work order - assumes
+            # the area is one patch a crew will lay. Measured on a real
+            # photograph: 4.273 m2 priced at Rs 2,830, from a blob covering most
+            # of a close-up crop. The arithmetic was right and the answer was
+            # nonsense, because the ground-plane projection had been handed an
+            # image it was never designed for.
+            #
+            # A number that cannot be defended should not be priced. It is
+            # reported, flagged, and sent for manual survey.
+            oversized_box = len(bbox) > 9 and bool(bbox[9])
+            box_fraction_here = (bw * bh) / float(max(1, W * H))
+            area_plausible = (area_m2 <= self.MAX_SINGLE_REPAIR_AREA_M2
+                              and not oversized_box
+                              and box_fraction_here <= self.MAX_COMPONENT_BOX_FRACTION)
+            if not area_plausible:
+                area_diag = dict(area_diag or {})
+                area_diag.update({
+                    "implausible_for_a_single_repair": True,
+                    "max_plausible_m2": self.MAX_SINGLE_REPAIR_AREA_M2,
+                    "measured_area_m2": round(area_m2, 3),
+                    "box_share_of_frame": round(box_fraction_here, 3),
+                    "why": ("A single pothole patch under MoRTH Section 500 is about a "
+                            "metre across. An area this large, or a region covering this "
+                            "much of the frame, usually means the camera geometry does "
+                            "not apply to this photograph - a close-up crop rather than a "
+                            "frame from a mounted camera - or that the segmentation has "
+                            "merged several defects with the road between them."),
+                    "action": ("Reported for manual survey. No tonnage or cost is "
+                               "quoted, because neither could be defended."),
+                })
+
+            if cls_id in (1, 2) and area_plausible:  # only crack/pothole get an asphalt repair costing
                 materials = self.ipm_engine.estimate_repair_materials(area_m2, depth_cm=max(depth_cm, 1.0))
                 vol_m3 = materials["volume_m3"]
                 tonnage_t = materials["required_mass_tonnes"]
@@ -771,6 +826,10 @@ class DeepInferencePipeline:
             "surface_area_m2": round(area_m2, 3),
             "area_method": area_method,
             "area_diagnostics": area_diag,
+            # An explicit flag, not something a reader has to infer from a zero
+            # cost. A defect can be real and still not be priceable.
+            "area_is_plausible_single_repair": bool(area_plausible) if cls_id in AREA_CLASSES else None,
+            "needs_manual_survey": bool(cls_id in (1, 2) and not area_plausible),
             "depth_cm": depth_cm,
             "depth_estimate": depth_estimate,
             "volumetric_m3": vol_m3,
