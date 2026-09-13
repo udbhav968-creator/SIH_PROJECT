@@ -354,7 +354,29 @@ class FalsePositiveGate(unittest.TestCase):
         random.Random(seed).shuffle(files)
         return files[:n]
 
+    def _need_full_stack(self):
+        """
+        Refuse to judge the product while a weaker stand-in is loaded.
+
+        The CNN backbone falls back to hand-crafted features when it cannot
+        load - correct for the product, fatal for a test suite, because the
+        suite then measures a classifier nobody ships. Observed on a machine out
+        of memory: ONNX Runtime said "bad allocation", the fallback took over,
+        and the zebra-crossing test failed 3 of 5. Nothing had regressed.
+        """
+        vm = getattr(self.pipe, "vision_model", None)
+        fb = getattr(vm, "backbone_fallback", None)
+        if fb:
+            msg = (f"The CNN backbone ({fb['requested']}) is NOT loaded, so these tests "
+                   f"would be measuring the hand-crafted fallback - a different, weaker "
+                   f"model.\n  error: {fb['error']}")
+            if fb.get("environment_failure"):
+                self.skipTest(msg + "\n  This is MEMORY, not a code problem. Close other "
+                                    "applications and any running api.server, then re-run.")
+            self.fail(msg + "\n  Run: python -m scripts.fetch_cnn_backbone")
+
     def _need_segmenter(self):
+        self._need_full_stack()
         """
         Skip only when no segmenter was ever trained. FAIL when one is on disk
         and will not load.

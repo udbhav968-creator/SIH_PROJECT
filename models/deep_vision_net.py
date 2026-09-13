@@ -221,8 +221,30 @@ class CNNHeadClassifier(VisionDistressNet):
         _score, path, blob, backbone = best
         embedder = CNNEmbedder(checkpoints_dir=self.ckpt_dir, prefer=(backbone,))
         if not embedder.is_ready or embedder.name != backbone:
+            # Record WHY, and whether the machine or the file is at fault.
+            #
+            # This fallback is silent by design - a missing backbone should not
+            # stop the product - but it swaps the classifier for a different,
+            # weaker one. On a machine that had run out of memory, ONNX Runtime
+            # answered "bad allocation", the hand-crafted path took over, and a
+            # test suite then reported zebra crossings as potholes. The suite was
+            # measuring a model nobody intended to ship.
+            err = getattr(embedder, "load_error", "") or ""
+            self.backbone_fallback = {
+                "requested": backbone,
+                "loaded": getattr(embedder, "name", None),
+                "error": err,
+                "environment_failure": any(k in err.lower() for k in
+                                           ("bad allocation", "memory", "alloc")),
+            }
             print(f"[CNNHead] backbone {backbone} would not load - falling back")
+            if self.backbone_fallback["environment_failure"]:
+                print("[CNNHead] the reason is MEMORY, not the model file. The "
+                      "hand-crafted classifier is now active, and it is a "
+                      "different, weaker model - any accuracy measured now is "
+                      "not this system's accuracy.")
             return
+        self.backbone_fallback = None
         self.embedder = embedder
         self.head = blob["head"]
         self.report = {k: v for k, v in blob.items() if k != "head"}

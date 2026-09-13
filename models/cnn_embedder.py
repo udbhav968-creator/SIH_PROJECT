@@ -46,6 +46,7 @@ class CNNEmbedder:
     """ImageNet CNN used as a frozen feature extractor."""
 
     def __init__(self, checkpoints_dir=None, prefer=("resnet50", "mobilenetv2"), batch_size=16):
+        self.load_error = None
         self.ckpt_dir = checkpoints_dir or CKPT_DIR
         self.batch_size = batch_size
         self.name = None
@@ -81,6 +82,11 @@ class CNNEmbedder:
                 self.dim = spec["dim"]
                 return
             except Exception as e:
+                # Kept so a caller can tell "the file is wrong" from "this
+                # machine could not allocate" - ONNX Runtime says "bad
+                # allocation" for the second, and the two need opposite
+                # responses.
+                self.load_error = str(e)
                 print(f"[CNNEmbedder] {path} failed to load: {e}")
         # last resort: any backbone file that happens to be present
         for path in sorted(glob.glob(os.path.join(self.ckpt_dir, "cnn_backbone_*.onnx"))):
