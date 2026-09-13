@@ -44,7 +44,10 @@ from models.pci_regressor_net import PCIRegressorNet
 from models.pavement_deterioration_forecaster import PavementDeteriorationForecaster
 from data.dataset_generator import sample_real_imu_window
 from data.benchmark_dataset_hub import BenchmarkDatasetHub
-from training.mega_pipeline import run_training_suite, telemetry_streamer
+try:
+    from training.mega_pipeline import run_training_suite, telemetry_streamer
+except ImportError:
+    run_training_suite, telemetry_streamer = None, None
 from data.realworld_media_engine import RealWorldMediaEngine
 from models.realworld_video_tracker import SpatialTemporalVideoTracker
 from models.cv_cavity_detector import CVCavityDetector
