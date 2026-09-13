@@ -146,6 +146,7 @@ class DeepInferencePipeline:
         rain_mm=650.0,
         pavement_age_yr=3.5,
         device_id=None,
+        vehicle_speed_kmh=None,
     ):
         """
         Runs the full pipeline on one image. image_input: file path, raw
@@ -346,7 +347,7 @@ class DeepInferencePipeline:
         dual_target_summary = self._dual_target_summary(ped_detections, distress_detections, primary_pedestrian, primary_distress)
 
         # STAGE 6: IMU shock correlation - only real telemetry, never fabricated
-        imu_report, delta_z, p_imu, imu_available = self._run_imu_stage(imu_series)
+        imu_report, delta_z, p_imu, imu_available = self._run_imu_stage(imu_series, vehicle_speed_kmh=vehicle_speed_kmh)
 
         # STAGE 7: Bayesian dual-sensor fusion
         p_vis = primary_distress.get("probabilities", {}).get("Pothole Cavity", 0.05)
@@ -875,12 +876,13 @@ class DeepInferencePipeline:
         if cls_id in (1, 2) and not from_segmenter:
             conf = float(pred.get("confidence", 0.0))
             box_fraction = (bw * bh) / float(max(1, W * H))
+            frac = self._region_defect_fraction(cls_id, bx, by, bw, bh, H, W)
             if getattr(self, "segmenter", None) is not None and self.segmenter.is_ready:
-                # If the segmenter claimed no pixels (e.g. water-filled cavity, specular sky reflection,
-                # or dark crater boundary), allow high-confidence cavity proposals (conf >= 0.70)
-                # that do not swallow the entire carriageway (> 65%). Downstream area gating
-                # flags oversized proposals for manual survey rather than losing the defect.
-                if conf < 0.70 or box_fraction > 0.65:
+                has_segmenter_agreement = (frac is not None and frac >= self.SEGMENTER_GATE_FRACTION)
+                # Allow if segmenter confirmed pixels OR high-confidence visual proposal
+                if not has_segmenter_agreement and conf < 0.70:
+                    return None
+                if box_fraction > 0.65:
                     return None
             else:
                 if box_fraction > self.MAX_HEURISTIC_BOX_FRACTION:
@@ -1044,7 +1046,7 @@ class DeepInferencePipeline:
             return f"{len(ped_detections)} pedestrians detected (closest {primary_pedestrian['distance_meters']}m)."
         return ""
 
-    def _run_imu_stage(self, imu_series):
+    def _run_imu_stage(self, imu_series, vehicle_speed_kmh=None):
         """
         Only ever scores a real accelerometer window. If none is supplied,
         this reports that honestly instead of deriving a fake one from the
@@ -1074,11 +1076,18 @@ class DeepInferencePipeline:
             raw_imu = np.expand_dims(raw_imu, axis=0)
         delta_z = float(np.max(raw_imu[0, :, 2]) - np.min(raw_imu[0, :, 2]))
 
-        preds, pothole_conf, _ = self.imu_model.predict(raw_imu)
+        preds, pothole_conf, _ = self.imu_model.predict(raw_imu, vehicle_speed_kmh=vehicle_speed_kmh)
         cls_name = IMUShockClassifier.CLASS_NAMES[int(preds[0])]
         p_imu = float(pothole_conf[0])
         return (
-            {"available": True, "shock_classification": cls_name, "peak_delta_z_ms2": round(delta_z, 2), "pothole_shock_probability": round(p_imu, 4)},
+            {
+                "available": True,
+                "shock_classification": cls_name,
+                "peak_delta_z_ms2": round(delta_z, 2),
+                "pothole_shock_probability": round(p_imu, 4),
+                "vehicle_speed_kmh": round(float(vehicle_speed_kmh), 1) if vehicle_speed_kmh is not None else None,
+                "speed_normalized": vehicle_speed_kmh is not None,
+            },
             delta_z,
             p_imu,
             True,

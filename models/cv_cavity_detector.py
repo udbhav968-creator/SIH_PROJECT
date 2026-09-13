@@ -165,6 +165,12 @@ class CVCavityDetector:
                 pothole_score = min(75.0, dark_diff * 2.2) * col_weight if dark_diff > 14.0 else 0.0
                 crack_score = min(75.0, edge_peak * 2.0) * col_weight if edge_peak > 20.0 else 0.0
 
+                # Suppress tree / bridge cast shadows: a cast shadow drops luminance (dark_diff > 14)
+                # but retains normal unblemished asphalt grain (sub_std > 11.0) without any sharp
+                # rim fracture gradient (edge_peak < 16.0).
+                if dark_diff > 14.0 and sub_std > 11.0 and edge_peak < 16.0:
+                    pothole_score = 0.0
+
                 # Water puddle cavity with specular reflection (smooth surface, neutral saturation, in road ROI)
                 is_water_puddle = (sub_std < 7.5) and (edge_peak < 25.0) and (cell_sat.mean() < 0.16) and (float(sub_gray.mean()) > 35.0)
                 if is_water_puddle and (3 <= c <= 20) and (r >= 2):
