@@ -688,7 +688,38 @@ def main():
 
     per_class = args.per_class_pixels
     defect_sound_px = len(train_recs) * per_class * 3
-    target_clean_px = int(args.clean_pixel_share * defect_sound_px)
+
+    # The clean-road share is scaled by how many DISTINCT SCENES the clean set
+    # actually contains, not by how many files it has.
+    #
+    # Measured, and this is the whole reason the scaling exists. Two machines,
+    # same code, different clean sets:
+    #
+    #                    photos  scenes   clean share   end-to-end FP / found
+    #   small, augmented    279      46         21.3%     16.7% / 91.7%
+    #   same, share 8.2%    279      46          8.2%      8.3% / 87.5%
+    #
+    # At matched false positives the low-share model found 87.5% against 75.0%.
+    # Raising the share made the segmenter's OWN clean-road metric far better
+    # (5.5% -> 0.9% false blobs) and made the PRODUCT worse: 46 scenes copied up
+    # to 279 files buy weight without information, the model learns those 46
+    # scenes hard, and it suppresses defect pixels everywhere to do it.
+    #
+    # A clean set with 1,613 distinct scenes has no such problem and should get
+    # the full share. So diversity, not file count, sets the weight.
+    # The half-point constant: at this many distinct scenes the clean set gets
+    # half the requested share. 100 is not arbitrary - it is the value that
+    # reproduces the 8.2% share measured best end-to-end on a 26-scene clean
+    # set, while leaving a 1,000-scene set at 91% of the full share.
+    SCENE_HALF_POINT = 100
+    n_scenes = len({r["group"] for r in neg_train}) if neg_train else 0
+    diversity = n_scenes / float(n_scenes + SCENE_HALF_POINT) if n_scenes else 0.0
+    effective_share = args.clean_pixel_share * diversity
+    if neg_train:
+        print(f"  clean set: {len(neg_train)} photographs from {n_scenes} distinct scenes "
+              f"-> diversity {diversity:.2f}, share {args.clean_pixel_share:.0%} "
+              f"-> {effective_share:.1%}")
+    target_clean_px = int(effective_share * defect_sound_px)
     neg_budget = max(150, target_clean_px // max(1, len(neg_train))) if neg_train else 0
 
     # Crack and pothole pixels are scarcer than the budget asks for, so the
@@ -705,7 +736,7 @@ def main():
 
     if neg_train:
         print(f"  clean-road budget: {neg_budget:,} px from each of {len(neg_train)} "
-              f"photographs ({args.clean_pixel_share:.0%} share of the sound class)")
+              f"photographs ({effective_share:.1%} share of the sound class)")
 
     for i, (rec, is_neg) in enumerate(all_train):
         raw = cv2.imread(rec["path"])
@@ -832,7 +863,10 @@ def main():
             "pixel_cap_applied": pixel_cap,
             "per_class_pixels_used": per_class,
             "memory_note": why_cap,
-            "clean_pixel_share": args.clean_pixel_share,
+            "clean_pixel_share_requested": args.clean_pixel_share,
+            "clean_scene_count": n_scenes,
+            "clean_scene_diversity": round(diversity, 3),
+            "clean_pixel_share_effective": round(effective_share, 4),
             "pixels_per_class": counts,
             "source": "DNIT Cracks and Potholes in Road Images - hand-drawn polygons",
             "clean_photographs": {

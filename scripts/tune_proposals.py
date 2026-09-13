@@ -6,7 +6,7 @@ Sweep the two proposal knobs end-to-end and print BOTH error rates.
 
 What is being chosen
 --------------------
-`DeepInferencePipeline.MIN_COMPONENT_FRACTION` and `MIN_COMPONENT_CONFIDENCE`
+`DeepInferencePipeline.MIN_COMPONENT_FRACTION` and `MIN_COMPONENT_MARGIN`
 decide which blobs of the segmentation mask become candidate regions. Too
 permissive and a clean road produces ten confident "Pothole Cavity 100%" boxes,
 because the classifier has seven defect classes and no way to answer "none of
@@ -94,7 +94,9 @@ def main():
     ap.add_argument("--fractions", type=float, nargs="*",
                     default=[0.001, 0.002, 0.004, 0.008, 0.015, 0.030])
     ap.add_argument("--confidences", type=float, nargs="*",
-                    default=[0.40, 0.55, 0.70, 0.85])
+                    default=[0.05, 0.10, 0.20, 0.30],
+                    help="pothole margin ABOVE the calibrated threshold, not an "
+                         "absolute probability")
     args = ap.parse_args()
 
     from pipeline.deep_inference_pipeline import DeepInferencePipeline
@@ -122,7 +124,12 @@ def main():
     for frac in args.fractions:
         for conf in args.confidences:
             DeepInferencePipeline.MIN_COMPONENT_FRACTION = frac
-            DeepInferencePipeline.MIN_COMPONENT_CONFIDENCE = conf
+            # `conf` is swept as the POTHOLE margin above that class's own
+            # calibrated threshold, not as an absolute probability. An absolute
+            # value is only meaningful for the one model whose threshold happens
+            # to sit near it - which is how a hardcoded 0.45 discarded real
+            # potholes on a model calibrated to 0.20.
+            DeepInferencePipeline.MIN_COMPONENT_MARGIN = {"crack": 0.0, "pothole": conf}
             fp = sum(1 for p in clean if reports_defect(p))
             hit = sum(1 for p in defect if reports_defect(p))
             row = {"min_component_fraction": frac, "min_component_confidence": conf,

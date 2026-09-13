@@ -457,10 +457,50 @@ class DeepInferencePipeline:
     # rather than an absolute pixel count - an absolute count would mean a
     # stricter filter on a phone photo than on a dashcam frame, for no reason.
     MIN_COMPONENT_FRACTION = 0.004
-    # Mean predicted probability inside the blob. A blob whose pixels each
-    # barely cleared the decision threshold is a scatter, not a pothole, and a
-    # binary mask cannot tell the two apart.
-    MIN_COMPONENT_CONFIDENCE = 0.45
+    # How far above its own decision threshold a blob's MEAN probability must
+    # sit before the blob is proposed.
+    #
+    # This is a MARGIN, not an absolute floor, and that distinction was learned
+    # the hard way. It used to be a hardcoded 0.45, which on the model trained
+    # here sits just above the pothole threshold of 0.35. Another machine
+    # retrained the segmenter on its own larger dataset, got a pothole threshold
+    # of 0.20, and the same 0.45 became 2.25x the threshold - it discarded real
+    # potholes and the test suite caught it at 4 of 8 detected.
+    #
+    # A threshold is whatever the calibration found for that model, so anything
+    # compared against it has to be relative to it. A blob whose pixels merely
+    # scraped past the threshold is a scatter; one averaging a margin above it
+    # is a defect. That statement is true of any model; "0.45" was only ever
+    # true of one.
+    # Per class, because a crack and a pothole are different SHAPES and the
+    # mean probability inside a blob is a shape-dependent quantity.
+    #
+    # A pothole is compact: most of its pixels are interior, well inside the
+    # defect, and confidently scored. Its blob mean sits comfortably above the
+    # threshold, so requiring a margin separates real cavities from scatter.
+    #
+    # A crack is thin - often two or three pixels wide. Most of its pixels ARE
+    # boundary pixels, and boundary pixels score near the threshold by
+    # construction. Demanding the same margin of a crack penalises it for being
+    # crack-shaped. Measured on the same model: raising the crack floor from
+    # inactive to threshold+0.10 moved detection 91.7% -> 79.2% and bought only
+    # 16.7% -> 13.9% on false positives.
+    #
+    # So potholes carry a margin and cracks do not. The crack floor is its own
+    # calibrated threshold, which every pixel in the blob has already cleared.
+    MIN_COMPONENT_MARGIN = {"crack": 0.0, "pothole": 0.10}
+
+    def _component_floor(self, seg_cls):
+        """Floor for one class: its calibrated threshold plus that class's margin."""
+        name = {1: "crack", 2: "pothole"}.get(seg_cls, "pothole")
+        seg = getattr(self, "segmenter", None)
+        base = 0.35
+        if seg is not None and getattr(seg, "thresholds", None):
+            base = float(seg.thresholds.get(name, base))
+        margin = self.MIN_COMPONENT_MARGIN
+        if isinstance(margin, dict):
+            margin = margin.get(name, 0.10)
+        return min(0.95, base + float(margin))
     # No frame contains this many separate repairs. Past it, the segmenter is
     # confused about the whole surface and the frame is not evidence.
     MAX_COMPONENTS = 8
@@ -524,7 +564,7 @@ class DeepInferencePipeline:
                     continue
                 pm = proba.get(seg_cls)
                 mean_p = float(pm[lab == i].mean()) if pm is not None else 1.0
-                if mean_p < self.MIN_COMPONENT_CONFIDENCE:
+                if mean_p < self._component_floor(seg_cls):
                     continue
                 x = int(st[i, cv2.CC_STAT_LEFT] * sx)
                 y = int(st[i, cv2.CC_STAT_TOP] * sy)

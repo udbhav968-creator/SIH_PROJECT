@@ -390,11 +390,34 @@ class FalsePositiveGate(unittest.TestCase):
         # audit_image(). Changing either without re-running that sweep is how
         # the previous regression happened.
         self.assertAlmostEqual(P.MIN_COMPONENT_FRACTION, 0.004, places=4)
-        self.assertAlmostEqual(P.MIN_COMPONENT_CONFIDENCE, 0.45, places=2)
         self.assertGreater(P.MIN_COMPONENT_FRACTION, 0.0,
                            "a zero size floor puts ten boxes on a clean road")
         self.assertLess(P.MIN_COMPONENT_FRACTION, 0.05,
                         "a large size floor discards every real pothole")
+
+        # The confidence floor must be a MARGIN, never an absolute probability.
+        # An absolute 0.45 measured well on the model trained here (pothole
+        # threshold 0.35) and discarded real potholes on a model calibrated to
+        # 0.20, because 0.45 is 2.25x that threshold.
+        self.assertIsInstance(P.MIN_COMPONENT_MARGIN, dict,
+                              "the floor must be per class: a crack is thin, so "
+                              "its blob mean sits near its threshold by shape")
+        self.assertEqual(P.MIN_COMPONENT_MARGIN["crack"], 0.0)
+        self.assertAlmostEqual(P.MIN_COMPONENT_MARGIN["pothole"], 0.10, places=2)
+
+    def test_the_floor_follows_the_model_it_is_loaded_with(self):
+        """Two models, two calibrations, and the floor must track each."""
+        self._need_segmenter()
+        real = self.pipe.segmenter.thresholds
+        try:
+            self.pipe.segmenter.thresholds = {"crack": 0.50, "pothole": 0.20}
+            self.assertAlmostEqual(self.pipe._component_floor(2), 0.30, places=2)
+            self.assertAlmostEqual(self.pipe._component_floor(1), 0.50, places=2)
+            self.pipe.segmenter.thresholds = {"crack": 0.60, "pothole": 0.35}
+            self.assertAlmostEqual(self.pipe._component_floor(2), 0.45, places=2)
+            self.assertAlmostEqual(self.pipe._component_floor(1), 0.60, places=2)
+        finally:
+            self.pipe.segmenter.thresholds = real
 
     def test_proposals_come_from_the_mask_not_from_brightness(self):
         """The fix is architectural. If proposals silently revert to the
