@@ -519,6 +519,17 @@ class DeepInferencePipeline:
     # was not designed for - a close-up crop rather than a frame from a mounted
     # camera - and the honest output is a flag for manual survey, not a price.
     MAX_SINGLE_REPAIR_AREA_M2 = 2.0
+    # Everything above this fraction of the frame is not the road surface in
+    # front of the vehicle: it is sky, buildings, trees and other traffic. The
+    # brightness grid has always restricted itself to below this line
+    # (cv_cavity_detector.roi_y0); the segmentation proposals did not, and a
+    # parked car at the top of a photograph was reported as "Pothole 100%"
+    # while the crater filling the foreground was ignored.
+    #
+    # The features the segmenter uses - lightness, gradient, local variance -
+    # describe a dark high-contrast patch. A car body against bright tarmac is
+    # exactly that. No threshold distinguishes them; their POSITION does.
+    ROAD_ROI_TOP_FRACTION = 0.35
 
     def _segmentation_proposals(self, H, W):
         """
@@ -587,6 +598,14 @@ class DeepInferencePipeline:
                 x0, y0 = max(0, x - px), max(0, y - py)
                 x1, y1 = min(W, x + w + px), min(H, y + h + py)
                 if x1 - x0 < 8 or y1 - y0 < 8:
+                    continue
+                # The blob's centre of mass must lie on the road, not above the
+                # horizon. Centroid rather than the top edge, so a large defect
+                # close to the camera - which legitimately reaches high up a
+                # close-up frame - is kept, while a car or a sign sitting
+                # entirely in the upper third is not.
+                centroid_y = (y0 + y1) / 2.0
+                if centroid_y < self.ROAD_ROI_TOP_FRACTION * H:
                     continue
                 # An oversized component is NOT dropped. Dropping it cost 8
                 # points of detection (91.7% -> 83.3%) and hid real defects: a

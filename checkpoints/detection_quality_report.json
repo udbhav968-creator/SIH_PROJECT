@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1789264274,
+  "generated_unix": 1789265978,
   "measured_through": "pipeline.deep_inference_pipeline.DeepInferencePipeline.audit_image",
   "why_not_region_level": "An earlier harness reimplemented the region loop and reported 27.8% false positives for a build that was actually producing 44.4%. Measuring anything but the real entry point measures the harness.",
   "clean_folders": [
@@ -13,12 +13,12 @@
   ],
   "clean_photographs": 36,
   "defect_photographs": 24,
-  "false_positive_photos": 6,
-  "false_positive_rate": 0.1667,
-  "detected_photos": 22,
-  "detection_rate": 0.9167,
+  "false_positive_photos": 4,
+  "false_positive_rate": 0.1111,
+  "detected_photos": 21,
+  "detection_rate": 0.875,
   "segmenter_loaded": true,
-  "seconds": 65.7,
+  "seconds": 64.4,
   "rows": [
     {
       "path": "datasets/10_missing_zebra_crossing/real_images/real_13_FileZebra crossing on Holtdale Approach - geo.jpg",
@@ -30,32 +30,7 @@
       "path": "datasets/10_missing_zebra_crossing/real_images/real_05_FileZebra crossing Kingsway Newport - geograp.jpg",
       "folder": "10_missing_zebra_crossing",
       "expected": "clean",
-      "reported": [
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.999,
-          "bbox_pixels": [
-            252,
-            80,
-            110,
-            142
-          ],
-          "area_m2": 0.3,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.473,
-          "bbox_pixels": [
-            530,
-            48,
-            104,
-            80
-          ],
-          "area_m2": 0.238,
-          "area_method": "segmentation_mask"
-        }
-      ]
+      "reported": []
     },
     {
       "path": "datasets/10_missing_zebra_crossing/real_images/real_20_FileZebra crossing to shops Boverton - geogra.jpg",
@@ -213,20 +188,7 @@
       "path": "datasets/05_morth_civil_hard_negatives/real_images/aug_mega_4_github_dataset_1007599_RS_386_386RS289112_28920_RAW.jpg",
       "folder": "05_morth_civil_hard_negatives",
       "expected": "clean",
-      "reported": [
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 1.0,
-          "bbox_pixels": [
-            391,
-            15,
-            152,
-            204
-          ],
-          "area_m2": 1.085,
-          "area_method": "segmentation_mask"
-        }
-      ]
+      "reported": []
     },
     {
       "path": "datasets/05_morth_civil_hard_negatives/real_images/aug_mega_5_github_dataset_1008367_RS_386_386RS289112_32760_RAW.jpg",
@@ -369,30 +331,6 @@
         },
         {
           "class_name": "Pothole Cavity",
-          "confidence": 0.999,
-          "bbox_pixels": [
-            118,
-            13,
-            160,
-            202
-          ],
-          "area_m2": 1.204,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 1.0,
-          "bbox_pixels": [
-            303,
-            49,
-            78,
-            156
-          ],
-          "area_m2": 0.458,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
           "confidence": 1.0,
           "bbox_pixels": [
             0,
@@ -401,18 +339,6 @@
             133
           ],
           "area_m2": 0.449,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.924,
-          "bbox_pixels": [
-            399,
-            22,
-            130,
-            188
-          ],
-          "area_m2": 0.541,
           "area_method": "segmentation_mask"
         },
         {
@@ -491,18 +417,6 @@
         },
         {
           "class_name": "Pothole Cavity",
-          "confidence": 0.994,
-          "bbox_pixels": [
-            147,
-            41,
-            116,
-            165
-          ],
-          "area_m2": 0.764,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
           "confidence": 0.998,
           "bbox_pixels": [
             76,
@@ -530,30 +444,6 @@
             289
           ],
           "area_m2": 0.304,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.998,
-          "bbox_pixels": [
-            381,
-            53,
-            130,
-            41
-          ],
-          "area_m2": 0.61,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.998,
-          "bbox_pixels": [
-            555,
-            85,
-            82,
-            57
-          ],
-          "area_m2": 0.214,
           "area_method": "segmentation_mask"
         }
       ]
@@ -639,18 +529,6 @@
         },
         {
           "class_name": "Pothole Cavity",
-          "confidence": 1.0,
-          "bbox_pixels": [
-            103,
-            34,
-            168,
-            261
-          ],
-          "area_m2": 1.343,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
           "confidence": 0.894,
           "bbox_pixels": [
             340,
@@ -678,18 +556,6 @@
             326
           ],
           "area_m2": 1.945,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 1.0,
-          "bbox_pixels": [
-            365,
-            27,
-            200,
-            245
-          ],
-          "area_m2": 1.438,
           "area_method": "segmentation_mask"
         }
       ]
@@ -827,30 +693,6 @@
           ],
           "area_m2": 0.199,
           "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 1.0,
-          "bbox_pixels": [
-            203,
-            88,
-            116,
-            110
-          ],
-          "area_m2": 0.429,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 1.0,
-          "bbox_pixels": [
-            115,
-            74,
-            84,
-            87
-          ],
-          "area_m2": 0.297,
-          "area_method": "segmentation_mask"
         }
       ]
     },
@@ -859,18 +701,6 @@
       "folder": "03_crack500_fatigue",
       "expected": "defect",
       "reported": [
-        {
-          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
-          "confidence": 0.598,
-          "bbox_pixels": [
-            264,
-            0,
-            330,
-            249
-          ],
-          "area_m2": 0.086,
-          "area_method": "segmentation_mask"
-        },
         {
           "class_name": "Crack (Longitudinal / Transverse / Alligator)",
           "confidence": 0.565,
@@ -893,18 +723,6 @@
             87
           ],
           "area_m2": 0.141,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.966,
-          "bbox_pixels": [
-            162,
-            99,
-            90,
-            39
-          ],
-          "area_m2": 0.189,
           "area_method": "segmentation_mask"
         }
       ]
@@ -944,20 +762,7 @@
       "path": "datasets/03_crack500_fatigue/real_images/cpr_1159_2442.jpg",
       "folder": "03_crack500_fatigue",
       "expected": "defect",
-      "reported": [
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.996,
-          "bbox_pixels": [
-            431,
-            26,
-            46,
-            87
-          ],
-          "area_m2": 0.419,
-          "area_method": "segmentation_mask"
-        }
-      ]
+      "reported": []
     },
     {
       "path": "datasets/03_crack500_fatigue/real_images/cpr_1144_2411.jpg",
@@ -992,18 +797,6 @@
             135
           ],
           "area_m2": 0.069,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 1.0,
-          "bbox_pixels": [
-            94,
-            40,
-            156,
-            192
-          ],
-          "area_m2": 0.62,
           "area_method": "segmentation_mask"
         },
         {
@@ -1139,18 +932,6 @@
           ],
           "area_m2": 0.04,
           "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
-          "confidence": 0.66,
-          "bbox_pixels": [
-            549,
-            61,
-            91,
-            202
-          ],
-          "area_m2": 0.188,
-          "area_method": "segmentation_mask"
         }
       ]
     },
@@ -1193,18 +974,6 @@
             121
           ],
           "area_m2": 0.065,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 1.0,
-          "bbox_pixels": [
-            411,
-            88,
-            116,
-            46
-          ],
-          "area_m2": 0.253,
           "area_method": "segmentation_mask"
         }
       ]

@@ -247,9 +247,13 @@ function render(d, ms) {
         well enough to cost, so no tonnage and no rupee figure are quoted —
         a number that cannot be defended is worse than no number.
       </p>
-      <div class="kv"><span>Measured area</span><span>${fmt.num(top.surface_area_m2, 3)} m² · above the ${top.area_diagnostics?.max_plausible_m2 ?? 2} m² single-repair bound</span></div>
+      <div class="kv"><span>Measured area</span><span>${fmt.num(top.surface_area_m2, 3)} m²${
+          (top.surface_area_m2 > (top.area_diagnostics?.max_plausible_m2 ?? 2))
+            ? ` · above the ${top.area_diagnostics?.max_plausible_m2 ?? 2} m² single-repair bound`
+            : ` · within the ${top.area_diagnostics?.max_plausible_m2 ?? 2} m² bound`}</span></div>
       ${top.area_diagnostics?.box_share_of_frame != null
-        ? `<div class="kv"><span>Region covers</span><span>${(top.area_diagnostics.box_share_of_frame * 100).toFixed(0)}% of the frame</span></div>` : ""}
+        ? `<div class="kv"><span>Region covers</span><span>${(top.area_diagnostics.box_share_of_frame * 100).toFixed(0)}% of the frame${
+            top.area_diagnostics.box_share_of_frame > 0.25 ? " · this is what triggered the flag" : ""}</span></div>` : ""}
       <p class="small muted" style="margin:10px 0 0">${top.area_diagnostics?.why || ""}</p>
       <p class="small" style="margin:8px 0 0;color:var(--warn)">${top.area_diagnostics?.action || ""}</p>
     </div>` : ""}

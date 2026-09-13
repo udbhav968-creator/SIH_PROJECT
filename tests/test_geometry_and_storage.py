@@ -520,6 +520,39 @@ class FalsePositiveGate(unittest.TestCase):
                                 f"only {found}/{len(files)} real defects detected - "
                                 f"the proposal filter is too aggressive")
 
+    def test_nothing_is_proposed_above_the_horizon(self):
+        """
+        A parked car was reported as "Pothole 100%" while the crater filling the
+        foreground was ignored.
+
+        The segmenter's features - lightness, gradient, local variance - describe
+        a dark high-contrast patch, and a car body against bright tarmac is
+        exactly that. No probability threshold separates them. Their POSITION
+        does: the road surface in front of the vehicle is the lower part of the
+        frame, and the brightness grid had always known that while the
+        segmentation proposals did not.
+        """
+        self._need_segmenter()
+        from pipeline.deep_inference_pipeline import DeepInferencePipeline as P
+        self.assertGreater(P.ROAD_ROI_TOP_FRACTION, 0.0)
+        self.assertLess(P.ROAD_ROI_TOP_FRACTION, 0.6,
+                        "cutting too low would discard defects close to the camera")
+
+        files = self._sample("02_kaggle_pothole_600", 6) + self._sample("10_missing_zebra_crossing", 4)
+        if not files:
+            self.skipTest("no photographs on disk")
+        offenders = []
+        for path in files:
+            img = self.pipe.cv_detector.decode_image(path)
+            H, W, _ = img.shape
+            self.pipe._seg_out = self.pipe.segmenter.segment(img)
+            for b in self.pipe._segmentation_proposals(H, W):
+                centroid_y = b[1] + b[3] / 2.0
+                if centroid_y < P.ROAD_ROI_TOP_FRACTION * H:
+                    offenders.append((os.path.basename(path), round(centroid_y / H, 3)))
+        self.assertEqual(offenders, [],
+                         f"proposed a defect centred above the road ROI: {offenders}")
+
     # --------------------------------------------------- plausible to price
     def test_an_implausible_area_is_flagged_not_priced(self):
         """
