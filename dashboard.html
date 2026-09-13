@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROAD-SHIELD | Road Condition Intelligence</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'ui-monospace', 'monospace'] },
+        colors: {
+          ink: { 950: '#070b14', 900: '#0b1220', 850: '#0f1729', 800: '#141d31', 700: '#1e2a44' },
+          amber: { DEFAULT: '#f5a524' },
+        },
+      },
+    },
+  };
+</script>
+<style>
+  :root { color-scheme: dark; }
+  body { background: #070b14; }
+  .grid-bg {
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(56,189,248,.13), transparent),
+      linear-gradient(rgba(148,163,184,.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,.055) 1px, transparent 1px);
+    background-size: 100% 100%, 46px 46px, 46px 46px;
+  }
+  .card { background: linear-gradient(160deg, rgba(20,29,49,.92), rgba(11,18,32,.92)); border: 1px solid rgba(148,163,184,.13); }
+  .card-hover:hover { border-color: rgba(245,165,36,.35); transform: translateY(-2px); }
+  .card, .card-hover { transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+  .glow-amber { box-shadow: 0 0 0 1px rgba(245,165,36,.25), 0 12px 40px -12px rgba(245,165,36,.35); }
+  .fade-up { animation: fadeUp .5s cubic-bezier(.2,.7,.3,1) both; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .pulse-dot { animation: pulseDot 2s ease-in-out infinite; }
+  @keyframes pulseDot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  .scan::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(180deg, transparent 0%, rgba(56,189,248,.22) 50%, transparent 100%);
+    height: 28%; animation: scan 1.5s linear infinite;
+  }
+  @keyframes scan { 0% { transform: translateY(-40%); } 100% { transform: translateY(320%); } }
+  .tab-active { color: #fbbf24; border-color: #f5a524; background: rgba(245,165,36,.08); }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: #0b1220; }
+  ::-webkit-scrollbar-thumb { background: #263449; border-radius: 9px; }
+  ::-webkit-scrollbar-thumb:hover { background: #35496a; }
+  .leaflet-container { background: #0b1220; font-family: 'Inter', sans-serif; }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #141d31; color: #e2e8f0; border: 1px solid rgba(148,163,184,.2); }
+  .drop-active { border-color: #f5a524 !important; background: rgba(245,165,36,.07) !important; }
+  .skeleton { background: linear-gradient(90deg, #141d31 25%, #1e2a44 37%, #141d31 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+</style>
+</head>
+<body class="grid-bg min-h-screen text-slate-200 font-sans antialiased">
+
+<!-- ═══════════════ TOP BAR ═══════════════ -->
+<header class="sticky top-0 z-40 backdrop-blur-xl bg-ink-950/80 border-b border-slate-800/80">
+  <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex items-center gap-4 flex-wrap">
+    <div class="flex items-center gap-3 mr-auto">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 grid place-items-center shadow-lg shadow-amber-900/40">
+        <svg viewBox="0 0 24 24" class="w-6 h-6 text-ink-950" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-[15px] font-extrabold tracking-tight leading-tight">ROAD-SHIELD</h1>
+        <p class="text-[11px] text-slate-400 leading-tight">Road condition intelligence · SIH 2026 · PS SIH26124</p>
+      </div>
+    </div>
+
+    <div id="statusChips" class="flex items-center gap-2 text-[11px] font-mono">
+      <span class="px-2.5 py-1.5 rounded-lg bg-ink-850 border border-slate-700/70 flex items-center gap-2">
+        <span id="apiDot" class="w-2 h-2 rounded-full bg-slate-500 pulse-dot"></span>
+        <span id="apiLabel" class="text-slate-300">connecting…</span>
+      </span>
+      <span id="latencyChip" class="px-2.5 py-1.5 rounded-lg bg-ink-850 border border-slate-700/70 text-slate-400 hidden"></span>
+    </div>
+
+    <button id="demoBtn" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-ink-950 text-[13px] font-bold transition shadow-lg shadow-amber-900/30 flex items-center gap-2">
+      <svg viewBox="0 0 24 24" class="w-4 h-4" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      Run guided demo
+    </button>
+  </div>
+
+  <nav class="max-w-[1600px] mx-auto px-2 sm:px-4 flex gap-1 overflow-x-auto">
+    <button data-tab="inspect" class="tab-btn shrink-0 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wide border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition">Inspection</button>
+    <button data-tab="map" class="tab-btn shrink-0 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wide border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition">Corridor map</button>
+    <button data-tab="works" class="tab-btn shrink-0 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wide border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition">Works &amp; costing</button>
+    <button data-tab="model" class="tab-btn shrink-0 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wide border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition">Model card</button>
+    <button data-tab="system" class="tab-btn shrink-0 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wide border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition">System</button>
+  </nav>
+</header>
+
+<main class="max-w-[1600px] mx-auto px-4 sm:px-6 py-6">
+
+<!-- ═══════════════ TAB: INSPECTION ═══════════════ -->
+<section data-panel="inspect" class="tab-panel">
+  <div class="grid lg:grid-cols-5 gap-5">
+
+    <!-- input column -->
+    <div class="lg:col-span-2 space-y-5">
+      <div class="card rounded-2xl p-5 fade-up">
+        <h2 class="text-sm font-bold mb-1">Analyse a road photo</h2>
+        <p class="text-[12px] text-slate-400 mb-4">Every number on this screen comes from the trained models running on the server. Nothing is pre-scripted.</p>
+
+        <div id="dropZone" class="rounded-xl border-2 border-dashed border-slate-700 p-8 text-center cursor-pointer hover:border-slate-500 transition">
+          <svg viewBox="0 0 24 24" class="w-10 h-10 mx-auto text-slate-500 mb-3" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M12 16V4m0 0L8 8m4-4l4 4"/><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+          </svg>
+          <p class="text-[13px] font-semibold text-slate-300">Drop a photo, or click to choose</p>
+          <p class="text-[11px] text-slate-500 mt-1">JPG / PNG / WEBP · analysed on the server</p>
+          <input id="fileInput" type="file" accept="image/*" class="hidden">
+        </div>
+
+        <div class="mt-4">
+          <p class="text-[11px] uppercase tracking-wider text-slate-500 font-bold mb-2">Or try a sample from the dataset</p>
+          <div id="presetRow" class="grid grid-cols-2 gap-2"></div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-2 gap-3">
+          <label class="text-[11px] text-slate-400">
+            Corridor
+            <input id="corridorInput" value="NH-44" class="mt-1 w-full bg-ink-850 border border-slate-700 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-slate-200 focus:border-amber-500 outline-none">
+          </label>
+          <label class="text-[11px] text-slate-400">
+            Chainage (km)
+            <input id="chainageInput" value="108.4" class="mt-1 w-full bg-ink-850 border border-slate-700 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-slate-200 focus:border-amber-500 outline-none">
+          </label>
+        </div>
+      </div>
+
+      <div id="pipelineCard" class="card rounded-2xl p-5 fade-up">
+        <h3 class="text-sm font-bold mb-3">Pipeline stages</h3>
+        <ol id="stageList" class="space-y-2.5 text-[12px]"></ol>
+      </div>
+    </div>
+
+    <!-- result column -->
+    <div class="lg:col-span-3 space-y-5">
+      <div class="card rounded-2xl overflow-hidden fade-up">
+        <div class="relative bg-ink-950 aspect-[16/10] grid place-items-center" id="canvasWrap">
+          <canvas id="resultCanvas" class="max-w-full max-h-full"></canvas>
+          <div id="canvasEmpty" class="absolute inset-0 grid place-items-center text-center px-8">
+            <div>
+              <svg viewBox="0 0 24 24" class="w-12 h-12 mx-auto text-slate-700 mb-3" fill="none" stroke="currentColor" stroke-width="1.4">
+                <rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              <p class="text-[13px] text-slate-500">Analysis output appears here</p>
+            </div>
+          </div>
+        </div>
+        <div id="verdictBar" class="px-5 py-4 border-t border-slate-800 hidden">
+          <div class="flex items-start gap-4 flex-wrap">
+            <div class="mr-auto">
+              <p id="verdictClass" class="text-xl font-extrabold leading-tight">—</p>
+              <p id="verdictMeta" class="text-[12px] text-slate-400 mt-0.5">—</p>
+            </div>
+            <div class="text-right">
+              <p id="verdictConf" class="text-2xl font-extrabold font-mono text-amber-400">—</p>
+              <p class="text-[10px] uppercase tracking-widest text-slate-500">confidence</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid sm:grid-cols-2 gap-5">
+        <div class="card rounded-2xl p-5 fade-up">
+          <h3 class="text-sm font-bold mb-3">Class probabilities</h3>
+          <div id="probList" class="space-y-2.5 text-[12px]">
+            <p class="text-slate-500 text-[12px]">Waiting for an image.</p>
+          </div>
+        </div>
+        <div class="card rounded-2xl p-5 fade-up">
+          <h3 class="text-sm font-bold mb-3">Measurements</h3>
+          <dl id="measureList" class="space-y-2 text-[12px]">
+            <p class="text-slate-500">Waiting for an image.</p>
+          </dl>
+        </div>
+      </div>
+
+      <div class="card rounded-2xl p-5 fade-up">
+        <div class="flex items-center gap-2 mb-3">
+          <h3 class="text-sm font-bold">What else is in frame</h3>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono">COCO detector</span>
+        </div>
+        <div id="sceneBody" class="text-[12px] text-slate-400">Waiting for an image.</div>
+      </div>
+
+      <div id="sensorCard" class="card rounded-2xl p-5 fade-up">
+        <div class="flex items-center gap-2 mb-3">
+          <h3 class="text-sm font-bold">Sensor fusion</h3>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono">vision + IMU</span>
+        </div>
+        <div id="fusionBody" class="text-[12px] text-slate-400">Waiting for an image.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ TAB: MAP ═══════════════ -->
+<section data-panel="map" class="tab-panel hidden">
+  <div class="grid lg:grid-cols-4 gap-5">
+    <div class="lg:col-span-3 card rounded-2xl overflow-hidden fade-up">
+      <div id="mapEl" class="w-full" style="height:min(72vh,720px)"></div>
+    </div>
+    <div class="space-y-5">
+      <div class="card rounded-2xl p-5 fade-up">
+        <h3 class="text-sm font-bold mb-1">Defect register</h3>
+        <p class="text-[11px] text-slate-400 mb-3">Reports from multiple buses at the same spot are merged by GPS distance, so one pothole is counted once.</p>
+        <div id="dedupStats" class="grid grid-cols-3 gap-2 text-center"></div>
+      </div>
+      <div class="card rounded-2xl p-4 fade-up">
+        <h3 class="text-sm font-bold mb-3">Registered defects</h3>
+        <div id="defectList" class="space-y-2 max-h-[46vh] overflow-y-auto pr-1"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ TAB: WORKS ═══════════════ -->
+<section data-panel="works" class="tab-panel hidden">
+  <div class="grid lg:grid-cols-3 gap-5">
+    <div class="card rounded-2xl p-5 fade-up">
+      <h3 class="text-sm font-bold mb-1">Pavement Condition Index</h3>
+      <p class="text-[11px] text-slate-400 mb-4">ASTM D6433 deduct-value method, computed on the server.</p>
+      <div class="space-y-3 text-[12px]">
+        <label class="block">Crack density (%)<input id="pciCrack" type="range" min="0" max="60" value="15" class="w-full accent-amber-500"><span id="pciCrackV" class="font-mono text-amber-400">15</span></label>
+        <label class="block">Pothole count<input id="pciPot" type="range" min="0" max="20" value="3" class="w-full accent-amber-500"><span id="pciPotV" class="font-mono text-amber-400">3</span></label>
+        <label class="block">Rutting (mm)<input id="pciRut" type="range" min="0" max="40" value="8" class="w-full accent-amber-500"><span id="pciRutV" class="font-mono text-amber-400">8</span></label>
+      </div>
+      <div class="mt-5 text-center">
+        <p id="pciScore" class="text-5xl font-extrabold font-mono">—</p>
+        <p id="pciRating" class="text-[12px] font-bold mt-1 text-slate-400">—</p>
+        <p id="pciDesc" class="text-[11px] text-slate-500 mt-1">—</p>
+      </div>
+    </div>
+
+    <div class="card rounded-2xl p-5 fade-up">
+      <h3 class="text-sm font-bold mb-1">Material &amp; cost</h3>
+      <p class="text-[11px] text-slate-400 mb-4">MoRTH Section 500 dense bituminous macadam arithmetic.</p>
+      <div class="space-y-3 text-[12px]">
+        <label class="block">Patch area (m²)<input id="ipmArea" type="number" step="0.1" value="1.8" class="mt-1 w-full bg-ink-850 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono"></label>
+        <label class="block">Depth (cm)<input id="ipmDepth" type="number" step="0.5" value="6.5" class="mt-1 w-full bg-ink-850 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono"></label>
+      </div>
+      <dl id="ipmOut" class="mt-4 space-y-2 text-[12px]"></dl>
+    </div>
+
+    <div class="card rounded-2xl p-5 fade-up">
+      <div class="flex items-center gap-2 mb-1">
+        <h3 class="text-sm font-bold">Tamper-sealed work order</h3>
+      </div>
+      <p class="text-[11px] text-slate-400 mb-4">Each order is hashed with SHA-256; changing any field breaks the seal. Try it below.</p>
+      <button id="woBtn" class="w-full px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-[12px] font-bold transition">Generate work order</button>
+      <pre id="woOut" class="mt-3 text-[10.5px] font-mono bg-ink-950 rounded-xl p-3 max-h-64 overflow-auto text-slate-300 border border-slate-800">—</pre>
+      <div id="woVerifyRow" class="mt-3 hidden grid grid-cols-2 gap-2">
+        <button id="woVerify" class="px-3 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/40 text-emerald-300 text-[11.5px] font-bold">Verify seal</button>
+        <button id="woTamper" class="px-3 py-2 rounded-xl bg-rose-600/20 border border-rose-600/40 text-rose-300 text-[11.5px] font-bold">Tamper, then verify</button>
+      </div>
+      <p id="woVerdict" class="mt-2 text-[12px] font-mono"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ TAB: MODEL CARD ═══════════════ -->
+<section data-panel="model" class="tab-panel hidden">
+  <div class="grid lg:grid-cols-3 gap-5">
+    <div class="card rounded-2xl p-5 fade-up lg:col-span-2">
+      <h3 class="text-sm font-bold mb-1">How the models actually perform</h3>
+      <p class="text-[11px] text-slate-400 mb-4">Held-out validation results, read live from the training reports. Photos used for validation never appear in training, in any augmented form.</p>
+      <div id="metricsGrid" class="grid sm:grid-cols-2 gap-4"></div>
+      <div class="mt-5">
+        <h4 class="text-[12px] font-bold mb-2">Confusion matrix — vision classifier</h4>
+        <div id="confusionWrap" class="overflow-x-auto"><div id="confusion" class="text-[10px]"></div></div>
+      </div>
+    </div>
+    <div class="space-y-5">
+      <div class="card rounded-2xl p-5 fade-up">
+        <h3 class="text-sm font-bold mb-3">Dataset on disk</h3>
+        <div id="datasetList" class="space-y-1.5 text-[11.5px]"></div>
+      </div>
+      <div class="card rounded-2xl p-5 fade-up">
+        <h3 class="text-sm font-bold mb-2">Known limits</h3>
+        <ul id="limitsList" class="space-y-2 text-[11.5px] text-slate-400 list-disc pl-4"></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ TAB: SYSTEM ═══════════════ -->
+<section data-panel="system" class="tab-panel hidden">
+  <div class="grid lg:grid-cols-3 gap-5">
+    <div class="card rounded-2xl p-5 fade-up">
+      <h3 class="text-sm font-bold mb-3">Engine status</h3>
+      <div id="healthList" class="space-y-1.5 text-[11.5px] font-mono"></div>
+    </div>
+    <div class="card rounded-2xl p-5 fade-up">
+      <h3 class="text-sm font-bold mb-3">Map &amp; GIS services</h3>
+      <div id="mapsStatus" class="space-y-1.5 text-[11.5px] font-mono"></div>
+    </div>
+    <div class="card rounded-2xl p-5 fade-up">
+      <h3 class="text-sm font-bold mb-3">Try any endpoint</h3>
+      <select id="epSelect" class="w-full bg-ink-850 border border-slate-700 rounded-lg px-2.5 py-2 text-[12px] font-mono mb-2"></select>
+      <button id="epRun" class="w-full px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-[12px] font-bold transition">Send request</button>
+      <pre id="epOut" class="mt-3 text-[10.5px] font-mono bg-ink-950 rounded-xl p-3 max-h-72 overflow-auto text-slate-300 border border-slate-800">—</pre>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<div id="toastWrap" class="fixed top-20 right-4 z-50 space-y-2 w-80"></div>
+
+<footer class="max-w-[1600px] mx-auto px-6 py-8 text-[11px] text-slate-600">
+  Smart India Hackathon 2026 · Problem statement SIH26124 · Bharat Electronics Limited ·
+  built for Galgotias University. Model performance figures on this page are measured, not illustrative.
+</footer>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+//  API plumbing
+// ══════════════════════════════════════════════════════════════════
+const API = (location.origin && location.origin.startsWith('http')) ? location.origin : 'http://127.0.0.1:8000';
+const CLASS_COLORS = {
+  'Normal Road / Sound Pavement': '#22c55e',
+  'Crack (Longitudinal / Transverse / Alligator)': '#ec4899',
+  'Pothole Cavity': '#f59e0b',
+  'Waterlogging / Flooding Hazard': '#0ea5e9',
+  'Missing Zebra Crossing': '#eab308',
+  'Missing Road Divider': '#a855f7',
+  'Damaged Traffic Sign': '#3b82f6',
+  'Pedestrian': '#ef4444',
+};
+const state = { last: null, map: null, markers: [], workOrder: null, online: false };
+
+async function api(path, body, timeoutMs = 30000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  const t0 = performance.now();
+  try {
+    const res = await fetch(API + path, {
+      method: body ? 'POST' : 'GET',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctl.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data, ms: performance.now() - t0 };
+  } catch (e) {
+    return { ok: false, status: 0, data: { error: String(e.message || e) }, ms: performance.now() - t0 };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function toast(title, msg, kind = 'info') {
+  const colors = { info: 'border-sky-500/40 bg-sky-500/10', ok: 'border-emerald-500/40 bg-emerald-500/10', warn: 'border-amber-500/40 bg-amber-500/10', err: 'border-rose-500/40 bg-rose-500/10' };
+  const el = document.createElement('div');
+  el.className = `card rounded-xl px-4 py-3 border ${colors[kind]} fade-up shadow-xl`;
+  el.innerHTML = `<p class="text-[12px] font-bold">${title}</p><p class="text-[11px] text-slate-400 mt-0.5">${msg}</p>`;
+  document.getElementById('toastWrap').appendChild(el);
+  setTimeout(() => { el.style.transition = 'opacity .4s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 400); }, 4200);
+}
+
+const fmt = (v, digits = 2, dash = '—') => (v === null || v === undefined || Number.isNaN(v)) ? dash : Number(v).toFixed(digits);
+
+// ══════════════════════════════════════════════════════════════════
+//  Tabs
+// ══════════════════════════════════════════════════════════════════
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    const on = b.dataset.tab === name;
+    b.classList.toggle('tab-active', on);
+    b.classList.toggle('text-slate-400', !on);
+  });
+  if (name === 'map') { setTimeout(initMap, 60); }
+  if (name === 'model') loadModelCard();
+  if (name === 'system') loadSystem();
+}
+document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+// ══════════════════════════════════════════════════════════════════
+//  Health
+// ══════════════════════════════════════════════════════════════════
+async function pollHealth() {
+  const r = await api('/api/v1/health', null, 25000);
+  state.online = r.ok;
+  const dot = document.getElementById('apiDot'), label = document.getElementById('apiLabel'), lat = document.getElementById('latencyChip');
+  if (r.ok) {
+    const loaded = Object.values(r.data.models || {}).filter(v => String(v).startsWith('LOADED')).length;
+    dot.className = 'w-2 h-2 rounded-full bg-emerald-400 pulse-dot';
+    label.textContent = `engine online · ${loaded} models loaded`;
+    lat.classList.remove('hidden');
+    lat.textContent = `${Math.round(r.ms)} ms`;
+  } else {
+    dot.className = 'w-2 h-2 rounded-full bg-rose-500 pulse-dot';
+    label.textContent = 'engine unreachable';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Inspection
+// ══════════════════════════════════════════════════════════════════
+const STAGES = [
+  ['Decode &amp; resize', 'image read on the server'],
+  ['Pavement check', 'rejects non-road photos'],
+  ['Region proposals', 'gradient/darkness scan'],
+  ['Classification', 'trained model per region'],
+  ['Geometry (IPM)', 'pixels to m² and depth'],
+  ['Sensor fusion', 'vision + IMU, when IMU exists'],
+  ['Costing', 'ASTM PCI + MoRTH tonnage'],
+];
+function renderStages(active = -1, done = -1) {
+  document.getElementById('stageList').innerHTML = STAGES.map((s, i) => {
+    const state = i <= done ? 'done' : (i === active ? 'active' : 'idle');
+    const dot = state === 'done' ? '<span class="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-500 grid place-items-center text-emerald-400 text-[9px]">✓</span>'
+      : state === 'active' ? '<span class="w-4 h-4 rounded-full border-2 border-amber-500 border-t-transparent animate-spin"></span>'
+      : '<span class="w-4 h-4 rounded-full border border-slate-700"></span>';
+    return `<li class="flex items-center gap-3 ${state === 'idle' ? 'opacity-45' : ''}">${dot}
+      <span class="font-semibold ${state === 'active' ? 'text-amber-300' : ''}">${s[0]}</span>
+      <span class="text-slate-500 text-[11px] ml-auto">${s[1]}</span></li>`;
+  }).join('');
+}
+renderStages();
+
+function drawResult(imgSrc, detections) {
+  const canvas = document.getElementById('resultCanvas');
+  const img = new Image();
+  img.onload = () => {
+    const maxW = canvas.parentElement.clientWidth, maxH = canvas.parentElement.clientHeight;
+    const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+    canvas.width = img.width * scale; canvas.height = img.height * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    (detections || []).forEach(d => {
+      const bb = d.bbox_normalized; if (!bb) return;
+      const [x, y, w, h] = [bb[0] * canvas.width, bb[1] * canvas.height, bb[2] * canvas.width, bb[3] * canvas.height];
+      const color = d.colour_hex || CLASS_COLORS[d.class_name] || '#f59e0b';
+      ctx.lineWidth = Math.max(2, canvas.width / 320); ctx.strokeStyle = color;
+      ctx.shadowColor = color; ctx.shadowBlur = 14;
+      ctx.strokeRect(x, y, w, h);
+      ctx.shadowBlur = 0;
+      const label = `${d.class_name} ${(d.confidence * 100).toFixed(0)}%`;
+      ctx.font = `600 ${Math.max(11, canvas.width / 46)}px Inter, sans-serif`;
+      const tw = ctx.measureText(label).width + 12, th = Math.max(18, canvas.width / 30);
+      ctx.fillStyle = color;
+      ctx.fillRect(x, Math.max(0, y - th), tw, th);
+      ctx.fillStyle = '#06101f';
+      ctx.fillText(label, x + 6, Math.max(th - 5, y - 6));
+    });
+    document.getElementById('canvasEmpty').classList.add('hidden');
+  };
+  img.src = imgSrc;
+}
+
+function renderAnalysis(res, imgSrc) {
+  state.last = res;
+  const primary = res.primary_detection || res.primary_distress;
+  document.getElementById('verdictBar').classList.remove('hidden');
+  if (res.status && res.status !== 'ANALYSIS_COMPLETE') {
+    document.getElementById('verdictClass').textContent = 'Not a road surface';
+    document.getElementById('verdictClass').style.color = '#94a3b8';
+    document.getElementById('verdictMeta').textContent = res.reason || 'The pavement check rejected this image.';
+    document.getElementById('verdictConf').textContent = '—';
+    document.getElementById('probList').innerHTML = '<p class="text-slate-500">No classification was run.</p>';
+    document.getElementById('measureList').innerHTML = '<p class="text-slate-500">—</p>';
+    return;
+  }
+  if (!primary) {
+    document.getElementById('verdictClass').textContent = 'No distress found';
+    document.getElementById('verdictClass').style.color = '#22c55e';
+    document.getElementById('verdictMeta').textContent = 'The pavement scan found no region the model calls a defect.';
+    document.getElementById('verdictConf').textContent = '—';
+  } else {
+    const c = CLASS_COLORS[primary.class_name] || '#f59e0b';
+    document.getElementById('verdictClass').textContent = primary.class_name;
+    document.getElementById('verdictClass').style.color = c;
+    document.getElementById('verdictMeta').textContent =
+      `${primary.astm_d6433_severity || '—'} severity · ${primary.uncertainty_rating || ''} · ${fmt(primary.distance_meters, 1)} m ahead`;
+    document.getElementById('verdictConf').textContent = `${(primary.confidence * 100).toFixed(1)}%`;
+
+    const probs = primary.probabilities || {};
+    document.getElementById('probList').innerHTML = Object.entries(probs)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `
+        <div>
+          <div class="flex justify-between mb-1"><span class="truncate pr-2">${k}</span><span class="font-mono" style="color:${CLASS_COLORS[k] || '#94a3b8'}">${(v * 100).toFixed(1)}%</span></div>
+          <div class="h-1.5 rounded-full bg-slate-800 overflow-hidden"><div style="width:${(v * 100).toFixed(1)}%;background:${CLASS_COLORS[k] || '#64748b'}" class="h-full rounded-full transition-all duration-700"></div></div>
+        </div>`).join('');
+
+    const pd = primary.physical_dimensions || {};
+    const rows = [
+      ['Surface area', `${fmt(pd.surface_area_m2)} m²`],
+      ['Depth', `${fmt(pd.depth_cm, 1)} cm`],
+      ['Bitumen volume', `${fmt(pd.bitumen_volume_m3, 3)} m³`],
+      ['Compacted mass', `${fmt(pd.morth_compacted_tonnage_t, 3)} t`],
+      ['Repair cost', pd.estimated_repair_cost_inr ? `₹ ${Number(pd.estimated_repair_cost_inr).toLocaleString('en-IN')}` : '—'],
+      ['Pavement PCI', (res.astm_d6433_pci && res.astm_d6433_pci.pci_score != null) ? `${fmt(res.astm_d6433_pci.pci_score, 1)} / 100` : '—'],
+      ['Inference time', `${fmt(res.latency_ms, 1)} ms`],
+    ];
+    document.getElementById('measureList').innerHTML = rows.map(([k, v]) =>
+      `<div class="flex justify-between gap-3 border-b border-slate-800/70 pb-1.5"><dt class="text-slate-400">${k}</dt><dd class="font-mono text-slate-200">${v}</dd></div>`).join('');
+  }
+
+  const peds = res.pedestrians_count || 0;
+  const imu = res.imu_shock_telemetry || {};
+  const gate = res.bayesian_sensor_fusion || {};
+  document.getElementById('fusionBody').innerHTML = `
+    <div class="grid sm:grid-cols-3 gap-3">
+      <div class="rounded-xl bg-ink-950/60 border border-slate-800 p-3">
+        <p class="text-[10px] uppercase tracking-wider text-slate-500">People detected</p>
+        <p class="text-lg font-bold font-mono ${peds ? 'text-rose-400' : 'text-slate-300'}">${peds}</p>
+        <p class="text-[10px] text-slate-500 mt-1">HOG+SVM person detector</p>
+      </div>
+      <div class="rounded-xl bg-ink-950/60 border border-slate-800 p-3">
+        <p class="text-[10px] uppercase tracking-wider text-slate-500">IMU shock</p>
+        <p class="text-lg font-bold font-mono ${imu.available ? 'text-sky-300' : 'text-slate-500'}">${imu.available ? (imu.shock_classification || '—') : 'not supplied'}</p>
+        <p class="text-[10px] text-slate-500 mt-1">${imu.available ? `peak ${fmt(imu.peak_delta_z_ms2, 1)} m/s²` : 'no accelerometer window for this frame'}</p>
+      </div>
+      <div class="rounded-xl bg-ink-950/60 border border-slate-800 p-3">
+        <p class="text-[10px] uppercase tracking-wider text-slate-500">Fusion verdict</p>
+        <p class="text-lg font-bold font-mono ${gate.gate_passed ? 'text-emerald-400' : 'text-slate-400'}">${gate.verdict || '—'}</p>
+        <p class="text-[10px] text-slate-500 mt-1">log-odds ${fmt(gate.log_odds_score, 2)}</p>
+      </div>
+    </div>
+    <p class="text-[11px] text-slate-500 mt-3">${imu.available ? '' : 'With no accelerometer data for this frame the engine says so, rather than inferring a second sensor from the camera.'}</p>`;
+
+  // scene objects (people, vehicles, signs) come from the COCO detector
+  const scene = res.scene_summary || {};
+  const sceneObjs = res.scene_objects || [];
+  const sceneEl = document.getElementById('sceneBody');
+  const sceneCard = sceneEl.closest('.card');
+  if (!scene.available) {
+    if (sceneCard) sceneCard.style.display = 'none';
+  } else if (sceneCard && (sceneCard.style.display = '') === '' && !sceneObjs.length) {
+    sceneEl.innerHTML = '<p class="text-[12px] text-slate-500">No people, vehicles or signs found in this frame.</p>';
+  } else {
+    sceneEl.innerHTML = `
+      <div class="flex flex-wrap gap-2 mb-3">
+        ${Object.entries(scene.counts_by_class || {}).map(([k, v]) => `
+          <span class="px-2.5 py-1 rounded-lg bg-ink-950/70 border border-slate-800 text-[11.5px] font-mono">
+            <span class="text-slate-200 font-bold">${v}×</span> <span class="text-slate-400">${k}</span></span>`).join('')}
+      </div>
+      ${scene.vulnerable_alert ? `<p class="text-[12px] text-rose-400 font-semibold">⚠ ${scene.vulnerable_road_users} vulnerable road user(s) in frame — pedestrian, cyclist or two-wheeler.</p>` : ''}
+      <p class="text-[10.5px] text-slate-500 mt-2 font-mono">${scene.detector || ''}</p>`;
+  }
+
+  const dets = (res.all_detections || []).length ? res.all_detections : (primary ? [primary] : []);
+  if (imgSrc) drawResult(imgSrc, dets.concat(sceneObjs));
+}
+
+async function analyseBase64(b64, imgSrc) {
+  if (!state.online) { toast('Engine offline', 'Start the server, then try again.', 'err'); return; }
+  document.getElementById('canvasWrap').classList.add('scan');
+  for (let i = 0; i < 4; i++) { renderStages(i, i - 1); await new Promise(r => setTimeout(r, 110)); }
+  const res = await api('/api/v1/pipeline/deep-audit', {
+    image_base64: b64,
+    corridor_id: document.getElementById('corridorInput').value || 'NH-44',
+    chainage_km: parseFloat(document.getElementById('chainageInput').value) || 0,
+  });
+  document.getElementById('canvasWrap').classList.remove('scan');
+  renderStages(-1, STAGES.length - 1);
+  if (!res.ok) { toast('Analysis failed', res.data.error || `HTTP ${res.status}`, 'err'); return; }
+  renderAnalysis(res.data, imgSrc);
+  toast('Analysis complete', `${fmt(res.data.latency_ms, 0)} ms on the server`, 'ok');
+}
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result;
+    analyseBase64(String(dataUrl).split(',')[1], dataUrl);
+  };
+  reader.readAsDataURL(file);
+}
+const dz = document.getElementById('dropZone'), fi = document.getElementById('fileInput');
+dz.addEventListener('click', () => fi.click());
+fi.addEventListener('change', e => e.target.files[0] && handleFile(e.target.files[0]));
+['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drop-active'); }));
+['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drop-active'); }));
+dz.addEventListener('drop', e => e.dataTransfer.files[0] && handleFile(e.dataTransfer.files[0]));
+
+// dataset sample buttons
+const PRESETS = [
+  { id: 2, label: 'Pothole' }, { id: 1, label: 'Cracking' },
+  { id: 3, label: 'Waterlogging' }, { id: 0, label: 'Sound pavement' },
+];
+document.getElementById('presetRow').innerHTML = PRESETS.map(p =>
+  `<button data-cls="${p.id}" class="preset-btn px-3 py-2 rounded-xl bg-ink-850 border border-slate-700 hover:border-amber-500/60 text-[11.5px] font-semibold transition text-left">
+     <span class="block">${p.label}</span><span class="block text-[10px] text-slate-500">dataset sample</span></button>`).join('');
+document.querySelectorAll('.preset-btn').forEach(b => b.addEventListener('click', async () => {
+  if (!state.online) { toast('Engine offline', 'Start the server first.', 'err'); return; }
+  document.getElementById('canvasWrap').classList.add('scan');
+  for (let i = 0; i < 4; i++) { renderStages(i, i - 1); await new Promise(r => setTimeout(r, 90)); }
+  const res = await api('/api/v1/vision/analyze-photo', { class_id: Number(b.dataset.cls) });
+  document.getElementById('canvasWrap').classList.remove('scan');
+  renderStages(-1, STAGES.length - 1);
+  if (!res.ok) {
+    toast('Samples unavailable', res.data.error || 'The dataset folder is not deployed here — upload a photo instead.', 'warn');
+    return;
+  }
+  renderAnalysis(res.data, res.data.image_data_url || null);
+  if (!res.data.image_data_url) toast('Analysed', 'Sample analysed on the server (preview not returned).', 'ok');
+}));
+
+// ══════════════════════════════════════════════════════════════════
+//  Map
+// ══════════════════════════════════════════════════════════════════
+async function initMap() {
+  if (!state.map) {
+    state.map = L.map('mapEl', { zoomControl: true, attributionControl: true }).setView([12.9716, 77.5946], 13);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 19,
+    }).addTo(state.map);
+  }
+  state.map.invalidateSize();
+  const [gis, stats] = await Promise.all([api('/api/v1/gis/map-data'), api('/api/v1/fleet/telemetry')]);
+  if (stats.ok) {
+    const s = stats.data;
+    document.getElementById('dedupStats').innerHTML = [
+      ['reports in', s.total_reports_ingested], ['unique defects', s.unique_defects_registered],
+      ['merged', `${fmt(s.deduplication_efficiency_pct, 0)}%`],
+    ].map(([k, v]) => `<div class="rounded-xl bg-ink-950/60 border border-slate-800 py-2">
+        <p class="text-lg font-bold font-mono text-amber-400">${v}</p><p class="text-[10px] text-slate-500">${k}</p></div>`).join('');
+  }
+  if (!gis.ok) { document.getElementById('defectList').innerHTML = '<p class="text-[12px] text-slate-500">Map data unavailable.</p>'; return; }
+  const defects = gis.data.deduplicated_defects || [];
+  state.markers.forEach(m => state.map.removeLayer(m)); state.markers = [];
+  document.getElementById('defectList').innerHTML = defects.map((d, i) => `
+    <button data-i="${i}" class="defect-row w-full text-left rounded-xl bg-ink-950/60 border border-slate-800 hover:border-amber-500/50 px-3 py-2 transition">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full" style="background:${CLASS_COLORS[d.defect_class] || '#f59e0b'}"></span>
+        <span class="text-[11.5px] font-semibold truncate">${d.defect_class}</span>
+        <span class="ml-auto text-[10px] font-mono text-slate-500">${d.defect_id}</span>
+      </div>
+      <p class="text-[10.5px] text-slate-500 mt-1 truncate">${d.address || 'address lookup pending'}</p>
+      <p class="text-[10px] font-mono text-slate-600 mt-0.5">${fmt(d.area_m2)} m² · PCI ${fmt(d.severity_pci, 0)} · ${d.confirmation_count}× confirmed</p>
+    </button>`).join('') || '<p class="text-[12px] text-slate-500">No defects registered yet.</p>';
+
+  defects.forEach(d => {
+    const color = CLASS_COLORS[d.defect_class] || '#f59e0b';
+    const m = L.circleMarker([d.lat, d.lon], {
+      radius: 8 + Math.min(10, (d.area_m2 || 1) * 2), color, weight: 2, fillColor: color, fillOpacity: .28,
+    }).addTo(state.map).bindPopup(`
+      <div style="font-family:Inter,sans-serif;min-width:210px">
+        <b style="color:${color}">${d.defect_class}</b><br>
+        <span style="font-size:11px;color:#94a3b8">${d.address || 'address lookup pending'}</span><br>
+        <span style="font-size:11px;font-family:monospace">${fmt(d.area_m2)} m² · PCI ${fmt(d.severity_pci, 0)} · seen by ${(d.reporting_buses || []).length} bus(es)</span><br>
+        <a href="${d.google_maps_url}" target="_blank" style="color:#38bdf8;font-size:11px;font-weight:600">Open in Google Maps ↗</a>
+      </div>`);
+    state.markers.push(m);
+  });
+  if (defects.length) state.map.fitBounds(L.latLngBounds(defects.map(d => [d.lat, d.lon])).pad(0.35));
+  document.querySelectorAll('.defect-row').forEach(btn => btn.addEventListener('click', () => {
+    const m = state.markers[Number(btn.dataset.i)];
+    if (m) { state.map.setView(m.getLatLng(), 17, { animate: true }); m.openPopup(); }
+  }));
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Works & costing
+// ══════════════════════════════════════════════════════════════════
+const pciInputs = ['pciCrack', 'pciPot', 'pciRut'];
+async function refreshPci() {
+  pciInputs.forEach(id => document.getElementById(id + 'V').textContent = document.getElementById(id).value);
+  const res = await api('/api/v1/pci/predict', {
+    crack_density_pct: Number(document.getElementById('pciCrack').value),
+    crack_severity: 'MEDIUM',
+    pothole_count: Number(document.getElementById('pciPot').value),
+    pothole_density_pct: Number(document.getElementById('pciPot').value) * 1.5,
+    pothole_severity: 'HIGH',
+    rutting_mm: Number(document.getElementById('pciRut').value),
+  });
+  if (!res.ok) return;
+  const d = res.data, score = d.pci_score;
+  const col = score >= 85 ? '#22c55e' : score >= 70 ? '#84cc16' : score >= 55 ? '#eab308' : score >= 40 ? '#f59e0b' : '#ef4444';
+  const el = document.getElementById('pciScore');
+  el.textContent = fmt(score, 1); el.style.color = col;
+  document.getElementById('pciRating').textContent = d.rating_category;
+  document.getElementById('pciRating').style.color = col;
+  document.getElementById('pciDesc').textContent = d.description || '';
+}
+pciInputs.forEach(id => document.getElementById(id).addEventListener('input', refreshPci));
+
+async function refreshIpm() {
+  const area = Number(document.getElementById('ipmArea').value), depth = Number(document.getElementById('ipmDepth').value);
+  const res = await api('/api/v1/civil/ipm-tonnage', { surface_area_m2: area, area_m2: area, depth_cm: depth });
+  if (!res.ok) return;
+  const d = res.data;
+  document.getElementById('ipmOut').innerHTML = [
+    ['Mix', d.bituminous_mix], ['Volume', `${fmt(d.volume_m3, 3)} m³`],
+    ['Density', `${fmt(d.density_t_per_m3, 2)} t/m³`], ['Compaction factor', fmt(d.compaction_factor, 2)],
+    ['Mass required', `${fmt(d.required_mass_tonnes, 3)} t`],
+    ['Estimated cost', `₹ ${Number(d.estimated_cost_inr || 0).toLocaleString('en-IN')}`],
+  ].map(([k, v]) => `<div class="flex justify-between gap-3 border-b border-slate-800/70 pb-1.5"><dt class="text-slate-400">${k}</dt><dd class="font-mono text-slate-200 text-right">${v}</dd></div>`).join('');
+}
+['ipmArea', 'ipmDepth'].forEach(id => document.getElementById(id).addEventListener('input', refreshIpm));
+
+document.getElementById('woBtn').addEventListener('click', async () => {
+  const p = state.last && (state.last.primary_distress || state.last.primary_detection);
+  const res = await api('/api/v1/dispatch/work-order', {
+    corridor_id: document.getElementById('corridorInput').value || 'NH-44',
+    distress_class: p ? p.class_name : 'Pothole Cavity',
+    area_sqm: p && p.physical_dimensions ? p.physical_dimensions.surface_area_m2 : Number(document.getElementById('ipmArea').value),
+    depth_cm: Number(document.getElementById('ipmDepth').value),
+    pci_score: (state.last && state.last.astm_d6433_pci && state.last.astm_d6433_pci.pci_score != null) ? Math.round(state.last.astm_d6433_pci.pci_score) : 42,
+    lat: 12.9716, lon: 77.5946,
+  });
+  if (!res.ok) { toast('Work order failed', res.data.error || '', 'err'); return; }
+  state.workOrder = res.data;
+  document.getElementById('woOut').textContent = JSON.stringify(res.data, null, 2);
+  document.getElementById('woVerifyRow').classList.remove('hidden');
+  document.getElementById('woVerdict').textContent = '';
+  toast('Work order sealed', `SHA-256 ${String(res.data.sha256_cryptographic_seal).slice(0, 16)}…`, 'ok');
+});
+async function verifySeal(tamper) {
+  if (!state.workOrder) return;
+  const wo = JSON.parse(JSON.stringify(state.workOrder));
+  delete wo.model; delete wo.latency_ms;
+  if (tamper) wo.allocated_budget_inr = Number(wo.allocated_budget_inr) * 3;
+  const res = await api('/api/v1/dispatch/verify-seal', { work_order: wo });
+  const ok = res.ok && res.data.is_valid;
+  const el = document.getElementById('woVerdict');
+  el.textContent = ok ? '✓ seal valid — document unchanged' : '✗ seal broken — the document was altered';
+  el.className = `mt-2 text-[12px] font-mono ${ok ? 'text-emerald-400' : 'text-rose-400'}`;
+  if (tamper) document.getElementById('woOut').textContent = JSON.stringify(wo, null, 2);
+}
+document.getElementById('woVerify').addEventListener('click', () => verifySeal(false));
+document.getElementById('woTamper').addEventListener('click', () => verifySeal(true));
+
+// ══════════════════════════════════════════════════════════════════
+//  Model card
+// ══════════════════════════════════════════════════════════════════
+let modelCardLoaded = false;
+async function loadModelCard() {
+  if (modelCardLoaded) return; modelCardLoaded = true;
+  const [metrics, bench] = await Promise.all([api('/api/v1/training/metrics'), api('/api/v1/datasets/benchmarks')]);
+  const grid = document.getElementById('metricsGrid');
+  if (!metrics.ok) { grid.innerHTML = '<p class="text-[12px] text-slate-500">Training reports unavailable.</p>'; }
+  else {
+    const m = metrics.data;
+    const cards = [];
+    const push = (title, rep, extra) => {
+      if (!rep) return;
+      const acc = rep.held_out_validation_accuracy, base = rep.random_guess_baseline;
+      cards.push(`<div class="rounded-xl bg-ink-950/60 border border-slate-800 p-4">
+        <p class="text-[11px] uppercase tracking-wider text-slate-500">${title}</p>
+        <p class="text-3xl font-extrabold font-mono text-amber-400 mt-1">${acc != null ? (acc * 100).toFixed(1) + '%' : '—'}</p>
+        <p class="text-[11px] text-slate-400">held-out accuracy · random guess ${base != null ? (base * 100).toFixed(1) + '%' : '—'}</p>
+        <p class="text-[10.5px] text-slate-500 mt-2 font-mono">${rep.classifier || ''}</p>
+        <p class="text-[10.5px] text-slate-500">${extra}</p></div>`);
+    };
+    const v = m.vision || m.vision_report, i = m.imu || m.imu_report, deep = m.deep_vision;
+    // CNN-embedding heads arrive as cnn_head_<backbone>; the one the server loaded is flagged active.
+    const cnnHeads = Object.keys(m).filter(k => k.startsWith('cnn_head_')).map(k => m[k]);
+    const cnn = cnnHeads.find(r => r && r.active) || cnnHeads[0];
+    for (const rep of cnnHeads) {
+      const live = rep === cnn;
+      cards.push(`<div class="rounded-xl bg-ink-950/60 border ${live ? 'border-amber-500/60' : 'border-slate-800'} p-4">
+        <p class="text-[11px] uppercase tracking-wider ${live ? 'text-amber-500' : 'text-slate-500'}">
+          ${rep.backbone} embeddings → ${rep.head}${live ? ' · serving' : ''}</p>
+        <p class="text-3xl font-extrabold font-mono text-amber-400 mt-1">${(rep.held_out_test_accuracy * 100).toFixed(1)}%</p>
+        <p class="text-[11px] text-slate-400">macro-F1 ${rep.held_out_test_macro_f1} · random guess ${(rep.random_guess_baseline * 100).toFixed(1)}%</p>
+        <p class="text-[10.5px] text-slate-500 mt-2 font-mono">${rep.model || ''}</p>
+        <p class="text-[10.5px] text-slate-500">${rep.held_out_test_images} test images from ${rep.held_out_test_photographs} unseen photographs${
+          rep.handcrafted_baseline ? ` · hand-crafted baseline ${(rep.handcrafted_baseline.accuracy * 100).toFixed(1)}%` : ''}</p></div>`);
+    }
+    if (deep && deep.test) {
+      const t = deep.test, sp = deep.split || {};
+      cards.push(`<div class="rounded-xl bg-ink-950/60 border border-amber-600/40 p-4">
+        <p class="text-[11px] uppercase tracking-wider text-amber-500">Fine-tuned CNN · held-out test</p>
+        <p class="text-3xl font-extrabold font-mono text-amber-400 mt-1">${(t.accuracy * 100).toFixed(1)}%</p>
+        <p class="text-[11px] text-slate-400">macro-F1 ${t.macro_f1} · random guess ${(deep.random_guess_baseline * 100).toFixed(1)}%</p>
+        <p class="text-[10.5px] text-slate-500 mt-2 font-mono">${deep.model || ''}</p>
+        <p class="text-[10.5px] text-slate-500">${sp.test_images ?? '—'} test images from ${sp.test_groups ?? '—'} unseen photographs</p></div>`);
+    }
+    push('Vision baseline (HOG+SVM)', v, v ? `${v.held_out_validation_photos ?? '—'} held-out photos · ${v.train_photos ?? '—'} training photos` : '');
+    push('IMU shock classifier', i, i ? `${i.held_out_validation_windows ?? '—'} held-out windows` : '');
+    grid.innerHTML = cards.join('') || '<p class="text-[12px] text-slate-500">No training report on disk yet.</p>';
+    const deepCm = m.deep_vision && m.deep_vision.test && m.deep_vision.test.confusion_matrix;
+    // Show the confusion matrix of whichever model is actually serving predictions.
+    const cm = (cnn && cnn.confusion_matrix) || deepCm || (v && v.confusion_matrix);
+    const names = (cnn && cnn.class_names) || (m.deep_vision && m.deep_vision.class_names) || (v && v.class_names);
+    if (cm && names) {
+      const max = Math.max(...cm.flat(), 1);
+      document.getElementById('confusion').innerHTML =
+        `<table class="border-collapse"><tr><th></th>${names.map(n => `<th class="px-1 pb-1 text-[9px] text-slate-500 font-normal" style="writing-mode:vertical-rl;transform:rotate(180deg);height:88px">${n.split(' ')[0]}</th>`).join('')}</tr>` +
+        cm.map((row, r) => `<tr><td class="pr-2 text-[10px] text-slate-500 whitespace-nowrap text-right">${names[r].split(' ')[0]}</td>` +
+          row.map((val, c) => {
+            const a = val / max;
+            const bg = r === c ? `rgba(34,197,94,${0.12 + a * 0.8})` : `rgba(239,68,68,${0.08 + a * 0.7})`;
+            return `<td class="w-7 h-7 text-center font-mono text-[10px] border border-ink-950" style="background:${bg}">${val || ''}</td>`;
+          }).join('') + '</tr>').join('') + '</table>';
+    }
+  }
+  if (bench.ok) {
+    const inv = bench.data.labeled_photo_classes || {};
+    document.getElementById('datasetList').innerHTML = Object.entries(inv).map(([k, v]) =>
+      `<div class="flex justify-between gap-2 border-b border-slate-800/70 pb-1">
+        <span class="truncate text-slate-300">${k}</span>
+        <span class="font-mono text-slate-400 shrink-0">${v.distinct_source_photos} src / ${v.usable_photos}</span></div>`).join('') +
+      `<p class="text-[10.5px] text-slate-500 mt-2">IMU windows: ${JSON.stringify(bench.data.imu_telemetry_windows || {})}</p>`;
+  }
+  document.getElementById('limitsList').innerHTML = [
+    'Vision accuracy is limited by how few distinct source photos some classes have — a data problem, stated openly rather than hidden.',
+    'The IMU model scores 100% on held-out windows, but that data is simulated, not collected from a vehicle.',
+    'The ASTM deduct curve is an analytic stand-in for the published chart; the correction procedure is the real one.',
+    'No demographic inference is performed on people in frame, by design.',
+  ].map(t => `<li>${t}</li>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  System tab
+// ══════════════════════════════════════════════════════════════════
+const ENDPOINTS = [
+  ['GET', '/api/v1/health'], ['GET', '/api/v1/fleet/telemetry'], ['GET', '/api/v1/models/registry'],
+  ['GET', '/api/v1/datasets/benchmarks'], ['GET', '/api/v1/training/status'], ['GET', '/api/v1/vision/curated-videos'],
+  ['POST', '/api/v1/telemetry/imu'], ['POST', '/api/v1/pci/predict'], ['POST', '/api/v1/forecast/deterioration'],
+  ['POST', '/api/v1/traffic/analyze'], ['POST', '/api/v1/automotive/rl-action'],
+];
+document.getElementById('epSelect').innerHTML = ENDPOINTS.map(([m, p]) => `<option value="${m}|${p}">${m}  ${p}</option>`).join('');
+document.getElementById('epRun').addEventListener('click', async () => {
+  const [m, p] = document.getElementById('epSelect').value.split('|');
+  document.getElementById('epOut').textContent = 'sending…';
+  const res = await api(p, m === 'POST' ? {} : null);
+  document.getElementById('epOut').textContent = JSON.stringify(res.data, null, 2);
+});
+async function loadSystem() {
+  const [h, maps] = await Promise.all([api('/api/v1/health'), api('/api/v1/maps/status')]);
+  if (h.ok) {
+    document.getElementById('healthList').innerHTML = Object.entries(h.data.models || {}).map(([k, v]) => {
+      const good = String(v).startsWith('LOADED') || String(v).startsWith('READY');
+      return `<div class="flex justify-between gap-2"><span class="text-slate-400 truncate">${k}</span>
+        <span class="${good ? 'text-emerald-400' : 'text-amber-400'} shrink-0">${v}</span></div>`;
+    }).join('');
+  }
+  if (maps.ok) {
+    const s = maps.data.services || {};
+    document.getElementById('mapsStatus').innerHTML =
+      `<div class="flex justify-between gap-2 pb-1.5 mb-1.5 border-b border-slate-800"><span class="text-slate-400">provider</span><span class="text-sky-300 text-right">${maps.data.active_provider}</span></div>` +
+      Object.entries(s).map(([k, v]) => `<div class="flex justify-between gap-2"><span class="text-slate-400 truncate">${k}</span><span class="text-slate-300 text-right text-[10.5px] truncate" title="${v}">${v}</span></div>`).join('');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Guided demo
+// ══════════════════════════════════════════════════════════════════
+document.getElementById('demoBtn').addEventListener('click', async () => {
+  showTab('inspect');
+  toast('Guided demo', 'Analysing a dataset photo with the trained model…', 'info');
+  document.querySelector('.preset-btn').click();
+  await new Promise(r => setTimeout(r, 2600));
+  showTab('works');
+  toast('Costing', 'ASTM PCI and MoRTH tonnage computed on the server.', 'info');
+  await refreshPci(); await refreshIpm();
+  document.getElementById('woBtn').click();
+  await new Promise(r => setTimeout(r, 2200));
+  await verifySeal(true);
+  toast('Tamper check', 'One field was altered — the SHA-256 seal caught it.', 'warn');
+  await new Promise(r => setTimeout(r, 2400));
+  showTab('map');
+  toast('Corridor map', 'Defects merged across buses by GPS distance.', 'info');
+  await new Promise(r => setTimeout(r, 2600));
+  showTab('model');
+  toast('Model card', 'Measured accuracy, including where it falls short.', 'ok');
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  Boot
+// ══════════════════════════════════════════════════════════════════
+(async function boot() {
+  showTab('inspect');
+  await pollHealth();
+  setInterval(pollHealth, 20000);
+  refreshPci(); refreshIpm();
+})();
+</script>
+</body>
+</html>
