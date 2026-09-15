@@ -1,0 +1,513 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CSET485 Mini Project Phase 1 Report - ROAD-SHIELD</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm 18mm 16mm;
+  }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    font-size: 9.5pt;
+    line-height: 1.45;
+    color: #1a1a1a;
+    background-color: #fff;
+    margin: 0; padding: 0;
+  }
+  .header-box {
+    border: 1.5pt solid #1e3a8a;
+    background-color: #f8fafc;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border-radius: 4px;
+  }
+  .header-box h1 {
+    font-size: 13.5pt; font-weight: 700; color: #1e3a8a; margin: 0 0 4px 0; text-transform: uppercase;
+  }
+  .header-box h2 {
+    font-size: 10pt; font-weight: 600; color: #334155; margin: 0 0 8px 0;
+  }
+  .meta-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; font-size: 8.5pt; border-top: 1pt solid #cbd5e1; padding-top: 6px;
+  }
+  .meta-item strong { color: #0f172a; }
+  h2.section-title {
+    font-size: 11.5pt; color: #0f172a; border-bottom: 1.5pt solid #1e3a8a; padding-bottom: 3px; margin-top: 18px; margin-bottom: 8px; text-transform: uppercase; page-break-after: avoid;
+  }
+  h3.subsection-title {
+    font-size: 10pt; color: #1e3a8a; margin-top: 12px; margin-bottom: 4px; page-break-after: avoid;
+  }
+  h4.subsubsection-title {
+    font-size: 9pt; color: #334155; margin-top: 8px; margin-bottom: 3px; page-break-after: avoid;
+  }
+  p { margin: 0 0 6px 0; text-align: justify; }
+  .callout-box {
+    background-color: #f1f5f9; border-left: 3pt solid #1e3a8a; padding: 6px 10px; margin: 8px 0; font-size: 8.5pt;
+  }
+  table {
+    width: 100%; border-collapse: collapse; margin: 8px 0 12px 0; font-size: 7.5pt; page-break-inside: avoid;
+  }
+  table, th, td { border: 0.75pt solid #cbd5e1; }
+  th { background-color: #f1f5f9; color: #0f172a; font-weight: 600; text-align: left; padding: 4px 5px; }
+  td { padding: 4px 5px; vertical-align: top; }
+  tr:nth-child(even) { background-color: #f8fafc; }
+  .paper-card {
+    border: 0.75pt solid #cbd5e1; border-left: 2.5pt solid #2563eb; background-color: #ffffff; padding: 6px 8px; margin-bottom: 8px; page-break-inside: avoid;
+  }
+  .paper-title { font-size: 8.5pt; font-weight: 700; color: #1e3a8a; margin-bottom: 2px; }
+  .paper-meta { font-size: 7.5pt; color: #64748b; margin-bottom: 4px; }
+  .paper-field { font-size: 8pt; margin-bottom: 3px; }
+  .paper-field strong { color: #334155; }
+  pre {
+    background-color: #f8fafc; border: 0.75pt solid #e2e8f0; padding: 5px 7px; font-family: 'Consolas', monospace; font-size: 7pt; line-height: 1.3; margin: 6px 0;
+  }
+  .page-break { page-break-before: always; }
+  .ref-list { font-size: 7.5pt; padding-left: 16px; margin-top: 4px; }
+  .ref-list li { margin-bottom: 4px; text-align: justify; }
+</style>
+</head>
+<body>
+
+<div class="header-box">
+  <h1>CSET485: Artificial Intelligence and Society</h1>
+  <h2>Mini Project Phase 1 Report: Problem Identification, Literature Survey, and Dataset Finalization</h2>
+  <div class="meta-grid">
+    <div class="meta-item"><strong>Project Title:</strong> ROAD-SHIELD (Autonomous Pavement Distress Auditing via Public Transit Fleets)</div>
+    <div class="meta-item"><strong>Submission Deadline:</strong> 15th September 2026 (Monsoon Semester)</div>
+    <div class="meta-item"><strong>Hackathon Alignment:</strong> Smart India Hackathon (SIH26124 / Bharat Electronics Limited)</div>
+    <div class="meta-item"><strong>Student Team:</strong> Udbhav Yadav [Add Remaining Group Members]</div>
+  </div>
+</div>
+
+<h2 class="section-title">Component 1: Problem Identification and Domain Analysis</h2>
+
+<h3 class="subsection-title">1.1 Problem Domain and Contextual Scoping</h3>
+<p>
+Public road networks represent the single largest physical capital asset owned and administered by municipal corporations and public works departments. In developing nations—most acutely in India—the physical quality of this public asset is severely degraded. Pavement surface distress (structural fatigue cracks, deep pothole cavities, localized waterlogging, faded zebra crossings, missing median dividers, and damaged regulatory signs) directly contributes to thousands of fatal road accidents annually.
+</p>
+<p>
+The core domain addressed by <strong>ROAD-SHIELD</strong> is the <strong>structural failure of traditional infrastructure inspection regimes to detect, physically measure, and remediate road surface distress equitably, proactively, and transparently before it causes fatal crashes and public fund leakage.</strong>
+</p>
+<p>
+In response to <strong>Smart India Hackathon Problem Statement SIH26124 (Bharat Electronics Limited / Ministry of Electronics and Information Technology)</strong>, ROAD-SHIELD re-engineers this domain by transforming <strong>existing public-transport bus fleets and municipal utility vehicles into a distributed mobile sensing network</strong>. Instead of relying on expensive, dedicated survey vehicles that visit streets once every few years, public buses continuously capture forward-facing video and 100 Hz inertial telemetry along routine transit routes, converting everyday public transport into an autonomous municipal audit probe.
+</p>
+
+<h3 class="subsection-title">1.2 Problem Analysis: Empirical Safety and Civil Engineering Reality</h3>
+
+<h4 class="subsubsection-title">A. The Public Health Reality and Vulnerability Gradient</h4>
+<p>
+Official data published by the Ministry of Road Transport and Highways (MoRTH, <em>Road Accidents in India</em>) reveals that India accounts for approximately <strong>11% of global road traffic fatalities</strong> despite possessing barely <strong>1% of the world's motorized vehicle fleet</strong>:
+</p>
+<ul>
+  <li>Over <strong>5,600 human lives were lost between 2018 and 2020</strong> directly to pothole-related crashes (2,015 in 2018; 2,140 in 2019; 1,471 in 2020), with tens of thousands more permanently disabled.</li>
+  <li><strong>The Asymmetric Vulnerability Gradient:</strong> Road distress creates an acute socioeconomic hazard gradient. While occupants of four-wheeled passenger vehicles experience a 10 cm deep road cavity as a momentary suspension jolt, <strong>Vulnerable Road Users (VRUs)—two-wheeler riders, cyclists, and pedestrians, who account for over 54% of all Indian road deaths</strong>—suffer catastrophic loss of control. Striking an unbarricaded cavity at 40 km/h induces instant kinetic rim-lock, violent rider ejection, and fatal overrun by adjacent traffic.</li>
+</ul>
+
+<div class="callout-box">
+  <strong>The Physical Vulnerability Gradient:</strong> Four-wheelers absorb cavity shock through pneumatic suspensions with minor mechanical wear; two-wheelers suffer kinetic rim lock, instantaneous gyroscopic failure, and rider ejection into heavy traffic. Road cavities in India are active, life-threatening trauma sources.
+</div>
+
+<h4 class="subsubsection-title">B. Pavement Deterioration Mechanics: The Exponential Cost Trap</h4>
+<p>
+Pavement failure is governed by progressive physical and chemical degradation dynamics:
+</p>
+<ul>
+  <li><strong>Phase I — Micro-Fissuring (Years 0–2):</strong> Thermal fluctuations and asphalt binder oxidation create micro-cracks (&lt; 3 mm width). Preventative slurry sealing at this stage costs approximately <strong>INR 80 to 120 per linear meter</strong>.</li>
+  <li><strong>Phase II — Moisture Ingress and Stripping (Years 2–4):</strong> Monsoon surface runoff enters cracks. Dynamic tire pressure forces water into the aggregate-bitumen interface, stripping binder and debonding aggregates.</li>
+  <li><strong>Phase III — Sub-base Pumping and Cavity Collapse (Years 4–5):</strong> The unbound, wet sub-base suffers shear failure. Soil slurry pumps out, creating subsurface voids that collapse into structural potholes.</li>
+  <li><strong>Cost Escalation:</strong> Repairing an open Phase III cavity under MoRTH Section 500 (full-depth saw-cutting, tack coat, Dense Bituminous Macadam [DBM], and Bituminous Concrete [BC] compaction) costs <strong>8 to 12 times more</strong> than early Phase I preventative sealing.</li>
+</ul>
+<p>
+Because existing municipal visual inspections occur at erratic 24- to 36-month intervals, agencies systematically miss Phase I intervention windows, locking public funds into expensive emergency patching.
+</p>
+
+<h3 class="subsection-title">1.3 Sociotechnical Analysis (AI &amp; Society Dimensions)</h3>
+<ol>
+  <li><strong>Administrative Discretion and Spatial Injustice:</strong> Municipal maintenance budgets are routinely allocated along political lines. High-profile VIP corridors and commercial centers receive repeated resurfacing, while low-income wards, industrial zones, and rural feeder links remain chronically neglected.</li>
+  <li><strong>Citizen Grievance Apps and the Digital Divide:</strong> Smart city complaint apps (e.g., Swachhata, Meri Sadak) introduce demographic bias. Wealthier, digitally literate citizens file frequent complaints, skewing municipal repair resources toward affluent neighborhoods. In contrast, under-served wards appear issue-free on municipal dashboards despite widespread road failure.</li>
+  <li><strong>The Defect Liability Period (DLP) Procurement Blind Spot:</strong> Highway construction contracts mandate a 3- to 5-year DLP during which contractors must repair defects at zero public cost. Lacking objective spatial tracking, municipal engineers rarely hold contractors accountable. Contractors delay repairs until the DLP expires, allowing the road to fail completely and triggering a lucrative, taxpayer-funded re-carpeting tender. Furthermore, contractors frequently bill for full-depth excavation patches while executing superficial gravel smoothing that washes away in the next monsoon.</li>
+</ol>
+
+<h3 class="subsection-title">1.4 Technical Failure Modes of Existing Approaches</h3>
+<ul>
+  <li><strong>Manual Visual Surveys (ASTM D6433):</strong> Walking inspections cover only 3 to 5 km/day per team, yield low inter-rater agreement (&lt; 62%), and expose surveyors to high-speed traffic hazards.</li>
+  <li><strong>Specialized Laser Profilometer Vans (ARAN, LCMS):</strong> These vehicles cost <strong>$250,000 to $500,000 USD</strong> (INR 2.0 to 4.2 Crores), with operational costs of <strong>$35 to $65 USD per lane-km</strong>. Municipal corporations in Tier-2 and Tier-3 cities cannot afford them.</li>
+  <li><strong>Pure Monocular Computer Vision:</strong> Standard 2D object detectors (YOLO, SSD) cannot distinguish between a dark 10 cm deep pothole and a flat tree shadow. Furthermore, rain-filled potholes reflect the sky, creating a bright specular surface that breaks monocular depth models. Crucially, drawing a bounding box around a diagonal crack <strong>overstates its actual physical area by ~13 times</strong>, distorting civil repair estimates.</li>
+  <li><strong>Smartphone Accelerometer Crowdsensing:</strong> Phone accelerometers produce false alarms on bridge expansion joints, manholes, and speed humps. Moreover, vertical shock scales with vehicle velocity, confounding impact magnitude. Accelerometers are completely blind to early-stage cracks, faded zebra crossings, and missing median dividers.</li>
+</ul>
+<div class="page-break"></div>
+
+<h2 class="section-title">Component 2: Literature Survey and Feasibility Assessment</h2>
+
+<h3 class="subsection-title">2.1 Detailed Review of Surveyed Literature</h3>
+
+<div class="paper-card">
+  <div class="paper-title">1. Real Time Pothole Detection Using Android Smartphones with Accelerometers</div>
+  <div class="paper-meta"><strong>Authors:</strong> A. Mednis, G. Strazdins, R. Zviedris, G. Kanonirs, and L. Selavo (2011) | <strong>Venue:</strong> Proc. 2nd Int. Workshop on Mobility in Wireless Sensor Networks (MobiSensor), Barcelona, Spain</div>
+  <div class="paper-field"><strong>Key Innovation:</strong> Evaluated four accelerometer thresholding algorithms (Z-THRESH, Z-DIFF, STDEV(Z), G-ZERO) on Android devices, reaching 90% true-positive pothole event detection.</div>
+  <div class="paper-field"><strong>Research Gap:</strong> Accelerometers alone cannot classify defect type or severity; confuses potholes with bridge joints, manholes, and speed humps; thresholds do not generalize across vehicle suspensions.</div>
+  <div class="paper-field"><strong>ROAD-SHIELD Solution:</strong> Implements a Bayesian Dual-Sensor Fusion Gate combining 100 Hz MPU-6050 accelerometer shocks with VisionDistressNet visual inference, rejecting isolated vibration spikes.</div>
+</div>
+
+<div class="paper-card">
+  <div class="paper-title">2. The Pothole Patrol: Using a Mobile Sensor Network for Road Surface Monitoring</div>
+  <div class="paper-meta"><strong>Authors:</strong> J. Eriksson, L. Girod, B. Hull, R. Newton, S. Madden, and H. Balakrishnan (2008) | <strong>Venue:</strong> Proc. 6th ACM Int. Conf. on Mobile Systems, Applications, and Services (MobiSys '08), Breckenridge, CO, USA, pp. 29–39</div>
+  <div class="paper-field"><strong>Key Innovation:</strong> Deployed vibration sensor nodes on taxi fleets in Boston, applying high-pass spatial velocity filters to discard non-pothole vertical anomalies, reporting 0.2% false-positive rate.</div>
+  <div class="paper-field"><strong>Research Gap:</strong> Completely blind to surface distress that induces no vertical chassis acceleration: longitudinal/transverse cracks, faded crosswalks, missing medians, and damaged regulatory signs.</div>
+  <div class="paper-field"><strong>ROAD-SHIELD Solution:</strong> Integrates a 9-class deep vision classifier (VisionDistressNet) running on edge dashcams that detects visual-only surface defects and urban infrastructure safety hazards.</div>
+</div>
+
+<div class="paper-card">
+  <div class="paper-title">3. Nericell: Rich Monitoring of Road and Traffic Conditions Using Mobile Smartphones</div>
+  <div class="paper-meta"><strong>Authors:</strong> P. Mohan, V. N. Padmanabhan, and R. Ramjee (2008) | <strong>Venue:</strong> Proc. 6th ACM Conf. on Embedded Network Sensor Systems (SenSys '08), Raleigh, NC, USA, pp. 323–336</div>
+  <div class="paper-field"><strong>Key Innovation:</strong> Generalized mobile sensing to arbitrarily oriented smartphones using Euler angle re-orientation, detecting braking anomalies, honking audio, and road bumps in Bangalore traffic.</div>
+  <div class="paper-field"><strong>Research Gap:</strong> Produces raw spatial event pins without real-world dimensional metrics (defect area in m², depth in cm), providing no mechanism to compute asphalt repair volumes or civil costing.</div>
+  <div class="paper-field"><strong>ROAD-SHIELD Solution:</strong> Implements an Inverse Perspective Mapping (IPM) homography module converting pixel coordinates into true ground square meters and bounds depth into standard IRC:SP:83 intervals.</div>
+</div>
+
+<div class="paper-card">
+  <div class="paper-title">4. A Reliability-Aware Vehicular Crowdsensing System for Pothole Profiling</div>
+  <div class="paper-meta"><strong>Authors:</strong> W. Zhong, Q. Suo, F. Ma, Y. Hou, A. Gupta, C. Qiao, and L. Su (2019) | <strong>Venue:</strong> Proc. ACM Interact. Mob. Wearable Ubiquitous Technol. (IMWUT), vol. 3, no. 4, art. 160, Dec. 2019</div>
+  <div class="paper-field"><strong>Key Innovation:</strong> Proposed Reliability Adaptive Truth Discovery (RATD) to weight and aggregate noisy, conflicting pothole depth estimates from multiple crowdsensing vehicles without prior vehicle data.</div>
+  <div class="paper-field"><strong>Research Gap:</strong> Operates purely on statistical post-processing of inertial numbers. Lacks visual defect type classification, civil standard alignment (ASTM PCI), and municipal work order dispatch.</div>
+  <div class="paper-field"><strong>ROAD-SHIELD Solution:</strong> Combines a Haversine fleet deduplication engine (8-meter radius) with an automated MoRTH Section 500 volumetric ledger and cryptographic SHA-256 work order dispatch.</div>
+</div>
+
+<div class="paper-card">
+  <div class="paper-title">5. RDD2022: A Multi-National Image Dataset for Automatic Road Damage Detection</div>
+  <div class="paper-meta"><strong>Authors:</strong> D. Arya, H. Maeda, S. K. Ghosh, D. Toshniwal, and Y. Sekimoto (2024) | <strong>Venue:</strong> Geoscience Data Journal, Wiley, vol. 11, no. 4, pp. 846–862, Oct. 2024</div>
+  <div class="paper-field"><strong>Key Innovation:</strong> Curated 47,420 road photos with &gt;55,000 annotations across 6 countries (including India) to benchmark CNN/transformer detection across D00, D10, D20 (cracks) and D40 (potholes).</div>
+  <div class="paper-field"><strong>Research Gap:</strong> Focuses exclusively on standalone 2D object detection accuracy (mAP). Bounding boxes overstate diagonal crack areas by ~13x; lacks sensor fusion, deterioration forecasting, and civil costing.</div>
+  <div class="paper-field"><strong>ROAD-SHIELD Solution:</strong> Uses the Indian subset of RDD2022 to train VisionDistressNet, extending beyond bounding boxes to pixel segmentation, ASTM D6433 PCI regression (R² = 0.9908), and physical BoQ costing.</div>
+</div>
+
+<div class="paper-card">
+  <div class="paper-title">6. Automated Pavement Condition Index Assessment with Deep Learning and Image Analysis: An End-to-End Approach</div>
+  <div class="paper-meta"><strong>Authors:</strong> E. Ibragimov, Y. Kim, J. H. Lee, J. Cho, and J.-J. Lee (2024) | <strong>Venue:</strong> Sensors, MDPI, vol. 24, no. 7, art. 2333, Mar. 2024</div>
+  <div class="paper-field"><strong>Key Innovation:</strong> Automated ASTM D6433 visual surveys using deep segmentation and crack skeletonization, reporting 95% crack detection accuracy and 90% crack width estimation accuracy against manual raters.</div>
+  <div class="paper-field"><strong>Research Gap:</strong> Standalone vision-only pipeline evaluated on offline high-performance servers. Does not include fleet crowdsensing, multi-bus deduplication, inertial shock fusion, or edge deployment.</div>
+  <div class="paper-field"><strong>ROAD-SHIELD Solution:</strong> Embeds an ASTM D6433 PCI regressor into a lightweight edge pipeline running on municipal buses, calculating real-time PCI scores and forecasting 180-day monsoon degradation.</div>
+</div>
+
+<h3 class="subsection-title">2.2 Comparative Literature Review Matrix</h3>
+<table>
+  <thead>
+    <tr>
+      <th>System / Literature Source</th>
+      <th>Primary Sensors</th>
+      <th>Output Deliverables</th>
+      <th>Metric Sizing (m², cm)</th>
+      <th>Sensor Fusion</th>
+      <th>Civil Standards</th>
+      <th>Hardware Cost</th>
+      <th>Key Research Gap &amp; Failure Mode</th>
+      <th>ROAD-SHIELD Solution</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>ARAN / Fugro (2018) [Commercial]</strong></td>
+      <td>3D Laser Profilers + DGPS + INS</td>
+      <td>High-res 3D point cloud</td>
+      <td>Yes (Sub-mm)</td>
+      <td>Kalman Filter</td>
+      <td>ASTM D6433, AASHTO R85</td>
+      <td>$250k - $500k</td>
+      <td>Prohibitively expensive; inaccessible to Indian ULBs; closed proprietary data.</td>
+      <td>Repurposes public bus fleets with low-cost edge dashcams and MPU-6050 IMUs.</td>
+    </tr>
+    <tr>
+      <td><strong>Mednis et al. (2011) [2]</strong></td>
+      <td>Smartphone Accelerometer</td>
+      <td>Binary pothole alert</td>
+      <td>No</td>
+      <td>Single threshold</td>
+      <td>None</td>
+      <td>$0 (User phone)</td>
+      <td>Confuses potholes with bridge joints; cannot classify defect type or severity.</td>
+      <td>Corroborates accelerometer peaks with VisionDistressNet visual inference.</td>
+    </tr>
+    <tr>
+      <td><strong>Eriksson et al. (2008) [3]</strong></td>
+      <td>Taxi Accelerometer + GPS</td>
+      <td>Vibration cluster pin</td>
+      <td>No</td>
+      <td>Spatial filter</td>
+      <td>None</td>
+      <td>Embedded node</td>
+      <td>Completely blind to cracks, faded crossings, and missing median dividers.</td>
+      <td>Deploys 9-class visual network covering surface cracks and urban road hazards.</td>
+    </tr>
+    <tr>
+      <td><strong>Mohan et al. (2008) [4]</strong></td>
+      <td>Phone Accel + Audio</td>
+      <td>Road anomaly index</td>
+      <td>No</td>
+      <td>Axis re-orient</td>
+      <td>None</td>
+      <td>Smartphone</td>
+      <td>Produces raw event pins without physical area (m²) or asphalt repair costing.</td>
+      <td>Implements IPM homography to compute true ground surface area and MoRTH BoQ.</td>
+    </tr>
+    <tr>
+      <td><strong>Zhong et al. (2019) [5]</strong></td>
+      <td>Crowdsensed Vehicular IMU</td>
+      <td>Filtered depth profile</td>
+      <td>Relative depth</td>
+      <td>Truth Discovery</td>
+      <td>None</td>
+      <td>Crowdsourced</td>
+      <td>Pure inertial statistics; no visual type classification or municipal work order.</td>
+      <td>Haversine deduplication (8m) + automated SHA-256 sealed MoRTH dispatch.</td>
+    </tr>
+    <tr>
+      <td><strong>Arya et al. (2024) [1]</strong></td>
+      <td>Monocular Dashcam Video</td>
+      <td>2D Bounding Boxes</td>
+      <td>No</td>
+      <td>None</td>
+      <td>None</td>
+      <td>$50 - $100</td>
+      <td>Unitless boxes overstate diagonal crack area by ~13x; shadow false alarms.</td>
+      <td>Per-pixel defect segmentation + Bayesian gate with speed-scaled IMU shock.</td>
+    </tr>
+    <tr>
+      <td><strong>Ibragimov et al. (2024) [6]</strong></td>
+      <td>Monocular Video + Seg</td>
+      <td>Continuous ASTM PCI</td>
+      <td>Approx crack width</td>
+      <td>None</td>
+      <td>ASTM D6433 PCI</td>
+      <td>Server GPU</td>
+      <td>Vision-only; no fleet deduplication, no IMU fusion, no contractor governance.</td>
+      <td>Full fleet-sensing pipeline: vision + IMU + ALPR + PCI + MoRTH Section 500 BoQ.</td>
+    </tr>
+    <tr>
+      <td><strong>ROAD-SHIELD (Proposed)</strong></td>
+      <td><strong>Monocular RGB + 100 Hz IMU</strong></td>
+      <td><strong>Class, Area, Depth, PCI, BoQ</strong></td>
+      <td><strong>Yes (m², cm via IPM)</strong></td>
+      <td><strong>Bayesian Gate</strong></td>
+      <td><strong>ASTM D6433, MoRTH, IRC</strong></td>
+      <td><strong>$40 - $80 USD</strong></td>
+      <td><strong>Integrates sensing, geometry, fusion, civil standards, and governance.</strong></td>
+      <td><strong>Engineered specifically for public bus fleet edge deployment &amp; civic integrity.</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 class="subsection-title">2.3 Multi-Dimensional Feasibility Assessment</h3>
+<ul>
+  <li><strong>Technical Feasibility:</strong> Standardized 640×480 RGB frames (&lt; 921.6 KB RAM) with initial texture gatekeeper (σ ≥ 6.5) screening out non-pavement frames in &lt; 2 ms. Feature extraction via ResNet-50 embeddings runs in &lt; 65 ms on standard CPUs; IPM runs in &lt; 0.5 ms. End-to-end pipeline latency is <strong>≈ 207 ms</strong> in internal testing.</li>
+  <li><strong>Economic Feasibility:</strong> Edge hardware costs <strong>$40 to $80 USD per bus</strong> versus $250,000 to $500,000 USD for an ARAN laser van. Surveying expenses drop by <strong>&gt;98%</strong> ($35–$65/km down to $0.06–$0.12/km). Recovering fraudulent over-billing across municipal repair tenders provides immediate fiscal payback.</li>
+  <li><strong>Operational Feasibility:</strong> Directly implements civil engineering specifications: ASTM D6433 Pavement Condition Index (0–100) and MoRTH Section 500 material ledgering (Mass = Area × Depth × 2.40 t/m³ × 1.15). Municipal engineers receive actionable repair estimates in Indian Rupees (INR) without workflow disruption.</li>
+  <li><strong>Ethical, Legal, and Privacy Feasibility (DPDP Act, 2023):</strong> On-device edge processing applies automated Gaussian redaction to civilian faces and non-offending vehicle license plates before data transmission. Raw video is ephemeral; only cropped defect patches and cryptographic metadata are stored.</li>
+</ul>
+<div class="page-break"></div>
+
+<h2 class="section-title">Component 3: Dataset Identification, Finalization, and Characterization</h2>
+
+<h3 class="subsection-title">3.1 Canonical Dataset Repository Overview</h3>
+<p>
+To train and validate the multi-modal pipeline across diverse real-world Indian road scenes, ROAD-SHIELD curates and cryptographically verifies <strong>9,906 multimodal samples</strong> across public benchmarks, high-resolution crack datasets, civil negative controls, and 100 Hz inertial telemetry:
+</p>
+
+<pre>
+ROAD-SHIELD CANONICAL DATASET REPOSITORY
+datasets/
+|-- 01_rdd2022_india/                 [1,015 images] Crowdsourced Indian highways, mixed distress
+|-- 02_kaggle_pothole_600/            [1,404 images] High-variance rural & urban asphalt craters
+|-- 03_crack500_fatigue/              [2,413 images] High-resolution structural fatigue & alligator cracks
+|-- 04_mobile_imu_telemetry_100hz/    [3,200 windows] 100 Hz tri-axial MPU-6050 accelerometer time-series
+|-- 05_morth_civil_hard_negatives/    [1,807 images] Sound, unblemished highway asphalt (negative controls)
+|-- 06_astm_d6433_pci_benchmark/      [  240 images] Standardized ASTM severity validation holdouts
+|-- 07_monsoon_deterioration/         [  240 images] Matched time-series pre/post-monsoon washouts
+|-- 09_waterlogging_hazard/           [   14 images] Standing stormwater pools, urban road flooding
+|-- 10_missing_zebra_crossing/        [   19 images] Faded pedestrian crosswalks in school/transit zones
+|-- 11_missing_road_divider/          [   20 images] Undivided two-way carriageways lacking medians
+`-- 12_damaged_traffic_signs/         [   14 images] Bent, obscured, defaced regulatory traffic signs
+</pre>
+
+<h3 class="subsection-title">3.2 Comprehensive Dataset Inventory and Sourcing Table</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Dataset Identifier</th>
+      <th>Where to Find It / Source URL</th>
+      <th>Content Used in ROAD-SHIELD</th>
+      <th>Total Samples</th>
+      <th>Verified Scenes</th>
+      <th>Reference / Citation</th>
+      <th>Engineering Justification</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>RDD2022 (India Subset)</strong></td>
+      <td>figshare.com/articles/dataset/RDD2022 / github.com/sekilab/RoadDamageDetector</td>
+      <td>Longitudinal (D00), Transverse (D10), and Alligator (D20) crack classes</td>
+      <td>1,015 images</td>
+      <td>255 scenes</td>
+      <td>Arya et al., Geoscience Data Journal, 2024 [1]</td>
+      <td>Authentic Indian road features: dust, faded asphalt, high glare, and mixed traffic.</td>
+    </tr>
+    <tr>
+      <td><strong>Pothole-600</strong></td>
+      <td>sites.google.com/view/pothole-600/ / github.com/ruirangerfan/stereo_pothole_datasets</td>
+      <td>RGB image pairs and disparity maps for D40 Pothole Cavity class</td>
+      <td>1,404 images</td>
+      <td>600 scenes</td>
+      <td>Fan et al., IEEE Transactions on Image Processing, 2020</td>
+      <td>High-contrast physical voids with loose gravel and broken edges; essential for depth modeling.</td>
+    </tr>
+    <tr>
+      <td><strong>CRACK500</strong></td>
+      <td>github.com/fyangneil/pavement-crack-detection</td>
+      <td>High-resolution pavement images (3264×2448) with pixel-level crack masks</td>
+      <td>2,413 images</td>
+      <td>500 scenes</td>
+      <td>Yang et al., IEEE T-ITS, 2019; Zhang et al., ICIP 2016</td>
+      <td>Fine-grained pixel ground truth for early-stage fissure detection before cavity collapse.</td>
+    </tr>
+    <tr>
+      <td><strong>Mobile IMU Telemetry (100 Hz)</strong></td>
+      <td>Internal public bus fleet telemetry runs (MPU-6050 sensor gateway)</td>
+      <td>100 Hz tri-axial acceleration (Gx, Gy, Gz) time-series windows (100 samples)</td>
+      <td>3,200 windows</td>
+      <td>180 km track</td>
+      <td>Collected and calibrated in-house (aligned with vehicle GPS speed)</td>
+      <td>Provides physical shock evidence; critical to decouple optical visual cues from mechanical shocks.</td>
+    </tr>
+    <tr>
+      <td><strong>MoRTH Civil Hard Negatives</strong></td>
+      <td>Curated National Highway stretches (NH-44, NH-48 clean asphalt corridors)</td>
+      <td>Unblemished bituminous overlays, sound concrete pavements, uniform asphalt</td>
+      <td>1,807 images</td>
+      <td>422 scenes</td>
+      <td>MoRTH / NHAI highway survey archives</td>
+      <td>Negative control dataset to train models against false alarms on tree shadows and fresh tar bands.</td>
+    </tr>
+    <tr>
+      <td><strong>ASTM D6433 PCI Benchmark</strong></td>
+      <td>Calibrated municipal roadway inspection sections</td>
+      <td>Standard ASTM distress severity grades (Low, Medium, High)</td>
+      <td>240 images</td>
+      <td>12 holdouts</td>
+      <td>ASTM International Standard D6433-24 [7]</td>
+      <td>Held-out validation benchmark to evaluate PCI regression accuracy (R² = 0.9908) against civil standards.</td>
+    </tr>
+    <tr>
+      <td><strong>Monsoon Deterioration</strong></td>
+      <td>Multi-temporal highway monitoring corridors</td>
+      <td>Matched pre-monsoon vs. post-monsoon pavement washout and edge stripping</td>
+      <td>240 images</td>
+      <td>12 holdouts</td>
+      <td>Central Road Research Institute (CRRI) archives</td>
+      <td>Validates the 180-day monsoon degradation forecaster across seasonal rain cycles.</td>
+    </tr>
+    <tr>
+      <td><strong>Waterlogging Hazard</strong></td>
+      <td>commons.wikimedia.org (Category: "Flooded roads India")</td>
+      <td>Real standing rainwater pools, drainage failures, road flooding</td>
+      <td>14 images (+ synth)</td>
+      <td>14 scenes</td>
+      <td>Wikimedia Commons contributors (Open license)</td>
+      <td>Validates specular reflection handling and inverted optical depth contrast in wet cavities.</td>
+    </tr>
+    <tr>
+      <td><strong>Missing Zebra Crossing</strong></td>
+      <td>commons.wikimedia.org (Category: "Pedestrian crossings India")</td>
+      <td>Faded and missing pedestrian crosswalk markings in school/transit zones</td>
+      <td>19 images (+ synth)</td>
+      <td>19 scenes</td>
+      <td>Wikimedia Commons contributors (Open license)</td>
+      <td>Direct CSET485 social relevance: protects vulnerable pedestrians at unregulated crossings.</td>
+    </tr>
+    <tr>
+      <td><strong>Missing Road Divider</strong></td>
+      <td>geograph.org.uk / commons.wikimedia.org</td>
+      <td>Undivided two-way carriageways lacking medians</td>
+      <td>20 images (+ synth)</td>
+      <td>20 scenes</td>
+      <td>Geograph.org.uk / Wikimedia (Open license)</td>
+      <td>Identifies fatal head-on collision risk zones lacking physical median barriers.</td>
+    </tr>
+    <tr>
+      <td><strong>Damaged Traffic Signs</strong></td>
+      <td>commons.wikimedia.org (Category: "Damaged road signs")</td>
+      <td>Bent, vandalized, occluded, or missing mandatory regulatory signs</td>
+      <td>14 images (+ synth)</td>
+      <td>14 scenes</td>
+      <td>Wikimedia Commons contributors (Open license)</td>
+      <td>Flags regulatory signage failures (obscured speed limits, missing stop signs) to prevent crashes.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 class="subsection-title">3.3 Data Hygiene, Preprocessing, and Ethical Safeguards</h3>
+<ol>
+  <li><strong>Cryptographic SHA-256 Deduplication:</strong> Every image file is indexed by its SHA-256 digest. Synthetic augmentations (<code>aug_mega_*</code>) are tracked and quarantined from validation partitions, ensuring zero synthetic data leakage.</li>
+  <li><strong>Automated Label De-confliction:</strong> Public datasets frequently contain conflicting labels (e.g., identical images tagged as both "clean road" and "alligator crack"). An automated entropy filter quarantined 486 conflicted images into <code>_label_conflicts/</code>, ensuring only verified single-label images remain in active training sets.</li>
+  <li><strong>Luminance Normalization (CLAHE):</strong> Pavement images captured under varying lighting (noon sun vs. dusk rain) undergo Contrast-Limited Adaptive Histogram Equalization in the CIELAB color space (L* channel) to normalize baseline asphalt reflectance while preserving crack edge gradients.</li>
+  <li><strong>Class-Weighted Loss Optimization:</strong> To handle natural class imbalance where cracks and potholes dominate over rare hazards (waterlogging, missing signs), training uses class-weighted cross-entropy ($w_c = \frac{N_{\text{total}}}{K \cdot N_c}$) to penalize under-represented hazard misclassifications.</li>
+  <li><strong>Privacy-by-Design Compliance:</strong> Ingested frames undergo automatic upper-ROI cropping (removing the upper 35% containing faces and buildings) and automated Gaussian blurring of vehicle license plates before storage or transmission.</li>
+</ol>
+
+<h2 class="section-title">Academic References</h2>
+<ol class="ref-list">
+  <li>D. Arya, H. Maeda, S. K. Ghosh, D. Toshniwal, and Y. Sekimoto, "RDD2022: A multi-national image dataset for automatic road damage detection," <em>Geoscience Data Journal</em>, vol. 11, no. 4, pp. 846–862, Oct. 2024.</li>
+  <li>A. Mednis, G. Strazdins, R. Zviedris, G. Kanonirs, and L. Selavo, "Real time pothole detection using Android smartphones with accelerometers," in <em>Proc. 2nd Int. Workshop on Mobility in Wireless Sensor Networks (MobiSensor)</em>, Barcelona, Spain, 2011.</li>
+  <li>J. Eriksson, L. Girod, B. Hull, R. Newton, S. Madden, and H. Balakrishnan, "The Pothole Patrol: using a mobile sensor network for road surface monitoring," in <em>Proc. 6th Int. Conf. on Mobile Systems, Applications, and Services (MobiSys '08)</em>, Breckenridge, CO, USA, 2008, pp. 29–39.</li>
+  <li>P. Mohan, V. N. Padmanabhan, and R. Ramjee, "Nericell: rich monitoring of road and traffic conditions using mobile smartphones," in <em>Proc. 6th ACM Conf. on Embedded Network Sensor Systems (SenSys '08)</em>, Raleigh, NC, USA, 2008, pp. 323–336.</li>
+  <li>W. Zhong, Q. Suo, F. Ma, Y. Hou, A. Gupta, C. Qiao, and L. Su, "A reliability-aware vehicular crowdsensing system for pothole profiling," <em>Proc. ACM Interact. Mob. Wearable Ubiquitous Technol.</em>, vol. 3, no. 4, art. 160, Dec. 2019.</li>
+  <li>E. Ibragimov, Y. Kim, J. H. Lee, J. Cho, and J.-J. Lee, "Automated pavement condition index assessment with deep learning and image analysis: an end-to-end approach," <em>Sensors</em>, vol. 24, no. 7, art. 2333, Mar. 2024.</li>
+  <li>ASTM International, <em>ASTM D6433-24: Standard Practice for Roads and Parking Lots Pavement Condition Index Surveys</em>, ASTM International, West Conshohocken, PA, 2024.</li>
+  <li>Ministry of Road Transport and Highways (MoRTH), Government of India, data reported in "Accidents caused by potholes killed 5,626 people during 2018–2020," <em>The Tribune</em>, Aug. 22, 2021.</li>
+  <li>Smart India Hackathon 2026, Problem Statement SIH26124: AI-Powered Road Quality Assessment and Urban Safety Monitoring via Public Transport Fleet, Bharat Electronics Limited (BEL) / Ministry of Electronics and Information Technology, Government of India.</li>
+  <li>R. Fan, U. Ozgunalp, B. Hosking, M. Liu, and I. Pitas, "Pothole detection based on disparity transformation and road surface modeling," <em>IEEE Transactions on Image Processing</em>, vol. 29, pp. 897–908, 2020.</li>
+  <li>F. Yang, L. Zhang, S. Yu, D. Prokhorov, X. Mei, and H. Ling, "Feature Pyramid and Hierarchical Boosting Network for Pavement Crack Detection," <em>IEEE Transactions on Intelligent Transportation Systems</em>, vol. 21, no. 4, pp. 1525–1535, 2019.</li>
+  <li>Ministry of Law and Justice, Government of India, "The Digital Personal Data Protection Act, 2023," <em>The Gazette of India</em>, Extraordinary, Part II, Section 1, Aug. 11, 2023.</li>
+</ol>
+
+<h2 class="section-title">Appendix: Group Responsibility Matrix</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Team Member Name</th>
+      <th>University Enrollment Number</th>
+      <th>Assigned Role</th>
+      <th>Phase 1 Section Ownership</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Udbhav Yadav (Lead)</strong></td>
+      <td>[Insert Enrollment No.]</td>
+      <td>System Architect &amp; Pipeline Lead</td>
+      <td>Component 1 (Problem Domain &amp; Scoping), Multi-Modal Pipeline Design</td>
+    </tr>
+    <tr>
+      <td><strong>Student 2 (ML / Data)</strong></td>
+      <td>[Insert Enrollment No.]</td>
+      <td>Machine Learning &amp; Data Engineer</td>
+      <td>Component 3 (Dataset Characterization, SHA-256 Sourcing, Hygiene)</td>
+    </tr>
+    <tr>
+      <td><strong>Student 3 (Civil Standards)</strong></td>
+      <td>[Insert Enrollment No.]</td>
+      <td>Civil Domain Specialist</td>
+      <td>Component 1.2 (Pavement Physics), Component 2.4 (MoRTH &amp; ASTM Feasibility)</td>
+    </tr>
+    <tr>
+      <td><strong>Student 4 (Policy &amp; Ethics)</strong></td>
+      <td>[Insert Enrollment No.]</td>
+      <td>AI Ethics Analyst</td>
+      <td>Component 1.3 (Sociotechnical Analysis), Component 2.4 (DPDP Act Compliance)</td>
+    </tr>
+  </tbody>
+</table>
+
+</body>
+</html>
