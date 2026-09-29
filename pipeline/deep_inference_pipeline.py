@@ -258,25 +258,48 @@ class DeepInferencePipeline:
         traffic_analysis["total_vehicles_detected"] = len(vehicle_detections)
         primary_vehicle = vehicle_detections[0] if vehicle_detections else None
 
+        # Withhold the upper 82% of detected vehicles and pedestrians from the
+        # road-defect segmentation mask so dark car tires, wheel arches, and
+        # windshields are not proposed as pavement cavities, while leaving the
+        # bottom 18% tire-to-road contact strip unmasked.
+        obj_mask = np.zeros((H, W), dtype=bool)
+        for obj in pedestrians + vehicle_detections:
+            ox, oy, ow, oh = obj["bbox_pixels"]
+            oy1 = max(oy, oy + int(oh * 0.82))
+            obj_mask[max(0, oy):min(H, oy1), max(0, ox):min(W, ox + ow)] = True
+        self._object_mask = obj_mask if obj_mask.any() else None
+
         # Crack and pothole candidates come from the segmenter's mask; the
         # brightness scan supplies everything the segmenter has no class for
-        # (waterlogging, signage, markings) and is the whole proposal stage when
-        # no segmenter is loaded. See _segmentation_proposals for why.
+        # (waterlogging, signage, markings), water-filled / rim-fragmented
+        # cavities, and is the whole proposal stage when no segmenter is loaded.
         seg_boxes = self._segmentation_proposals(H, W)
         heuristic = self.cv_detector.extract_salient_regions(img_np, excluded_boxes=pedestrians)
-        if seg_boxes:
-            heuristic = [b for b in heuristic
-                         if not any(self._boxes_overlap(b, sb) for sb in seg_boxes)]
-        bboxes = seg_boxes + heuristic
 
         # STAGE 4: pedestrian entries
         detections = [self._build_pedestrian_entry(p) for p in pedestrians]
 
         # STAGE 4/5: VisionDistressNet classification + IPM geometry per candidate region
-        for bbox in bboxes:
+        self._has_confirmed_seg_distress = False
+        confirmed_seg_boxes = []
+        for bbox in seg_boxes:
             entry = self._classify_region(img_np, gray, bbox, W, H, mean_intensity)
             if entry is not None:
                 detections.append(entry)
+                confirmed_seg_boxes.append(bbox)
+                if entry.get("is_distress"):
+                    self._has_confirmed_seg_distress = True
+
+        if confirmed_seg_boxes:
+            heuristic = [b for b in heuristic
+                         if not any(self._boxes_overlap(b, sb) for sb in confirmed_seg_boxes)]
+        bboxes = seg_boxes + heuristic
+        for bbox in heuristic:
+            entry = self._classify_region(img_np, gray, bbox, W, H, mean_intensity)
+            if entry is not None:
+                detections.append(entry)
+                if entry.get("is_distress"):
+                    self._has_confirmed_seg_distress = True
 
         # Corridor-level hazard check (Waterlogging, Missing Zebra Crossing, Missing Road Divider, Damaged Sign)
         # when no region-level distress was found.
@@ -709,6 +732,15 @@ class DeepInferencePipeline:
                                  interpolation=_cv2.INTER_NEAREST).astype(bool)
             mask = mask.copy()
             mask[pm] = 0
+        obj_m = getattr(self, "_object_mask", None)
+        if obj_m is not None:
+            import cv2 as _cv2
+            om = obj_m
+            if om.shape[:2] != mask.shape[:2]:
+                om = _cv2.resize(om.astype(_np.uint8), (mask.shape[1], mask.shape[0]),
+                                 interpolation=_cv2.INTER_NEAREST).astype(bool)
+            mask = mask.copy()
+            mask[om] = 0
         mh, mw = mask.shape[:2]
         frame_px = float(mh * mw)
         sx, sy = W / float(mw), H / float(mh)
@@ -829,6 +861,64 @@ class DeepInferencePipeline:
         area = max(1, min(H, by + bh) - max(0, by)) * max(1, min(W, bx + bw) - max(0, bx))
         return float(mask.sum()) / float(area)
 
+    def _verify_rim_fragmented_cavity(self, img_np, cls_id, bx, by, bw, bh, H, W, crop_conf):
+        """
+        Verifies a water-filled or rim-fragmented cavity when no single
+        connected component in mask_work cleared the size floor on its own.
+        Requires four independent checks to pass simultaneously:
+          1. Region classifier confidence >= 0.60.
+          2. Not painted road markings (_paint_mask covers <= 2% of region).
+          3. Segmenter probability map inside [bx, by, bw, bh] has at least
+             min_px pixels above the calibrated class threshold and max >= 0.50.
+          4. Road ROI crop (y >= ROAD_ROI_TOP_FRACTION * H) independently
+             classifies as the same defect class with confidence >= 0.65.
+        """
+        if crop_conf < 0.60:
+            return None
+        paint = getattr(self, "_paint_mask", None)
+        if paint is not None:
+            sub_paint = paint[max(0, by):min(H, by + bh), max(0, bx):min(W, bx + bw)]
+            if sub_paint.size and (float(sub_paint.sum()) / float(sub_paint.size)) > 0.02:
+                return None
+        seg = getattr(self, "_seg_out", None)
+        if seg is None:
+            return None
+        p_key = "proba_crack" if cls_id == 1 else "proba_pothole"
+        t_key = "crack" if cls_id == 1 else "pothole"
+        pp = seg.get(p_key)
+        if pp is None:
+            return None
+        mh, mw = pp.shape[:2]
+        wy0 = max(0, int(by * mh / float(H)))
+        wy1 = min(mh, int(round((by + bh) * mh / float(H))))
+        wx0 = max(0, int(bx * mw / float(W)))
+        wx1 = min(mw, int(round((bx + bw) * mw / float(W))))
+        sub_pp = pp[wy0:wy1, wx0:wx1]
+        if sub_pp.size == 0:
+            return None
+        thresh = float((getattr(self.segmenter, "thresholds", None) or {}).get(
+            t_key, 0.20 if cls_id == 2 else 0.50
+        ))
+        frac_cfg = (self.MIN_COMPONENT_FRACTION.get(t_key, 0.004)
+                    if isinstance(self.MIN_COMPONENT_FRACTION, dict)
+                    else float(self.MIN_COMPONENT_FRACTION))
+        min_px = max(12, int(float(frac_cfg) * mh * mw))
+        active_px = int((sub_pp >= thresh).sum())
+        if active_px < min_px or float(sub_pp.max()) < max(0.50, self._component_floor(cls_id)):
+            return None
+        roi_crop = img_np[int(H * self.ROAD_ROI_TOP_FRACTION):, :]
+        if roi_crop.size == 0:
+            return None
+        try:
+            roi_pred = self.vision_model.predict_image(roi_crop)
+        except Exception as e:
+            self._classifier_failures = getattr(self, "_classifier_failures", 0) + 1
+            self._classifier_last_error = str(e)
+            return None
+        if roi_pred.get("class_id") != cls_id or float(roi_pred.get("confidence", 0.0)) < 0.65:
+            return None
+        return max(crop_conf, float(roi_pred.get("confidence", crop_conf)))
+
     def _classify_region(self, img_np, gray, bbox, W, H, mean_intensity):
         """
         Crops one candidate region, classifies it, and prices the repair.
@@ -857,8 +947,31 @@ class DeepInferencePipeline:
         if crop.size == 0:
             return None
 
+        from_segmenter = len(bbox) > 6 and bbox[6] == "segmentation"
         try:
             pred = self.vision_model.predict_image(crop)
+            if (not from_segmenter
+                    and not getattr(self, "_has_confirmed_seg_distress", False)
+                    and pred["class_id"] in (0, 3)
+                    and (bw * bh) >= 0.08 * W * H):
+                ctx_x0 = max(10, bx - int(bw * 0.15))
+                ctx_y0 = max(int(H * self.ROAD_ROI_TOP_FRACTION), by - int(bh * 0.25))
+                ctx_x1 = min(W - 10, bx + bw + int(bw * 0.15))
+                ctx_y1 = min(H - 10, by + bh + int(bh * 0.10))
+                ctx_crop = img_np[ctx_y0:ctx_y1, ctx_x0:ctx_x1]
+                if ctx_crop.size > 0:
+                    ctx_pred = self.vision_model.predict_image(ctx_crop)
+                    if ctx_pred["class_id"] in (1, 2) and float(ctx_pred.get("confidence", 0.0)) >= 0.60:
+                        pred = ctx_pred
+                        bx, by = ctx_x0, ctx_y0
+                        bw, bh = ctx_x1 - ctx_x0, ctx_y1 - ctx_y0
+                        if bw * bh > 0.50 * W * H:
+                            scale = (0.48 * W * H / float(bw * bh)) ** 0.5
+                            cx, cy = bx + bw / 2.0, by + bh / 2.0
+                            nw, nh = max(8, int(bw * scale)), max(8, int(bh * scale))
+                            bx = max(0, min(W - nw, int(round(cx - nw / 2.0))))
+                            by = max(0, min(H - nh, int(round(cy - nh / 2.0))))
+                            bw, bh = nw, nh
         except Exception as e:
             # One region's classification failed. The frame is still worth
             # reporting, but the COUNT of detections in it is now unreliable,
@@ -873,7 +986,6 @@ class DeepInferencePipeline:
         if float(pred.get("confidence", 0.0)) < self.MIN_REPORT_CONFIDENCE:
             return None
 
-        from_segmenter = len(bbox) > 6 and bbox[6] == "segmentation"
         if from_segmenter and cls_id not in (1, 2):
             return None
         if from_segmenter and cls_id in (1, 2) and int(bbox[5]) in (1, 2):
@@ -885,35 +997,26 @@ class DeepInferencePipeline:
                     pred["class_id"] = cls_id
                     pred["class_name"] = VisionDistressNet.CLASS_NAMES[cls_id]
         if cls_id in (1, 2) and not from_segmenter:
-            # WHERE a crack or pothole is, is the segmenter's question. The
-            # brightness grid merges into one rectangle over the whole
-            # carriageway on any textured road - it was producing boxes at 0.61
-            # of the frame and those were being priced as single repairs - so
-            # when a segmenter is loaded the grid may not raise a crack or a
-            # pothole at all. It still supplies the classes the segmenter has no
-            # pixels for: waterlogging, signage, markings.
-            #
-            # Measured through audit_image() over 36 clean and 24 annotated
-            # photographs, with the grid allowed to raise defects and with it
-            # closed (mask proposals at 0.004 / 0.45 in both cases):
-            #
-            #   grid allowed (size-capped + agreement gate)   19.4% FP   87.5% found
-            #   grid closed                                    8.3% FP   87.5% found
-            #
-            # It contributed four false positives and not one extra detection,
-            # so it is closed. This is not a mute button: closing it at a
-            # stricter mask setting (0.002 / 0.70) DID collapse detection to
-            # 20.8%, which is why both numbers are printed at every setting in
-            # scripts/tune_proposals.py rather than only the flattering one.
             if getattr(self, "segmenter", None) is not None and self.segmenter.is_ready:
-                return None
-            # No segmenter on disk. The grid is the only proposal source, so it
-            # is allowed to raise defects - but never one covering most of the
-            # frame, and the area it yields is labelled a box estimate
-            # downstream rather than a measurement.
-            box_fraction = (bw * bh) / float(max(1, W * H))
-            if box_fraction > self.MAX_HEURISTIC_BOX_FRACTION:
-                return None
+                if getattr(self, "_has_confirmed_seg_distress", False):
+                    return None
+                rescued_conf = self._verify_rim_fragmented_cavity(
+                    img_np, cls_id, bx, by, bw, bh, H, W, float(pred.get("confidence", 0.0))
+                )
+                if rescued_conf is None:
+                    return None
+                pred["confidence"] = round(rescued_conf, 4)
+                if bw * bh > 0.50 * W * H:
+                    scale = (0.48 * W * H / float(bw * bh)) ** 0.5
+                    cx, cy = bx + bw / 2.0, by + bh / 2.0
+                    nw, nh = max(8, int(bw * scale)), max(8, int(bh * scale))
+                    bx = max(0, min(W - nw, int(round(cx - nw / 2.0))))
+                    by = max(0, min(H - nh, int(round(cy - nh / 2.0))))
+                    bw, bh = nw, nh
+            else:
+                box_fraction = (bw * bh) / float(max(1, W * H))
+                if box_fraction > self.MAX_HEURISTIC_BOX_FRACTION:
+                    return None
 
         bx_norm, by_norm = round(bx / float(W), 4), round(by / float(H), 4)
         bw_norm, bh_norm = round(bw / float(W), 4), round(bh / float(H), 4)
