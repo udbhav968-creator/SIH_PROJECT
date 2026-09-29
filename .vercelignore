@@ -7,7 +7,6 @@ datasets/04_mobile_imu_telemetry_100hz/imu_shock_100hz_train.npz
 datasets/04_mobile_imu_telemetry_100hz/imu_telemetry_sample.csv
 checkpoints/cnn_head_resnet50.joblib
 checkpoints/cnn_backbone_resnet50.onnx
-training/**
 scratch/**
 tests/**
 .venv/**
