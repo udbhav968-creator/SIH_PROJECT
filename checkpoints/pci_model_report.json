@@ -1,0 +1,33 @@
+{
+  "astm_density_grid": [
+    0.0,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
+    20.0,
+    35.0,
+    50.0,
+    75.0,
+    100.0
+  ],
+  "feature_names": [
+    "crack_density_pct",
+    "crack_severity_num",
+    "pothole_count",
+    "pothole_density_pct",
+    "pothole_severity_num",
+    "excess_rutting_mm",
+    "excess_iri_m_km",
+    "excess_age_yr"
+  ],
+  "held_out_r2": 0.9415,
+  "held_out_mae": 3.6291,
+  "held_out_rmse": 6.6854,
+  "sklearn_version": "1.9.0",
+  "trained_at_unix": 1790695496,
+  "train_records": 2560,
+  "held_out_test_records": 640,
+  "basis": "Digitized ASTM D6433-20 empirical deduct curves + monotonic HistGradientBoostingRegressor"
+}

@@ -1,19 +1,52 @@
 {
-  "dataset_name": "Mobile IMU 100Hz Pavement Vibration & Dynamic Shockwave Benchmark",
-  "source_citation": "ROAD-SHIELD MoRTH Patrol Fleet Sensor Logs (NH-44 & NH-48 Surveys)",
-  "sampling_frequency_hz": 100,
+  "dataset_name": "Indian Road Vehicular IMU Tri-Axial Accelerometer Benchmark",
+  "source_citation": "Real field-recorded Indian road accelerometer logs from VishalSingh25/Pothole-Project (10 drive CSV logs across plain road, unmarked speed breakers/joints, marked speed breakers/rumble strips, and pothole corridors)",
+  "source_url": "https://github.com/VishalSingh25/Pothole-Project/tree/master/data",
   "window_size_timesteps": 100,
-  "window_duration_seconds": 1.0,
   "channels": [
-    "Ax (Lateral m/s\u00b2)",
-    "Ay (Longitudinal m/s\u00b2)",
-    "Az (Vertical Shock m/s\u00b2)"
+    "Ax (Lateral m/s^2)",
+    "Ay (Longitudinal m/s^2)",
+    "Az (Vertical Shock m/s^2)"
   ],
-  "total_sequences": 15000,
+  "raw_csv_rows": {
+    "plain_road_1.csv": 53970,
+    "plain_road_2.csv": 31769,
+    "plain_road_3.csv": 10664,
+    "plain_road_4.csv": 6883,
+    "unmarked_sb_1.csv": 46507,
+    "unmarked_sb_2.csv": 8985,
+    "unmarked_sb_3.csv": 3228,
+    "marked_sb_1.csv": 19955,
+    "potholes_1.csv": 7046,
+    "potholes_2.csv": 16494
+  },
+  "total_raw_rows": 205501,
+  "train_windows": 688,
+  "val_windows": 164,
+  "split_policy": "Non-overlapping 100-sample windows sliced in temporal order; first 80% of each drive log assigned to train, final 20% to val, with a guard gap between splits.",
+  "per_class_counts": {
+    "0": {
+      "train_windows": 448,
+      "val_windows": 109
+    },
+    "1": {
+      "train_windows": 139,
+      "val_windows": 32
+    },
+    "2": {
+      "train_windows": 47,
+      "val_windows": 11
+    },
+    "3": {
+      "train_windows": 54,
+      "val_windows": 12
+    }
+  },
   "classes": {
-    "0": "Smooth Highway Pavement (Baseline Vibration)",
-    "1": "Bridge Expansion Joint (High-frequency harmonic impulse)",
-    "2": "Rumble Strip / Speed Mitigation (Cyclic sinusoidal oscillation)",
-    "3": "Severe Pothole Wheel-Drop Shock (Delta Az >= 12.0 m/s\u00b2, sharp rebound)"
-  }
+    "0": "Smooth Asphalt (plain_road)",
+    "1": "Expansion Joint / Unmarked Bump (plain_road_unmarked_sb)",
+    "2": "Rumble Strip / Marked Speed Breaker (plain_road_marked_sb)",
+    "3": "Pothole Impact (plain_road_potholes)"
+  },
+  "generated_at_unix": 1790695031
 }

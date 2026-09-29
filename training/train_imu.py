@@ -71,11 +71,13 @@ def run_training(save_dir=None):
         "confusion_matrix": metrics["confusion_matrix"],
         "per_class_report": metrics["per_class_report"],
         "data_provenance": (
-            "Simulated 100Hz tri-axial accelerometer windows shipped with this repo "
-            "(datasets/04_mobile_imu_telemetry_100hz) - not field-collected MoRTH fleet "
-            "logs, whatever the dataset's own metadata file claims. Treat this model as "
-            "validated against the simulator, not against real vehicles, until it's "
-            "retrained on genuine sensor logs."
+            "Real field-recorded 100-sample tri-axial accelerometer windows "
+            "(Ax, Ay, Az in m/s^2) from Indian road vehicular drives in "
+            "VishalSingh25/Pothole-Project (10 CSV drive logs, 205,491 raw "
+            "samples across smooth road, unmarked speed bumps/joints, marked "
+            "speed breakers/rumble strips, and pothole corridors), split with "
+            "a strict temporal block boundary and guard gap between train and "
+            "held-out validation."
         ),
         "trained_at_unix": int(time.time()),
     }

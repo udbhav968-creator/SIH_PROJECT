@@ -1,7 +1,7 @@
 {
-  "model": "CNNHead (resnet50 ImageNet embeddings -> logistic)",
+  "model": "CNNHead (resnet50 ImageNet embeddings -> svc_rbf)",
   "backbone": "resnet50",
-  "head": "logistic",
+  "head": "svc_rbf",
   "embedding_dim": 1000,
   "class_names": [
     "Normal Road / Sound Pavement",
@@ -12,146 +12,151 @@
     "Missing Road Divider",
     "Damaged Traffic Sign"
   ],
-  "fit_images": 1355,
-  "held_out_test_images": 243,
-  "held_out_test_photographs": 205,
-  "held_out_test_accuracy": 0.8848,
-  "held_out_test_macro_f1": 0.8455,
+  "fit_images": 1323,
+  "held_out_test_images": 234,
+  "held_out_test_photographs": 226,
+  "held_out_test_accuracy": 0.9316,
+  "held_out_test_macro_f1": 0.8122,
   "random_guess_baseline": 0.1429,
   "heads_compared": {
     "logistic": {
-      "accuracy": 0.8848,
-      "macro_f1": 0.8455,
-      "seconds": 2.3
+      "accuracy": 0.9145,
+      "macro_f1": 0.8086,
+      "seconds": 0.6
     },
     "svc_rbf": {
-      "accuracy": 0.9053,
-      "macro_f1": 0.8125,
-      "seconds": 2.4
+      "accuracy": 0.9316,
+      "macro_f1": 0.8122,
+      "seconds": 3.6
     }
   },
   "confusion_matrix": [
     [
-      40,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0
-    ],
-    [
-      2,
-      106,
-      12,
-      0,
-      0,
-      0,
-      0
-    ],
-    [
-      0,
-      12,
-      61,
-      0,
-      0,
-      0,
-      0
-    ],
-    [
-      0,
-      0,
-      0,
+      64,
       1,
-      1,
-      0,
-      0
-    ],
-    [
-      0,
       0,
       0,
       0,
       3,
+      0
+    ],
+    [
+      0,
+      68,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      1,
+      66,
+      0,
+      1,
       0,
       0
     ],
     [
       0,
       0,
+      3,
+      3,
+      1,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      0,
+      0,
+      7,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      1,
+      0,
+      1,
+      5,
+      0
+    ],
+    [
       0,
       0,
       1,
-      2,
-      0
-    ],
-    [
       0,
+      1,
       0,
-      0,
-      0,
-      0,
-      0,
-      2
+      5
     ]
   ],
   "per_class_report": {
     "Normal Road / Sound Pavement": {
-      "precision": 0.9523809523809523,
-      "recall": 1.0,
-      "f1-score": 0.975609756097561,
-      "support": 40.0
+      "precision": 0.9696969696969697,
+      "recall": 0.9411764705882353,
+      "f1-score": 0.9552238805970149,
+      "support": 68.0
     },
     "Crack (Longitudinal / Transverse / Alligator)": {
-      "precision": 0.8983050847457628,
-      "recall": 0.8833333333333333,
-      "f1-score": 0.8907563025210085,
-      "support": 120.0
+      "precision": 0.9714285714285714,
+      "recall": 1.0,
+      "f1-score": 0.9855072463768116,
+      "support": 68.0
     },
     "Pothole Cavity": {
-      "precision": 0.8356164383561644,
-      "recall": 0.8356164383561644,
-      "f1-score": 0.8356164383561644,
-      "support": 73.0
+      "precision": 0.9295774647887324,
+      "recall": 0.9705882352941176,
+      "f1-score": 0.9496402877697842,
+      "support": 68.0
     },
     "Waterlogging / Flooding Hazard": {
       "precision": 1.0,
-      "recall": 0.5,
-      "f1-score": 0.6666666666666666,
-      "support": 2.0
+      "recall": 0.42857142857142855,
+      "f1-score": 0.6,
+      "support": 7.0
     },
     "Missing Zebra Crossing": {
-      "precision": 0.6,
-      "recall": 1.0,
-      "f1-score": 0.75,
-      "support": 3.0
+      "precision": 0.6363636363636364,
+      "recall": 0.875,
+      "f1-score": 0.7368421052631579,
+      "support": 8.0
     },
     "Missing Road Divider": {
-      "precision": 1.0,
-      "recall": 0.6666666666666666,
-      "f1-score": 0.8,
-      "support": 3.0
+      "precision": 0.625,
+      "recall": 0.625,
+      "f1-score": 0.625,
+      "support": 8.0
     },
     "Damaged Traffic Sign": {
       "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 2.0
+      "recall": 0.7142857142857143,
+      "f1-score": 0.8333333333333334,
+      "support": 7.0
     },
-    "accuracy": 0.8847736625514403,
+    "accuracy": 0.9316239316239316,
     "macro avg": {
-      "precision": 0.8980432107832684,
-      "recall": 0.840802348336595,
-      "f1-score": 0.8455213090916286,
-      "support": 243.0
+      "precision": 0.8760095203254157,
+      "recall": 0.793517406962785,
+      "f1-score": 0.8122209790485859,
+      "support": 234.0
     },
     "weighted avg": {
-      "precision": 0.8876207747519738,
-      "recall": 0.8847736625514403,
-      "f1-score": 0.8843558842788345,
-      "support": 243.0
+      "precision": 0.9371739892866653,
+      "recall": 0.9316239316239316,
+      "f1-score": 0.9293731896495904,
+      "support": 234.0
     }
   },
   "split_strategy": "grouped by source photograph; test set scored once",
-  "trained_at_unix": 1789176805
+  "trained_at_unix": 1790695931,
+  "handcrafted_baseline": {
+    "accuracy": 0.8419,
+    "macro_f1": 0.6599,
+    "features": "HOG + LBP + colour histogram, 4419 dims"
+  }
 }

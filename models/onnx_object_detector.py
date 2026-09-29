@@ -174,9 +174,10 @@ class ONNXObjectDetector:
 
     @property
     def is_ready(self):
-        return self._session is not None
+        return self._session is not None or getattr(self, "_cv_net", None) is not None
 
     def _load(self):
+        self._cv_net = None
         path = self.weights_path
         if not path:
             matches = sorted(glob.glob(os.path.join(self.ckpt_dir, "*detector*.onnx"))) or \
@@ -185,12 +186,11 @@ class ONNXObjectDetector:
         if not path or not os.path.exists(path):
             return
         try:
+            try:
+                import sklearn  # noqa: F401 - ensures VC++ runtime DLLs are loaded on Windows
+            except Exception:
+                pass
             import onnxruntime as ort
-        except ImportError:
-            print("[detector] weights found but onnxruntime is not installed (pip install onnxruntime)")
-            return
-        try:
-            # Same arena problem as the embedder - see models/cnn_embedder.py.
             from models.cnn_embedder import _session_options
             self._session = ort.InferenceSession(path, _session_options(ort),
                                                  providers=["CPUExecutionProvider"])
@@ -200,6 +200,14 @@ class ONNXObjectDetector:
                 self.input_size = int(inp.shape[-1])
             self.weights_path = path
             self.backend = f"onnxruntime:{os.path.basename(path)}"
+            return
+        except Exception as e:
+            print(f"[detector] ORT load failed for {path}, trying cv2.dnn: {e}")
+        try:
+            import cv2
+            self._cv_net = cv2.dnn.readNetFromONNX(path)
+            self.weights_path = path
+            self.backend = f"opencv_dnn:{os.path.basename(path)}"
         except Exception as e:
             print(f"[detector] could not load {path}: {e}")
 
@@ -219,7 +227,11 @@ class ONNXObjectDetector:
         blob = np.asarray(canvas, dtype=np.float32) / 255.0
         blob = np.transpose(blob, (2, 0, 1))[None, ...]
 
-        raw = self._session.run(None, {self._input_name: blob})[0]
+        if self._session is not None:
+            raw = self._session.run(None, {self._input_name: blob})[0]
+        else:
+            self._cv_net.setInput(blob)
+            raw = self._cv_net.forward()
         boxes_xywh, conf, cls_ids = decode_output(raw, len(self.class_names), conf_threshold)
         if len(boxes_xywh) == 0:
             return []

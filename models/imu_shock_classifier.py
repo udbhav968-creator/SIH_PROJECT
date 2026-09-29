@@ -35,14 +35,14 @@ class IMUShockClassifier:
 
     @staticmethod
     def extract_temporal_features(X_raw):
-        """(B, T, 3) raw accelerometer window -> (B, 36) real time-domain features."""
+        """(B, T, 3) raw accelerometer window -> time-domain & spectral features."""
         X_raw = np.asarray(X_raw, dtype=np.float32)
         B, T, C = X_raw.shape
         feats = []
         for c in range(C):
             sig = X_raw[:, :, c]
             mean = sig.mean(axis=1, keepdims=True)
-            std = sig.std(axis=1, keepdims=True)
+            std = sig.std(axis=1, keepdims=True) + 1e-6
             var = sig.var(axis=1, keepdims=True)
             mx = sig.max(axis=1, keepdims=True)
             mn = sig.min(axis=1, keepdims=True)
@@ -50,13 +50,37 @@ class IMUShockClassifier:
             centered = sig - mean
             zcr = np.mean(np.abs(np.diff(np.sign(centered), axis=1)) > 0, axis=1, keepdims=True)
             energy = np.mean(sig**2, axis=1, keepdims=True)
+            ac_energy = np.mean(centered**2, axis=1, keepdims=True)
             diff1 = np.diff(sig, axis=1)
             jerk_max = np.max(np.abs(diff1), axis=1, keepdims=True)
             jerk_mean = np.mean(np.abs(diff1), axis=1, keepdims=True)
-            p1 = np.mean(sig[:, : T // 2] ** 2, axis=1, keepdims=True)
-            p2 = np.mean(sig[:, T // 2 :] ** 2, axis=1, keepdims=True)
+            jerk_std = np.std(diff1, axis=1, keepdims=True)
+            p1 = np.mean(centered[:, : T // 2] ** 2, axis=1, keepdims=True)
+            p2 = np.mean(centered[:, T // 2 :] ** 2, axis=1, keepdims=True)
             ratio = (p2 + 1e-5) / (p1 + 1e-5)
-            feats.extend([mean, std, var, mx, mn, ptp, zcr, energy, jerk_max, jerk_mean, p1, ratio])
+            # Higher-order shape & impulsiveness (crest factor, skewness, kurtosis)
+            rms = np.sqrt(ac_energy + 1e-6)
+            crest = np.max(np.abs(centered), axis=1, keepdims=True) / rms
+            skew = np.mean((centered / std) ** 3, axis=1, keepdims=True)
+            kurt = np.mean((centered / std) ** 4, axis=1, keepdims=True)
+            # Spectral sub-band energies via rFFT (low, mid, high frequency bands)
+            fft_mag = np.abs(np.fft.rfft(centered, axis=1))[:, 1:]  # drop DC
+            nb = max(1, fft_mag.shape[1] // 3)
+            b_low = np.mean(fft_mag[:, :nb] ** 2, axis=1, keepdims=True)
+            b_mid = np.mean(fft_mag[:, nb : 2 * nb] ** 2, axis=1, keepdims=True)
+            b_high = np.mean(fft_mag[:, 2 * nb :] ** 2, axis=1, keepdims=True)
+            spec_tot = b_low + b_mid + b_high + 1e-6
+            feats.extend([
+                mean, std, var, mx, mn, ptp, zcr, energy, ac_energy,
+                jerk_max, jerk_mean, jerk_std, p1, ratio,
+                crest, skew, kurt,
+                b_low / spec_tot, b_mid / spec_tot, b_high / spec_tot,
+            ])
+        # Total 3D vector magnitude dynamic excursion
+        vmag = np.sqrt(np.sum(X_raw**2, axis=2))
+        v_ptp = (vmag.max(axis=1, keepdims=True) - vmag.min(axis=1, keepdims=True))
+        v_std = vmag.std(axis=1, keepdims=True)
+        feats.extend([v_ptp, v_std])
         return np.concatenate(feats, axis=1).astype(np.float32)
 
     def _build_pipeline(self):

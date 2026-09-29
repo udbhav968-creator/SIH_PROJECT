@@ -7,75 +7,75 @@
     "Rumble Strip",
     "Pothole Impact"
   ],
-  "train_windows": 12000,
-  "held_out_validation_windows": 3000,
-  "held_out_validation_accuracy": 1.0,
+  "train_windows": 688,
+  "held_out_validation_windows": 164,
+  "held_out_validation_accuracy": 0.8232,
   "random_guess_baseline": 0.25,
   "confusion_matrix": [
     [
-      1068,
-      0,
-      0,
+      95,
+      6,
+      8,
       0
     ],
     [
       0,
-      605,
-      0,
+      25,
+      3,
+      4
+    ],
+    [
+      4,
+      3,
+      4,
       0
     ],
     [
       0,
+      1,
       0,
-      550,
-      0
-    ],
-    [
-      0,
-      0,
-      0,
-      777
+      11
     ]
   ],
   "per_class_report": {
     "Smooth Asphalt": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 1068.0
+      "precision": 0.9595959595959596,
+      "recall": 0.8715596330275229,
+      "f1-score": 0.9134615384615384,
+      "support": 109.0
     },
     "Expansion Joint": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 605.0
+      "precision": 0.7142857142857143,
+      "recall": 0.78125,
+      "f1-score": 0.746268656716418,
+      "support": 32.0
     },
     "Rumble Strip": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 550.0
+      "precision": 0.26666666666666666,
+      "recall": 0.36363636363636365,
+      "f1-score": 0.3076923076923077,
+      "support": 11.0
     },
     "Pothole Impact": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 777.0
+      "precision": 0.7333333333333333,
+      "recall": 0.9166666666666666,
+      "f1-score": 0.8148148148148148,
+      "support": 12.0
     },
-    "accuracy": 1.0,
+    "accuracy": 0.823170731707317,
     "macro avg": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 3000.0
+      "precision": 0.6684704184704184,
+      "recall": 0.7332781658326383,
+      "f1-score": 0.6955593294212697,
+      "support": 164.0
     },
     "weighted avg": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 3000.0
+      "precision": 0.8486977791855841,
+      "recall": 0.823170731707317,
+      "f1-score": 0.8329896211562575,
+      "support": 164.0
     }
   },
-  "data_provenance": "Simulated 100Hz tri-axial accelerometer windows shipped with this repo (datasets/04_mobile_imu_telemetry_100hz) - not field-collected MoRTH fleet logs, whatever the dataset's own metadata file claims. Treat this model as validated against the simulator, not against real vehicles, until it's retrained on genuine sensor logs.",
-  "trained_at_unix": 1789172434
+  "data_provenance": "Real field-recorded 100-sample tri-axial accelerometer windows (Ax, Ay, Az in m/s^2) from Indian road vehicular drives in VishalSingh25/Pothole-Project (10 CSV drive logs, 205,491 raw samples across smooth road, unmarked speed bumps/joints, marked speed breakers/rumble strips, and pothole corridors), split with a strict temporal block boundary and guard gap between train and held-out validation.",
+  "trained_at_unix": 1790695037
 }

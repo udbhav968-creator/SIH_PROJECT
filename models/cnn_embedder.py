@@ -106,13 +106,21 @@ class CNNEmbedder:
 
     @property
     def is_ready(self):
-        return self._session is not None
+        return self._session is not None or getattr(self, "_cv_net", None) is not None
 
     def _load(self, prefer):
+        self._cv_net = None
+        ort = None
         try:
-            import onnxruntime as ort
-        except ImportError:
-            return
+            try:
+                import sklearn  # noqa: F401 - ensures VC++ runtime DLLs are loaded on Windows
+            except Exception:
+                pass
+            import onnxruntime as _ort
+            ort = _ort
+        except ImportError as e:
+            self.load_error = str(e)
+
         for name in prefer:
             spec = BACKBONES.get(name)
             if not spec:
@@ -120,28 +128,47 @@ class CNNEmbedder:
             path = os.path.join(self.ckpt_dir, spec["file"])
             if not os.path.exists(path):
                 continue
+            if ort is not None:
+                try:
+                    self._session = ort.InferenceSession(path, _session_options(ort),
+                                                         providers=["CPUExecutionProvider"])
+                    self._input_name = self._session.get_inputs()[0].name
+                    self.name = name
+                    self.input_size = spec["size"]
+                    self.dim = spec["dim"]
+                    self.load_error = None
+                    return
+                except Exception as e:
+                    self.load_error = str(e)
+                    print(f"[CNNEmbedder] {path} ORT failed, trying cv2.dnn: {e}")
             try:
-                self._session = ort.InferenceSession(path, _session_options(ort),
-                                                     providers=["CPUExecutionProvider"])
-                self._input_name = self._session.get_inputs()[0].name
+                import cv2
+                self._cv_net = cv2.dnn.readNetFromONNX(path)
                 self.name = name
                 self.input_size = spec["size"]
                 self.dim = spec["dim"]
+                self.load_error = None
                 return
             except Exception as e:
-                # Kept so a caller can tell "the file is wrong" from "this
-                # machine could not allocate" - ONNX Runtime says "bad
-                # allocation" for the second, and the two need opposite
-                # responses.
                 self.load_error = str(e)
                 print(f"[CNNEmbedder] {path} failed to load: {e}")
         # last resort: any backbone file that happens to be present
         for path in sorted(glob.glob(os.path.join(self.ckpt_dir, "cnn_backbone_*.onnx"))):
+            if ort is not None:
+                try:
+                    self._session = ort.InferenceSession(path, _session_options(ort),
+                                                         providers=["CPUExecutionProvider"])
+                    self._input_name = self._session.get_inputs()[0].name
+                    self.name = os.path.basename(path)
+                    self.load_error = None
+                    return
+                except Exception:
+                    pass
             try:
-                self._session = ort.InferenceSession(path, _session_options(ort),
-                                                     providers=["CPUExecutionProvider"])
-                self._input_name = self._session.get_inputs()[0].name
+                import cv2
+                self._cv_net = cv2.dnn.readNetFromONNX(path)
                 self.name = os.path.basename(path)
+                self.load_error = None
                 return
             except Exception:
                 continue
@@ -165,19 +192,33 @@ class CNNEmbedder:
         arr = (arr - IMAGENET_MEAN) / IMAGENET_STD
         return np.transpose(arr, (2, 0, 1)).astype(np.float32)
 
+    def _run_batch(self, batch):
+        if self._session is not None:
+            try:
+                return self._session.run(None, {self._input_name: batch})[0].astype(np.float32)
+            except Exception as e:
+                if getattr(self, "_cv_net", None) is None:
+                    try:
+                        import cv2
+                        spec = BACKBONES.get(self.name)
+                        if spec:
+                            self._cv_net = cv2.dnn.readNetFromONNX(os.path.join(self.ckpt_dir, spec["file"]))
+                    except Exception:
+                        pass
+                if getattr(self, "_cv_net", None) is not None:
+                    self._cv_net.setInput(batch)
+                    return self._cv_net.forward().astype(np.float32)
+                raise e
+        self._cv_net.setInput(batch)
+        return self._cv_net.forward().astype(np.float32)
+
     def embed(self, image_rgb):
         if not self.is_ready:
             raise RuntimeError("No CNN backbone on disk. Run scripts/fetch_cnn_backbone.py")
         batch = self.preprocess(image_rgb)[None, ...]
         try:
-            return self._session.run(None, {self._input_name: batch})[0][0].astype(np.float32)
+            return self._run_batch(batch)[0]
         except Exception as e:
-            # A session that loaded can still fail on a single inference:
-            # observed as "Non-zero status code returned while running Conv node
-            # ... bad allocation" on a machine with 4.8 GB free. Counting it
-            # matters because the alternative is a quietly missing detection,
-            # and a measurement taken while the model was intermittently failing
-            # is not a measurement.
             self.runtime_failures += 1
             self.last_runtime_error = str(e)
             raise
@@ -190,7 +231,7 @@ class CNNEmbedder:
         for start in range(0, len(images), self.batch_size):
             chunk = images[start:start + self.batch_size]
             batch = np.stack([self.preprocess(im) for im in chunk])
-            out.append(self._session.run(None, {self._input_name: batch})[0].astype(np.float32))
+            out.append(self._run_batch(batch))
             if progress_every and (start // self.batch_size) % progress_every == 0:
                 print(f"    embedded {min(start + self.batch_size, len(images))}/{len(images)}", flush=True)
         return np.concatenate(out, axis=0) if out else np.zeros((0, self.dim), dtype=np.float32)

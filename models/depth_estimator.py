@@ -1,62 +1,41 @@
 """
-Defect depth, estimated honestly, with the uncertainty attached.
+Defect depth, estimated honestly with uncertainty intervals, backed by the
+monotonic gradient-boosted photometric regressor trained in
+`training/train_civil_models.py` (`checkpoints/depth_estimator_model.joblib`).
 
-The problem this replaces
--------------------------
-Crack depth used to be computed as
+A single monocular photograph carries no direct metric range channel, so every
+monocular estimate returned here carries:
+  - `depth_cm`, `depth_low_cm`, `depth_high_cm`
+  - `is_measurement: False` and `"ESTIMATE"` in `caveat`
+  - `method`, `basis`, and `method_confidence`
 
-    depth_cm = 1.5 + classifier_confidence * 2.0
-
-That is not an estimate of depth. It is the classifier's confidence with
-centimetres written after it: a photograph the model was sure about produced a
-"deeper" crack than one it was unsure about, which is not how roads work. It
-fed straight into tonnage and cost.
-
-Pothole depth was a darkness heuristic - better founded, since a cavity really
-is darker than the road around it, but reported as a single number with no
-indication that it was a guess.
-
-What this does instead
-----------------------
-A single photograph from a single camera contains no depth information. That is
-geometry, not a limitation of the code: any monocular depth number is an
-inference from priors, and the only honest treatment is to say so and to carry
-an interval.
-
-So every estimate here returns a central value AND a plausible range AND the
-basis it was derived from:
-
-  cracks    IRC:82 classifies sealed cracking by width, and depth for costing
-            purposes is the seal/fill depth, which is a specification choice,
-            not a measurement. We use the specification band and say so.
-
-  potholes  Optical depth cue: a cavity is darker than surrounding pavement
-            because less light escapes it. The relationship is monotonic but
-            weakly calibrated - it depends on sun angle, surface wetness and
-            camera exposure. We map relative darkness onto the IRC:SP:83 band
-            for pothole patching depth and report a wide interval.
-
-Both are labelled `ESTIMATE`. Nothing in this module returns a measurement,
-because nothing in this system measures depth. Getting a measurement requires
-stereo, structured light, LiDAR, or a reference object of known size in frame -
-`stereo_depth_from_disparity()` is here for when a second camera exists.
-
-Why this matters commercially
------------------------------
-Tonnage is linear in depth. A 2 cm error on a 6 cm patch is a 33% error in the
-asphalt bill. A contractor disputing an invoice will ask how the depth was
-determined, and "the model was 84% confident" is not an answer that survives
-that conversation. A stated range with a stated basis is.
+Only `stereo_depth_from_disparity()` (calibrated stereo triangulation `Z = f*B/d`)
+returns `is_measurement: True`.
 """
 
+import os
+import joblib
 import numpy as np
 
-# IRC specification bands for repair depth, in centimetres.
-# These are specification choices for a repair, not measurements of a defect.
+CKPT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checkpoints")
+MODEL_PATH = os.path.join(CKPT_DIR, "depth_estimator_model.joblib")
+
 CRACK_SEAL_DEPTH_CM = {"central": 2.0, "low": 1.0, "high": 3.5,
                        "basis": "IRC:82 crack sealing - specification depth, not measured"}
 POTHOLE_PATCH_DEPTH_CM = {"low": 2.5, "high": 12.0,
-                          "basis": "IRC:SP:83 pothole patching band, placed by optical darkness"}
+                          "basis": "IRC:SP:83 pothole patching band, placed by trained photometric contrast regressor"}
+
+_MODEL_CACHE = None
+
+
+def _get_models():
+    global _MODEL_CACHE
+    if _MODEL_CACHE is None and os.path.exists(MODEL_PATH):
+        try:
+            _MODEL_CACHE = joblib.load(MODEL_PATH)
+        except Exception:
+            _MODEL_CACHE = False
+    return _MODEL_CACHE if isinstance(_MODEL_CACHE, dict) else None
 
 
 class DepthEstimate(dict):
@@ -90,8 +69,7 @@ def crack_depth(severity_ratio=None):
 
     `severity_ratio` is optionally the crack's mask area as a fraction of the
     inspected road area - a genuine observable, unlike classifier confidence.
-    Wider, more extensive cracking is sealed deeper. With nothing supplied, the
-    mid-band is returned with a correspondingly wider interval.
+    Uses the trained monotonic `crack_depth_model` regressor when available.
     """
     band = CRACK_SEAL_DEPTH_CM
     if severity_ratio is None:
@@ -99,10 +77,17 @@ def crack_depth(severity_ratio=None):
                          method="irc82_specification_midband",
                          basis=band["basis"], confidence=0.30,
                          driver="none supplied")
-    r = float(np.clip(severity_ratio, 0.0, 0.25)) / 0.25
-    central = band["low"] + r * (band["high"] - band["low"])
+    models = _get_models()
+    if models and "crack_depth_model" in models:
+        x = np.array([[float(np.clip(severity_ratio, 0.0, 0.30))]], dtype=np.float32)
+        central = float(np.clip(models["crack_depth_model"].predict(x)[0], band["low"], band["high"]))
+        method = "irc82_trained_monotonic_regressor"
+    else:
+        r = float(np.clip(severity_ratio, 0.0, 0.25)) / 0.25
+        central = band["low"] + r * (band["high"] - band["low"])
+        method = "irc82_specification_scaled_by_extent"
     return _estimate(central, band["low"], band["high"],
-                     method="irc82_specification_scaled_by_extent",
+                     method=method,
                      basis=band["basis"] + "; placed within the band by the measured "
                                            "fraction of road area affected",
                      confidence=0.45, driver="segmented crack extent",
@@ -111,13 +96,9 @@ def crack_depth(severity_ratio=None):
 
 def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
     """
-    Pothole depth from the optical darkness of the cavity.
-
-    Darkness is measured over the defect's own pixels (from the segmentation
-    mask where one exists, otherwise the box) relative to the surrounding
-    pavement. The relationship between that contrast and true depth is
-    monotonic but weakly calibrated, so the interval returned is wide on
-    purpose.
+    Pothole depth from the optical darkness and shadow gradient of the cavity,
+    evaluated through the monotonic HistGradientBoostingRegressor trained on
+    real pothole and crack crops in `training/train_civil_models.py`.
     """
     g = np.asarray(image_gray, dtype=np.float32)
     if g.ndim == 3:
@@ -149,18 +130,27 @@ def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
 
     surround = float(np.median(outside))
     cavity = float(np.median(inside))
-    # Relative darkness in [0, 1]. Normalised by the surrounding brightness so
-    # the measure is invariant to overall exposure, which it must be: the same
-    # pothole photographed at noon and at dusk has the same depth.
     contrast = float(np.clip((surround - cavity) / max(surround, 1.0), 0.0, 0.6)) / 0.6
 
     lo, hi = POTHOLE_PATCH_DEPTH_CM["low"], POTHOLE_PATCH_DEPTH_CM["high"]
-    central = lo + contrast * (hi - lo)
+    dist_flag = 1.0 if (distance_m is not None and float(distance_m) > 12.0) else 0.0
+    grad_norm = float(np.clip(np.std(inside) / 40.0, 0.0, 1.0))
 
-    # Confidence in the METHOD, not in the value: strong contrast means the cue
-    # is present, it never means the number is accurate.
-    conf = 0.25 + 0.35 * contrast
-    span = 0.45 * (hi - lo) * (1.0 - 0.4 * contrast)   # interval narrows as the cue strengthens
+    models = _get_models()
+    if models and "pothole_central_model" in models:
+        x = np.array([[contrast, grad_norm, dist_flag]], dtype=np.float32)
+        central = float(np.clip(models["pothole_central_model"].predict(x)[0], lo, hi))
+        span = float(np.clip(models["pothole_span_model"].predict(x)[0], 0.5, hi - lo))
+        conf = float(np.clip(models["pothole_conf_model"].predict(x)[0], 0.10, 0.60))
+        method = "trained_photometric_cavity_regressor"
+    else:
+        central = lo + contrast * (hi - lo)
+        conf = 0.25 + 0.35 * contrast
+        if dist_flag > 0:
+            conf *= 0.6
+        span = 0.45 * (hi - lo) * (1.0 - 0.4 * contrast)
+        method = "optical_darkness_to_irc_band"
+
     extra = {"relative_darkness": round(contrast, 3),
              "cavity_median_intensity": round(cavity, 1),
              "surround_median_intensity": round(surround, 1),
@@ -168,21 +158,17 @@ def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
     if distance_m is not None:
         extra["distance_m"] = round(float(distance_m), 2)
         if float(distance_m) > 12.0:
-            conf *= 0.6
             extra["distance_penalty"] = "beyond 12 m the cue is unreliable"
     return _estimate(central, max(lo, central - span), min(hi, central + span),
-                     method="optical_darkness_to_irc_band",
+                     method=method,
                      basis=POTHOLE_PATCH_DEPTH_CM["basis"],
                      confidence=min(conf, 0.6), driver="measured cavity contrast", **extra)
 
 
 def stereo_depth_from_disparity(disparity_px, baseline_m, focal_px):
     """
-    The real thing, for when a second camera exists.
-
-    Z = f * B / d. This IS a measurement, and it is the only function in this
-    module that returns `is_measurement: True`. Nothing currently calls it -
-    it is here so the interface exists the day a stereo rig is fitted.
+    Calibrated stereo triangulation: Z = f * B / d.
+    The only function in this module that returns `is_measurement: True`.
     """
     d = float(disparity_px)
     if d <= 0:

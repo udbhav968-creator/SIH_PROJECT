@@ -15,44 +15,44 @@
       "Normal Road / Sound Pavement": {
         "class_id": 0,
         "folder": "05_morth_civil_hard_negatives",
-        "usable_photos": 242,
-        "distinct_source_photos": 14
+        "usable_photos": 1805,
+        "distinct_source_photos": 1577
       },
       "Crack (Longitudinal / Transverse / Alligator)": {
         "class_id": 1,
         "folder": "03_crack500_fatigue",
-        "usable_photos": 1230,
-        "distinct_source_photos": 1230
+        "usable_photos": 1213,
+        "distinct_source_photos": 1213
       },
       "Pothole Cavity": {
         "class_id": 2,
         "folder": "02_kaggle_pothole_600",
-        "usable_photos": 489,
-        "distinct_source_photos": 489
+        "usable_photos": 939,
+        "distinct_source_photos": 939
       },
       "Waterlogging / Flooding Hazard": {
         "class_id": 3,
         "folder": "09_waterlogging_hazard",
-        "usable_photos": 14,
-        "distinct_source_photos": 14
+        "usable_photos": 49,
+        "distinct_source_photos": 49
       },
       "Missing Zebra Crossing": {
         "class_id": 4,
         "folder": "10_missing_zebra_crossing",
-        "usable_photos": 19,
-        "distinct_source_photos": 19
+        "usable_photos": 54,
+        "distinct_source_photos": 54
       },
       "Missing Road Divider": {
         "class_id": 5,
         "folder": "11_missing_road_divider",
-        "usable_photos": 20,
-        "distinct_source_photos": 20
+        "usable_photos": 55,
+        "distinct_source_photos": 55
       },
       "Damaged Traffic Sign": {
         "class_id": 6,
         "folder": "12_damaged_traffic_signs",
-        "usable_photos": 14,
-        "distinct_source_photos": 14
+        "usable_photos": 49,
+        "distinct_source_photos": 49
       }
     },
     "unlabeled_holdout_folders": {
@@ -61,133 +61,133 @@
       "07_monsoon_pavement_deterioration": 12
     }
   },
-  "train_photos": 1027,
-  "train_photos_after_augmentation": 2054,
-  "held_out_validation_photos": 343,
-  "held_out_validation_accuracy": 0.8338,
+  "train_photos": 1280,
+  "train_photos_after_augmentation": 2560,
+  "held_out_validation_photos": 427,
+  "held_out_validation_accuracy": 0.8478,
   "random_guess_baseline": 0.1429,
   "confusion_matrix": [
     [
-      2,
+      105,
+      3,
+      8,
+      4,
+      3,
+      1,
+      1
+    ],
+    [
+      0,
+      120,
+      5,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      3,
+      4,
+      116,
+      0,
       1,
       0,
-      0,
-      0,
-      0,
-      0
+      1
     ],
     [
       0,
-      181,
-      19,
+      1,
+      3,
+      1,
+      4,
+      1,
+      2
+    ],
+    [
+      3,
       0,
+      1,
       0,
+      6,
+      3,
+      1
+    ],
+    [
+      4,
       0,
+      1,
+      0,
+      1,
+      8,
       0
     ],
     [
-      0,
-      29,
-      93,
-      0,
-      0,
-      0,
-      0
-    ],
-    [
-      0,
       0,
       0,
       4,
-      0,
-      0,
-      0
-    ],
-    [
-      0,
-      0,
-      0,
-      1,
-      2,
-      2,
-      0
-    ],
-    [
-      0,
-      0,
-      2,
-      0,
-      1,
-      2,
-      0
-    ],
-    [
-      0,
-      0,
-      0,
       1,
       1,
       0,
-      2
+      6
     ]
   ],
   "per_class_report": {
     "Normal Road / Sound Pavement": {
-      "precision": 1.0,
-      "recall": 0.6666666666666666,
-      "f1-score": 0.8,
-      "support": 3.0
+      "precision": 0.9130434782608695,
+      "recall": 0.84,
+      "f1-score": 0.875,
+      "support": 125.0
     },
     "Crack (Longitudinal / Transverse / Alligator)": {
-      "precision": 0.8578199052132701,
-      "recall": 0.905,
-      "f1-score": 0.8807785888077859,
-      "support": 200.0
+      "precision": 0.9375,
+      "recall": 0.96,
+      "f1-score": 0.9486166007905138,
+      "support": 125.0
     },
     "Pothole Cavity": {
-      "precision": 0.8157894736842105,
-      "recall": 0.7622950819672131,
-      "f1-score": 0.788135593220339,
-      "support": 122.0
+      "precision": 0.8405797101449275,
+      "recall": 0.928,
+      "f1-score": 0.8821292775665399,
+      "support": 125.0
     },
     "Waterlogging / Flooding Hazard": {
-      "precision": 0.6666666666666666,
-      "recall": 1.0,
-      "f1-score": 0.8,
-      "support": 4.0
+      "precision": 0.16666666666666666,
+      "recall": 0.08333333333333333,
+      "f1-score": 0.1111111111111111,
+      "support": 12.0
     },
     "Missing Zebra Crossing": {
-      "precision": 0.5,
-      "recall": 0.4,
-      "f1-score": 0.4444444444444444,
-      "support": 5.0
+      "precision": 0.375,
+      "recall": 0.42857142857142855,
+      "f1-score": 0.4,
+      "support": 14.0
     },
     "Missing Road Divider": {
-      "precision": 0.5,
-      "recall": 0.4,
-      "f1-score": 0.4444444444444444,
-      "support": 5.0
+      "precision": 0.6153846153846154,
+      "recall": 0.5714285714285714,
+      "f1-score": 0.5925925925925926,
+      "support": 14.0
     },
     "Damaged Traffic Sign": {
-      "precision": 1.0,
+      "precision": 0.5454545454545454,
       "recall": 0.5,
-      "f1-score": 0.6666666666666666,
-      "support": 4.0
+      "f1-score": 0.5217391304347826,
+      "support": 12.0
     },
-    "accuracy": 0.8338192419825073,
+    "accuracy": 0.8477751756440282,
     "macro avg": {
-      "precision": 0.7628965779377354,
-      "recall": 0.6619945355191257,
-      "f1-score": 0.6892099625119544,
-      "support": 343.0
+      "precision": 0.627661287987375,
+      "recall": 0.6159047619047618,
+      "f1-score": 0.61874124464222,
+      "support": 427.0
     },
     "weighted avg": {
-      "precision": 0.8331106807545026,
-      "recall": 0.8338192419825073,
-      "f1-score": 0.8309602660220107,
-      "support": 343.0
+      "precision": 0.8402839290668942,
+      "recall": 0.8477751756440282,
+      "f1-score": 0.8424092130901141,
+      "support": 427.0
     }
   },
   "note": "Validation photos and their augmented copies are strictly disjoint from the training set. Accuracy is limited mainly by how few distinct source photos exist for some classes (see dataset_inventory) - this is a data problem, not an unreported one.",
-  "trained_at_unix": 1789172429
+  "trained_at_unix": 1790695664
 }

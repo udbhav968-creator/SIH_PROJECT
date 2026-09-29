@@ -64,6 +64,7 @@ class DeepVisionNet(VisionDistressNet):
         onnx_path = self._find("deep_vision_*.onnx")
         if onnx_path:
             try:
+                import sklearn  # noqa: F401
                 import onnxruntime as ort
                 self._session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
                 self._input_name = self._session.get_inputs()[0].name

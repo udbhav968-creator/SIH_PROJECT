@@ -146,6 +146,8 @@ class DeepInferencePipeline:
         rain_mm=650.0,
         pavement_age_yr=3.5,
         device_id=None,
+        vehicle_speed_kmh=45.0,
+        **_extra,
     ):
         """
         Runs the full pipeline on one image. image_input: file path, raw
