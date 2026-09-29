@@ -56,8 +56,11 @@ _IMG_EXT = (".jpg", ".jpeg", ".png", ".JPG", ".PNG")
 def _list_photos(folder, dedupe_augmented=False):
     """
     Lists real photo files in a dataset folder, skipping the synthetic mask
-    files (*_CRACK.png, *_POTHOLE.png, *_LANE.png).
+    files (*_CRACK.png, *_POTHOLE.png, *_LANE.png) and non-road concrete
+    texture patches excluded by pipeline/corpus_policy.py.
     """
+    from pipeline.corpus_policy import is_road_scene
+
     img_dir = os.path.join(DATASETS_ROOT, folder, "real_images")
     if not os.path.isdir(img_dir):
         return []
@@ -67,6 +70,8 @@ def _list_photos(folder, dedupe_augmented=False):
         if not name.lower().endswith(_IMG_EXT):
             continue
         if any(tag in name for tag in ("_CRACK.", "_POTHOLE.", "_LANE.")):
+            continue
+        if not is_road_scene(path):
             continue
         files.append(path)
     if dedupe_augmented:

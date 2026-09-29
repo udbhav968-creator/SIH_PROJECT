@@ -78,12 +78,38 @@ def heads(seed=42):
     }
 
 
+_ROAD_CROP_BOXES = (
+    (0.05, 0.52, 0.48, 0.78),
+    (0.22, 0.56, 0.74, 0.88),
+    (0.45, 0.40, 0.92, 0.70),
+)
+
+
 def embed_items(embedder, items, label):
     imgs, ys = [], []
-    for path, cls, _grp in items:
+    for idx, (path, cls, _grp) in enumerate(items):
         try:
-            imgs.append(load_image(path))
+            img = load_image(path)
+            imgs.append(img)
             ys.append(cls)
+            # Region proposals at inference time are tight road-surface crops,
+            # whereas Class 0/3/4/5/6 photographs on disk are full wide-angle
+            # frames. Extract sub-crops from the training split ONLY (never the
+            # held-out test split) with their true class label so every class is
+            # represented at both full-frame and region-proposal scales.
+            if label == "training" and cls in (0, 3, 4, 5, 6):
+                H, W = img.shape[:2]
+                if H >= 96 and W >= 96:
+                    if cls == 0:
+                        box_indices = [idx % len(_ROAD_CROP_BOXES)] if (idx % 3 == 0) else []
+                    else:
+                        box_indices = list(range(len(_ROAD_CROP_BOXES)))
+                    for b_idx in box_indices:
+                        x0f, y0f, x1f, y1f = _ROAD_CROP_BOXES[b_idx]
+                        crop = img[int(y0f * H):int(y1f * H), int(x0f * W):int(x1f * W)]
+                        if crop.shape[0] >= 24 and crop.shape[1] >= 24:
+                            imgs.append(np.ascontiguousarray(crop))
+                            ys.append(cls)
         except Exception:
             continue
     print(f"  embedding {len(imgs)} {label} images with {embedder.name} ...", flush=True)
@@ -132,13 +158,14 @@ def run_training(backbone="resnet50", seed=42, max_per_class=800, compare=False)
         pred = head.predict(X_test)
         acc = float(accuracy_score(y_test, pred))
         f1 = float(f1_score(y_test, pred, average="macro", zero_division=0))
+        score = 0.5 * (acc + f1)
         results[name] = {"accuracy": round(acc, 4), "macro_f1": round(f1, 4),
                          "seconds": round(time.time() - t0, 1)}
         print(f"  head {name:10s} accuracy {acc * 100:5.1f}%   macro-F1 {f1:.3f}   ({time.time() - t0:.0f}s)")
-        if best is None or f1 > best[1]:
-            best = (name, f1, head, pred, acc)
+        if best is None or score > best[5]:
+            best = (name, f1, head, pred, acc, score)
 
-    head_name, macro_f1, head, pred, acc = best
+    head_name, macro_f1, head, pred, acc, _score = best
     present = sorted(set(y_test.tolist()) | set(pred.tolist()))
     report = {
         "model": f"CNNHead ({embedder.name} ImageNet embeddings -> {head_name})",

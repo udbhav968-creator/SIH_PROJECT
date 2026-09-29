@@ -85,11 +85,17 @@ def group_key(filename):
     for suffix in ("_RAW", "_CRACK", "_POTHOLE", "_LANE"):
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
+    if stem.startswith("cpr_"):
+        parts = stem.split("_")
+        if len(parts) >= 2:
+            return f"cpr_{parts[1]}"
     return stem
 
 
 def collect_files():
-    """[(path, class_id, group_key)] for every usable training photo."""
+    """[(path, class_id, group_key)] for every usable road-scene training photo."""
+    from pipeline.corpus_policy import is_road_scene
+
     items = []
     for cls, (folder, _name) in sorted(CLASS_FOLDERS.items()):
         d = os.path.join(DATASETS_ROOT, folder, "real_images")
@@ -98,7 +104,10 @@ def collect_files():
         for f in sorted(os.listdir(d)):
             if not f.endswith(_IMG_EXT) or f.endswith(_MASK_SUFFIXES):
                 continue
-            items.append((os.path.join(d, f), cls, f"{cls}:{group_key(f)}"))
+            full_path = os.path.join(d, f)
+            if not is_road_scene(full_path):
+                continue
+            items.append((full_path, cls, f"{cls}:{group_key(f)}"))
     return items
 
 

@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1790698464,
+  "generated_unix": 1790706614,
   "measured_through": "pipeline.deep_inference_pipeline.DeepInferencePipeline.audit_image",
   "why_not_region_level": "An earlier harness reimplemented the region loop and reported 27.8% false positives for a build that was actually producing 44.4%. Measuring anything but the real entry point measures the harness.",
   "clean_folders": [
@@ -15,8 +15,8 @@
   "defect_photographs": 24,
   "false_positive_photos": 4,
   "false_positive_rate": 0.1111,
-  "detected_photos": 12,
-  "detection_rate": 0.5,
+  "detected_photos": 18,
+  "detection_rate": 0.75,
   "segmenter_loaded": true,
   "fingerprint": {
     "corpus": {
@@ -25,20 +25,20 @@
         "digest": "628b878d73b4d3f9"
       },
       "05_morth_civil_hard_negatives": {
-        "count": 612,
-        "digest": "7e845948b62afbcc"
+        "count": 613,
+        "digest": "0a8b77629b3d5fef"
       },
       "11_missing_road_divider": {
         "count": 20,
         "digest": "4797a40a6d676e24"
       },
       "02_kaggle_pothole_600": {
-        "count": 939,
-        "digest": "9ade9ebebe8ecadc"
+        "count": 1161,
+        "digest": "11ab4dd14e66e4ff"
       },
       "03_crack500_fatigue": {
-        "count": 30,
-        "digest": "22ba2bfc57104e7c"
+        "count": 830,
+        "digest": "a3085853f5225ed8"
       }
     },
     "model": {
@@ -61,7 +61,7 @@
     "reproduce_unfiltered_with": "ROAD_SHIELD_NO_CORPUS_FILTER=1",
     "not_deleted": "The files remain on disk; only this corpus excludes them."
   },
-  "seconds": 327.8,
+  "seconds": 317.6,
   "rows": [
     {
       "path": "datasets\\10_missing_zebra_crossing\\real_images\\real_13_FileZebra crossing on Holtdale Approach - geo.jpg",
@@ -79,7 +79,20 @@
       "path": "datasets\\10_missing_zebra_crossing\\real_images\\real_20_FileZebra crossing to shops Boverton - geogra.jpg",
       "folder": "10_missing_zebra_crossing",
       "expected": "clean",
-      "reported": []
+      "reported": [
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.487,
+          "bbox_pixels": [
+            177,
+            425,
+            64,
+            55
+          ],
+          "area_m2": 0.008,
+          "area_method": "segmentation_mask"
+        }
+      ]
     },
     {
       "path": "datasets\\10_missing_zebra_crossing\\real_images\\real_19_FileZebra crossing on Woodhouse Street - geog.jpg",
@@ -97,32 +110,7 @@
       "path": "datasets\\10_missing_zebra_crossing\\real_images\\real_09_FileZebra crossing St Helier.jpg",
       "folder": "10_missing_zebra_crossing",
       "expected": "clean",
-      "reported": [
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.839,
-          "bbox_pixels": [
-            9,
-            314,
-            170,
-            89
-          ],
-          "area_m2": 0.095,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.722,
-          "bbox_pixels": [
-            115,
-            269,
-            252,
-            62
-          ],
-          "area_m2": 0.127,
-          "area_method": "segmentation_mask"
-        }
-      ]
+      "reported": []
     },
     {
       "path": "datasets\\10_missing_zebra_crossing\\real_images\\real_18_FileZebra crossing on Tongue Lane - geograph..jpg",
@@ -152,39 +140,13 @@
       "path": "datasets\\10_missing_zebra_crossing\\real_images\\real_08_FileZebra crossing Robin Lane Pudsey - geogra.jpg",
       "folder": "10_missing_zebra_crossing",
       "expected": "clean",
-      "reported": [
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.756,
-          "bbox_pixels": [
-            27,
-            254,
-            234,
-            64
-          ],
-          "area_m2": 0.138,
-          "area_method": "segmentation_mask"
-        }
-      ]
+      "reported": []
     },
     {
       "path": "datasets\\10_missing_zebra_crossing\\real_images\\real_16_FileZebra crossing on Quality Street - geogra.jpg",
       "folder": "10_missing_zebra_crossing",
       "expected": "clean",
-      "reported": [
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.853,
-          "bbox_pixels": [
-            146,
-            304,
-            92,
-            73
-          ],
-          "area_m2": 0.035,
-          "area_method": "segmentation_mask"
-        }
-      ]
+      "reported": []
     },
     {
       "path": "datasets\\05_morth_civil_hard_negatives\\real_images\\kag_pothole-mix_0_00308_62.jpg",
@@ -222,24 +184,49 @@
       "expected": "clean",
       "reported": [
         {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.705,
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.957,
           "bbox_pixels": [
             309,
             115,
             184,
             167
           ],
-          "area_m2": 0.542,
+          "area_m2": 0.093,
           "area_method": "segmentation_mask"
         }
       ]
     },
     {
-      "path": "datasets\\05_morth_civil_hard_negatives\\real_images\\kag_pothole-mix_0_00262_337.jpg",
+      "path": "datasets\\05_morth_civil_hard_negatives\\real_images\\kag_pothole-plain_0_00002_3.jpg",
       "folder": "05_morth_civil_hard_negatives",
       "expected": "clean",
-      "reported": []
+      "reported": [
+        {
+          "class_name": "Pothole Cavity",
+          "confidence": 0.9,
+          "bbox_pixels": [
+            336,
+            116,
+            228,
+            176
+          ],
+          "area_m2": 0.754,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Pothole Cavity",
+          "confidence": 0.943,
+          "bbox_pixels": [
+            34,
+            157,
+            124,
+            96
+          ],
+          "area_m2": 0.235,
+          "area_method": "segmentation_mask"
+        }
+      ]
     },
     {
       "path": "datasets\\05_morth_civil_hard_negatives\\real_images\\kag_pothole-mix_0_00180_262.jpg",
@@ -248,7 +235,7 @@
       "reported": []
     },
     {
-      "path": "datasets\\05_morth_civil_hard_negatives\\real_images\\kag_pothole-mix_0_00342_93.jpg",
+      "path": "datasets\\05_morth_civil_hard_negatives\\real_images\\kag_pothole-mix_0_00052_146.jpg",
       "folder": "05_morth_civil_hard_negatives",
       "expected": "clean",
       "reported": []
@@ -260,7 +247,7 @@
       "reported": []
     },
     {
-      "path": "datasets\\05_morth_civil_hard_negatives\\real_images\\kag_pothole-mix_0_00105_195.jpg",
+      "path": "datasets\\05_morth_civil_hard_negatives\\real_images\\kag_pothole-mix_0_00295_5.jpg",
       "folder": "05_morth_civil_hard_negatives",
       "expected": "clean",
       "reported": []
@@ -341,472 +328,827 @@
       "path": "datasets\\11_missing_road_divider\\real_images\\real_11_FileBarrier Highway between Cobar and Wilcann.jpg",
       "folder": "11_missing_road_divider",
       "expected": "clean",
-      "reported": []
-    },
-    {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00303_potholes419.jpg",
-      "folder": "02_kaggle_pothole_600",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00298_potholes414.jpg",
-      "folder": "02_kaggle_pothole_600",
-      "expected": "defect",
-      "reported": [
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.911,
-          "bbox_pixels": [
-            52,
-            126,
-            578,
-            195
-          ],
-          "area_m2": 1.783,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.599,
-          "bbox_pixels": [
-            466,
-            198,
-            110,
-            73
-          ],
-          "area_m2": 0.105,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.789,
-          "bbox_pixels": [
-            568,
-            381,
-            54,
-            99
-          ],
-          "area_m2": 0.079,
-          "area_method": "bounding_box_estimate"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.522,
-          "bbox_pixels": [
-            0,
-            176,
-            108,
-            52
-          ],
-          "area_m2": 0.111,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.571,
-          "bbox_pixels": [
-            551,
-            362,
-            89,
-            46
-          ],
-          "area_m2": 0.078,
-          "area_method": "bounding_box_estimate"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.588,
-          "bbox_pixels": [
-            381,
-            450,
-            44,
-            30
-          ],
-          "area_m2": 0.05,
-          "area_method": "bounding_box_estimate"
-        }
-      ]
-    },
-    {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00288_potholes404.jpg",
-      "folder": "02_kaggle_pothole_600",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00015_potholes117.jpg",
-      "folder": "02_kaggle_pothole_600",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-mix_2_00125_211.jpg",
-      "folder": "02_kaggle_pothole_600",
-      "expected": "defect",
-      "reported": [
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.607,
-          "bbox_pixels": [
-            0,
-            96,
-            374,
-            183
-          ],
-          "area_m2": 1.548,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
-          "confidence": 0.488,
-          "bbox_pixels": [
-            114,
-            376,
-            40,
-            48
-          ],
-          "area_m2": 0.006,
-          "area_method": "segmentation_mask"
-        }
-      ]
-    },
-    {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00164_potholes280.jpg",
-      "folder": "02_kaggle_pothole_600",
-      "expected": "defect",
-      "reported": [
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.85,
-          "bbox_pixels": [
-            203,
-            144,
-            274,
-            108
-          ],
-          "area_m2": 0.438,
-          "area_method": "segmentation_mask"
-        }
-      ]
-    },
-    {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00284_potholes40.jpg",
-      "folder": "02_kaggle_pothole_600",
-      "expected": "defect",
       "reported": [
         {
           "class_name": "Crack (Longitudinal / Transverse / Alligator)",
-          "confidence": 0.452,
+          "confidence": 0.668,
           "bbox_pixels": [
-            164,
-            159,
-            248,
-            98
+            0,
+            418,
+            95,
+            57
           ],
-          "area_m2": 0.08,
+          "area_m2": 0.012,
           "area_method": "segmentation_mask"
         }
       ]
     },
     {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-mix_2_00162_246.jpg",
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-mix_2_00136_222.jpg",
       "folder": "02_kaggle_pothole_600",
       "expected": "defect",
       "reported": [
         {
           "class_name": "Pothole Cavity",
-          "confidence": 0.994,
+          "confidence": 0.996,
           "bbox_pixels": [
-            0,
-            100,
-            640,
-            380
+            25,
+            14,
+            604,
+            466
           ],
-          "area_m2": 2.978,
-          "area_method": "segmentation_mask"
-        },
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.957,
-          "bbox_pixels": [
-            66,
-            271,
-            142,
-            126
-          ],
-          "area_m2": 0.11,
+          "area_m2": 4.234,
           "area_method": "segmentation_mask"
         }
       ]
     },
     {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00205_potholes325.jpg",
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00254_potholes370.jpg",
       "folder": "02_kaggle_pothole_600",
       "expected": "defect",
       "reported": [
         {
           "class_name": "Pothole Cavity",
-          "confidence": 0.961,
+          "confidence": 0.996,
           "bbox_pixels": [
-            11,
-            0,
-            629,
-            374
+            64,
+            340,
+            212,
+            140
           ],
-          "area_m2": 12.911,
+          "area_m2": 0.107,
           "area_method": "segmentation_mask"
         },
         {
           "class_name": "Pothole Cavity",
-          "confidence": 0.556,
+          "confidence": 0.971,
           "bbox_pixels": [
-            332,
-            376,
-            174,
-            92
+            373,
+            210,
+            222,
+            117
           ],
-          "area_m2": 0.058,
+          "area_m2": 0.083,
           "area_method": "segmentation_mask"
-        },
+        }
+      ]
+    },
+    {
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00130_potholes247.jpg",
+      "folder": "02_kaggle_pothole_600",
+      "expected": "defect",
+      "reported": []
+    },
+    {
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\cpr_877_1850.jpg",
+      "folder": "02_kaggle_pothole_600",
+      "expected": "defect",
+      "reported": [
         {
           "class_name": "Pothole Cavity",
-          "confidence": 0.527,
+          "confidence": 0.91,
           "bbox_pixels": [
-            507,
-            367,
-            96,
-            105
+            57,
+            29,
+            516,
+            289
           ],
-          "area_m2": 0.023,
+          "area_m2": 4.37,
           "area_method": "segmentation_mask"
-        },
+        }
+      ]
+    },
+    {
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00121_potholes237.jpg",
+      "folder": "02_kaggle_pothole_600",
+      "expected": "defect",
+      "reported": [
         {
           "class_name": "Pothole Cavity",
           "confidence": 0.471,
           "bbox_pixels": [
-            565,
-            124,
-            75,
-            130
+            578,
+            174,
+            54,
+            30
           ],
-          "area_m2": 0.155,
+          "area_m2": 0.048,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00084_potholes190.jpg",
+      "folder": "02_kaggle_pothole_600",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Pothole Cavity",
+          "confidence": 0.538,
+          "bbox_pixels": [
+            439,
+            390,
+            201,
+            57
+          ],
+          "area_m2": 0.042,
           "area_method": "segmentation_mask"
         },
         {
           "class_name": "Pothole Cavity",
-          "confidence": 0.535,
+          "confidence": 0.649,
           "bbox_pixels": [
-            3,
-            99,
-            46,
+            0,
+            193,
+            59,
+            52
+          ],
+          "area_m2": 0.069,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00071_potholes178.jpg",
+      "folder": "02_kaggle_pothole_600",
+      "expected": "defect",
+      "reported": []
+    },
+    {
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\cpr_765_1610.jpg",
+      "folder": "02_kaggle_pothole_600",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Pothole Cavity",
+          "confidence": 0.889,
+          "bbox_pixels": [
+            50,
+            369,
+            72,
+            92
+          ],
+          "area_m2": 0.001,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Pothole Cavity",
+          "confidence": 0.82,
+          "bbox_pixels": [
+            94,
+            430,
+            92,
+            50
+          ],
+          "area_m2": 0.003,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00265_potholes383.jpg",
+      "folder": "02_kaggle_pothole_600",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Pothole Cavity",
+          "confidence": 0.926,
+          "bbox_pixels": [
+            0,
+            0,
+            640,
+            402
+          ],
+          "area_m2": 14.814,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.467,
+          "bbox_pixels": [
+            105,
+            257,
+            326,
+            80
+          ],
+          "area_m2": 0.105,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00082_potholes189.jpg",
+      "folder": "02_kaggle_pothole_600",
+      "expected": "defect",
+      "reported": []
+    },
+    {
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-mix_2_00049_143.jpg",
+      "folder": "02_kaggle_pothole_600",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Pothole Cavity",
+          "confidence": 0.901,
+          "bbox_pixels": [
+            208,
+            66,
+            432,
+            266
+          ],
+          "area_m2": 3.434,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Pothole Cavity",
+          "confidence": 0.991,
+          "bbox_pixels": [
+            0,
+            71,
+            356,
+            195
+          ],
+          "area_m2": 1.492,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.49,
+          "bbox_pixels": [
+            596,
+            436,
+            40,
+            30
+          ],
+          "area_m2": 0.004,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\02_kaggle_pothole_600\\real_images\\cpr_581_1219.jpg",
+      "folder": "02_kaggle_pothole_600",
+      "expected": "defect",
+      "reported": []
+    },
+    {
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_595_1247.jpg",
+      "folder": "03_crack500_fatigue",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.777,
+          "bbox_pixels": [
+            0,
+            93,
+            640,
+            296
+          ],
+          "area_m2": 2.749,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.842,
+          "bbox_pixels": [
+            429,
+            110,
+            211,
+            208
+          ],
+          "area_m2": 0.745,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.53,
+          "bbox_pixels": [
+            0,
+            274,
+            209,
+            204
+          ],
+          "area_m2": 0.206,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.798,
+          "bbox_pixels": [
+            496,
+            360,
+            124,
+            80
+          ],
+          "area_m2": 0.033,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.56,
+          "bbox_pixels": [
+            31,
+            234,
+            100,
+            71
+          ],
+          "area_m2": 0.085,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Pothole Cavity",
+          "confidence": 0.572,
+          "bbox_pixels": [
+            396,
+            290,
+            74,
+            66
+          ],
+          "area_m2": 0.01,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.497,
+          "bbox_pixels": [
+            147,
+            277,
+            62,
+            57
+          ],
+          "area_m2": 0.032,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_339_710.jpg",
+      "folder": "03_crack500_fatigue",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.903,
+          "bbox_pixels": [
+            429,
+            93,
+            211,
+            167
+          ],
+          "area_m2": 0.564,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.99,
+          "bbox_pixels": [
+            368,
+            375,
+            272,
+            98
+          ],
+          "area_m2": 0.047,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.799,
+          "bbox_pixels": [
+            120,
+            158,
+            54,
+            108
+          ],
+          "area_m2": 0.052,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.805,
+          "bbox_pixels": [
+            175,
+            340,
+            80,
+            87
+          ],
+          "area_m2": 0.01,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_760_1598.jpg",
+      "folder": "03_crack500_fatigue",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.862,
+          "bbox_pixels": [
+            0,
+            61,
+            640,
+            419
+          ],
+          "area_m2": 2.419,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.625,
+          "bbox_pixels": [
+            188,
+            75,
+            296,
+            202
+          ],
+          "area_m2": 0.559,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.973,
+          "bbox_pixels": [
+            374,
+            146,
+            92,
+            105
+          ],
+          "area_m2": 0.172,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.939,
+          "bbox_pixels": [
+            141,
+            402,
+            78,
+            71
+          ],
+          "area_m2": 0.014,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.79,
+          "bbox_pixels": [
+            0,
+            141,
+            57,
+            66
+          ],
+          "area_m2": 0.101,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.685,
+          "bbox_pixels": [
+            350,
+            352,
+            36,
+            71
+          ],
+          "area_m2": 0.015,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_604_1267.jpg",
+      "folder": "03_crack500_fatigue",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.49,
+          "bbox_pixels": [
+            0,
+            400,
+            75,
+            80
+          ],
+          "area_m2": 0.018,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.733,
+          "bbox_pixels": [
+            31,
+            333,
+            98,
+            62
+          ],
+          "area_m2": 0.021,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_425_891.jpg",
+      "folder": "03_crack500_fatigue",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Pothole Cavity",
+          "confidence": 0.797,
+          "bbox_pixels": [
+            471,
+            357,
+            98,
+            123
+          ],
+          "area_m2": 0.009,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_238_503.jpg",
+      "folder": "03_crack500_fatigue",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.679,
+          "bbox_pixels": [
+            346,
+            37,
+            294,
+            443
+          ],
+          "area_m2": 2.341,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.853,
+          "bbox_pixels": [
+            0,
+            69,
+            356,
+            411
+          ],
+          "area_m2": 1.674,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_43_91.jpg",
+      "folder": "03_crack500_fatigue",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.99,
+          "bbox_pixels": [
+            385,
+            221,
+            255,
+            259
+          ],
+          "area_m2": 0.374,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.981,
+          "bbox_pixels": [
+            24,
+            0,
+            228,
+            480
+          ],
+          "area_m2": 0.352,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.676,
+          "bbox_pixels": [
+            170,
+            245,
+            104,
+            186
+          ],
+          "area_m2": 0.094,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.935,
+          "bbox_pixels": [
+            0,
+            127,
+            72,
+            126
+          ],
+          "area_m2": 0.153,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Pothole Cavity",
+          "confidence": 0.723,
+          "bbox_pixels": [
+            537,
+            92,
+            103,
             158
           ],
-          "area_m2": 0.123,
+          "area_m2": 0.381,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.754,
+          "bbox_pixels": [
+            389,
+            314,
+            62,
+            87
+          ],
+          "area_m2": 0.028,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.926,
+          "bbox_pixels": [
+            67,
+            381,
+            96,
+            62
+          ],
+          "area_m2": 0.019,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_552_1158.jpg",
+      "folder": "03_crack500_fatigue",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.803,
+          "bbox_pixels": [
+            474,
+            231,
+            104,
+            78
+          ],
+          "area_m2": 0.057,
+          "area_method": "segmentation_mask"
+        }
+      ]
+    },
+    {
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_870_1834.jpg",
+      "folder": "03_crack500_fatigue",
+      "expected": "defect",
+      "reported": []
+    },
+    {
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_695_1462.jpg",
+      "folder": "03_crack500_fatigue",
+      "expected": "defect",
+      "reported": [
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.714,
+          "bbox_pixels": [
+            387,
+            170,
+            66,
+            108
+          ],
+          "area_m2": 0.088,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.891,
+          "bbox_pixels": [
+            453,
+            335,
+            82,
+            71
+          ],
+          "area_m2": 0.025,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.784,
+          "bbox_pixels": [
+            441,
+            306,
+            46,
+            52
+          ],
+          "area_m2": 0.011,
           "area_method": "segmentation_mask"
         },
         {
           "class_name": "Pothole Cavity",
-          "confidence": 0.559,
+          "confidence": 0.83,
           "bbox_pixels": [
-            430,
-            430,
-            108,
-            39
+            435,
+            231,
+            30,
+            80
           ],
-          "area_m2": 0.008,
+          "area_m2": 0.01,
           "area_method": "segmentation_mask"
         }
       ]
     },
     {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00511_potholes632.jpg",
-      "folder": "02_kaggle_pothole_600",
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_759_1596.jpg",
+      "folder": "03_crack500_fatigue",
       "expected": "defect",
-      "reported": [
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.537,
-          "bbox_pixels": [
-            106,
-            23,
-            470,
-            321
-          ],
-          "area_m2": 2.826,
-          "area_method": "segmentation_mask"
-        }
-      ]
+      "reported": []
     },
     {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-annotated_2_00045_potholes149.jpg",
-      "folder": "02_kaggle_pothole_600",
+      "path": "datasets\\03_crack500_fatigue\\real_images\\cpr_72_150.jpg",
+      "folder": "03_crack500_fatigue",
       "expected": "defect",
       "reported": [
         {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.496,
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.966,
           "bbox_pixels": [
-            145,
-            265,
-            82,
-            101
+            84,
+            162,
+            54,
+            135
+          ],
+          "area_m2": 0.077,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.593,
+          "bbox_pixels": [
+            165,
+            205,
+            78,
+            30
           ],
           "area_m2": 0.044,
           "area_method": "segmentation_mask"
-        }
-      ]
-    },
-    {
-      "path": "datasets\\02_kaggle_pothole_600\\real_images\\kag_pothole-mix_2_00094_184.jpg",
-      "folder": "02_kaggle_pothole_600",
-      "expected": "defect",
-      "reported": [
+        },
         {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.925,
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.916,
           "bbox_pixels": [
-            0,
-            177,
-            208,
-            192
+            119,
+            124,
+            44,
+            92
           ],
-          "area_m2": 0.391,
+          "area_m2": 0.082,
           "area_method": "segmentation_mask"
         },
         {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.69,
-          "bbox_pixels": [
-            151,
-            198,
-            358,
-            133
-          ],
-          "area_m2": 0.333,
-          "area_method": "segmentation_mask"
-        }
-      ]
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1077247_DF_251_251BDF0530_05027_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1053880_DF_020_020BDF0070_06061_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": [
-        {
           "class_name": "Crack (Longitudinal / Transverse / Alligator)",
-          "confidence": 0.502,
+          "confidence": 0.7,
           "bbox_pixels": [
-            210,
-            115,
-            122,
-            108
+            150,
+            352,
+            56,
+            71
           ],
-          "area_m2": 0.09,
-          "area_method": "segmentation_mask"
-        }
-      ]
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1091783_DF_251_251BDF0490_00911_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1014798_RS_386_386RS124739_30915_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1084417_DF_080_080BDF0090_01630_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1090284_DF_070_070BDF0050_05831_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1077204_DF_251_251BDF0530_04946_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1081508_DF_080_080BDF0070_00331_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1014620_RS_386_386RS124739_30026_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1077334_DF_251_251BDF0530_05186_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": []
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1091633_DF_251_251BDF0490_00627_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": [
-        {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.503,
-          "bbox_pixels": [
-            422,
-            166,
-            38,
-            36
-          ],
-          "area_m2": 0.122,
-          "area_method": "bounding_box_estimate"
-        }
-      ]
-    },
-    {
-      "path": "datasets\\03_crack500_fatigue\\real_images\\1014842_RS_386_386RS124739_31135_RAW.jpg",
-      "folder": "03_crack500_fatigue",
-      "expected": "defect",
-      "reported": [
-        {
-          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
-          "confidence": 0.459,
-          "bbox_pixels": [
-            186,
-            121,
-            228,
-            135
-          ],
-          "area_m2": 0.139,
+          "area_m2": 0.011,
           "area_method": "segmentation_mask"
         },
         {
-          "class_name": "Pothole Cavity",
-          "confidence": 0.829,
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.883,
           "bbox_pixels": [
-            176,
-            237,
-            106,
-            87
+            213,
+            145,
+            44,
+            52
           ],
-          "area_m2": 0.108,
+          "area_m2": 0.047,
+          "area_method": "segmentation_mask"
+        },
+        {
+          "class_name": "Crack (Longitudinal / Transverse / Alligator)",
+          "confidence": 0.621,
+          "bbox_pixels": [
+            197,
+            251,
+            44,
+            32
+          ],
+          "area_m2": 0.013,
           "area_method": "segmentation_mask"
         }
       ]

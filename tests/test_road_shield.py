@@ -302,6 +302,57 @@ class Pipeline(unittest.TestCase):
         r = self.pipe.audit_image(image_input=grey)
         self.assertNotEqual(r.get("status"), "ANALYSIS_COMPLETE")
 
+    def test_co_occurring_potholes_cars_and_persons_are_all_reported(self):
+        """
+        When a single frame contains potholes + cars/vehicles + persons, all three
+        must be reported simultaneously without the pedestrian overwriting the
+        road distress as primary_detection.
+        """
+        if not self.photo:
+            self.skipTest("no dataset photo")
+        orig_detect = self.pipe.object_detector.detect
+        orig_ready = self.pipe.object_detector._session
+        try:
+            def mock_detect(_img):
+                return [
+                    {
+                        "class_id": 0, "class_name": "person", "category": "Vulnerable road user",
+                        "color": "#ef4444", "vulnerable": True, "confidence": 0.91,
+                        "bbox_pixels": [80, 180, 55, 160], "bbox_normalized": [0.125, 0.375, 0.086, 0.333],
+                        "detector": "onnx_coco_detector",
+                    },
+                    {
+                        "class_id": 2, "class_name": "car", "category": "Vehicle",
+                        "color": "#38bdf8", "vulnerable": False, "confidence": 0.88,
+                        "bbox_pixels": [420, 160, 140, 110], "bbox_normalized": [0.656, 0.333, 0.219, 0.229],
+                        "detector": "onnx_coco_detector",
+                    },
+                    {
+                        "class_id": 5, "class_name": "bus", "category": "Heavy vehicle",
+                        "color": "#22d3ee", "vulnerable": False, "confidence": 0.84,
+                        "bbox_pixels": [240, 120, 150, 130], "bbox_normalized": [0.375, 0.25, 0.234, 0.271],
+                        "detector": "onnx_coco_detector",
+                    },
+                ]
+            self.pipe.object_detector._session = True
+            self.pipe.object_detector.detect = mock_detect
+            r = self.pipe.audit_image(image_input=self.photo)
+            self.assertTrue(r["vulnerable_safety_alert"])
+            self.assertEqual(r["pedestrians_count"], 1)
+            self.assertEqual(r["vehicles_count"], 2)
+            self.assertAlmostEqual(r["urban_traffic_analysis"]["pcu_equivalent"], 3.0, places=1)
+            self.assertTrue(r["has_multi_modal_targets"])
+            if r["is_distress"]:
+                self.assertEqual(r["primary_detection"]["class_name"], r["primary_distress"]["class_name"],
+                                 "pedestrian overwrote road distress in primary_detection")
+                self.assertTrue(r["has_dual_targets"])
+                self.assertIn("road defect", r["multi_target_summary"])
+                self.assertIn("pedestrian", r["multi_target_summary"])
+                self.assertIn("vehicle", r["multi_target_summary"])
+        finally:
+            self.pipe.object_detector.detect = orig_detect
+            self.pipe.object_detector._session = orig_ready
+
 
 class WorkOrderSealing(unittest.TestCase):
     def setUp(self):

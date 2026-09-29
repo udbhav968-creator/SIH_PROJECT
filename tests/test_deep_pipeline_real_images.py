@@ -1,4 +1,4 @@
-﻿"""
+"""
 Deep inference pipeline benchmark on distinct real-world road defect images.
 
 Validates the full multimodal AI engine against authentic photographs harvested
@@ -60,12 +60,15 @@ def harvest_distinct_real_images(target_count=30):
         ("06_astm_d6433_pci_benchmark", 2),
     ]
 
+    import random
+
     selected = []
     seen_hashes = set()
     seen_bases = set()
 
     for folder, quota in quotas:
         photos = _list_photos(folder, dedupe_augmented=True)
+        random.Random(7).shuffle(photos)
         count_added = 0
         for path in photos:
             if count_added >= quota:

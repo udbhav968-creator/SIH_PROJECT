@@ -54,6 +54,7 @@ from models.morth_dispatch_agent import MoRTHDispatchAgent
 from models.multimodal_transformer_fusion import MultimodalTransformerFusionNet
 from models.automotive_rl_policy_agent import AutomotiveADASPolicyAgent
 from models.automotive_telematics_engine import AutomotiveTelematicsEngine
+from models.urban_traffic_net import UrbanTrafficNet, PCU_WEIGHTS, IRC_STANDARDS as TRAFFIC_IRC_STANDARDS
 
 # Classes that represent an actual surface footprint (crack, pothole,
 # waterlogging) get real IPM-derived area/depth/tonnage math. Classes 4-6
@@ -62,6 +63,16 @@ from models.automotive_telematics_engine import AutomotiveTelematicsEngine
 # to compute, so we report the detection and its IRC remediation reference
 # without inventing an asphalt-repair cost for them.
 AREA_CLASSES = {1, 2, 3}
+DISTRESS_CLASSES = {1, 2, 3, 4, 5, 6}
+
+VEHICLE_CLASS_MAP = {
+    "car": "Car",
+    "bus": "City Bus",
+    "truck": "Heavy Truck",
+    "train": "Heavy Truck",
+    "motorcycle": "Two-Wheeler",
+    "bicycle": "Two-Wheeler",
+}
 
 # There is no rut-bar or profilometer in this project, so rutting/IRI are
 # reported as a documented proxy correlated with detected cavity severity,
@@ -130,6 +141,7 @@ class DeepInferencePipeline:
         self.multimodal_net = MultimodalTransformerFusionNet(imu_weight=0.4)
         self.rl_agent = AutomotiveADASPolicyAgent()
         self.telematics = AutomotiveTelematicsEngine(checkpoints_dir=self.ckpt_dir)
+        self.traffic_net = UrbanTrafficNet()
 
     # ------------------------------------------------------------------
     # Single-image audit
@@ -161,6 +173,15 @@ class DeepInferencePipeline:
         img_np = self.cv_detector.decode_image(image_input)
         H, W, _ = img_np.shape
         gray = 0.299 * img_np[:, :, 0] + 0.587 * img_np[:, :, 1] + 0.114 * img_np[:, :, 2]
+
+        # STAGE 2: texture gatekeeper (fast check before running heavy models)
+        roi_start_y = int(H * 0.35)
+        road_gray = gray[roi_start_y:, :]
+        mean_intensity = float(np.mean(road_gray))
+        std_intensity = float(np.std(road_gray))
+
+        if std_intensity < 6.5:
+            return self._reject_non_pavement(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
 
         # Intrinsics are in pixels, so a profile calibrated at one resolution is
         # simply wrong at another. Rescale per request.
@@ -197,15 +218,6 @@ class DeepInferencePipeline:
                 print(f"[WARN] segmentation failed, falling back to box area: {e}")
         self._seg_out = seg_out
 
-        # STAGE 2: texture gatekeeper
-        roi_start_y = int(H * 0.35)
-        road_gray = gray[roi_start_y:, :]
-        mean_intensity = float(np.mean(road_gray))
-        std_intensity = float(np.std(road_gray))
-
-        if std_intensity < 6.5:
-            return self._reject_non_pavement(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
-
         # STAGE 3a: COCO object detection (people, vehicles, traffic control)
         scene_objects, scene_summary = [], {"available": False,
                                             "reason": "No detector weights - run scripts/fetch_detector.py"}
@@ -217,8 +229,7 @@ class DeepInferencePipeline:
             except Exception as e:
                 scene_summary = {"available": False, "reason": f"detector error: {e}"}
 
-        # STAGE 3b: region proposals (classical CV) + people. The CNN detector's
-        # person boxes are used when it ran; the HOG+SVM detector is the fallback.
+        # STAGE 3b: region proposals (classical CV) + people + vehicles.
         person_boxes = [d for d in scene_objects if d["class_name"] == "person"]
         if person_boxes:
             pedestrians = [{
@@ -231,6 +242,22 @@ class DeepInferencePipeline:
             } for i, d in enumerate(person_boxes)]
         else:
             pedestrians = self.cv_detector.detect_pedestrians(img_np)
+
+        # Extract vehicles (Car, City Bus, Heavy Truck, Two-Wheeler) and compute IRC:106-1990 PCU congestion
+        raw_vehicles = [d for d in scene_objects if d["class_name"] in VEHICLE_CLASS_MAP]
+        vehicle_detections = [
+            self._build_vehicle_entry(d, i + 1, H)
+            for i, d in enumerate(raw_vehicles)
+        ]
+        vehicle_counts = {}
+        for v in vehicle_detections:
+            vtype = v["vehicle_type"]
+            vehicle_counts[vtype] = vehicle_counts.get(vtype, 0) + 1
+        traffic_analysis = self.traffic_net.calculate_congestion_index(vehicle_counts)
+        traffic_analysis["vehicle_counts"] = vehicle_counts
+        traffic_analysis["total_vehicles_detected"] = len(vehicle_detections)
+        primary_vehicle = vehicle_detections[0] if vehicle_detections else None
+
         # Crack and pothole candidates come from the segmenter's mask; the
         # brightness scan supplies everything the segmenter has no class for
         # (waterlogging, signage, markings) and is the whole proposal stage when
@@ -242,13 +269,7 @@ class DeepInferencePipeline:
                          if not any(self._boxes_overlap(b, sb) for sb in seg_boxes)]
         bboxes = seg_boxes + heuristic
 
-        if not bboxes and not pedestrians:
-            normal = self._normal_road(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
-            normal["scene_objects"] = scene_objects
-            normal["scene_summary"] = scene_summary
-            return normal
-
-        # STAGE 4: pedestrian entries (real HOG+SVM detections, no classifier involved)
+        # STAGE 4: pedestrian entries
         detections = [self._build_pedestrian_entry(p) for p in pedestrians]
 
         # STAGE 4/5: VisionDistressNet classification + IPM geometry per candidate region
@@ -256,6 +277,23 @@ class DeepInferencePipeline:
             entry = self._classify_region(img_np, gray, bbox, W, H, mean_intensity)
             if entry is not None:
                 detections.append(entry)
+
+        # Corridor-level hazard check (Waterlogging, Missing Zebra Crossing, Missing Road Divider, Damaged Sign)
+        # when no region-level distress was found.
+        if not any(d.get("is_distress") for d in detections):
+            scene_entry = self._classify_scene_fallback(img_np, gray, W, H, mean_intensity)
+            if scene_entry is not None:
+                detections.append(scene_entry)
+
+        if not detections and not bboxes and not pedestrians:
+            normal = self._normal_road(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
+            normal["scene_objects"] = scene_objects
+            normal["scene_summary"] = scene_summary
+            normal["vehicles_count"] = len(vehicle_detections)
+            normal["all_vehicles"] = vehicle_detections
+            normal["primary_vehicle"] = primary_vehicle
+            normal["urban_traffic_analysis"] = traffic_analysis
+            return normal
 
         if not detections:
             detections.append(self._normal_road_entry())
@@ -267,15 +305,29 @@ class DeepInferencePipeline:
         if distress_detections:
             primary_distress = sorted(
                 distress_detections,
-                key=lambda d: (d.get("class_id") == 2, d.get("surface_area_m2", 0.0), d.get("confidence", 0.0)),
+                key=lambda d: (
+                    d.get("area_method") == "segmentation_mask",
+                    round(float(d.get("confidence", 0.0)), 1),
+                    d.get("surface_area_m2", 0.0),
+                    d.get("class_id") == 2,
+                ),
                 reverse=True,
             )[0]
         else:
-            primary_distress = detections[0]
+            primary_distress = self._normal_road_entry()
 
-        primary = primary_pedestrian if primary_pedestrian is not None else primary_distress
+        # Prioritize road distress in primary_detection when a road defect is present so a bystander
+        # does not mask a pothole/crack, while keeping primary_pedestrian and all_pedestrians populated.
+        primary = primary_distress if distress_detections else (
+            primary_pedestrian if primary_pedestrian is not None else primary_distress
+        )
         has_dual_targets = bool(ped_detections) and bool(distress_detections)
+        has_multi_modal_targets = sum([bool(distress_detections), bool(ped_detections), bool(vehicle_detections)]) >= 2
         dual_target_summary = self._dual_target_summary(ped_detections, distress_detections, primary_pedestrian, primary_distress)
+        multi_target_summary = self._multi_target_summary(
+            distress_detections, ped_detections, vehicle_detections,
+            primary_distress, primary_pedestrian, traffic_analysis,
+        )
 
         # STAGE 6: IMU shock correlation - only real telemetry, never fabricated
         imu_report, delta_z, p_imu, imu_available = self._run_imu_stage(imu_series)
@@ -329,8 +381,14 @@ class DeepInferencePipeline:
             "vulnerable_safety_alert": len(ped_detections) > 0,
             "pedestrians_count": len(ped_detections),
             "all_pedestrians": ped_detections,
+            "vehicles_count": len(vehicle_detections),
+            "all_vehicles": vehicle_detections,
+            "primary_vehicle": primary_vehicle,
+            "urban_traffic_analysis": traffic_analysis,
             "has_dual_targets": has_dual_targets,
+            "has_multi_modal_targets": has_multi_modal_targets,
             "dual_target_summary": dual_target_summary,
+            "multi_target_summary": multi_target_summary,
             "primary_distress": primary_distress,
             "primary_pedestrian": primary_pedestrian,
             "primary_detection": primary,
@@ -364,6 +422,8 @@ class DeepInferencePipeline:
                 "has_pedestrian_hazard": primary_pedestrian is not None,
                 "pedestrians_detected_count": len(ped_detections),
                 "pedestrian_alert_level": primary_pedestrian.get("alert_level") if primary_pedestrian else "NO_PEDESTRIAN_HAZARD",
+                "vehicles_detected_count": len(vehicle_detections),
+                "pcu_equivalent": traffic_analysis.get("pcu_equivalent", 0.0),
             },
             "scene_objects": scene_objects,
             "scene_summary": scene_summary,
@@ -426,6 +486,30 @@ class DeepInferencePipeline:
             "morth_tonnage_t": 0.0,
             "repair_cost_inr": 0.0,
             "irc_standard_specification": VisionDistressNet.IRC_STANDARDS.get(VisionDistressNet.PEDESTRIAN_CLASS_ID, ""),
+        }
+
+    def _build_vehicle_entry(self, det, vehicle_id, H):
+        """Wraps a real ONNX COCO vehicle detection into a structured traffic/PCU entry."""
+        coco_cls = det["class_name"]
+        vtype = VEHICLE_CLASS_MAP.get(coco_cls, "Car")
+        bbox = det["bbox_pixels"]
+        bottom_y = bbox[1] + bbox[3]
+        dist_m = round(max(2.0, 26.0 * (1.0 - (bottom_y / float(max(1, H))) ** 0.85)), 1)
+        return {
+            "vehicle_id": vehicle_id,
+            "coco_class": coco_cls,
+            "vehicle_type": vtype,
+            "class_name": f"Vehicle ({vtype})",
+            "confidence": det["confidence"],
+            "bbox_pixels": bbox,
+            "bbox_normalized": det["bbox_normalized"],
+            "distance_meters": dist_m,
+            "pcu_weight": PCU_WEIGHTS.get(vtype, 1.0),
+            "irc_standard_specification": TRAFFIC_IRC_STANDARDS.get(vtype, ""),
+            "detector": det.get("detector", "onnx_coco_detector"),
+            "is_vehicle": True,
+            "is_distress": False,
+            "is_pedestrian": False,
         }
 
     def _region_mask(self, cls_id, bx, by, bw, bh, H, W):
@@ -685,6 +769,14 @@ class DeepInferencePipeline:
                 # worse than useless, and reporting nothing loses the defect.
                 oversized = (((x1 - x0) * (y1 - y0)) / float(W * H)
                              > self.MAX_COMPONENT_BOX_FRACTION)
+                if (x1 - x0) * (y1 - y0) > 0.55 * W * H:
+                    scale = (0.50 * W * H / float((x1 - x0) * (y1 - y0))) ** 0.5
+                    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+                    nw = max(8, int((x1 - x0) * scale))
+                    nh = max(8, int((y1 - y0) * scale))
+                    x0 = max(0, min(W - nw, int(round(cx - nw / 2.0))))
+                    y0 = max(0, min(H - nh, int(round(cy - nh / 2.0))))
+                    x1, y1 = x0 + nw, y0 + nh
                 out.append([x0, y0, x1 - x0, y1 - y0, mean_p * area, kind,
                             "segmentation", round(mean_p, 4),
                             round(area / frame_px, 5), oversized])
@@ -782,6 +874,16 @@ class DeepInferencePipeline:
             return None
 
         from_segmenter = len(bbox) > 6 and bbox[6] == "segmentation"
+        if from_segmenter and cls_id not in (1, 2):
+            return None
+        if from_segmenter and cls_id in (1, 2) and int(bbox[5]) in (1, 2):
+            seg_kind = int(bbox[5])
+            if cls_id != seg_kind:
+                own_frac = self._region_defect_fraction(cls_id, bx, by, bw, bh, H, W) or 0.0
+                if own_frac < self.SEGMENTER_GATE_FRACTION:
+                    cls_id = seg_kind
+                    pred["class_id"] = cls_id
+                    pred["class_name"] = VisionDistressNet.CLASS_NAMES[cls_id]
         if cls_id in (1, 2) and not from_segmenter:
             # WHERE a crack or pothole is, is the segmenter's question. The
             # brightness grid merges into one rectangle over the whole
@@ -915,7 +1017,7 @@ class DeepInferencePipeline:
             "astm_d6433_severity": pred["astm_d6433_severity"],
             "irc_standard_specification": pred["irc_standard_specification"],
             "top3_ranked_predictions": pred["top3_ranked_predictions"],
-            "is_distress": cls_id in AREA_CLASSES,
+            "is_distress": cls_id in DISTRESS_CLASSES,
             "distance_meters": round(dist_m, 1),
             "surface_area_m2": round(area_m2, 3),
             "area_method": area_method,
@@ -935,6 +1037,75 @@ class DeepInferencePipeline:
                 "bitumen_volume_m3": vol_m3,
                 "morth_compacted_tonnage_t": tonnage_t,
                 "estimated_repair_cost_inr": repair_cost_inr,
+            },
+            "probabilities": pred["all_class_probabilities"],
+        }
+
+    def _classify_scene_fallback(self, img_np, gray, W, H, mean_intensity):
+        """
+        Scene-level classification for corridor-wide urban safety hazards
+        (3: Waterlogging, 4: Missing Zebra Crossing, 5: Missing Road Divider,
+        6: Damaged Traffic Sign) when no localized region triggered a detection.
+        Cracks (1) and Potholes (2) are intentionally excluded here so they are
+        only ever reported from localized segmentation/region proposals.
+        """
+        try:
+            pred = self.vision_model.predict_image(img_np)
+        except Exception as e:
+            self._classifier_failures = getattr(self, "_classifier_failures", 0) + 1
+            self._classifier_last_error = str(e)
+            return None
+        cls_id = pred.get("class_id", 0)
+        conf = float(pred.get("confidence", 0.0))
+        if cls_id not in (3, 4, 5, 6) or conf < self.MIN_REPORT_CONFIDENCE:
+            return None
+
+        bx = int(W * 0.10)
+        by = int(H * self.ROAD_ROI_TOP_FRACTION)
+        bw = int(W * 0.80)
+        bh = int(H * (0.95 - self.ROAD_ROI_TOP_FRACTION))
+        bx_norm, by_norm = round(bx / float(W), 4), round(by / float(H), 4)
+        bw_norm, bh_norm = round(bw / float(W), 4), round(bh / float(H), 4)
+
+        area_m2 = 0.0
+        dist_m = 8.0
+        area_method = None
+        area_diag = {}
+        if cls_id == 3:
+            _, ground_y = self.ipm_engine.pixel_to_ground(bx + bw / 2.0, by + bh / 2.0)
+            dist_m = max(1.8, min(30.0, float(ground_y)))
+            area_m2 = min(self.MAX_SINGLE_REPAIR_AREA_M2, self.ipm_engine.calculate_surface_area_sqm(bx, by, bw // 2, bh // 2))
+            area_method = "corridor_roi_estimate"
+
+        return {
+            "bbox_pixels": [bx, by, bw, bh],
+            "bbox_normalized": [bx_norm, by_norm, bw_norm, bh_norm],
+            "class_id": cls_id,
+            "class_name": pred["class_name"],
+            "confidence": conf,
+            "shannon_entropy_bits": pred["shannon_entropy_bits"],
+            "uncertainty_rating": pred["uncertainty_rating"],
+            "astm_d6433_severity": pred["astm_d6433_severity"],
+            "irc_standard_specification": pred["irc_standard_specification"],
+            "top3_ranked_predictions": pred["top3_ranked_predictions"],
+            "is_distress": True,
+            "distance_meters": round(dist_m, 1),
+            "surface_area_m2": round(area_m2, 3),
+            "area_method": area_method,
+            "area_diagnostics": area_diag,
+            "area_is_plausible_single_repair": True if cls_id in AREA_CLASSES else None,
+            "needs_manual_survey": False,
+            "depth_cm": 0.0,
+            "depth_estimate": None,
+            "volumetric_m3": 0.0,
+            "morth_tonnage_t": 0.0,
+            "repair_cost_inr": 0.0,
+            "physical_dimensions": {
+                "surface_area_m2": round(area_m2, 2),
+                "depth_cm": 0.0,
+                "bitumen_volume_m3": 0.0,
+                "morth_compacted_tonnage_t": 0.0,
+                "estimated_repair_cost_inr": 0.0,
             },
             "probabilities": pred["all_class_probabilities"],
         }
@@ -970,6 +1141,30 @@ class DeepInferencePipeline:
         if len(ped_detections) > 1:
             return f"{len(ped_detections)} pedestrians detected (closest {primary_pedestrian['distance_meters']}m)."
         return ""
+
+    def _multi_target_summary(
+        self, distress_detections, ped_detections, vehicle_detections,
+        primary_distress, primary_pedestrian, traffic_analysis,
+    ):
+        parts = []
+        if distress_detections:
+            parts.append(
+                f"{len(distress_detections)} road defect(s) [primary: {primary_distress['class_name']}, "
+                f"{primary_distress.get('surface_area_m2', 0.0):.3f} m^2]"
+            )
+        if ped_detections and primary_pedestrian:
+            parts.append(
+                f"{len(ped_detections)} pedestrian(s) [closest {primary_pedestrian['distance_meters']}m, "
+                f"alert: {primary_pedestrian.get('alert_level', 'ADVISORY')}]"
+            )
+        if vehicle_detections:
+            vc_str = ", ".join(f"{k}: {v}" for k, v in sorted((traffic_analysis.get("vehicle_counts") or {}).items()))
+            parts.append(
+                f"{len(vehicle_detections)} vehicle(s) [{vc_str}; {traffic_analysis.get('pcu_equivalent', 0.0)} PCU]"
+            )
+        if not parts:
+            return "Normal road surface; no defects, pedestrians, or vehicles detected."
+        return "Simultaneous multi-target detection: " + " + ".join(parts) + "."
 
     def _run_imu_stage(self, imu_series):
         """
