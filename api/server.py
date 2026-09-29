@@ -336,8 +336,12 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     "ipm_homography_engine": "READY",
                     "forensic_audit_engine": "READY",
                     "morth_dispatch_agent": "READY",
-                    "astm_d6433_pci_engine": "READY_FORMULA_BASED",
-                    "deterioration_forecaster": "READY_FORMULA_BASED",
+                    "astm_d6433_pci_engine": ("LOADED (HistGradientBoostingRegressor+ASTM_D6433_20)"
+                                              if getattr(pci_model, "is_ready", False)
+                                              else "READY_TABLE_LOOKUP"),
+                    "deterioration_forecaster": ("LOADED (HistGradientBoostingRegressor+HDM4_LTPP)"
+                                                 if getattr(degrade_model, "is_ready", False)
+                                                 else "READY_FORMULA_FALLBACK"),
                     "urban_traffic_net": "READY_FORMULA_BASED",
                 },
             })
@@ -430,6 +434,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             reports = (
                 ("vision", os.path.join(CKPT_DIR, "vision_distress_report.json")),
                 ("imu", os.path.join(CKPT_DIR, "imu_shock_report.json")),
+                ("pci", os.path.join(CKPT_DIR, "pci_model_report.json")),
+                ("deterioration", os.path.join(CKPT_DIR, "deterioration_model_report.json")),
+                ("depth_estimator", os.path.join(CKPT_DIR, "depth_estimator_report.json")),
                 ("deep_vision", os.path.join(CKPT_DIR, "deep_vision_report.json")),
             )
             for name, path_ in reports:
