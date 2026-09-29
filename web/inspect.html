@@ -169,10 +169,13 @@ function draw() {
   if (el("showBox").checked) {
     dets.forEach(d => {
       const b = d.bbox_pixels;
-      if (!b) return;
-      // bbox is in ORIGINAL image pixels; rescale to canvas
-      const sx = cv.width / currentImage.width, sy = cv.height / currentImage.height;
-      const x = b[0] * sx, y = b[1] * sy, w = b[2] * sx, h = b[3] * sy;
+      const bn = d.bbox_normalized;
+      if (!b && !bn) return;
+      // Pipeline standardizes frames to 640x480; use bbox_normalized so any input aspect ratio aligns
+      const x = bn ? bn[0] * cv.width  : b[0] * (cv.width / 640);
+      const y = bn ? bn[1] * cv.height : b[1] * (cv.height / 480);
+      const w = bn ? bn[2] * cv.width  : b[2] * (cv.width / 640);
+      const h = bn ? bn[3] * cv.height : b[3] * (cv.height / 480);
       const measured = d.area_method === "segmentation_mask";
       ctx.strokeStyle = measured ? "#2dd4d4" : "#f0a92b";
       ctx.lineWidth = 2.5;
@@ -189,31 +192,31 @@ function draw() {
     });
   }
   // Scene objects from the COCO detector: people, vehicles, traffic control.
-  //
-  // The engine has always returned these; nothing drew them, so a photograph
-  // with two cars and a pothole showed one box. They are drawn in a different
-  // colour and always dashed, because they are CONTEXT - this detector has no
-  // pavement class and never contributes a defect, an area or a cost.
   const scene = lastResult.scene_objects || [];
   if (el("showScene").checked && scene.length) {
-    const sx = cv.width / currentImage.width, sy = cv.height / currentImage.height;
     scene.forEach(o => {
       const b = o.bbox_pixels;
-      if (!b) return;
-      const x = b[0] * sx, y = b[1] * sy, w = b[2] * sx, h = b[3] * sy;
+      const bn = o.bbox_normalized;
+      if (!b && !bn) return;
+      const x = bn ? bn[0] * cv.width  : b[0] * (cv.width / 640);
+      const y = bn ? bn[1] * cv.height : b[1] * (cv.height / 480);
+      const w = bn ? bn[2] * cv.width  : b[2] * (cv.width / 640);
+      const h = bn ? bn[3] * cv.height : b[3] * (cv.height / 480);
       const person = o.class_name === "person";
-      ctx.strokeStyle = person ? "#fb7185" : "#94a3b8";
-      ctx.lineWidth = person ? 2.5 : 1.8;
-      ctx.setLineDash([4, 4]);
+      const color = person ? "#fb7185" : (o.color || "#38bdf8");
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([5, 3]);
       ctx.strokeRect(x, y, w, h);
       ctx.setLineDash([]);
       const label = `${o.class_name} ${(o.confidence * 100).toFixed(0)}%`;
-      ctx.font = "500 11px ui-monospace, monospace";
+      ctx.font = "600 11.5px ui-monospace, monospace";
       const tw = ctx.measureText(label).width + 8;
-      ctx.fillStyle = person ? "#fb7185" : "#94a3b8";
-      ctx.fillRect(x, Math.min(cv.height - 17, y + h + 1), tw, 16);
+      ctx.fillStyle = color;
+      const ly = y >= 18 ? y - 17 : Math.min(cv.height - 17, y + h + 1);
+      ctx.fillRect(x, ly, tw, 17);
       ctx.fillStyle = "#0a0f17";
-      ctx.fillText(label, x + 4, Math.min(cv.height - 5, y + h + 13));
+      ctx.fillText(label, x + 4, ly + 12);
     });
   }
 
@@ -358,6 +361,36 @@ function render(d, ms) {
           <td class="num">${x.needs_manual_survey
               ? '<span class="badge warn" title="extent could not be measured well enough to cost">survey</span>'
               : fmt.inr(x.repair_cost_inr)}</td></tr>`).join("")}</tbody>
+      </table></div>
+    </div>` : ""}
+
+    ${((d.all_vehicles && d.all_vehicles.length) || (d.all_pedestrians && d.all_pedestrians.length) || (d.scene_objects && d.scene_objects.length)) ? `<div class="card" style="margin-top:14px;border-color:rgba(56,189,248,.35)">
+      <div class="label" style="color:#38bdf8">vehicles &amp; pedestrians · yolov8 coco + irc:106-1990</div>
+      ${d.multi_target_summary?.summary_message ? `<p class="small" style="margin:0 0 10px">${d.multi_target_summary.summary_message}</p>` : ""}
+      <div class="kv"><span>Vehicles detected</span><span>${d.vehicles_count ?? (d.all_vehicles || []).length}</span></div>
+      <div class="kv"><span>Pedestrians detected</span><span>${d.pedestrians_count ?? (d.all_pedestrians || []).length}</span></div>
+      ${d.urban_traffic_analysis ? `
+        <div class="kv"><span>IRC:106-1990 PCU load</span><span>${fmt.num(d.urban_traffic_analysis.pcu_equivalent, 1)} PCU</span></div>
+        <div class="kv"><span>Traffic Level of Service</span><span>${d.urban_traffic_analysis.los_grade || "—"} (${fmt.num(d.urban_traffic_analysis.congestion_index_pct, 1)}%)</span></div>
+      ` : ""}
+      <div class="table-wrap" style="margin-top:10px"><table>
+        <thead><tr><th>actor</th><th>category</th><th class="num">conf</th><th class="num">dist</th><th class="num">pcu</th></tr></thead>
+        <tbody>${[
+          ...(d.all_pedestrians || []).map(p => `<tr>
+            <td>Pedestrian #${p.pedestrian_id || 1}</td>
+            <td><span class="badge warn">VRU · ASIL-D</span></td>
+            <td class="num">${(p.confidence * 100).toFixed(0)}%</td>
+            <td class="num">${fmt.num(p.distance_meters, 1)} m</td>
+            <td class="num">—</td>
+          </tr>`),
+          ...(d.all_vehicles || []).map(v => `<tr>
+            <td>${v.class_name || v.vehicle_type}</td>
+            <td><span class="badge measured">${v.raw_coco_class || "vehicle"}</span></td>
+            <td class="num">${(v.confidence * 100).toFixed(0)}%</td>
+            <td class="num">${fmt.num(v.distance_meters, 1)} m</td>
+            <td class="num">${fmt.num(v.pcu_weight, 1)}</td>
+          </tr>`),
+        ].join("")}</tbody>
       </table></div>
     </div>` : ""}
 
