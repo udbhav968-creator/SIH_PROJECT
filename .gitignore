@@ -70,3 +70,9 @@ runs/
 yolo*.pt
 # scripts/detect_scene.py default output
 out/
+datasets/_downloads/
+datasets/license_plates/
+# INT8 experiments (scripts/quantize_models.py); regenerate rather than commit
+checkpoints/int8/
+# YOLO training weights: the served artifact is the .onnx; the .pt is a training by-product
+checkpoints/detectors/*.pt
