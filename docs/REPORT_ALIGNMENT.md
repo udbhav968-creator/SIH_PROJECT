@@ -39,7 +39,7 @@ with a stated gap. **Not yet** = still future work.
 | Priority Index PI = w1(100−PCI) + w2·Vol + w3·Traffic (report §3.5) | Done | `models/priority_index.py`; ledger ordered by it | Fairness test: locality metadata cannot change a score |
 | Traffic counting / congestion (UrbanTrafficNet) | Done, redefined | `counts_from_detections` + IRC:106 PCU formula | Counts come from the detector or the caller; see C5 |
 | SSIM repair verification | Done | `models/forensic_audit_engine.py` | existing tests |
-| INT8 quantization (Milestone 3 item 3) | Done on CPU | `scripts/quantize_models.py` | Crossing detector: mAP50 0.864 → 0.858, 61 → 48 ms, 10.0 → 4.1 MB (detection head kept FP32; quantizing it collapsed mAP50 to 0.100). Classifier backbone: 1.9× faster, 3.6× smaller, −2.6 accuracy points. Raspberry Pi / Jetson benchmarks not done. |
+| INT8 quantization (Milestone 3 item 3) | Done on CPU | `scripts/quantize_models.py` | Crossing detector: mAP50 0.864 → 0.858, 61 → 48 ms, 10.0 → 4.1 MB (detection head kept FP32; quantizing it collapsed mAP50 to 0.100). Classifier backbone: 1.9× faster, 3.6× smaller, −2.6 accuracy points (FP32 vs INT8 on identical images; the image set differs from the published held-out split after the DNIT crops were regenerated, so only the difference is comparable). Raspberry Pi / Jetson benchmarks not done. |
 | Real bus sensor mounting (Milestone 3 item 2) | Not yet | — | Needs hardware |
 | Live command-centre dashboard (Milestone 3 item 4) | Partial | `web/corridor.html`, `web/detect.html`, ranked `/api/v1/ledger/defects` | No live bus telemetry feed |
 
