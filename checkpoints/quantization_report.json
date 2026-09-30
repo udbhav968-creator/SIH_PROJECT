@@ -17,5 +17,21 @@
     },
     "prediction_agreement": 0.9542,
     "int8_file": "checkpoints\\int8\\cnn_backbone_mobilenetv2.int8.onnx"
+  },
+  "crosswalk": {
+    "fp32": {
+      "mAP50": 0.864,
+      "mAP50_95": 0.5674,
+      "ms_per_image": 61.26,
+      "mb": 10.0
+    },
+    "int8": {
+      "mAP50": 0.8582,
+      "mAP50_95": 0.5588,
+      "ms_per_image": 47.71,
+      "mb": 4.1
+    },
+    "int8_file": "checkpoints\\int8\\crosswalk.int8.onnx",
+    "fp32_nodes_kept": "84 detection-head nodes left in FP32"
   }
 }

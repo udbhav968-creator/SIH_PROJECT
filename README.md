@@ -18,7 +18,7 @@ code in this repository, and the code that measures it is included.
 | Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Working: people, bicycles, cars, buses, trucks, traffic lights, signs |
 | **Zebra-crossing detection** | YOLO11n trained on CDSet-3434, re-split by time block (no video leakage) | Test mAP50 **0.869**; finds a crossing in 75.4% of crossing frames with **0 false alarms on 263 crossing-free frames** (old geometric detector: 23.5%, 6 false alarms) |
 | **Pothole & crack detection** | YOLO11n on RDD2022 India (D00/D10/D20/D40) | Training: see `checkpoints/detectors/road_damage.json` once shipped |
-| INT8 edge build | Static per-channel quantization (`scripts/quantize_models.py`) | Classifier backbone 1.9× faster, 3.6× smaller, −2.6 accuracy points; opt-in, FP32 stays default |
+| INT8 edge build | Static per-channel quantization (`scripts/quantize_models.py`); YOLO heads kept FP32 | Crossing detector: mAP50 0.864 → **0.858**, 1.3× faster, 2.4× smaller. Classifier backbone: 1.9× faster, −2.6 accuracy points. Opt-in; FP32 stays default |
 | IMU shock classification | 100 Hz windows → 0.5–25 Hz Butterworth band-pass → RandomForest | **80.5%** held-out on real field logs; **78.7%** with 35 Hz engine vibration added (60.1% without the filter) |
 | Defect **segmentation** | Pixel classifier on 11 features, trained on 4,720 hand-drawn polygons | **crack IoU 0.232, pothole IoU 0.154** on 500 unseen photographs |
 | Defect **area** | Each mask pixel's own ground footprint, summed | Measured — a bounding box overstates a diagonal crack ~13× |
