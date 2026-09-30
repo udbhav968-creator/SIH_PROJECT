@@ -1,0 +1,18 @@
+# The image runs inference only. Keep training downloads, run folders and
+# local tooling out of the build context (they can be several GB).
+.git
+.github
+.venv
+venv
+runs
+out
+datasets/rdd2022*
+datasets/CDSet
+datasets/crosswalk
+checkpoints/detectors/*.pt
+checkpoints/road_shield.db*
+**/__pycache__
+*.pptx
+*.pdf
+*.log
+yolo*.pt

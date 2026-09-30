@@ -1,0 +1,10 @@
+# Training the YOLO detectors (training/train_detector.py). Not needed to serve:
+# the server runs the exported ONNX files on onnxruntime.
+#   pip install -r requirements.txt -r requirements-train.txt
+#
+# Ultralytics pulls in PyTorch. On Windows, PyTorch needs a current Microsoft
+# Visual C++ Redistributable (2015-2022, x64); with an older one, `import torch`
+# fails with WinError 1114 on c10.dll.
+ultralytics>=8.3,<9
+onnx>=1.16
+onnxslim>=0.1.30
