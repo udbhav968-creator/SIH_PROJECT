@@ -50,6 +50,7 @@ jobs:
             scripts/fetch_license_plates.py \
             scripts/fetch_rdd2022.py \
             scripts/prepare_crosswalk_dataset.py \
+            scripts/quantize_models.py \
             training/train_detector.py \
             tests/test_api_security_and_perception.py \
             tests/test_detector_training_data.py \
