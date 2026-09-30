@@ -13,6 +13,21 @@ const FONT = "Calibri";
 const CONTENT_WIDTH = 9026; // A4 with 1" margins, in DXA
 const PENDING = "PENDING";
 
+// Results are read from the files the training and benchmark scripts write, so
+// the report cannot drift from the models. Missing files leave PENDING markers.
+const ROOT = path.resolve(__dirname, "..", "..");
+const readJSON = (rel) => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, rel), "utf8")); } catch { return null; } };
+const RD = readJSON("checkpoints/detectors/road_damage.json");
+const QUANT = readJSON("checkpoints/quantization_report.json") || {};
+const LAT = readJSON("checkpoints/perception_latency.json");
+const f3 = (x) => (x == null ? "—" : Number(x).toFixed(3));
+const rdTest = RD ? RD.metrics.test : null;
+const rdEpochs = RD ? (RD.epochs_trained || RD.config.epochs) : null;
+const rdClass = (name) => {
+  const m = rdTest && rdTest.per_class[name];
+  return m ? [f3(m.precision), f3(m.recall), f3(m.mAP50), f3(m.mAP50_95)] : [PENDING, PENDING, PENDING, PENDING];
+};
+
 // "**bold** plain" -> runs. A PENDING token is highlighted so it cannot be missed.
 function runs(text, base = {}) {
   const out = [];
@@ -78,7 +93,7 @@ const title = [
     children: [new TextRun({ text: "Milestone 3 Progress Report (Draft)", font: FONT, size: 32, bold: true })] }),
   new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 600 },
     children: [new TextRun({ text: "CSET485 — AI and Society  ·  Smart India Hackathon 2026, SIH26124 (Bharat Electronics Limited)", font: FONT, size: 22 })] }),
-  new Paragraph({ alignment: AlignmentType.CENTER, children: runs("Draft prepared 30 September 2026. Highlighted PENDING items are filled in once the road-damage and licence-plate detectors finish training.", { italics: true, size: 20 }) }),
+  new Paragraph({ alignment: AlignmentType.CENTER, children: runs(RD ? "Draft of 1 October 2026. Highlighted PENDING items are filled in once the licence-plate detector finishes training." : "Draft prepared 30 September 2026. Highlighted PENDING items are filled in once the road-damage and licence-plate detectors finish training.", { italics: true, size: 20 }) }),
   new Paragraph({ children: [new PageBreak()] }),
 ];
 
@@ -107,14 +122,14 @@ const abstract = [
   h1("Abstract"),
   p("Milestone 2 described ROAD-SHIELD, a system that turns city buses into a road-inspection network: a dashcam and an accelerometer on each bus, an edge computer that finds and measures road defects, and a central ledger that deduplicates reports and issues tamper-evident repair orders. Milestone 3 set out to move the system from photographs of single defects to full dashcam scenes on Indian roads, to implement the privacy and edge-transmission design stated in Milestone 2, and to measure every claim against held-out data."),
   p("This milestone adds a scene-perception layer of three separately trained YOLO detectors — traffic participants (COCO), road damage (RDD2022, Indian subset) and road markings (CDSet-3434) — served on the CPU through ONNX Runtime. The zebra-crossing detector reaches **test mAP50 0.869** and, asked whether a frame contains a crossing, is correct **every time it says yes (0 false alarms on 263 crossing-free frames)** while finding 75.4% of crossings — 3.2 times more than the geometric method it replaces. We implemented the Milestone 2 design items that existed only on paper: DPDP privacy redaction, sub-kilobyte signed edge packets, the Butterworth IMU filter (78.7% accuracy under engine vibration versus 60.1% without it), a calibrated frame-quality gate, the fairness-constrained repair Priority Index and INT8 quantization (crossing detector 1.3× faster and 2.4× smaller for a 0.006 mAP50 cost)."),
-  p("Measuring the Milestone 2 claims also corrected eleven of them, listed in Section 6. The software is now covered by 175 automated tests run on every commit; two security defects in the web API were found and fixed. Road-damage detection results are PENDING the completion of training."),
+  p("Measuring the Milestone 2 claims also corrected eleven of them, listed in Section 6. The software is now covered by 175 automated tests run on every commit; two security defects in the web API were found and fixed. " + (RD ? `The road-damage detector, trained on a laptop CPU, reaches test mAP50 ${f3(rdTest.mAP50)}; Section 5.2 explains why this is a lower bound and how the provided GPU notebook raises it.` : "Road-damage detection results are PENDING the completion of training.")),
 ];
 
 const progress = [
   h1("1. Progress Against the Milestone 3 Plan"),
   p("Milestone 2 closed with a four-item plan. Table 3 reports each item and the additional work that measurement showed was necessary."),
   table(["Milestone 2 plan item", "Status", "Outcome"], [
-    ["1. Ingest RDD2022 Indian roads", "Done", "7,706 labelled Indian images downloaded and prepared (5,368 train / 1,172 val / 1,166 test); road-damage detector PENDING training completion"],
+    ["1. Ingest RDD2022 Indian roads", "Done", "7,706 labelled Indian images downloaded and prepared (5,368 train / 1,172 val / 1,166 test); " + (RD ? `road-damage detector trained: test mAP50 ${f3(rdTest.mAP50)} (CPU run; see Section 5.2)` : "road-damage detector PENDING training completion")],
     ["2. Real bus sensor mounting", "Not started", "Requires hardware access; the IMU model now trains on real field-recorded vehicle logs (Section 3)"],
     ["3. INT8 model quantization", "Done (CPU)", "Crossing detector 61 → 48 ms, 10.0 → 4.1 MB, mAP50 0.864 → 0.858; Raspberry Pi / Jetson benchmarks not yet run"],
     ["4. Live command-centre connection", "Partial", "Ranked repair ledger and scene-detection page served by the API; no live bus telemetry feed yet"],
@@ -196,12 +211,14 @@ const results = [
   caption("Table 6. Head-to-head on the same 620 held-out frames, scored through the deployed ONNX model."),
   h2("5.2 Road-damage detector"),
   table(["Class", "Precision", "Recall", "mAP50", "mAP50-95"], [
-    ["Longitudinal crack (D00)", PENDING, PENDING, PENDING, PENDING],
-    ["Transverse crack (D10)", PENDING, PENDING, PENDING, PENDING],
-    ["Alligator crack (D20)", PENDING, PENDING, PENDING, PENDING],
-    ["Pothole (D40)", PENDING, PENDING, PENDING, PENDING],
+    ["Longitudinal crack (D00)", ...rdClass("longitudinal_crack")],
+    ["Transverse crack (D10)", ...rdClass("transverse_crack")],
+    ["Alligator crack (D20)", ...rdClass("alligator_crack")],
+    ["Pothole (D40)", ...rdClass("pothole")],
+    ["**All classes**", ...(rdTest ? [rdTest.precision, rdTest.recall, rdTest.mAP50, rdTest.mAP50_95].map((x) => `**${f3(x)}**`) : [PENDING, PENDING, PENDING, PENDING])],
   ], [3, 1.5, 1.5, 1.5, 1.5]),
-  caption("Table 7. Road-damage test metrics on 1,166 held-out Indian images. PENDING training completion; values will be copied from checkpoints/detectors/road_damage.json."),
+  caption(RD ? `Table 7. Road-damage test metrics on 1,166 held-out Indian images (YOLO11n, ${RD.input_size} px, ${rdEpochs} epochs, ${(RD.train_seconds / 3600).toFixed(1)} h on a laptop CPU). Serving thresholds tuned on the validation split: ${Object.entries(RD.serving_thresholds).map(([k, v]) => k.replace("_", " ") + " " + v).join(", ")}.` : "Table 7. Road-damage test metrics on 1,166 held-out Indian images. PENDING training completion; values will be copied from checkpoints/detectors/road_damage.json."),
+  ...(RD ? [p(`These figures are a lower bound. Road damage is a much harder detection problem than zebra crossings: cracks are thin and low-contrast, and the Indian subset has only 50 transverse-crack boxes for training. ${rdEpochs} epochs at ${RD.input_size} px is what a four-core laptop CPU completes in six hours; the provided GPU notebook trains the same configuration for 100 epochs at 640 px. On images, the detector answers "does this frame show a pothole?" with precision ${f3(RD.metrics.test_image_level.per_class.pothole.precision)} and recall ${f3(RD.metrics.test_image_level.per_class.pothole.recall)}, and raises an alarm on ${(100 * RD.metrics.test_image_level.background_false_alarm_rate).toFixed(1)}% of clean-road frames.`)] : []),
   h2("5.3 IMU band-pass filter"),
   table(["Condition (164 held-out windows, 5 seeds)", "Without filter", "With 0.5–25 Hz filter"], [
     ["Clean recordings", "83.7%", "81.5%"],
@@ -222,11 +239,13 @@ const results = [
   h2("5.5 INT8 quantization"),
   table(["Model", "Metric FP32 → INT8", "Latency", "Size"], [
     ["Zebra-crossing detector", "mAP50 0.864 → 0.858", "61 → 48 ms (1.3×)", "10.0 → 4.1 MB"],
+    ...(QUANT.road_damage && QUANT.road_damage.int8 ? [["Road-damage detector", `mAP50 ${f3(QUANT.road_damage.fp32.mAP50)} → ${f3(QUANT.road_damage.int8.mAP50)}`, `${Math.round(QUANT.road_damage.fp32.ms_per_image)} → ${Math.round(QUANT.road_damage.int8.ms_per_image)} ms (${(QUANT.road_damage.fp32.ms_per_image / QUANT.road_damage.int8.ms_per_image).toFixed(1)}×)`, `${QUANT.road_damage.fp32.mb} → ${QUANT.road_damage.int8.mb} MB`]] : []),
     ["Classifier backbone (MobileNetV2)", "Accuracy 93.4% → 90.8%", "21 → 12 ms (1.8×)", "13.3 → 3.7 MB"],
   ], [3, 2.6, 2, 1.8]),
   caption("Table 10. INT8 results (percentile calibration). The detector loses almost nothing; the classifier loses 2.6 points, so full precision remains the default and INT8 is offered for low-power edge boards. The classifier figures compare FP32 and INT8 on identical images; because the DNIT crops were regenerated, that image set is not exactly the published held-out split, so the absolute 93.4% is not comparable to the published 90.1% — the 2.6-point difference is the measurement."),
   h2("5.6 Latency"),
-  p("On a 1280×720 frame (laptop CPU, median of 15 runs): COCO traffic detector 202 ms, crossing detector 76 ms, both together 276 ms; classifier backbone 21 ms. The three-detector total is PENDING the road-damage model."),
+  p(LAT ? `On a ${LAT.frame} frame (laptop CPU, median of ${LAT.runs} runs, including the quality gate): ${Object.entries(LAT.median_ms).map(([k, v]) => k + " " + Math.round(v) + " ms").join(", ")}; classifier backbone 21 ms.`
+       : "On a 1280×720 frame (laptop CPU, median of 15 runs): COCO traffic detector 202 ms, crossing detector 76 ms, both together 276 ms; classifier backbone 21 ms. The three-detector total is PENDING the road-damage model."),
 ];
 
 const corrections = [
@@ -269,7 +288,7 @@ const limits = [
 
 const next = [
   h1("9. Next Steps"),
-  bullet("Complete road-damage and licence-plate detector training (GPU notebook provided) and fill the PENDING figures."),
+  bullet(RD ? "Train the licence-plate detector and retrain the road-damage detector for 100 epochs at 640 px (GPU notebook provided)." : "Complete road-damage and licence-plate detector training (GPU notebook provided) and fill the PENDING figures."),
   bullet("Record accelerometer data on an operational bus and retrain the shock classifier."),
   bullet("Benchmark the INT8 models on a Raspberry Pi 5 and an NVIDIA Jetson."),
   bullet("Collect Indian zebra-crossing footage to measure the crossing detector on local road markings."),

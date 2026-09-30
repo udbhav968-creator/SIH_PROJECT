@@ -261,7 +261,7 @@ def _hardware(device: str) -> str:
 
 def write_model_card(config: DetectorConfig, weights: Path, onnx_path: Path | None,
                      metrics: dict[str, Any], thresholds: dict[str, float],
-                     train_seconds: float | None) -> Path:
+                     train_seconds: float | None, epochs_trained: int | None = None) -> Path:
     from ultralytics import YOLO
 
     names = YOLO(str(weights)).names
@@ -274,6 +274,8 @@ def write_model_card(config: DetectorConfig, weights: Path, onnx_path: Path | No
         "input_size": config.imgsz,
         "created_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "train_seconds": round(train_seconds, 1) if train_seconds else None,
+        # With a time budget, config.epochs is only the ceiling; this is what ran.
+        "epochs_trained": epochs_trained,
         "hardware": _hardware(config.device),
         "dataset": {"yaml": Path(config.data).name, "license": config.dataset_license},
         "config": asdict(config) | {"data": Path(config.data).name},
@@ -361,7 +363,14 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_export:
         onnx_path = export_onnx(shipped, config.imgsz)
         LOG.info("exported %s", onnx_path)
-    card = write_model_card(config, shipped, onnx_path, metrics, thresholds, train_seconds)
+    results_csv = args.runs_dir / config.name / "results.csv"
+    epochs_trained = (sum(1 for line in results_csv.read_text().splitlines()[1:] if line.strip())
+                      if results_csv.exists() else None)
+    previous_card = shipped.with_suffix(".json")
+    if train_seconds is None and previous_card.exists():
+        # --eval-only re-scores an existing model; keep the training time it recorded.
+        train_seconds = json.loads(previous_card.read_text(encoding="utf-8")).get("train_seconds")
+    card = write_model_card(config, shipped, onnx_path, metrics, thresholds, train_seconds, epochs_trained)
     LOG.info("model card %s", card)
     return 0
 
