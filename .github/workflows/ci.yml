@@ -32,7 +32,23 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt ruff
+
+      # Incremental adoption: these modules are lint-clean under ruff.toml and
+      # must stay that way. Add a module here once it has been brought up to it.
+      - name: Lint
+        run: |
+          ruff check \
+            api/request_images.py \
+            models/road_scene_perception.py \
+            scripts/benchmark_crosswalk.py \
+            scripts/detect_scene.py \
+            scripts/fetch_rdd2022.py \
+            scripts/prepare_crosswalk_dataset.py \
+            training/train_detector.py \
+            tests/test_api_security_and_perception.py \
+            tests/test_detector_training_data.py \
+            tests/test_road_scene_perception.py
 
       - name: Check every module imports
         run: |

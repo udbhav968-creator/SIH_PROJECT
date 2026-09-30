@@ -113,6 +113,17 @@ alpr_tracker = ALPRIncidentTracker()
 deep_pipeline = DeepInferencePipeline(CKPT_DIR)
 print("  ✓ Deep inference pipeline initialized.")
 
+# Road-scene perception: COCO traffic objects + trained road-damage and
+# zebra-crossing detectors. Shares the pipeline's COCO session rather than
+# loading the same weights twice.
+from models.road_scene_perception import RoadScenePerception, annotate as annotate_scene, redact_people
+from api.request_images import load_rgb
+scene_perception = RoadScenePerception(CKPT_DIR, traffic_detector=deep_pipeline.object_detector)
+for _key, _info in scene_perception.describe().items():
+    print(f"  {'✓' if _info['ready'] else '✗'} Scene perception / {_key}:",
+          _info.get("backend") or "NOT AVAILABLE (see configs/detectors/)")
+PERCEPTION_GROUPS = set(scene_perception.heads)
+
 # The ledger is durable: a municipality's repair backlog cannot live in a
 # process's memory. On a serverless filesystem the database goes to the
 # writable tmp directory and is therefore per-instance, which is reported
@@ -165,6 +176,7 @@ WEB_DIR = os.path.join(ENGINE_ROOT, "web")
 PAGE_ROUTES = {
     "/": "index.html",
     "/inspect": "inspect.html",
+    "/detect": "detect.html",
     "/corridor": "corridor.html",
     "/works": "works.html",
     "/models": "models.html",
@@ -361,8 +373,18 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                                                  if getattr(degrade_model, "is_ready", False)
                                                  else "READY_FORMULA_FALLBACK"),
                     "urban_traffic_net": "READY_FORMULA_BASED",
+                    "road_damage_detector": (scene_perception.heads["damage"].detector.backend
+                                             if scene_perception.heads["damage"].is_ready
+                                             else "NOT_TRAINED (configs/detectors/road_damage.yaml)"),
+                    "crosswalk_detector": (scene_perception.heads["markings"].detector.backend
+                                           if scene_perception.heads["markings"].is_ready
+                                           else "NOT_TRAINED (configs/detectors/crosswalk.yaml)"),
                 },
             })
+            return
+
+        if path == "/api/v1/perception/status":
+            self._send_json(200, {"ready": scene_perception.is_ready, "models": scene_perception.describe()})
             return
 
         # ---------------- Google Maps / GIS ----------------
@@ -1283,10 +1305,53 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": f"Detection failed: {e}"})
             return
 
+        # ----------------------------------------------------------------------
+        # Road-scene perception: potholes, cracks, zebra crossings, people,
+        # vehicles and traffic control in one call, plus derived scene facts.
+        # ----------------------------------------------------------------------
+        if path == "/api/v1/perception/analyze":
+            if not scene_perception.is_ready:
+                self._send_json(503, {"error": "No perception model is available on this server.",
+                                      "models": scene_perception.describe()})
+                return
+            groups = body.get("groups")
+            if groups is not None and (not isinstance(groups, list) or not set(groups) <= PERCEPTION_GROUPS):
+                self._send_json(400, {"error": f"groups must be a list drawn from {sorted(PERCEPTION_GROUPS)}"})
+                return
+            frame = load_rgb(request_image(body, DATASETS_DIR))
+            try:
+                result = scene_perception.analyze(frame, groups=set(groups) if groups else None)
+                if body.get("return_annotated"):
+                    import base64 as _b64
+                    import io as _io
+                    # Privacy by default: people are blurred in any image the
+                    # server produces unless the caller explicitly opts out.
+                    redact = body.get("redact_people", True) is not False
+                    shown = redact_people(frame, result) if redact else frame
+                    buffer = _io.BytesIO()
+                    annotate_scene(shown, result).save(buffer, format="JPEG", quality=85)
+                    result["annotated_image_base64"] = "data:image/jpeg;base64," + _b64.b64encode(buffer.getvalue()).decode()
+                    result["people_redacted"] = redact
+                self._send_json(200, result)
+            except Exception as e:
+                self._send_json(500, {"error": f"Perception failed: {e}"})
+            return
+
         if path == "/api/v1/pedestrian/detect":
             ped_count = body.get("pedestrian_count", 0)
             is_school_zone = body.get("is_school_zone", False)
             is_outside_zebra = body.get("is_outside_crosswalk", False)
+            source = "caller_supplied"
+
+            # With a photograph, the counts come from detection instead of the
+            # request. School-zone status is map context and stays caller-supplied.
+            image = request_image(body, DATASETS_DIR, path_key=None, required=False)
+            if image is not None and scene_perception.is_ready:
+                scene = scene_perception.analyze(load_rgb(image), groups={"traffic", "markings"})
+                people = scene["counts"].get("person", 0)
+                ped_count = people
+                is_outside_zebra = people > scene["scene"]["pedestrians_on_crossing"]
+                source = "detected"
 
             risk_level = "LOW"
             if is_school_zone and is_outside_zebra and ped_count > 0:
@@ -1299,6 +1364,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 "pedestrians_detected": ped_count,
                 "is_school_zone": is_school_zone,
                 "is_outside_crosswalk": is_outside_zebra,
+                "pedestrian_facts_source": source,
                 "vulnerable_situation_alert": risk_level != "LOW",
                 "alert_level": risk_level,
                 "recommended_bus_action": "AUTONOMOUS_SLOWDOWN_CHIME" if risk_level == "CRITICAL_CHILD_CROSSING_HAZARD" else "MAINTAIN_VIGILANCE",

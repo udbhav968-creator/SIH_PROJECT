@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scene detection — ROAD-SHIELD</title>
+<link rel="stylesheet" href="/web/app.css">
+<style>
+  .stage { position: relative; background: var(--ink-900); border-radius: var(--radius-sm); overflow: hidden; }
+  .stage canvas { display: block; width: 100%; height: auto; }
+  .toggles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .toggles label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;
+                   padding: 4px 10px; border: 1px solid var(--ink-700); border-radius: 99px; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .alert { padding: 9px 12px; border-radius: var(--radius-sm); margin-bottom: 8px; font-size: 13px;
+           border: 1px solid var(--ink-700); }
+  .alert.CRITICAL { border-color: rgba(251,113,133,.5); background: rgba(251,113,133,.1); }
+  .alert.HIGH     { border-color: rgba(240,169,43,.5);  background: rgba(240,169,43,.1); }
+  .alert.MEDIUM   { border-color: rgba(56,189,248,.45); background: rgba(56,189,248,.08); }
+  .alert .code { font-family: var(--mono); font-size: 11px; opacity: .8; display: block; }
+</style>
+</head>
+<body data-page="detect">
+<div class="wrap">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">Scene detection</h1>
+    <span class="muted small">potholes, cracks, zebra crossings, people, vehicles and signals in one pass</span>
+  </div>
+
+  <div class="split">
+    <div>
+      <div class="card">
+        <div id="dz" class="dropzone">
+          <div style="font-size:26px">🛣️</div>
+          <p style="margin:8px 0 3px;color:var(--white);font-weight:600">Drop a dashcam frame or road photograph</p>
+          <p class="small muted" style="margin:0">or click to choose · JPG, PNG · analysed at full resolution</p>
+          <input type="file" id="file" accept="image/*" hidden>
+        </div>
+        <div class="stage" id="stage" style="margin-top:14px" hidden>
+          <canvas id="canvas"></canvas>
+        </div>
+        <div class="toggles" id="toggles"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="label">three detectors, kept separate on purpose</div>
+        <p class="small" style="margin:0 0 9px">Each training set labels only its own classes. A single
+          merged model would learn that every unlabelled pothole in a crosswalk photograph is
+          background, so each detector is trained, versioned and rolled back on its own.</p>
+        <p class="small" style="margin:0">Per-class thresholds come from each model card: the confidence
+          that maximised F1 on the validation split. Scene facts, such as a pedestrian on a crossing,
+          are geometric rules over the boxes, and each one names its rule.</p>
+      </div>
+    </div>
+
+    <div>
+      <div id="out">
+        <div class="card"><div class="label">no frame yet</div>
+          <p class="small muted" style="margin:0">Choose an image. Detectors that are not trained on this
+            server are listed as unavailable; nothing is filled in for them.</p></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="label">models on this server</div>
+        <div id="models"><p class="small muted"><span class="spinner"></span> loading…</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/web/app.js"></script>
+<script>
+const GROUPS = {
+  road_damage: "Road damage",
+  road_marking: "Markings",
+  vulnerable_road_user: "People & two-wheelers",
+  vehicle: "Vehicles",
+  traffic_control: "Signals & signs",
+};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const hidden = new Set();
+let current = null; // { img, result }
+
+/* ------------------------------------------------------------- input -- */
+const dz = el("dz"), fileInput = el("file");
+dz.addEventListener("click", () => fileInput.click());
+dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("over"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("over"));
+dz.addEventListener("drop", e => {
+  e.preventDefault(); dz.classList.remove("over");
+  if (e.dataTransfer.files[0]) analyse(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", e => { if (e.target.files[0]) analyse(e.target.files[0]); });
+
+function analyse(file) {
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const img = new Image();
+    img.onload = async () => {
+      setLoading(el("out"), true, "running detectors…");
+      const r = await API.post("/api/v1/perception/analyze", { image_base64: reader.result });
+      if (!r.ok) {
+        el("out").innerHTML = errorCard(esc(r.data.error || `HTTP ${r.status}`),
+          r.status === 503 ? "Train the detectors: python -m training.train_detector configs/detectors/road_damage.yaml" : "");
+        return;
+      }
+      current = { img, result: r.data };
+      renderToggles(); draw(); renderResult(r.ms);
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ------------------------------------------------------------ canvas -- */
+function draw() {
+  if (!current) return;
+  const { img, result } = current;
+  const canvas = el("canvas"), ctx = canvas.getContext("2d");
+  canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+  ctx.drawImage(img, 0, 0);
+  const lw = Math.max(2, Math.round(Math.max(canvas.width, canvas.height) / 400));
+  const font = Math.max(12, Math.round(canvas.width / 70));
+  ctx.font = `600 ${font}px ${getComputedStyle(document.body).fontFamily}`;
+  const order = { road_marking: 0, road_damage: 1, vehicle: 2, traffic_control: 2, vulnerable_road_user: 3 };
+  [...result.detections]
+    .filter(d => !hidden.has(d.group))
+    .sort((a, b) => (order[a.group] ?? 2) - (order[b.group] ?? 2))
+    .forEach(d => {
+      const [x, y, w, h] = d.bbox_pixels;
+      ctx.strokeStyle = d.colour_hex; ctx.lineWidth = lw; ctx.strokeRect(x, y, w, h);
+      const text = `${d.label} ${d.confidence.toFixed(2)}`;
+      const tw = ctx.measureText(text).width + 8, th = font + 6;
+      const ty = y - th >= 0 ? y - th : y;
+      ctx.fillStyle = d.colour_hex; ctx.fillRect(x, ty, tw, th);
+      ctx.fillStyle = "#000"; ctx.fillText(text, x + 4, ty + font);
+    });
+  el("stage").hidden = false;
+}
+
+function renderToggles() {
+  const present = {};
+  current.result.detections.forEach(d => { present[d.group] = (present[d.group] || 0) + 1; });
+  el("toggles").innerHTML = Object.entries(GROUPS).filter(([g]) => present[g]).map(([g, label]) => {
+    const colour = current.result.detections.find(d => d.group === g).colour_hex;
+    return `<label><input type="checkbox" data-group="${g}" ${hidden.has(g) ? "" : "checked"}>
+      <span class="swatch" style="background:${esc(colour)}"></span>${esc(label)} (${present[g]})</label>`;
+  }).join("");
+  el("toggles").querySelectorAll("input").forEach(box => box.addEventListener("change", () => {
+    box.checked ? hidden.delete(box.dataset.group) : hidden.add(box.dataset.group);
+    draw();
+  }));
+}
+
+/* ----------------------------------------------------------- results -- */
+function renderResult(roundTripMs) {
+  const r = current.result, s = r.scene;
+  const alerts = r.alerts.length
+    ? r.alerts.map(a => `<div class="alert ${esc(a.level)}"><span class="code">${esc(a.level)} · ${esc(a.code)}</span>${esc(a.message)}</div>`).join("")
+    : `<p class="small muted" style="margin:0">No alerts for this frame.</p>`;
+  const counts = Object.entries(r.counts).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><span>${v}</span></div>`).join("")
+    || `<p class="small muted" style="margin:0">Nothing detected above the serving thresholds.</p>`;
+  const facts = [
+    ["zebra crossing visible", s.zebra_crossing_visible ? "yes" : "no"],
+    ["road users on the crossing", s.pedestrians_on_crossing, s.rules.pedestrians_on_crossing],
+    ["vehicles blocking the crossing", s.vehicles_blocking_crossing, s.rules.vehicles_blocking_crossing],
+    ["road-surface defects", s.road_damage_count],
+    ["potholes in the vehicle's path", s.potholes_in_ego_path, s.rules.potholes_in_ego_path],
+    ["defect box coverage", `${s.damage_bbox_coverage_pct}%`],
+  ].map(([k, v, rule]) => `<div class="kv"${rule ? ` title="${esc(rule)}"` : ""}><span>${esc(k)}${rule ? " ⓘ" : ""}</span><span>${esc(v)}</span></div>`).join("");
+  const missing = r.unavailable_models.length
+    ? `<p class="small" style="margin:10px 0 0"><span class="badge warn">not available</span> ${r.unavailable_models.map(esc).join(", ")}; those classes were not searched for.</p>` : "";
+  const timing = Object.entries(r.latency_ms).map(([k, v]) => `${esc(k)} ${v} ms`).join(" · ");
+
+  el("out").innerHTML = `
+    <div class="card"><div class="label">alerts</div>${alerts}${missing}</div>
+    <div class="grid c2" style="margin-top:16px">
+      <div class="card"><div class="label">detected</div>${counts}</div>
+      <div class="card"><div class="label">scene facts <span class="badge estimate">rules over boxes</span></div>${facts}</div>
+    </div>
+    <p class="small muted mono" style="margin:10px 2px 0">${r.image_size[0]}×${r.image_size[1]} · ${timing} · round trip ${roundTripMs} ms</p>`;
+}
+
+/* ------------------------------------------------------------ models -- */
+(async () => {
+  const r = await API.get("/api/v1/perception/status");
+  if (!r.ok) { el("models").innerHTML = errorCard(esc(r.data.error || "engine offline")); return; }
+  const names = { traffic: "Traffic objects (COCO)", damage: "Road damage (RDD2022 India)", markings: "Zebra crossings (CDSet)" };
+  el("models").innerHTML = Object.entries(r.data.models).map(([key, m]) => {
+    const state = m.ready ? `<span class="badge measured">ready</span>` : `<span class="badge warn">not available</span>`;
+    const metrics = m.test_metrics
+      ? `<div class="kv"><span>held-out test mAP50 · mAP50-95</span><span>${fmt.num(m.test_metrics.mAP50, 3)} · ${fmt.num(m.test_metrics.mAP50_95, 3)}</span></div>
+         <div class="kv"><span>precision · recall</span><span>${fmt.num(m.test_metrics.precision, 3)} · ${fmt.num(m.test_metrics.recall, 3)}</span></div>`
+      : m.ready ? `<p class="small muted" style="margin:4px 0 0">Published COCO weights; no project test split.</p>` : "";
+    return `<div style="margin-bottom:12px"><div class="kv"><span style="color:var(--white)">${esc(names[key] || key)}</span><span>${state}</span></div>${metrics}</div>`;
+  }).join("");
+})();
+</script>
+</body>
+</html>

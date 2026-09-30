@@ -134,6 +134,7 @@
 el("selftest").addEventListener("click", async () => {
   const checks = [
     ["GET", "/api/v1/health"],
+    ["GET", "/api/v1/perception/status"],
     ["GET", "/api/v1/training/metrics"],
     ["GET", "/api/v1/datasets/benchmarks"],
     ["GET", "/api/v1/fleet/telemetry"],
