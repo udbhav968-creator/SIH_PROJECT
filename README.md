@@ -17,8 +17,8 @@ code in this repository, and the code that measures it is included.
 | — same task, fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 82.6% on the identical split; serves when no CNN backbone is on disk |
 | Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Working: people, bicycles, cars, buses, trucks, traffic lights, signs |
 | **Zebra-crossing detection** | YOLO11n trained on CDSet-3434, re-split by time block (no video leakage) | Test mAP50 **0.869**; finds a crossing in 75.4% of crossing frames with **0 false alarms on 263 crossing-free frames** (old geometric detector: 23.5%, 6 false alarms) |
-| **Pothole & crack detection** | YOLO11n on RDD2022 India (D00/D10/D20/D40) | Training: see `checkpoints/detectors/road_damage.json` once shipped |
-| INT8 edge build | Static per-channel quantization (`scripts/quantize_models.py`); YOLO heads kept FP32 | Crossing detector: mAP50 0.864 → **0.858**, 1.3× faster, 2.4× smaller. Classifier backbone: 1.9× faster, −2.6 accuracy points. Opt-in; FP32 stays default |
+| **Pothole & crack detection** | YOLO11n on RDD2022 India (D00/D10/D20/D40), 16 epochs at 512 px on a laptop CPU | Test mAP50 **0.245**: alligator cracks 0.543, potholes 0.244, longitudinal 0.192, **transverse 0.000** (50 training boxes). Image level: pothole precision 0.43, recall 0.50; alarm on 16% of clean-road frames. Under-trained: validation mAP50 still rising at the last epoch |
+| INT8 edge build | Static per-channel quantization (`scripts/quantize_models.py`); YOLO heads kept FP32 | Crossing detector: mAP50 0.864 → **0.858**, 1.3× faster, 2.4× smaller. Damage detector: 0.234 → 0.222, 10.1 → 4.2 MB, 1.1× faster. Classifier backbone: 1.9× faster, −2.6 accuracy points. Opt-in; FP32 stays default |
 | IMU shock classification | 100 Hz windows → 0.5–25 Hz Butterworth band-pass → RandomForest | **80.5%** held-out on real field logs; **78.7%** with 35 Hz engine vibration added (60.1% without the filter) |
 | Defect **segmentation** | Pixel classifier on 11 features, trained on 4,720 hand-drawn polygons | **crack IoU 0.232, pothole IoU 0.154** on 500 unseen photographs |
 | Defect **area** | Each mask pixel's own ground footprint, summed | Measured — a bounding box overstates a diagonal crack ~13× |
@@ -316,7 +316,7 @@ every image and looking for the same photograph under different labels.
   Kaggle pothole sets, not Indian roads.
 - **The road-damage detector is a lower bound.** It was trained on Indian images
   (RDD2022) but only for what a four-core laptop CPU completes in six hours
-  (see its model card for the epoch count). The Colab notebook trains the same
+  (16 epochs). The Colab notebook trains the same
   configuration on a GPU for 100 epochs at higher resolution.
 - **The crossing detector has seen three videos.** CDSet comes from three
   dashcam recordings and its dataset card does not say where; it has not been

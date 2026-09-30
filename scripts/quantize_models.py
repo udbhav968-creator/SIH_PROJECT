@@ -175,6 +175,7 @@ def classifier(seed=42, calibration_images=128):
                  "backbone_ms": _latency_ms(int8_session, feed), "mb": round(int8_path.stat().st_size / 2**20, 1)},
         "prediction_agreement": round(float(np.mean(np.array(fp32_pred) == np.array(int8_pred))), 4),
         "int8_file": str(int8_path.relative_to(ROOT)),
+        "calibration_images": len(calibration),
     }
 
 
@@ -212,6 +213,7 @@ def detector(name, calibration_images=128):
                          "ms_per_image": _latency_ms(_session(path), {input_name: calibration[0]}),
                          "mb": round(path.stat().st_size / 2**20, 1)}
     result["int8_file"] = str(int8_path.relative_to(ROOT))
+    result["calibration_images"] = len(calibration)
     result["fp32_nodes_kept"] = f"{len(head)} detection-head nodes left in FP32"
     return result
 
@@ -220,6 +222,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--only", choices=["classifier", "road_damage", "crosswalk", "license_plate"])
     parser.add_argument("--calibration", choices=["minmax", "percentile", "entropy"], default="percentile")
+    parser.add_argument("--calibration-images", type=int, default=128,
+                        help="images used to calibrate; lower it if calibration runs out of memory")
     args = parser.parse_args(argv)
     CALIBRATION["method"] = args.calibration
 
@@ -232,7 +236,8 @@ def main(argv=None):
                         f"{args.calibration} calibration on training images; scored on held-out test splits")
     for target in targets:
         print(f"== {target}", flush=True)
-        report[target] = classifier() if target == "classifier" else detector(target)
+        report[target] = (classifier(calibration_images=args.calibration_images) if target == "classifier"
+                          else detector(target, calibration_images=args.calibration_images))
         print(json.dumps(report[target], indent=2), flush=True)
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"wrote {report_path}")

@@ -136,16 +136,31 @@ def evaluate(weights: Path, config: DetectorConfig, split: str) -> tuple[dict[st
 
 
 def split_images(data_yaml: Path, split: str) -> list[tuple[Path, Path]]:
-    """(image, label) pairs for a split, using the YOLO images/ -> labels/ convention."""
+    """
+    (image, label) pairs for a split, using the YOLO images/ -> labels/ convention.
+
+    A split entry in data.yaml is either a folder of images or a text file
+    listing one image path per line (as fetch_rdd2022 writes for training).
+    """
     spec = yaml.safe_load(data_yaml.read_text(encoding="utf-8"))
     root = Path(spec.get("path") or data_yaml.parent)
-    image_dir = root / spec[split]
-    label_dir = root / Path(spec[split].replace("images", "labels", 1))
-    return [
-        (image, (label_dir / image.relative_to(image_dir)).with_suffix(".txt"))
-        for image in sorted(image_dir.rglob("*"))
-        if image.suffix.lower() in {".jpg", ".jpeg", ".png"}
-    ]
+    entry = root / spec[split]
+
+    def label_for(image: Path) -> Path:
+        parts = list(image.parts)
+        # Swap the last "images" path component, exactly as Ultralytics does.
+        index = len(parts) - 1 - parts[::-1].index("images")
+        parts[index] = "labels"
+        return Path(*parts).with_suffix(".txt")
+
+    if entry.is_file():
+        images = [Path(line.strip()) for line in entry.read_text(encoding="utf-8").splitlines() if line.strip()]
+    else:
+        images = sorted(p for p in entry.rglob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png"})
+    pairs = [(image, label_for(image)) for image in images if image.suffix.lower() in {".jpg", ".jpeg", ".png"}]
+    if not pairs:
+        raise FileNotFoundError(f"no images found for split '{split}' ({entry})")
+    return pairs
 
 
 def image_level_metrics(weights: Path, config: DetectorConfig, split: str,

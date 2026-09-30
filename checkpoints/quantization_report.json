@@ -33,5 +33,22 @@
     },
     "int8_file": "checkpoints\\int8\\crosswalk.int8.onnx",
     "fp32_nodes_kept": "84 detection-head nodes left in FP32"
+  },
+  "road_damage": {
+    "fp32": {
+      "mAP50": 0.2339,
+      "mAP50_95": 0.1051,
+      "ms_per_image": 86.34,
+      "mb": 10.1
+    },
+    "int8": {
+      "mAP50": 0.2221,
+      "mAP50_95": 0.0978,
+      "ms_per_image": 75.32,
+      "mb": 4.2
+    },
+    "int8_file": "checkpoints\\int8\\road_damage.int8.onnx",
+    "calibration_images": 48,
+    "fp32_nodes_kept": "84 detection-head nodes left in FP32"
   }
 }

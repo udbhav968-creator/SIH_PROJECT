@@ -189,6 +189,24 @@ class TrainDetectorTests(unittest.TestCase):
         self.assertEqual(thresholds["b"], 0.25)  # class absent from val keeps the default
         self.assertEqual(thresholds["c"], 0.05)  # clamped to the floor
 
+    def test_split_images_reads_list_files_and_rejects_empty_splits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "images/train").mkdir(parents=True)
+            (root / "images/train/a.jpg").write_bytes(b"x")
+            (root / "images/train/b.jpg").write_bytes(b"x")
+            listed = (root / "images/train/a.jpg").as_posix()
+            (root / "train.txt").write_text(listed + "\n\n")  # a blank line must be ignored
+            (root / "empty.txt").write_text("")
+            (root / "data.yaml").write_text(
+                f"path: {root.as_posix()}\ntrain: train.txt\nval: empty.txt\ntest: images/missing\n")
+            pairs = train_detector.split_images(root / "data.yaml", "train")
+            self.assertEqual([(i.name, lab.name) for i, lab in pairs], [("a.jpg", "a.txt")])  # b.jpg is not listed
+            self.assertEqual(pairs[0][1].parent, root / "labels/train")
+            for split in ("val", "test"):  # an empty list or a missing folder must not silently give 0 images
+                with self.assertRaises(FileNotFoundError):
+                    train_detector.split_images(root / "data.yaml", split)
+
     def test_split_images_pairs_labels(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
