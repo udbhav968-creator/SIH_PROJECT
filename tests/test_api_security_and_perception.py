@@ -181,6 +181,16 @@ class ApiOverHttpTests(unittest.TestCase):
         self.assertIn("road_damage_detector", body["models"])
         self.assertIn("crosswalk_detector", body["models"])
 
+    def test_every_site_page_is_served_and_points_at_the_shared_runtime(self):
+        for route, filename in self.server_module.PAGE_ROUTES.items():
+            with urllib.request.urlopen(self.base + route, timeout=30) as response:
+                html = response.read().decode("utf-8")
+                self.assertEqual(response.status, 200, route)
+            self.assertIn("<title>", html, filename)
+            self.assertIn("/web/app.js", html, f"{filename} does not load the shared runtime")
+        with urllib.request.urlopen(self.base + "/web/app.css", timeout=30) as response:
+            self.assertEqual(response.status, 200)
+
     def test_detect_page_is_served(self):
         with urllib.request.urlopen(self.base + "/detect", timeout=30) as response:
             self.assertEqual(response.status, 200)

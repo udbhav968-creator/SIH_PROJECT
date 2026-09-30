@@ -310,11 +310,28 @@ every image and looking for the same photograph under different labels.
 
 ## Honest limitations
 
-- The classifier is a support vector machine on engineered features, not a
-  neural network. A CNN fine-tuning script is included but needs PyTorch.
-- The photographs are Brazilian, not Indian.
-- There is no dashcam video in this repository; the system analyses photographs.
-- Four classes have too few examples to work well.
+- **The classifier is transfer learning, not end-to-end training.** ImageNet CNN
+  embeddings (MobileNetV2 by default, ResNet-50 if fetched) feed a small head.
+  Its training photographs are mostly Brazilian highway images (DNIT) plus
+  Kaggle pothole sets, not Indian roads.
+- **The road-damage detector is a lower bound.** It was trained on Indian images
+  (RDD2022) but only for what a four-core laptop CPU completes in six hours
+  (see its model card for the epoch count). The Colab notebook trains the same
+  configuration on a GPU for 100 epochs at higher resolution.
+- **The crossing detector has seen three videos.** CDSet comes from three
+  dashcam recordings and its dataset card does not say where; it has not been
+  measured on Indian crossings or faded paint.
+- **Plates are blurred only once the plate model is trained.** Until then the
+  output says plates were not redacted. Redaction blurs whole person boxes, not
+  faces.
+- **The IMU model is trained on real logs from a road vehicle, not a bus.** The
+  engine-vibration test simulates what a bus adds; it is not a recording.
+- **No dashcam video dataset ships with the repository.** Video is decoded and
+  analysed frame by frame (`scripts/detect_scene.py`, `/api/v1/video/ingest`),
+  but every accuracy figure is measured on still frames.
+- **Four of the seven classifier classes have about fifty images each,** so
+  their per-class scores move by 0.3 or more on a single image.
+- **Horizontal motion blur mostly passes the frame-quality gate** (4% caught).
 - No demographic inference is performed on people in frame, by design.
 
 
