@@ -34,6 +34,7 @@ import time
 
 import numpy as np
 
+from models.frame_gate import frame_quality
 from models.onnx_object_detector import CKPT_DIR, ONNXObjectDetector
 
 DETECTOR_DIR = os.path.join(CKPT_DIR, "detectors")
@@ -260,12 +261,14 @@ class RoadScenePerception:
             })
         return detections
 
-    def analyze(self, image_rgb, groups=None):
+    def analyze(self, image_rgb, groups=None, gate=True):
         """
         Detect everything in one RGB frame.
 
         `groups` optionally restricts which detector heads run, e.g.
         {"damage"} for a maintenance survey where people and cars are noise.
+        With `gate`, frames the quality gate rejects (covered lens, darkness,
+        glare, defocus) skip the detectors; the result says why.
         """
         image = np.asarray(image_rgb, dtype=np.uint8)
         if image.ndim != 3 or image.shape[2] != 3:
@@ -273,9 +276,11 @@ class RoadScenePerception:
         height, width = image.shape[:2]
 
         started = time.perf_counter()
+        quality = frame_quality(image) if gate else None
+        skip = quality is not None and not quality["analysable"]
         detections, timings = [], {}
         for key, head in self.heads.items():
-            if groups and key not in groups:
+            if skip or (groups and key not in groups):
                 continue
             t0 = time.perf_counter()
             detections.extend(self._run_head(head, image))
@@ -289,6 +294,8 @@ class RoadScenePerception:
         facts = derive_scene_facts(detections, width, height)
         return {
             "image_size": [width, height],
+            "frame_quality": quality,
+            "skipped_by_quality_gate": skip,
             "detections": detections,
             "counts": counts,
             "scene": facts,

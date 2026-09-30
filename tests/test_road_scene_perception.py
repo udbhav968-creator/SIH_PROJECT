@@ -18,6 +18,7 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from models import road_scene_perception as rsp
+from models.frame_gate import frame_quality
 
 
 def det(class_name, bbox, confidence=0.9, model="traffic"):
@@ -143,19 +144,19 @@ class PerceptionOrchestrationTests(unittest.TestCase):
             thresholds={"damage": {"pothole": 0.25, "longitudinal_crack": 0.40,
                                    "transverse_crack": 0.4, "alligator_crack": 0.4}},
         )
-        result = perception.analyze(np.zeros((100, 100, 3), dtype=np.uint8))
+        result = perception.analyze(np.zeros((100, 100, 3), dtype=np.uint8), gate=False)
         self.assertEqual([d["class_name"] for d in result["detections"]], ["pothole"])
         # The detector is queried at the lowest per-class threshold, then filtered per class.
         self.assertEqual(perception.heads["damage"].detector.calls[0]["conf_threshold"], 0.25)
 
     def test_irrelevant_coco_classes_are_dropped(self):
         perception = self.make(traffic_raw=[raw("car", [0, 0, 50, 50], 0.9), raw("laptop", [0, 0, 5, 5], 0.99)])
-        result = perception.analyze(np.zeros((100, 100, 3), dtype=np.uint8))
+        result = perception.analyze(np.zeros((100, 100, 3), dtype=np.uint8), gate=False)
         self.assertEqual(result["counts"], {"car": 1})
 
     def test_missing_models_are_reported_not_invented(self):
         perception = self.make(traffic_raw=[raw("person", [0, 0, 10, 30], 0.8)])
-        result = perception.analyze(np.zeros((64, 64, 3), dtype=np.uint8))
+        result = perception.analyze(np.zeros((64, 64, 3), dtype=np.uint8), gate=False)
         self.assertEqual(sorted(result["unavailable_models"]), ["damage", "markings"])
         self.assertFalse(result["models"]["damage"])
         self.assertTrue(all(d["model"] == "traffic" for d in result["detections"]))
@@ -164,26 +165,58 @@ class PerceptionOrchestrationTests(unittest.TestCase):
         perception = self.make(traffic_raw=[raw("car", [0, 0, 50, 50], 0.9)],
                                damage_raw=[raw("pothole", [10, 10, 20, 20], 0.9)],
                                thresholds={"damage": {"pothole": 0.3}})
-        result = perception.analyze(np.zeros((100, 100, 3), dtype=np.uint8), groups={"damage"})
+        result = perception.analyze(np.zeros((100, 100, 3), dtype=np.uint8), groups={"damage"}, gate=False)
         self.assertEqual(result["counts"], {"pothole": 1})
         self.assertEqual(perception.heads["traffic"].detector.calls, [])
 
     def test_rejects_non_rgb_input(self):
         perception = self.make()
         with self.assertRaises(ValueError):
-            perception.analyze(np.zeros((10, 10), dtype=np.uint8))
+            perception.analyze(np.zeros((10, 10), dtype=np.uint8), gate=False)
 
     def test_detections_sorted_by_confidence(self):
         perception = self.make(traffic_raw=[raw("car", [0, 0, 50, 50], 0.5), raw("bus", [0, 0, 90, 90], 0.95)])
-        result = perception.analyze(np.zeros((100, 100, 3), dtype=np.uint8))
+        result = perception.analyze(np.zeros((100, 100, 3), dtype=np.uint8), gate=False)
         self.assertEqual([d["class_name"] for d in result["detections"]], ["bus", "car"])
 
     def test_annotate_returns_image_of_same_size(self):
         perception = self.make(traffic_raw=[raw("person", [5, 5, 20, 40], 0.9)])
         frame = np.full((80, 120, 3), 128, dtype=np.uint8)
-        image = rsp.annotate(frame, perception.analyze(frame))
+        image = rsp.annotate(frame, perception.analyze(frame, gate=False))
         self.assertEqual(image.size, (120, 80))
         self.assertFalse(np.array_equal(np.asarray(image), frame))  # something was drawn
+
+
+class FrameGateTests(unittest.TestCase):
+    def road_like(self):
+        rng = np.random.default_rng(0)
+        frame = np.full((360, 640, 3), 110, dtype=np.uint8)
+        frame[200:] = rng.integers(60, 160, (160, 640, 3), dtype=np.uint8)  # asphalt texture
+        return frame
+
+    def test_textured_road_is_analysable(self):
+        self.assertTrue(frame_quality(self.road_like())["analysable"])
+
+    def test_degenerate_frames_are_rejected_with_a_reason(self):
+        cases = {
+            "dark": np.full((360, 640, 3), 5, dtype=np.uint8),
+            "glare": np.full((360, 640, 3), 255, dtype=np.uint8),
+            "texture": np.full((360, 640, 3), 120, dtype=np.uint8),
+        }
+        for word, frame in cases.items():
+            quality = frame_quality(frame)
+            self.assertFalse(quality["analysable"], word)
+            self.assertIn(word, " ".join(quality["reasons"]))
+
+    def test_rejected_frames_skip_the_detectors(self):
+        stub = StubDetector([raw("car", [0, 0, 50, 50], 0.9)])
+        perception = rsp.RoadScenePerception.__new__(rsp.RoadScenePerception)
+        perception.heads = {"traffic": rsp._Head("traffic", stub, {"car": 0.3}, None)}
+        result = perception.analyze(np.zeros((100, 100, 3), dtype=np.uint8))
+        self.assertTrue(result["skipped_by_quality_gate"])
+        self.assertEqual((stub.calls, result["detections"]), ([], []))
+        self.assertIn("too dark", result["frame_quality"]["reasons"][0])
+        self.assertEqual(perception.analyze(self.road_like())["counts"], {"car": 1})
 
 
 class PrivacyRedactionTests(unittest.TestCase):
