@@ -208,6 +208,17 @@ class PrivacyRedactionTests(unittest.TestCase):
         self.assertEqual(rsp.redact_people(frame, result).shape, frame.shape)
 
 
+class TrafficCountTests(unittest.TestCase):
+    def test_detections_map_to_irc_categories(self):
+        from models.urban_traffic_net import UrbanTrafficNet, counts_from_detections
+        dets = [det("car", [0, 0, 1, 1]), det("car", [0, 0, 1, 1]), det("bus", [0, 0, 1, 1]),
+                det("motorcycle", [0, 0, 1, 1]), det("bicycle", [0, 0, 1, 1]), det("person", [0, 0, 1, 1])]
+        counts = counts_from_detections(dets)
+        self.assertEqual(counts, {"Car": 2, "City Bus": 1, "Two-Wheeler": 2})
+        # 2*1.0 + 1*2.0 + 2*0.5 = 5 PCU; people do not occupy carriageway PCU
+        self.assertEqual(UrbanTrafficNet().calculate_congestion_index(counts)["pcu_equivalent"], 5.0)
+
+
 class ModelCardLoadingTests(unittest.TestCase):
     def test_untrained_detector_is_unavailable(self):
         with tempfile.TemporaryDirectory() as tmp:
