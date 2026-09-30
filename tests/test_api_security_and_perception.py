@@ -165,6 +165,16 @@ class ApiOverHttpTests(unittest.TestCase):
         status, _ = self.call("/api/v1/edge/encode", {"image_base64": png_b64()})
         self.assertIn(status, (400, 503))
 
+    def test_traffic_counts_are_detected_or_supplied_never_invented(self):
+        status, body = self.call("/api/v1/traffic/analyze", {})
+        self.assertEqual(status, 400)
+        status, body = self.call("/api/v1/traffic/analyze", {"vehicle_counts": {"Car": 10, "City Bus": 2}})
+        self.assertEqual((status, body["counts_source"]), (200, "caller_supplied"))
+        self.assertEqual(body["congestion_analytics"]["pcu_equivalent"], 14.0)
+        if self.server_module.scene_perception.heads["traffic"].is_ready:
+            status, body = self.call("/api/v1/traffic/analyze", {"image_base64": png_b64(320, 240)})
+            self.assertEqual((status, body["counts_source"], body["vehicle_counts"]), (200, "detected", {}))
+
     def test_health_reports_perception_models(self):
         status, body = self.call("/api/v1/health")
         self.assertEqual(status, 200)

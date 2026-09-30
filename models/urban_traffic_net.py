@@ -5,11 +5,10 @@ The PCU-weighted congestion formula below is the real IRC:106-1990 method
 for scoring urban road capacity - a deterministic, standards-based
 computation, not something to train a network on. What used to sit in front
 of it (a hand-initialized "vehicle classifier" that turned meaningless noise
-features into fake car/bus/truck counts) has been removed: we don't have a
-trained vehicle detector in this project, so this module now expects real
-vehicle counts as input - either typed in by an operator, or produced by
-whatever object detector a deployment actually has available - rather than
-inventing them.
+features into fake car/bus/truck counts) has been removed. Counts now come
+from real detections - counts_from_detections() maps the COCO detector's
+classes in models/road_scene_perception.py onto the IRC:106 vehicle
+categories - or are typed in by an operator. They are never invented.
 """
 
 IRC_STANDARDS = {
@@ -20,6 +19,22 @@ IRC_STANDARDS = {
 }
 
 PCU_WEIGHTS = {"Car": 1.0, "City Bus": 2.0, "Heavy Truck": 2.5, "Two-Wheeler": 0.5}
+
+
+# Detector class -> IRC:106 category. Bicycles share the two-wheeler PCU;
+# people and animals are not vehicles and do not consume carriageway PCU here.
+DETECTION_TO_IRC = {"car": "Car", "bus": "City Bus", "truck": "Heavy Truck",
+                    "motorcycle": "Two-Wheeler", "bicycle": "Two-Wheeler"}
+
+
+def counts_from_detections(detections):
+    """IRC:106 vehicle counts from a perception result's detection list."""
+    counts = {}
+    for det in detections:
+        category = DETECTION_TO_IRC.get(det["class_name"])
+        if category:
+            counts[category] = counts.get(category, 0) + 1
+    return counts
 
 
 class UrbanTrafficNet:

@@ -52,7 +52,7 @@ from models.realworld_video_tracker import SpatialTemporalVideoTracker
 from models.cv_cavity_detector import CVCavityDetector
 from models.edge_model_exporter import EdgeModelExporter
 from pipeline.deep_inference_pipeline import DeepInferencePipeline
-from models.urban_traffic_net import UrbanTrafficNet
+from models.urban_traffic_net import UrbanTrafficNet, counts_from_detections
 from models.alpr_incident_tracker import ALPRIncidentTracker
 from pipeline.fleet_deduplication_engine import FleetDeduplicationEngine
 from models.multimodal_transformer_fusion import MultimodalTransformerFusionNet
@@ -1279,12 +1279,28 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # Urban traffic congestion (real IRC:106-1990 PCU formula on caller-supplied counts)
         # ----------------------------------------------------------------------
         if path == "/api/v1/traffic/analyze":
-            counts = body.get("vehicle_counts", {"Car": 16, "City Bus": 4, "Heavy Truck": 2, "Two-Wheeler": 10})
+            # Counts come from a photograph (detected) or from the caller
+            # (e.g. a loop detector); they are no longer defaulted to a
+            # made-up fixture when neither is given.
+            image = request_image(body, DATASETS_DIR, path_key=None, required=False)
+            if image is not None:
+                if not scene_perception.heads["traffic"].is_ready:
+                    self._send_json(503, {"error": "No vehicle detector on this server (scripts/fetch_detector.py)."})
+                    return
+                scene = scene_perception.analyze(load_rgb(image), groups={"traffic"})
+                counts, source = counts_from_detections(scene["detections"]), "detected"
+            elif isinstance(body.get("vehicle_counts"), dict):
+                counts, source = body["vehicle_counts"], "caller_supplied"
+            else:
+                self._send_json(400, {"error": "Send image_base64 (vehicles are detected) or "
+                                               "vehicle_counts, e.g. {\"Car\": 12, \"City Bus\": 2}."})
+                return
             capacity = body.get("road_capacity", 35)
             cong = traffic_net.calculate_congestion_index(counts, road_capacity=capacity)
             self._send_json(200, {
                 "status": "SUCCESS",
                 "vehicle_counts": counts,
+                "counts_source": source,
                 "congestion_analytics": cong,
                 "bottleneck_identified": cong["congestion_index"] >= 0.80,
                 "timestamp_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
