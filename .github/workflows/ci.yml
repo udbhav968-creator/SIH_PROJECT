@@ -47,6 +47,7 @@ jobs:
             scripts/benchmark_crosswalk.py \
             scripts/calibrate_frame_gate.py \
             scripts/detect_scene.py \
+            scripts/fetch_license_plates.py \
             scripts/fetch_rdd2022.py \
             scripts/prepare_crosswalk_dataset.py \
             training/train_detector.py \

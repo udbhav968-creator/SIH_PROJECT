@@ -21,6 +21,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from scripts import fetch_license_plates as flp
 from scripts import fetch_rdd2022
 from scripts import prepare_crosswalk_dataset as pcd
 from training import train_detector
@@ -114,6 +115,23 @@ class RddFetchTests(unittest.TestCase):
             self.assertIn("3: pothole", text)
 
 
+class LicensePlateDataTests(unittest.TestCase):
+    def test_source_name_groups_roboflow_copies(self):
+        a = flp.source_name("Cars224_png_jpg.rf.352b61b42e9b76029cdb32e3b80b576f.jpg")
+        b = flp.source_name("Cars224_png_jpg.rf.0123456789abcdef0123456789abcdef.jpg")
+        self.assertEqual(a, b)
+        self.assertEqual(flp.split_for(a), flp.split_for(b))  # one photograph, one split
+
+    def test_split_proportions(self):
+        splits = [flp.split_for(f"photo_{i}") for i in range(5000)]
+        self.assertAlmostEqual(splits.count("train") / 5000, 0.8, delta=0.03)
+        self.assertAlmostEqual(splits.count("test") / 5000, 0.1, delta=0.02)
+
+    def test_coco_boxes_become_normalised_yolo_and_degenerates_drop(self):
+        lines = flp.coco_to_yolo([{"bbox": [100, 50, 40, 20]}, {"bbox": [0, 0, 1, 1]}], 400, 200)
+        self.assertEqual(lines, ["0 0.300000 0.300000 0.100000 0.100000"])
+
+
 class TrainDetectorTests(unittest.TestCase):
     def test_config_rejects_unknown_keys(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -155,6 +173,7 @@ class TrainDetectorTests(unittest.TestCase):
         expected = {
             "road_damage": fetch_rdd2022.DEFAULT_OUT / "data.yaml",
             "crosswalk": pcd.DEFAULT_OUT / "data.yaml",
+            "license_plate": flp.DEFAULT_OUT / "data.yaml",
         }
         for name, produced in expected.items():
             config = train_detector.DetectorConfig.load(root / "configs" / "detectors" / f"{name}.yaml")

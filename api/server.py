@@ -118,7 +118,7 @@ print("  ✓ Deep inference pipeline initialized.")
 # Road-scene perception: COCO traffic objects + trained road-damage and
 # zebra-crossing detectors. Shares the pipeline's COCO session rather than
 # loading the same weights twice.
-from models.road_scene_perception import RoadScenePerception, annotate as annotate_scene, redact_people
+from models.road_scene_perception import RoadScenePerception, annotate as annotate_scene
 from api.request_images import load_rgb
 scene_perception = RoadScenePerception(CKPT_DIR, traffic_detector=deep_pipeline.object_detector)
 for _key, _info in scene_perception.describe().items():
@@ -1359,11 +1359,11 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     # Privacy by default: people are blurred in any image the
                     # server produces unless the caller explicitly opts out.
                     redact = body.get("redact_people", True) is not False
-                    shown = redact_people(frame, result) if redact else frame
+                    shown, redaction = scene_perception.redact(frame, result) if redact else (frame, None)
                     buffer = _io.BytesIO()
                     annotate_scene(shown, result).save(buffer, format="JPEG", quality=85)
                     result["annotated_image_base64"] = "data:image/jpeg;base64," + _b64.b64encode(buffer.getvalue()).decode()
-                    result["people_redacted"] = redact
+                    result["redaction"] = redaction
                 self._send_json(200, result)
             except Exception as e:
                 self._send_json(500, {"error": f"Perception failed: {e}"})

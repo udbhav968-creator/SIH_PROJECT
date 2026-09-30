@@ -224,7 +224,7 @@ class PrivacyRedactionTests(unittest.TestCase):
         rng = np.random.default_rng(0)
         frame = rng.integers(0, 255, (200, 300, 3), dtype=np.uint8)  # high-frequency texture
         result = {"detections": [det("person", [50, 40, 40, 100]), det("car", [200, 100, 60, 40])]}
-        redacted = rsp.redact_people(frame, result)
+        redacted = rsp.redact(frame, result)
 
         person = (slice(40, 140), slice(50, 90))
         car = (slice(100, 140), slice(200, 260))
@@ -235,10 +235,28 @@ class PrivacyRedactionTests(unittest.TestCase):
         np.testing.assert_array_equal(redacted[:, 150:], frame[:, 150:])
         self.assertFalse(np.shares_memory(redacted, frame))
 
+    def test_plate_boxes_are_blurred_too(self):
+        rng = np.random.default_rng(1)
+        frame = rng.integers(0, 255, (200, 300, 3), dtype=np.uint8)
+        redacted = rsp.redact(frame, {"detections": []}, plate_boxes=[[200, 150, 60, 20]])
+        plate = (slice(150, 170), slice(200, 260))
+        self.assertLess(np.abs(np.diff(redacted[plate].astype(int), axis=1)).mean(),
+                        np.abs(np.diff(frame[plate].astype(int), axis=1)).mean() / 3)
+        np.testing.assert_array_equal(redacted[:100, :150], frame[:100, :150])
+
+    def test_missing_plate_model_is_stated_not_implied(self):
+        perception = rsp.RoadScenePerception.__new__(rsp.RoadScenePerception)
+        perception.heads = {}
+        perception.privacy = rsp._Head("license_plate", None, {}, None)
+        frame = np.zeros((20, 20, 3), dtype=np.uint8)
+        _, info = perception.redact(frame, {"detections": [det("person", [1, 1, 5, 10])]})
+        self.assertEqual((info["people"], info["plates"]), (1, None))
+        self.assertIn("NOT redacted", info["plates_note"])
+
     def test_boxes_at_the_border_are_clipped(self):
         frame = np.zeros((50, 50, 3), dtype=np.uint8)
         result = {"detections": [det("person", [-10, -10, 30, 80])]}
-        self.assertEqual(rsp.redact_people(frame, result).shape, frame.shape)
+        self.assertEqual(rsp.redact(frame, result).shape, frame.shape)
 
 
 class TrafficCountTests(unittest.TestCase):

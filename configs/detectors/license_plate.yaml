@@ -1,0 +1,20 @@
+# Licence-plate detector, used ONLY to blur plates before images leave a bus
+# (DPDP Act 2023). Plates are never read or stored.
+# Data: python -m scripts.fetch_license_plates  (val/test are real photographs only)
+name: license_plate
+description: Finds vehicle registration plates so they can be blurred before an image is shared.
+data: datasets/license_plates/data.yaml
+dataset_license: CC BY 4.0 (Vehicle Registration Plates, Augmented Startups / Roboflow Universe)
+base_model: yolo11n.pt
+imgsz: 640          # plates are small objects; do not go lower
+hours: 3.0          # CPU budget; on a GPU use --epochs 60 instead (see the Colab notebook)
+epochs: 60
+batch: 16
+patience: 15
+workers: 4
+cache: ram
+seed: 0
+train_args:
+  cos_lr: true
+  close_mosaic: 3
+  fliplr: 0.0       # plate text is not mirror-symmetric; keep orientation realistic
