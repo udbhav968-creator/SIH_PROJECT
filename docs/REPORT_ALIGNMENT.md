@@ -49,7 +49,7 @@ with a stated gap. **Not yet** = still future work.
 |---|---|---|---|
 | C1 | "spot 9 classes of road defects" | The classifier has **7** classes (`VisionDistressNet.CLASS_NAMES`); the new detectors add 4 damage classes, 2 marking classes and COCO traffic classes | Count from code |
 | C2 | "all 10 internal pipeline tests passed"; "10-Subsystem Integration Harness 10/10 PASS" | The suite has **175 unittest cases** run by CI on Python 3.11 and 3.12 | The 10/10 harness no longer exists; cite the CI suite |
-| C3 | IMU "simulated using spring-mass-damper dynamics", 15,000 windows, 100% | **852 real field-recorded windows** (VishalSingh25/Pothole-Project, Indian roads), 80.5% held-out | The data was replaced with real logs; the old figure no longer applies |
+| C3 | IMU "simulated using spring-mass-damper dynamics", 15,000 windows (the README added "100%") | **852 real field-recorded windows** (VishalSingh25/Pothole-Project, Indian roads), 80.5% held-out | The data was replaced with real logs; the old figure no longer applies |
 | C4 | Gatekeeper threshold "Laplacian variance below 42.5" | A fixed 42.5 would **drop 10.4% of real road frames**; the shipped gate uses 5.0 plus luminance and glare checks, and keeps 100% | Texture varies ten-fold between cameras (median 1,192 on CDSet, 127 on project photos) |
 | C5 | "UrbanTrafficNet scored 90.36% validation accuracy across 7 classes" | No such trained network exists in the code; traffic counts now come from the COCO detector | The figure cannot be reproduced; drop it |
 | C6 | "Faces and civilian license plates are blurred" (§1, §6.4, §7.5) | People are blurred; plates only once the plate detector is trained; no separate face detector | See the privacy row above |

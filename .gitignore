@@ -76,3 +76,6 @@ datasets/license_plates/
 checkpoints/int8/
 # YOLO training weights: the served artifact is the .onnx; the .pt is a training by-product
 checkpoints/detectors/*.pt
+
+# report generator dependencies (npm install in docs/report)
+docs/report/node_modules/
