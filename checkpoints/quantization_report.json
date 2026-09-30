@@ -1,0 +1,21 @@
+{
+  "method": "onnxruntime static QDQ, per-channel INT8 weights, UINT8 activations, percentile calibration on training images; scored on held-out test splits",
+  "classifier": {
+    "backbone": "mobilenetv2",
+    "held_out_test_images": 502,
+    "fp32": {
+      "accuracy": 0.9343,
+      "macro_f1": 0.9355,
+      "backbone_ms": 21.17,
+      "mb": 13.3
+    },
+    "int8": {
+      "accuracy": 0.9084,
+      "macro_f1": 0.8854,
+      "backbone_ms": 11.77,
+      "mb": 3.7
+    },
+    "prediction_agreement": 0.9542,
+    "int8_file": "checkpoints\\int8\\cnn_backbone_mobilenetv2.int8.onnx"
+  }
+}
