@@ -1,0 +1,20 @@
+# Zebra crossing + lane guide-arrow detector.
+# Data: CDSet-3434 re-split by time block (scripts/prepare_crosswalk_dataset.py).
+name: crosswalk
+description: Detects zebra crossings and painted lane guide arrows in forward-facing dashcam frames.
+data: datasets/crosswalk/data.yaml
+dataset_license: Apache-2.0 (CDSet-3434, Zhang et al. 2022)
+base_model: yolo11n.pt
+imgsz: 416          # crossings are large objects; 1280x720 dashcam frames keep them legible at 416
+hours: 2.0          # CPU budget; the LR schedule is fitted to this wall-clock time
+epochs: 60
+batch: 16
+patience: 15
+workers: 4
+cache: ram
+seed: 0
+train_args:
+  cos_lr: true
+  close_mosaic: 3
+  fliplr: 0.5
+  hsv_v: 0.5        # night and glare frames are part of the target domain
