@@ -51,6 +51,7 @@ jobs:
             tests/test_api_security_and_perception.py \
             tests/test_detector_training_data.py \
             tests/test_edge_event.py \
+            tests/test_imu_bandpass.py \
             tests/test_priority_index.py \
             tests/test_road_scene_perception.py
 
