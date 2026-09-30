@@ -60,12 +60,17 @@ from models.automotive_rl_policy_agent import AutomotiveRLPolicyAgent
 from models.automotive_telematics_engine import AutomotiveTelematicsEngine
 import urllib.parse
 from services.google_maps_service import google_maps_service
+from api.request_images import RequestImageError, MAX_IMAGE_BYTES, decode_base64_image, request_image
 
 
 # ==============================================================================
 # GLOBAL MODEL INITIALIZATION
 # ==============================================================================
 CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
+# `image_path` in a request may only name files under this directory.
+DATASETS_DIR = os.path.join(ENGINE_ROOT, "datasets")
+# Two base64 images (repair audit) plus JSON overhead.
+MAX_REQUEST_BYTES = 2 * (MAX_IMAGE_BYTES * 4 // 3) + 1024 * 1024
 
 # On Vercel (and similar serverless hosts) the deployed files are read-only
 # and only /tmp is writable - and /tmp is wiped between cold starts. Anything
@@ -73,7 +78,9 @@ CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
 # still read from CKPT_DIR.
 IS_SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 _ckpt_writable = os.access(CKPT_DIR, os.W_OK) if os.path.isdir(CKPT_DIR) else os.access(ENGINE_ROOT, os.W_OK)
-WRITABLE_DIR = CKPT_DIR if (_ckpt_writable and not IS_SERVERLESS) else os.path.join("/tmp", "road_shield")
+WRITABLE_DIR = (os.environ.get("ROAD_SHIELD_DATA_DIR")  # explicit override: tests, containers
+                or (CKPT_DIR if (_ckpt_writable and not IS_SERVERLESS) else os.path.join("/tmp", "road_shield")))
+os.makedirs(WRITABLE_DIR, exist_ok=True)
 
 print("[AI Server] Loading trained models from:", CKPT_DIR)
 
@@ -278,9 +285,16 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         BaseHTTPRequestHandler.log_error(self, fmt, *args)
 
     def _read_json_body(self):
-        content_len = int(self.headers.get("Content-Length", 0))
+        try:
+            content_len = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            raise RequestImageError("invalid Content-Length") from None
         if content_len == 0:
             return {}
+        # Without a cap one request can make the server allocate whatever
+        # Content-Length claims. Base64 inflates images by 4/3, plus JSON.
+        if content_len > MAX_REQUEST_BYTES:
+            raise RequestImageError(f"request body exceeds {MAX_REQUEST_BYTES // (1024 * 1024)} MB", status=413)
         body = self.rfile.read(content_len)
         try:
             return json.loads(body.decode("utf-8"))
@@ -694,9 +708,15 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
     def do_POST(self):
         path = self.path.split("?")[0]
-        body = self._read_json_body()
-        t0 = time.time()
+        try:
+            body = self._read_json_body()
+            self._handle_post(path, body, time.time())
+        except RequestImageError as exc:
+            # Raised before any endpoint's own try/except, so a bad upload is
+            # a 4xx naming the problem rather than a generic 500.
+            self._send_json(exc.status, {"error": str(exc)})
 
+    def _handle_post(self, path, body, t0):
         # ---------------- Google Maps (POST) ----------------
         if path == "/api/v1/maps/config":
             self._send_json(200, google_maps_service.set_api_key(body.get("api_key", "")))
@@ -733,8 +753,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # Vision distress classification (Model M1) - real image in, real class out
         # ----------------------------------------------------------------------
         if path in ("/api/v1/detect/vision", "/api/v1/vision/predict"):
-            img_b64 = body.get("image_base64") or body.get("image_path")
-            if not img_b64:
+            image = request_image(body, DATASETS_DIR, required=False)
+            if image is None:
                 self._send_json(400, {
                     "error": "Missing image_base64 or image_path. This endpoint classifies a real image crop - "
                              "it no longer accepts a 'preferred_class' shortcut or a synthetic feature vector.",
@@ -744,7 +764,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(503, {"error": "Vision model not trained yet - run training/train_vision.py."})
                 return
             try:
-                img_np = cv_detector.decode_image(img_b64)
+                img_np = cv_detector.decode_image(image)
                 pred = vision_model.predict_image(img_np)
             except Exception as e:
                 self._send_json(500, {"error": f"Failed to classify image: {str(e)}"})
@@ -851,9 +871,10 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                              "site photos - it no longer generates random noise images to fake a scenario.",
                 })
                 return
+            before_raw, after_raw = decode_base64_image(before_b64), decode_base64_image(after_b64)
             try:
-                before_rgb = cv_detector.decode_image(before_b64)
-                after_rgb = cv_detector.decode_image(after_b64)
+                before_rgb = cv_detector.decode_image(before_raw)
+                after_rgb = cv_detector.decode_image(after_raw)
                 before_gray = np.mean(before_rgb.astype(np.float32), axis=2)
                 after_gray = np.mean(after_rgb.astype(np.float32), axis=2)
                 audit_res = texture_auditor.verify_repair(before_gray, after_gray, embedder=forensic_embedder, claimed_dist_m=dist_m)
@@ -989,9 +1010,10 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             if not img_b64:
                 self._send_json(400, {"error": "Missing image_base64 payload"})
                 return
+            image = decode_base64_image(img_b64)
             try:
                 analysis = deep_pipeline.audit_image(
-                    image_input=img_b64, corridor_id=highway,
+                    image_input=image, corridor_id=highway,
                     device_id=body.get("device_id"))
                 analysis["latency_ms"] = round((time.time() - t0) * 1000.0, 3)
                 self._send_json(200, analysis)
@@ -1016,9 +1038,10 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 })
                 return
 
+            frame = decode_base64_image(frame_b64)
             try:
                 tracker = get_session_tracker(session_id, reset=reset_tracker)
-                analysis = deep_pipeline.audit_image(image_input=frame_b64, corridor_id=body.get("clip_id", "uploaded_stream"))
+                analysis = deep_pipeline.audit_image(image_input=frame, corridor_id=body.get("clip_id", "uploaded_stream"))
                 adapted_dets = [
                     {
                         "bbox_normalized": d["bbox_normalized"],
@@ -1061,6 +1084,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             if not img_b64:
                 self._send_json(400, {"error": "Missing image_base64 - a correction needs a real image to be useful later."})
                 return
+            image_bytes = decode_base64_image(img_b64)
 
             active_feedback_counter += 1
             feedback_id = f"AFB-{int(time.time())}-{active_feedback_counter:04d}"
@@ -1087,7 +1111,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             current_pred = None
             if vision_model.is_ready:
                 try:
-                    img_np = cv_detector.decode_image(img_b64)
+                    img_np = cv_detector.decode_image(image_bytes)
                     current_pred = vision_model.predict_image(img_np)
                 except Exception:
                     pass
@@ -1109,7 +1133,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # Full deep-inference pipeline audit
         # ----------------------------------------------------------------------
         if path == "/api/v1/pipeline/deep-audit":
-            image_input = body.get("image_base64") or body.get("image_path")
+            image_input = request_image(body, DATASETS_DIR, required=False)
             corridor = body.get("corridor_id", "NH-44")
             filename = body.get("filename", "")
             if filename and filename not in corridor:
@@ -1245,12 +1269,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     "detector": detector.describe(),
                 })
                 return
-            img_b64 = body.get("image_base64")
-            if not img_b64:
-                self._send_json(400, {"error": "Missing image_base64."})
-                return
+            image = request_image(body, DATASETS_DIR, path_key=None)
             try:
-                img_np = cv_detector.decode_image(img_b64)
+                img_np = cv_detector.decode_image(image)
                 conf = float(body.get("confidence_threshold", detector.conf_threshold))
                 keep = body.get("classes")
                 objects = detector.detect(img_np, conf_threshold=conf, keep_classes=set(keep) if keep else None)
@@ -1310,9 +1331,11 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 {"timestamp": 0.4, "bbox": [140, 175, 260, 210]},
             ]
             vehicle_crop = None
-            if body.get("vehicle_image_base64"):
+            crop_bytes = request_image(body, DATASETS_DIR, b64_keys=("vehicle_image_base64",),
+                                       path_key=None, required=False)
+            if crop_bytes is not None:
                 try:
-                    vehicle_crop = cv_detector.decode_image(body["vehicle_image_base64"])
+                    vehicle_crop = cv_detector.decode_image(crop_bytes)
                 except Exception:
                     vehicle_crop = None
             incident = alpr_tracker.generate_incident_alert(bus_id, gps, track_history, vehicle_crop_rgb=vehicle_crop)
@@ -1354,7 +1377,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             if "vision_probabilities" in body and len(body["vision_probabilities"]) in (n_classes - 1, n_classes):
                 vision_probs = np.array(body["vision_probabilities"], dtype=np.float64)
             elif body.get("image_base64") and vision_model.is_ready:
-                img_np = cv_detector.decode_image(body["image_base64"])
+                img_np = cv_detector.decode_image(decode_base64_image(body["image_base64"]))
                 pred = vision_model.predict_image(img_np)
                 vision_probs = np.array([pred["all_class_probabilities"][n] for n in VisionDistressNet.CLASS_NAMES], dtype=np.float64)
             else:
