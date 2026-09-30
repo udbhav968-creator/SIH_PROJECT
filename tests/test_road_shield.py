@@ -400,6 +400,20 @@ class FleetDeduplication(unittest.TestCase):
         self.assertEqual(stats["total_reports_ingested"], 3)
         self.assertEqual(stats["unique_defects_registered"], 2)
 
+    def test_default_radius_is_eight_metres(self):
+        from pipeline.fleet_deduplication_engine import FleetDeduplicationEngine as F
+        engine = F()
+        self.assertEqual(engine.proximity_threshold_m, 8.0)
+        metre_lat = 1.0 / 111_195.0  # degrees of latitude per metre
+        base = engine.ingest_fleet_detection("BUS-1", 12.9716, 77.5946, "Pothole Cavity", 40, 1.5,
+                                             enrich_location=False)
+        near = engine.ingest_fleet_detection("BUS-2", 12.9716 + 7 * metre_lat, 77.5946, "Pothole Cavity",
+                                             40, 1.5, enrich_location=False)
+        far = engine.ingest_fleet_detection("BUS-3", 12.9716 - 9 * metre_lat, 77.5946, "Pothole Cavity",
+                                            40, 1.5, enrich_location=False)
+        self.assertEqual(near["defect_id"], base["defect_id"])
+        self.assertNotEqual(far["defect_id"], base["defect_id"])
+
     def test_haversine_matches_a_known_distance(self):
         from pipeline.fleet_deduplication_engine import FleetDeduplicationEngine as F
         # one degree of latitude is about 111.2 km anywhere on Earth

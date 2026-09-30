@@ -131,6 +131,16 @@ class ApiOverHttpTests(unittest.TestCase):
     def test_ledger_went_to_the_redirected_directory(self):
         self.assertTrue(self.server_module.defect_store.db_path.startswith(self._data_dir.name))
 
+    def test_ledger_is_ranked_by_priority_index(self):
+        status, body = self.call("/api/v1/ledger/defects")
+        self.assertEqual(status, 200)
+        defects = body["defects"]
+        self.assertTrue(defects, "the server seeds demo defects into an empty ledger")
+        scores = [d["priority_index"] for d in defects]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+        self.assertEqual([d["priority_rank"] for d in defects], list(range(1, len(defects) + 1)))
+        self.assertFalse(defects[0]["traffic_measured"])  # seeded reports carry no traffic count
+
     def test_health_reports_perception_models(self):
         status, body = self.call("/api/v1/health")
         self.assertEqual(status, 200)
