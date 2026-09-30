@@ -62,6 +62,7 @@ import urllib.parse
 from services.google_maps_service import google_maps_service
 from api.request_images import RequestImageError, MAX_IMAGE_BYTES, decode_base64_image, request_image
 from models.priority_index import describe as describe_priority, rank_defects
+from pipeline import edge_event
 
 
 # ==============================================================================
@@ -1350,6 +1351,45 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, result)
             except Exception as e:
                 self._send_json(500, {"error": f"Perception failed: {e}"})
+            return
+
+        # ----------------------------------------------------------------------
+        # Edge packets: what a bus transmits instead of video (<= 1 KB, HMAC-signed)
+        # ----------------------------------------------------------------------
+        if path == "/api/v1/edge/encode":
+            if not scene_perception.is_ready:
+                self._send_json(503, {"error": "No perception model is available on this server."})
+                return
+            bus_id = str(body.get("bus_id", "BUS-DEMO"))
+            try:
+                lat, lon = float(body["lat"]), float(body["lon"])
+            except (KeyError, TypeError, ValueError):
+                self._send_json(400, {"error": "lat and lon are required numbers"})
+                return
+            frame = load_rgb(request_image(body, DATASETS_DIR, path_key=None))
+            try:
+                scene = scene_perception.analyze(frame)
+                wire = edge_event.encode_event(scene, bus_id, lat, lon, timestamp=body.get("timestamp"),
+                                               key=edge_event.device_key(bus_id))
+                self._send_json(200, {"packet": wire.decode("ascii"), "bytes": len(wire),
+                                      "limit_bytes": edge_event.MAX_EVENT_BYTES,
+                                      "signed": edge_event.device_key(bus_id) is not None,
+                                      "decoded": edge_event.decode_event(wire, key=edge_event.device_key(bus_id))})
+            except edge_event.EventError as e:
+                self._send_json(400, {"error": str(e)})
+            return
+
+        if path == "/api/v1/edge/verify":
+            packet = body.get("packet")
+            if not isinstance(packet, str):
+                self._send_json(400, {"error": "packet must be the JSON text a bus sent"})
+                return
+            try:
+                bus_id = json.loads(packet).get("bus", "")
+                decoded = edge_event.decode_event(packet.encode("utf-8"), key=edge_event.device_key(str(bus_id)))
+                self._send_json(200, decoded)
+            except (edge_event.EventError, ValueError, AttributeError) as e:
+                self._send_json(400, {"error": f"rejected: {e}"})
             return
 
         if path == "/api/v1/pedestrian/detect":

@@ -16,6 +16,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+from unittest import mock
 
 from PIL import Image
 
@@ -140,6 +141,29 @@ class ApiOverHttpTests(unittest.TestCase):
         self.assertEqual(scores, sorted(scores, reverse=True))
         self.assertEqual([d["priority_rank"] for d in defects], list(range(1, len(defects) + 1)))
         self.assertFalse(defects[0]["traffic_measured"])  # seeded reports carry no traffic count
+
+    def test_edge_packet_round_trip_and_tamper_rejection(self):
+        if not self.server_module.scene_perception.is_ready:
+            self.skipTest("no perception model on this machine")
+        request = {"image_base64": png_b64(320, 240), "bus_id": "BUS-T1",
+                   "lat": 12.9716, "lon": 77.5946, "timestamp": 1790000000}
+        with mock.patch.dict(os.environ, {"ROAD_SHIELD_DEVICE_KEY_BUS_T1": "per-bus-secret"}):
+            status, body = self.call("/api/v1/edge/encode", request)
+            self.assertEqual(status, 200, body)
+            self.assertTrue(body["signed"])
+            self.assertLessEqual(body["bytes"], 1024)
+            status, verified = self.call("/api/v1/edge/verify", {"packet": body["packet"]})
+            self.assertEqual(status, 200, verified)
+            self.assertTrue(verified["signature_verified"])
+            self.assertEqual((verified["bus_id"], verified["lat"]), ("BUS-T1", 12.9716))
+            status, _ = self.call("/api/v1/edge/verify", {"packet": body["packet"].replace("12.9716", "13.0")})
+            self.assertEqual(status, 400)  # moved the defect: signature no longer matches
+        status, _ = self.call("/api/v1/edge/verify", {"packet": "not json"})
+        self.assertEqual(status, 400)
+
+    def test_edge_encode_requires_coordinates(self):
+        status, _ = self.call("/api/v1/edge/encode", {"image_base64": png_b64()})
+        self.assertIn(status, (400, 503))
 
     def test_health_reports_perception_models(self):
         status, body = self.call("/api/v1/health")
