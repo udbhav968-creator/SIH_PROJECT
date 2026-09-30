@@ -224,7 +224,7 @@ const results = [
     ["Zebra-crossing detector", "mAP50 0.864 → 0.858", "61 → 48 ms (1.3×)", "10.0 → 4.1 MB"],
     ["Classifier backbone (MobileNetV2)", "Accuracy 93.4% → 90.8%", "21 → 12 ms (1.8×)", "13.3 → 3.7 MB"],
   ], [3, 2.6, 2, 1.8]),
-  caption("Table 10. INT8 results (percentile calibration). The detector loses almost nothing; the classifier loses 2.6 points, so full precision remains the default and INT8 is offered for low-power edge boards."),
+  caption("Table 10. INT8 results (percentile calibration). The detector loses almost nothing; the classifier loses 2.6 points, so full precision remains the default and INT8 is offered for low-power edge boards. The classifier figures compare FP32 and INT8 on identical images; because the DNIT crops were regenerated, that image set is not exactly the published held-out split, so the absolute 93.4% is not comparable to the published 90.1% — the 2.6-point difference is the measurement."),
   h2("5.6 Latency"),
   p("On a 1280×720 frame (laptop CPU, median of 15 runs): COCO traffic detector 202 ms, crossing detector 76 ms, both together 276 ms; classifier backbone 21 ms. The three-detector total is PENDING the road-damage model."),
 ];
