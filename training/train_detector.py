@@ -220,7 +220,8 @@ def train(config: DetectorConfig, run_dir: Path, resume: bool = False) -> Path:
         data=config.data, imgsz=config.imgsz, epochs=config.epochs, batch=config.batch,
         patience=config.patience, workers=config.workers, cache=config.cache, seed=config.seed,
         deterministic=True, device=config.device, project=str(run_dir.parent), name=run_dir.name,
-        exist_ok=True, plots=True, amp=False,
+        exist_ok=True, plots=True,
+        amp=config.device != "cpu",  # mixed precision only pays off (and is only supported) on GPU
     )
     if config.hours:
         args["time"] = config.hours
@@ -242,6 +243,17 @@ def export_onnx(weights: Path, imgsz: int) -> Path:
     return Path(exported)
 
 
+def _hardware(device: str) -> str:
+    if device != "cpu":
+        try:
+            import torch
+
+            return f"{torch.cuda.get_device_name(0)} (cuda:{device})"
+        except Exception:  # the card should still be written without a GPU name
+            pass
+    return f"{platform.processor() or platform.machine()} ({device})"
+
+
 def write_model_card(config: DetectorConfig, weights: Path, onnx_path: Path | None,
                      metrics: dict[str, Any], thresholds: dict[str, float],
                      train_seconds: float | None) -> Path:
@@ -257,7 +269,7 @@ def write_model_card(config: DetectorConfig, weights: Path, onnx_path: Path | No
         "input_size": config.imgsz,
         "created_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "train_seconds": round(train_seconds, 1) if train_seconds else None,
-        "hardware": f"{platform.processor() or platform.machine()} ({config.device})",
+        "hardware": _hardware(config.device),
         "dataset": {"yaml": Path(config.data).name, "license": config.dataset_license},
         "config": asdict(config) | {"data": Path(config.data).name},
         "metrics": metrics,
@@ -271,10 +283,32 @@ def write_model_card(config: DetectorConfig, weights: Path, onnx_path: Path | No
     return path
 
 
+def apply_overrides(config: DetectorConfig, args: argparse.Namespace) -> DetectorConfig:
+    """Apply command-line overrides; a fixed --epochs replaces any time budget."""
+    if getattr(args, "hours", None) is not None:
+        config.hours = args.hours
+    if getattr(args, "epochs", None) is not None:
+        config.epochs, config.hours = args.epochs, None
+    if getattr(args, "imgsz", None) is not None:
+        if args.imgsz % 32:
+            raise ValueError("--imgsz must be a multiple of 32")
+        config.imgsz = args.imgsz
+    for key in ("device", "batch"):
+        if getattr(args, key, None) is not None:
+            setattr(config, key, getattr(args, key))
+    return config
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("config", type=Path)
     parser.add_argument("--hours", type=float, help="override the config's time budget")
+    # Overrides for running the same config on other hardware, e.g. a Colab GPU:
+    #   --device 0 --epochs 100 --imgsz 640 --batch 32
+    parser.add_argument("--device", help="'cpu' or a CUDA index such as 0")
+    parser.add_argument("--epochs", type=int, help="train for a fixed epoch count (drops the time budget)")
+    parser.add_argument("--imgsz", type=int, help="training and serving input size (multiple of 32)")
+    parser.add_argument("--batch", type=int)
     parser.add_argument("--eval-only", action="store_true",
                         help="re-evaluate the shipped checkpoint without training")
     parser.add_argument("--no-export", action="store_true")
@@ -285,8 +319,10 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     config = DetectorConfig.load(args.config)
-    if args.hours is not None:
-        config.hours = args.hours
+    try:
+        apply_overrides(config, args)
+    except ValueError as exc:
+        parser.error(str(exc))
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     shipped = CHECKPOINT_DIR / f"{config.name}.pt"
 

@@ -139,6 +139,16 @@ class TrainDetectorTests(unittest.TestCase):
             self.assertEqual(config.name, path.stem)
             self.assertEqual(config.imgsz % 32, 0, "YOLO strides need a multiple of 32")
 
+    def test_gpu_overrides(self):
+        import argparse
+        config = train_detector.DetectorConfig(name="x", data="d.yaml", hours=3.5, epochs=80)
+        args = argparse.Namespace(hours=None, epochs=100, imgsz=640, device="0", batch=32)
+        train_detector.apply_overrides(config, args)
+        self.assertEqual((config.epochs, config.hours, config.imgsz, config.device, config.batch),
+                         (100, None, 640, "0", 32))
+        with self.assertRaises(ValueError):
+            train_detector.apply_overrides(config, argparse.Namespace(imgsz=500))
+
     def test_serving_threshold_is_the_f1_peak(self):
         px = np.linspace(0, 1, 1000)
         peaked = np.exp(-((px - 0.42) ** 2) / 0.01)      # F1 peaks at confidence 0.42
