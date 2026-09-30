@@ -42,7 +42,7 @@ def run_training(val_ratio=0.25, copies_per_image=7, seed=42, save_dir=None, max
     # floats, and an RBF SVM's kernel matrix grows with the square of the
     # sample count. 800 per class trains comfortably in about 2 GB.
     if max_per_class is None:
-        max_per_class = int(os.environ.get("ROAD_SHIELD_MAX_PER_CLASS", "800"))
+        max_per_class = int(os.environ.get("ROAD_SHIELD_MAX_PER_CLASS", "1500"))
     images, labels, paths = load_labeled_dataset(dedupe_augmented=True, max_per_class=max_per_class)
     print(f"  {len(images)} distinct real photos across {len(set(labels.tolist()))} classes "
           f"(cap {max_per_class} per class)")

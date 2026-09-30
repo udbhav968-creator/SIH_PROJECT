@@ -473,7 +473,6 @@ def main():
     train_pci_model(rng)
     train_deterioration_model(rng)
     train_depth_model(rng)
-    normalise_segmenter_checkpoint()
 
 
 if __name__ == "__main__":

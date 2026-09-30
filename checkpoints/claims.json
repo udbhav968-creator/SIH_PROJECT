@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1790707791,
+  "generated_unix": 1790754420,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
@@ -42,8 +42,8 @@
       "role": "Low-power edge deployment (Raspberry Pi, Jetson Nano)",
       "why": "Depthwise separable convolutions; 14 MB against ResNet-50's 98 MB.",
       "measured": {
-        "held_out_accuracy": 0.8991,
-        "held_out_macro_f1": 0.7776,
+        "held_out_accuracy": 0.9012,
+        "held_out_macro_f1": 0.7981,
         "backbone_size_mb": 14.0
       },
       "evidence": "checkpoints/cnn_head_mobilenetv2_report.json",

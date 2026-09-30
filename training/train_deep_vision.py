@@ -386,7 +386,8 @@ def run_training(arch="resnet18", epochs=12, batch_size=24, img_size=224, lr=3e-
         "test": {"accuracy": round(test_final["accuracy"], 4), "macro_f1": round(test_f1, 4),
                  "confusion_matrix": test_final["confusion_matrix"], "per_class": test_rep},
         "random_guess_baseline": round(1.0 / n_classes, 4),
-        "weights_path": weights_path, "onnx_path": onnx_path,
+        "weights_path": f"checkpoints/deep_vision_{arch}.pt",
+        "onnx_path": f"checkpoints/deep_vision_{arch}.onnx" if onnx_path else None,
         "trained_at_unix": int(time.time()),
     }
     report_path = os.path.join(save_dir, "deep_vision_report.json")

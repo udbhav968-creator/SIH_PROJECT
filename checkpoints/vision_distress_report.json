@@ -61,34 +61,25 @@
       "07_monsoon_pavement_deterioration": 12
     }
   },
-  "train_photos": 1644,
-  "train_photos_after_augmentation": 3288,
-  "held_out_validation_photos": 548,
-  "held_out_validation_accuracy": 0.8376,
+  "train_photos": 1937,
+  "train_photos_after_augmentation": 3874,
+  "held_out_validation_photos": 646,
+  "held_out_validation_accuracy": 0.8359,
   "random_guess_baseline": 0.1429,
   "confusion_matrix": [
     [
-      80,
+      72,
       0,
-      8,
-      0,
-      8,
-      0,
-      0
-    ],
-    [
-      0,
-      186,
-      14,
-      0,
-      0,
+      13,
+      2,
+      9,
       0,
       0
     ],
     [
-      6,
-      20,
-      174,
+      0,
+      200,
+      8,
       0,
       0,
       0,
@@ -96,98 +87,107 @@
     ],
     [
       3,
+      37,
+      249,
+      0,
+      0,
+      0,
+      1
+    ],
+    [
+      3,
+      0,
+      4,
+      2,
+      2,
+      0,
+      1
+    ],
+    [
+      6,
+      0,
+      0,
+      0,
+      8,
+      0,
+      0
+    ],
+    [
+      5,
+      0,
+      1,
+      1,
+      1,
+      6,
+      0
+    ],
+    [
+      2,
       0,
       6,
       1,
-      2,
-      0,
-      0
-    ],
-    [
-      4,
       0,
       0,
-      1,
-      7,
-      2,
-      0
-    ],
-    [
-      8,
-      1,
-      0,
-      0,
-      0,
-      5,
-      0
-    ],
-    [
-      1,
-      0,
-      4,
-      0,
-      1,
-      0,
-      6
+      3
     ]
   ],
   "per_class_report": {
     "Normal Road / Sound Pavement": {
-      "precision": 0.7843137254901961,
-      "recall": 0.8333333333333334,
-      "f1-score": 0.8080808080808081,
+      "precision": 0.7912087912087912,
+      "recall": 0.75,
+      "f1-score": 0.7700534759358288,
       "support": 96.0
     },
     "Crack (Longitudinal / Transverse / Alligator)": {
-      "precision": 0.8985507246376812,
-      "recall": 0.93,
-      "f1-score": 0.914004914004914,
-      "support": 200.0
+      "precision": 0.8438818565400844,
+      "recall": 0.9615384615384616,
+      "f1-score": 0.898876404494382,
+      "support": 208.0
     },
     "Pothole Cavity": {
-      "precision": 0.8446601941747572,
-      "recall": 0.87,
-      "f1-score": 0.8571428571428571,
-      "support": 200.0
+      "precision": 0.8861209964412812,
+      "recall": 0.8586206896551725,
+      "f1-score": 0.87215411558669,
+      "support": 290.0
     },
     "Waterlogging / Flooding Hazard": {
-      "precision": 0.5,
-      "recall": 0.08333333333333333,
-      "f1-score": 0.14285714285714285,
+      "precision": 0.3333333333333333,
+      "recall": 0.16666666666666666,
+      "f1-score": 0.2222222222222222,
       "support": 12.0
     },
     "Missing Zebra Crossing": {
-      "precision": 0.3888888888888889,
-      "recall": 0.5,
-      "f1-score": 0.4375,
+      "precision": 0.4,
+      "recall": 0.5714285714285714,
+      "f1-score": 0.47058823529411764,
       "support": 14.0
     },
     "Missing Road Divider": {
-      "precision": 0.7142857142857143,
-      "recall": 0.35714285714285715,
-      "f1-score": 0.47619047619047616,
+      "precision": 1.0,
+      "recall": 0.42857142857142855,
+      "f1-score": 0.6,
       "support": 14.0
     },
     "Damaged Traffic Sign": {
-      "precision": 1.0,
-      "recall": 0.5,
-      "f1-score": 0.6666666666666666,
+      "precision": 0.6,
+      "recall": 0.25,
+      "f1-score": 0.35294117647058826,
       "support": 12.0
     },
-    "accuracy": 0.8375912408759124,
+    "accuracy": 0.8359133126934984,
     "macro avg": {
-      "precision": 0.7329570353538911,
-      "recall": 0.5819727891156463,
-      "f1-score": 0.6146346949918379,
-      "support": 548.0
+      "precision": 0.6935064253604987,
+      "recall": 0.5695465454086144,
+      "f1-score": 0.5981193757148328,
+      "support": 646.0
     },
     "weighted avg": {
-      "precision": 0.834636397543779,
-      "recall": 0.8375912408759124,
-      "f1-score": 0.8290351536245697,
-      "support": 548.0
+      "precision": 0.8347655713380079,
+      "recall": 0.8359133126934984,
+      "f1-score": 0.8292667421412422,
+      "support": 646.0
     }
   },
   "note": "Validation photos and their augmented copies are strictly disjoint from the training set. Accuracy is limited mainly by how few distinct source photos exist for some classes (see dataset_inventory) - this is a data problem, not an unreported one.",
-  "trained_at_unix": 1790703228
+  "trained_at_unix": 1790754418
 }

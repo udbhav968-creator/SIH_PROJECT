@@ -516,5 +516,60 @@ class MapsService(unittest.TestCase):
         self.assertIn("straight", route["provider"].lower())
 
 
+class TestDANDAGDeepNetwork(unittest.TestCase):
+    """Tests for the Dual Attention Network (DAN) & Directed Acyclic Graph (DAG) engine."""
+
+    def test_dan_spatial_attention_and_domain_detection(self):
+        from models.dan_dag_network import DualAttentionModule
+        rng = np.random.default_rng(7)
+        # Simulated road frame with dark cavity basin and bright reflective rim
+        img = rng.integers(95, 145, size=(240, 320, 3), dtype=np.uint8)
+        img[130:185, 110:210] = 22  # dark cavity
+        img[125:132, 108:212] = 235  # bright reflective rim
+
+        pam_vec, spatial_map, telemetry = DualAttentionModule.extract_spatial_attention(img)
+        self.assertEqual(pam_vec.shape, (16,))
+        self.assertEqual(spatial_map.shape, (8, 8))
+        self.assertGreaterEqual(float(spatial_map.min()), 0.0)
+        self.assertLessEqual(float(spatial_map.max()), 1.0 + 1e-5)
+        self.assertIn(
+            telemetry["domain_regime"],
+            ("DRY_STANDARD_ASPHALT", "WET_REFLECTIVE_PAVEMENT", "SHADOW_LOW_LIGHT"),
+        )
+        self.assertGreater(telemetry["cavity_basin_score"], 0.05)
+
+    def test_pipeline_execution_dag_is_acyclic_and_topological(self):
+        from models.dan_dag_network import PipelineExecutionDAG
+        dag = PipelineExecutionDAG()
+        dag.mark("N0_scene_gate")
+        dag.mark("N2_dan_attention")
+        exported = dag.export(decision_dag_trace=[{"node": "class_0_vs_6", "winner_class_id": 2}])
+        self.assertTrue(exported["is_acyclic_verified"])
+        self.assertEqual(exported["node_count"], 10)
+        self.assertEqual(exported["topological_order"][0], "N0_scene_gate")
+        self.assertEqual(exported["topological_order"][-1], "N9_merkle_audit")
+        self.assertEqual(len(exported["decision_dag_traversal"]), 1)
+
+    def test_dan_dag_trained_checkpoint_and_21_node_decision_graph(self):
+        from models.dan_dag_network import DANDAGNetwork
+        net = DANDAGNetwork()
+        self.assertTrue(net.is_ready, "checkpoints/dan_dag_model.joblib must be trained and loadable")
+        info = net.describe()
+        self.assertEqual(info["dag_pairwise_nodes"], 21)
+        self.assertGreater(info["held_out_accuracy"], 0.70)
+
+        rng = np.random.default_rng(42)
+        emb_dim = len(net.state["dan"]["z_mean"])
+        dummy_img = rng.integers(40, 180, size=(160, 220, 3), dtype=np.uint8)
+        dummy_cnn = rng.normal(0.0, 1.0, size=(emb_dim,)).astype(np.float32)
+        pred = net.predict_from_embedding(dummy_img, dummy_cnn)
+        self.assertEqual(len(pred["probabilities"]), 7)
+        self.assertAlmostEqual(float(np.sum(pred["probabilities"])), 1.0, places=5)
+        # 7 classes -> rooted Decision DAG eliminates 1 class per hop across 6 hops
+        self.assertEqual(len(pred["dag_trace"]), 6)
+        self.assertEqual(len(pred["dan_channel"]["top_attended_channels"]), 6)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

@@ -77,5 +77,5 @@
     }
   },
   "data_provenance": "Real field-recorded 100-sample tri-axial accelerometer windows (Ax, Ay, Az in m/s^2) from Indian road vehicular drives in VishalSingh25/Pothole-Project (10 CSV drive logs, 205,491 raw samples across smooth road, unmarked speed bumps/joints, marked speed breakers/rumble strips, and pothole corridors), split with a strict temporal block boundary and guard gap between train and held-out validation.",
-  "trained_at_unix": 1790695037
+  "trained_at_unix": 1790751641
 }

@@ -64,7 +64,9 @@ def report_path(backbone):
 
 
 def heads(seed=42):
-    """Candidate heads. Small, because the embeddings do the heavy lifting."""
+    """Candidate heads evaluated on top of the deep CNN embeddings."""
+    from sklearn.neural_network import MLPClassifier
+
     return {
         "logistic": Pipeline([
             ("scale", StandardScaler()),
@@ -74,6 +76,12 @@ def heads(seed=42):
             ("scale", StandardScaler()),
             ("clf", SVC(C=10.0, kernel="rbf", gamma="scale", probability=True,
                         class_weight="balanced", random_state=seed)),
+        ]),
+        "mlp_deep": Pipeline([
+            ("scale", StandardScaler()),
+            ("clf", MLPClassifier(hidden_layer_sizes=(512, 256), activation="relu",
+                                  alpha=1e-3, max_iter=400, early_stopping=True,
+                                  random_state=seed)),
         ]),
     }
 
@@ -86,40 +94,58 @@ _ROAD_CROP_BOXES = (
 
 
 def embed_items(embedder, items, label):
-    imgs, ys = [], []
+    from models.dan_dag_network import DualAttentionModule
+    imgs, ys, pams, domains = [], [], [], []
     for idx, (path, cls, _grp) in enumerate(items):
         try:
             img = load_image(path)
             imgs.append(img)
             ys.append(cls)
+            pam_vec, _, pam_tel = DualAttentionModule.extract_spatial_attention(img)
+            pams.append(pam_vec)
+            domains.append(pam_tel["domain_regime"])
             # Region proposals at inference time are tight road-surface crops,
-            # whereas Class 0/3/4/5/6 photographs on disk are full wide-angle
-            # frames. Extract sub-crops from the training split ONLY (never the
+            # whereas full photographs on disk are wide-angle frames. Extract
+            # multi-scale sub-crops from the training split ONLY (never the
             # held-out test split) with their true class label so every class is
             # represented at both full-frame and region-proposal scales.
-            if label == "training" and cls in (0, 3, 4, 5, 6):
+            if label == "training":
                 H, W = img.shape[:2]
                 if H >= 96 and W >= 96:
-                    if cls == 0:
-                        box_indices = [idx % len(_ROAD_CROP_BOXES)] if (idx % 3 == 0) else []
-                    else:
-                        box_indices = list(range(len(_ROAD_CROP_BOXES)))
-                    for b_idx in box_indices:
-                        x0f, y0f, x1f, y1f = _ROAD_CROP_BOXES[b_idx]
-                        crop = img[int(y0f * H):int(y1f * H), int(x0f * W):int(x1f * W)]
+                    if cls in (0, 3, 4, 5, 6):
+                        if cls == 0:
+                            box_indices = [idx % len(_ROAD_CROP_BOXES)] if (idx % 3 == 0) else []
+                        else:
+                            box_indices = list(range(len(_ROAD_CROP_BOXES)))
+                        for b_idx in box_indices:
+                            x0f, y0f, x1f, y1f = _ROAD_CROP_BOXES[b_idx]
+                            crop = img[int(y0f * H):int(y1f * H), int(x0f * W):int(x1f * W)]
+                            if crop.shape[0] >= 24 and crop.shape[1] >= 24:
+                                c_contig = np.ascontiguousarray(crop)
+                                imgs.append(c_contig)
+                                ys.append(cls)
+                                cpam, _, ctel = DualAttentionModule.extract_spatial_attention(c_contig)
+                                pams.append(cpam)
+                                domains.append(ctel["domain_regime"])
+                    elif cls in (1, 2) and (idx % 6 == 0):
+                        crop = img[int(0.35 * H):int(0.92 * H), int(0.10 * W):int(0.90 * W)]
                         if crop.shape[0] >= 24 and crop.shape[1] >= 24:
-                            imgs.append(np.ascontiguousarray(crop))
+                            c_contig = np.ascontiguousarray(crop)
+                            imgs.append(c_contig)
                             ys.append(cls)
+                            cpam, _, ctel = DualAttentionModule.extract_spatial_attention(c_contig)
+                            pams.append(cpam)
+                            domains.append(ctel["domain_regime"])
         except Exception:
             continue
     print(f"  embedding {len(imgs)} {label} images with {embedder.name} ...", flush=True)
     t0 = time.time()
-    X = embedder.embed_batch(imgs, progress_every=8)
-    print(f"  done in {time.time() - t0:.1f}s ({1000 * (time.time() - t0) / max(1, len(imgs)):.0f} ms/image)")
-    return X, np.array(ys)
+    X = embedder.embed_batch(imgs, progress_every=12)
+    print(f"  done in {time.time() - t0:.1f}s ({1000 * (time.time() - t0) / max(1, len(imgs)):.0f} ms/image)", flush=True)
+    return X, np.array(ys), np.asarray(pams, dtype=np.float32), np.array(domains)
 
 
-def run_training(backbone="resnet50", seed=42, max_per_class=800, compare=False):
+def run_training(backbone="resnet50", seed=42, max_per_class=1500, compare=False):
     embedder = CNNEmbedder(prefer=(backbone, "mobilenetv2", "resnet50"))
     if not embedder.is_ready:
         sys.exit("No CNN backbone found. Run:  python -m scripts.fetch_cnn_backbone")
@@ -144,12 +170,32 @@ def run_training(backbone="resnet50", seed=42, max_per_class=800, compare=False)
     # the head trains on train+val; test stays untouched until the end
     fit_items = train_items + val_items
     print(f"[CNN head] backbone {embedder.name} | {len(capped)} images "
-          f"({len({i[2] for i in capped})} distinct photographs)")
+          f"({len({i[2] for i in capped})} distinct photographs)", flush=True)
     print(f"  fit on {len(fit_items)} images, held-out test {len(test_items)} images "
-          f"from {len({i[2] for i in test_items})} unseen photographs")
+          f"from {len({i[2] for i in test_items})} unseen photographs", flush=True)
 
-    X_fit, y_fit = embed_items(embedder, fit_items, "training")
-    X_test, y_test = embed_items(embedder, test_items, "held-out")
+    scratch_dir = os.path.join(ENGINE_ROOT, "scratch")
+    os.makedirs(scratch_dir, exist_ok=True)
+    cache_file = os.path.join(scratch_dir, f"embed_cache_{embedder.name}_{max_per_class}_{len(fit_items)}.npz")
+    if os.path.exists(cache_file):
+        print(f"  loading cached embeddings from {cache_file} ...", flush=True)
+        cached = np.load(cache_file, allow_pickle=False)
+        X_fit, y_fit = cached["X_fit"], cached["y_fit"]
+        X_test, y_test = cached["X_test"], cached["y_test"]
+    else:
+        X_fit, y_fit, P_fit, D_fit = embed_items(embedder, fit_items, "training")
+        X_test, y_test, P_test, D_test = embed_items(embedder, test_items, "held-out")
+        np.savez_compressed(
+            cache_file,
+            X_fit=X_fit.astype(np.float32),
+            y_fit=y_fit,
+            P_fit=P_fit,
+            D_fit=D_fit,
+            X_test=X_test.astype(np.float32),
+            y_test=y_test,
+            P_test=P_test,
+            D_test=D_test,
+        )
 
     results, best = {}, None
     for name, head in heads(seed).items():
@@ -161,7 +207,7 @@ def run_training(backbone="resnet50", seed=42, max_per_class=800, compare=False)
         score = 0.5 * (acc + f1)
         results[name] = {"accuracy": round(acc, 4), "macro_f1": round(f1, 4),
                          "seconds": round(time.time() - t0, 1)}
-        print(f"  head {name:10s} accuracy {acc * 100:5.1f}%   macro-F1 {f1:.3f}   ({time.time() - t0:.0f}s)")
+        print(f"  head {name:12s} accuracy {acc * 100:5.1f}%   macro-F1 {f1:.3f}   ({time.time() - t0:.0f}s)", flush=True)
         if best is None or score > best[5]:
             best = (name, f1, head, pred, acc, score)
 
@@ -231,7 +277,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--backbone", default="resnet50", choices=["resnet50", "mobilenetv2"])
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--max-per-class", type=int, default=800)
+    ap.add_argument("--max-per-class", type=int, default=1500)
     ap.add_argument("--compare", action="store_true", help="also score the hand-crafted baseline")
     args = ap.parse_args()
     run_training(backbone=args.backbone, seed=args.seed,

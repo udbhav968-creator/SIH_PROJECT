@@ -142,6 +142,15 @@ class DeepInferencePipeline:
         self.rl_agent = AutomotiveADASPolicyAgent()
         self.telematics = AutomotiveTelematicsEngine(checkpoints_dir=self.ckpt_dir)
         self.traffic_net = UrbanTrafficNet()
+        try:
+            from models.dan_dag_network import DANDAGNetwork
+            self.dan_dag_net = DANDAGNetwork(
+                checkpoints_dir=self.ckpt_dir,
+                embedder=getattr(self.vision_model, "embedder", None),
+            )
+        except Exception as e:
+            print(f"[WARN] DAN-DAG network unavailable: {e}")
+            self.dan_dag_net = None
 
     # ------------------------------------------------------------------
     # Single-image audit
@@ -168,6 +177,8 @@ class DeepInferencePipeline:
         stage below for what happens when it's omitted.
         """
         t0 = time.time()
+        from models.dan_dag_network import DualAttentionModule, PipelineExecutionDAG
+        dag_exec = PipelineExecutionDAG()
 
         # STAGE 1: decode + standardize
         img_np = self.cv_detector.decode_image(image_input)
@@ -182,6 +193,15 @@ class DeepInferencePipeline:
 
         if std_intensity < 6.5:
             return self._reject_non_pavement(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
+        dag_exec.mark("N0_scene_gate")
+
+        # DAN Spatial Self-Attention (PAM) over 8x8 road patch grid
+        try:
+            _, _, self._dan_frame_telemetry = DualAttentionModule.extract_spatial_attention(img_np)
+        except Exception:
+            self._dan_frame_telemetry = {"domain_regime": "DRY_STANDARD_ASPHALT"}
+        self._last_dag_trace = []
+        dag_exec.mark("N2_dan_attention")
 
         # Intrinsics are in pixels, so a profile calibrated at one resolution is
         # simply wrong at another. Rescale per request.
@@ -217,6 +237,7 @@ class DeepInferencePipeline:
             except Exception as e:
                 print(f"[WARN] segmentation failed, falling back to box area: {e}")
         self._seg_out = seg_out
+        dag_exec.mark("N3_pixel_segmenter", "COMPLETED" if seg_out else "SKIPPED")
 
         # STAGE 3a: COCO object detection (people, vehicles, traffic control)
         scene_objects, scene_summary = [], {"available": False,
@@ -257,6 +278,7 @@ class DeepInferencePipeline:
         traffic_analysis["vehicle_counts"] = vehicle_counts
         traffic_analysis["total_vehicles_detected"] = len(vehicle_detections)
         primary_vehicle = vehicle_detections[0] if vehicle_detections else None
+        dag_exec.mark("N1_yolo_traffic")
 
         # Withhold the upper 82% of detected vehicles and pedestrians from the
         # road-defect segmentation mask so dark car tires, wheel arches, and
@@ -275,6 +297,7 @@ class DeepInferencePipeline:
         # cavities, and is the whole proposal stage when no segmenter is loaded.
         seg_boxes = self._segmentation_proposals(H, W)
         heuristic = self.cv_detector.extract_salient_regions(img_np, excluded_boxes=pedestrians)
+        dag_exec.mark("N4_contour_proposer")
 
         # STAGE 4: pedestrian entries
         detections = [self._build_pedestrian_entry(p) for p in pedestrians]
@@ -307,6 +330,8 @@ class DeepInferencePipeline:
             scene_entry = self._classify_scene_fallback(img_np, gray, W, H, mean_intensity)
             if scene_entry is not None:
                 detections.append(scene_entry)
+        dag_exec.mark("N5_dag_classifier")
+        dag_exec.mark("N6_pinhole_ipm")
 
         if not detections and not bboxes and not pedestrians:
             normal = self._normal_road(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
@@ -316,6 +341,14 @@ class DeepInferencePipeline:
             normal["all_vehicles"] = vehicle_detections
             normal["primary_vehicle"] = primary_vehicle
             normal["urban_traffic_analysis"] = traffic_analysis
+            dag_exec.mark("N7_astm_pci_hd4")
+            dag_exec.mark("N8_irc_compliance")
+            dag_exec.mark("N9_merkle_audit", "SKIPPED")
+            normal["dan_dag_analysis"] = {
+                "available": bool(getattr(self, "dan_dag_net", None) and self.dan_dag_net.is_ready),
+                "dan_dual_attention": getattr(self, "_dan_frame_telemetry", {}),
+                "dag_execution_graph": dag_exec.export(decision_dag_trace=getattr(self, "_last_dag_trace", [])),
+            }
             return normal
 
         if not detections:
@@ -371,10 +404,12 @@ class DeepInferencePipeline:
             rain_mm=rain_mm,
             age_yr=pavement_age_yr,
         )
+        dag_exec.mark("N7_astm_pci_hd4")
 
         # MoRTH civil ledger (sum of real per-detection material costing)
         total_tonnage = round(float(sum(d.get("morth_tonnage_t", 0.0) for d in detections)), 3)
         total_repair_inr = round(float(sum(d.get("repair_cost_inr", 0.0) for d in detections)), 2)
+        dag_exec.mark("N8_irc_compliance")
 
         # STAGE 10/11: sealed work order for confirmed structural distress
         work_order = None
@@ -391,8 +426,20 @@ class DeepInferencePipeline:
             work_order["seal_verification_status"] = (
                 "SEAL_VERIFIED_AUTHENTIC" if self.dispatch_agent.verify_work_order_seal(work_order) else "INVALID_SEAL"
             )
+        dag_exec.mark("N9_merkle_audit", "COMPLETED" if work_order else "SKIPPED")
 
         elapsed_ms = round((time.time() - t0) * 1000.0, 2)
+        dan_dag_block = {
+            "available": bool(getattr(self, "dan_dag_net", None) and self.dan_dag_net.is_ready),
+            "dan_dual_attention": {
+                **getattr(self, "_dan_frame_telemetry", {}),
+                "primary_region_channel_attention": (primary.get("dan_dag") or {}).get("top_attended_channels", []),
+                "primary_region_consensus": (primary.get("dan_dag") or {}).get("consensus_agreement", True),
+            },
+            "dag_execution_graph": dag_exec.export(
+                decision_dag_trace=(primary.get("dan_dag") or {}).get("decision_dag_path") or getattr(self, "_last_dag_trace", [])
+            ),
+        }
 
         return {
             "status": "ANALYSIS_COMPLETE",
@@ -416,6 +463,7 @@ class DeepInferencePipeline:
             "primary_pedestrian": primary_pedestrian,
             "primary_detection": primary,
             "all_detections": detections,
+            "dan_dag_analysis": dan_dag_block,
             "imu_shock_telemetry": imu_report,
             "bayesian_sensor_fusion": fusion_res,
             "astm_d6433_pci": {
@@ -1018,6 +1066,40 @@ class DeepInferencePipeline:
                 if box_fraction > self.MAX_HEURISTIC_BOX_FRACTION:
                     return None
 
+        dan_dag_info = None
+        if getattr(self, "dan_dag_net", None) is not None and self.dan_dag_net.is_ready:
+            try:
+                eval_crop = img_np[max(0, by):min(H, by + bh), max(0, bx):min(W, bx + bw)]
+                if eval_crop.size > 0:
+                    dan_res = self.dan_dag_net.predict_image(eval_crop)
+                    self._last_dag_trace = dan_res.get("dag_trace", [])
+                    consensus = (dan_res["class_id"] == cls_id) or (dan_res["dag_leaf_class_id"] == cls_id)
+                    if consensus:
+                        boosted = min(
+                            0.995,
+                            max(
+                                float(pred["confidence"]),
+                                0.55 * float(pred["confidence"]) + 0.45 * float(dan_res["confidence"]) + 0.03,
+                            ),
+                        )
+                        pred["confidence"] = round(boosted, 4)
+                    dan_dag_info = {
+                        "dan_dag_class_id": dan_res["class_id"],
+                        "dan_dag_class_name": dan_res["class_name"],
+                        "dan_dag_confidence": dan_res["confidence"],
+                        "dag_leaf_class_id": dan_res["dag_leaf_class_id"],
+                        "dag_leaf_class_name": dan_res["dag_leaf_class_name"],
+                        "consensus_agreement": bool(consensus),
+                        "spatial_attention_peak": dan_res["dan_spatial"]["spatial_peak"],
+                        "cavity_basin_score": dan_res["dan_spatial"]["cavity_basin_score"],
+                        "domain_regime": dan_res["dan_spatial"]["domain_regime"],
+                        "channel_gate_mean": dan_res["dan_channel"]["channel_gate_mean"],
+                        "top_attended_channels": dan_res["dan_channel"]["top_attended_channels"],
+                        "decision_dag_path": dan_res["dag_trace"],
+                    }
+            except Exception:
+                dan_dag_info = None
+
         bx_norm, by_norm = round(bx / float(W), 4), round(by / float(H), 4)
         bw_norm, bh_norm = round(bw / float(W), 4), round(bh / float(H), 4)
 
@@ -1115,6 +1197,7 @@ class DeepInferencePipeline:
             "class_id": cls_id,
             "class_name": pred["class_name"],
             "confidence": pred["confidence"],
+            "dan_dag": dan_dag_info,
             "shannon_entropy_bits": pred["shannon_entropy_bits"],
             "uncertainty_rating": pred["uncertainty_rating"],
             "astm_d6433_severity": pred["astm_d6433_severity"],
