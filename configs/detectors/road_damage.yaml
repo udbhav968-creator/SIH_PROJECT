@@ -1,0 +1,22 @@
+# Road surface damage detector (CRDDC 2022 taxonomy).
+# Data: RDD2022 India subset. Build with:
+#   python -m scripts.fetch_rdd2022 --countries India --train-background-fraction 0.33
+name: road_damage
+description: Detects longitudinal, transverse and alligator cracks and potholes on Indian road imagery.
+data: datasets/rdd2022_india/data.yaml
+dataset_license: CC BY-SA 4.0 (RDD2022, Arya et al. 2022)
+base_model: yolo11n.pt
+imgsz: 512          # RDD India frames are 720x720; thin cracks stay visible at 512 and it halves CPU cost vs 640
+hours: 3.5
+epochs: 80
+batch: 16
+patience: 20
+workers: 4
+cache: ram
+seed: 0
+train_args:
+  cos_lr: true
+  close_mosaic: 3
+  fliplr: 0.5
+  flipud: 0.0       # the camera never sees the road upside down
+  mosaic: 1.0
