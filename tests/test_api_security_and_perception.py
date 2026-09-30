@@ -190,7 +190,7 @@ class ApiOverHttpTests(unittest.TestCase):
     def test_perception_status(self):
         status, body = self.call("/api/v1/perception/status")
         self.assertEqual(status, 200)
-        self.assertEqual(set(body["models"]), {"traffic", "damage", "markings"})
+        self.assertEqual(set(body["models"]), {"traffic", "damage", "markings", "privacy"})
 
     def test_server_file_cannot_be_read_through_image_path(self):
         target = os.path.abspath(__file__)

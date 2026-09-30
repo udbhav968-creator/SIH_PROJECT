@@ -8,8 +8,8 @@ Run the full road-scene perception stack on images, folders or dashcam video.
 
 For every input frame it writes an annotated JPEG (or, for video, one
 annotated MP4) and appends one JSON line per frame to detections.jsonl, with
-every box, the derived scene facts and the alerts. People are blurred in the
-written images unless --no-redact is given. A summary is printed at
+every box, the derived scene facts and the alerts. People (and plates, when the
+plate model is trained) are blurred in written images unless --no-redact. A summary is printed at
 the end.
 
 Video frames are sampled every Nth frame; the output video keeps the source
@@ -51,10 +51,10 @@ def _record(source, frame_index, result):
             ("image_size", "counts", "scene", "alerts", "detections", "latency_ms")}}
 
 
-def render(frame, result, redact):
-    """Annotated copy of a frame, with people blurred unless redaction is off."""
-    from models.road_scene_perception import annotate, redact_people
-    return annotate(redact_people(frame, result) if redact else frame, result)
+def render(perception, frame, result, redact):
+    """Annotated copy of a frame, with people and plates blurred unless redaction is off."""
+    from models.road_scene_perception import annotate
+    return annotate(perception.redact(frame, result)[0] if redact else frame, result)
 
 
 def process_images(perception, paths, out_dir, groups, log, redact=True):
@@ -62,7 +62,7 @@ def process_images(perception, paths, out_dir, groups, log, redact=True):
         frame = load_rgb(path)
         result = perception.analyze(frame, groups=groups)
         stem = os.path.splitext(os.path.basename(path))[0]
-        render(frame, result, redact).save(os.path.join(out_dir, f"{stem}_annotated.jpg"), quality=90)
+        render(perception, frame, result, redact).save(os.path.join(out_dir, f"{stem}_annotated.jpg"), quality=90)
         log(_record(path, 0, result))
 
 
@@ -84,7 +84,7 @@ def process_video(perception, path, out_dir, groups, every, log, max_frames=None
             if index % every == 0:
                 rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
                 result = perception.analyze(rgb, groups=groups)
-                drawn = cv2.cvtColor(np.asarray(render(rgb, result, redact)), cv2.COLOR_RGB2BGR)
+                drawn = cv2.cvtColor(np.asarray(render(perception, rgb, result, redact)), cv2.COLOR_RGB2BGR)
                 if writer is None:
                     h, w = drawn.shape[:2]
                     writer = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*"mp4v"),
@@ -112,7 +112,7 @@ def main(argv=None):
     parser.add_argument("--every", type=int, default=5, help="video: analyse every Nth frame")
     parser.add_argument("--max-frames", type=int, default=None, help="video: stop after N analysed frames")
     parser.add_argument("--no-redact", action="store_true",
-                        help="do not blur people in the written images (they are blurred by default)")
+                        help="do not blur people and plates in the written images (blurred by default)")
     args = parser.parse_args(argv)
 
     from models.road_scene_perception import RoadScenePerception

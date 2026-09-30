@@ -185,7 +185,7 @@ function renderResult(roundTripMs) {
 (async () => {
   const r = await API.get("/api/v1/perception/status");
   if (!r.ok) { el("models").innerHTML = errorCard(esc(r.data.error || "engine offline")); return; }
-  const names = { traffic: "Traffic objects (COCO)", damage: "Road damage (RDD2022 India)", markings: "Zebra crossings (CDSet)" };
+  const names = { traffic: "Traffic objects (COCO)", damage: "Road damage (RDD2022 India)", markings: "Zebra crossings (CDSet)", privacy: "Plate redaction (privacy only)" };
   el("models").innerHTML = Object.entries(r.data.models).map(([key, m]) => {
     const state = m.ready ? `<span class="badge measured">ready</span>` : `<span class="badge warn">not available</span>`;
     const metrics = m.test_metrics

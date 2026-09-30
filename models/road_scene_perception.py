@@ -220,6 +220,9 @@ class RoadScenePerception:
             "damage": self._load_trained("road_damage", detector_dir),
             "markings": self._load_trained("crosswalk", detector_dir),
         }
+        # Privacy head: finds plates only so they can be blurred. Deliberately
+        # not a detection group - plate boxes never appear in results.
+        self.privacy = self._load_trained("license_plate", detector_dir)
 
     @staticmethod
     def _load_trained(name, detector_dir):
@@ -236,7 +239,29 @@ class RoadScenePerception:
         return any(head.is_ready for head in self.heads.values())
 
     def describe(self):
-        return {key: head.describe() for key, head in self.heads.items()}
+        return {**{key: head.describe() for key, head in self.heads.items()}, "privacy": self.privacy.describe()}
+
+    # For redaction a missed plate costs far more than blurring a false
+    # positive, so plates are searched for below their F1-optimal threshold.
+    PLATE_REDACTION_THRESHOLD = 0.15
+
+    def plate_boxes(self, image_rgb):
+        """Pixel boxes of licence plates to blur, or None if no plate model is loaded."""
+        if not self.privacy.is_ready:
+            return None
+        threshold = min(self.PLATE_REDACTION_THRESHOLD, *self.privacy.thresholds.values())
+        found = self.privacy.detector.detect(np.asarray(image_rgb, dtype=np.uint8), conf_threshold=threshold)
+        return [d["bbox_pixels"] for d in found]
+
+    def redact(self, image_rgb, result):
+        """Blur people and plates. Returns (redacted image, what was redacted)."""
+        plates = self.plate_boxes(image_rgb)
+        redacted = redact(image_rgb, result, plates or ())
+        return redacted, {
+            "people": sum(d["class_name"] == "person" for d in result["detections"]),
+            "plates": len(plates) if plates is not None else None,
+            "plates_note": None if plates is not None else "no licence-plate model loaded; plates NOT redacted",
+        }
 
     def _run_head(self, head, image):
         if not head.is_ready:
@@ -306,24 +331,11 @@ class RoadScenePerception:
         }
 
 
-def redact_people(image_rgb, result, pad=0.08):
-    """
-    Blur every detected person before an image leaves the system (DPDP Act
-    2023: road imagery is collected for maintenance, not to identify people).
+def _blur_boxes(frame, boxes, pad):
+    from PIL import ImageFilter
 
-    Whole person boxes are blurred, padded slightly because a box is rarely
-    tight around a head. Number plates are NOT redacted: that needs a plate
-    detector this project does not have, and claiming otherwise would be worse
-    than the gap. Returns a new uint8 array; the input is not modified.
-    """
-    from PIL import Image, ImageFilter
-
-    frame = Image.fromarray(np.asarray(image_rgb, dtype=np.uint8)).convert("RGB")
     width, height = frame.size
-    for det in result["detections"]:
-        if det["class_name"] != "person":
-            continue
-        x, y, w, h = det["bbox_pixels"]
+    for x, y, w, h in boxes:
         x0, y0 = max(0, int(x - w * pad)), max(0, int(y - h * pad))
         x1, y1 = min(width, int(x + w * (1 + pad))), min(height, int(y + h * (1 + pad)))
         if x1 <= x0 or y1 <= y0:
@@ -331,6 +343,25 @@ def redact_people(image_rgb, result, pad=0.08):
         region = frame.crop((x0, y0, x1, y1))
         radius = max(6, max(x1 - x0, y1 - y0) // 6)
         frame.paste(region.filter(ImageFilter.GaussianBlur(radius)), (x0, y0))
+
+
+def redact(image_rgb, result, plate_boxes=(), pad=0.08):
+    """
+    Blur every detected person and every given plate box before an image
+    leaves the system (DPDP Act 2023: road imagery is collected for
+    maintenance, not to identify people or vehicles).
+
+    Person boxes come from the detections; plate boxes from
+    RoadScenePerception.plate_boxes, which needs the licence-plate model.
+    Boxes are padded slightly because detections are rarely tight. Returns a
+    new uint8 array; the input is not modified.
+    """
+    from PIL import Image
+
+    frame = Image.fromarray(np.asarray(image_rgb, dtype=np.uint8)).convert("RGB")
+    people = [d["bbox_pixels"] for d in result["detections"] if d["class_name"] == "person"]
+    _blur_boxes(frame, people, pad)
+    _blur_boxes(frame, list(plate_boxes), pad=0.15)  # plates are small: pad more generously
     return np.asarray(frame)
 
 
