@@ -46,6 +46,7 @@ const API = {
 const PAGES = [
   { href: "/",         id: "home",     label: "Overview" },
   { href: "/inspect",  id: "inspect",  label: "Inspection" },
+  { href: "/detect",   id: "detect",   label: "Detect" },
   { href: "/video",    id: "video",    label: "Video" },
   { href: "/corridor", id: "corridor", label: "Corridor" },
   { href: "/works",    id: "works",    label: "Works" },

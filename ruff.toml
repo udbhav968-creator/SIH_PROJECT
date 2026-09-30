@@ -1,0 +1,7 @@
+# Lint settings. CI enforces them on the modules listed in .github/workflows/ci.yml
+# ("Lint" step); extend that list as older modules are brought up to standard.
+line-length = 120
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "B", "UP", "I", "SIM", "RUF"]
