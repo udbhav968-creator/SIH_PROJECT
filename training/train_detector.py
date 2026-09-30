@@ -34,6 +34,11 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+# Windows: load scikit-learn before PyTorch. Its wheel ships a current VC++ runtime
+# (msvcp140.dll); with an older system runtime, torch's c10.dll fails to load
+# (WinError 1114) unless a newer copy is already in the process.
+import sklearn  # noqa: F401
 import yaml
 
 LOG = logging.getLogger("train_detector")

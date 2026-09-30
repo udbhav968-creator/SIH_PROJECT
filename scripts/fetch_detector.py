@@ -28,6 +28,10 @@ import os
 import shutil
 import sys
 
+# Windows: load scikit-learn before PyTorch (ultralytics). Its wheel ships a
+# current VC++ runtime; with an older system runtime torch fails with WinError 1114.
+import sklearn  # noqa: F401
+
 ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
 TARGET_NAME = "road_shield_detector.onnx"
