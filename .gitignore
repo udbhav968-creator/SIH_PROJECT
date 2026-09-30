@@ -60,3 +60,13 @@ checkpoints/google_maps_api_key.txt
 checkpoints/road_shield.db
 checkpoints/road_shield.db-wal
 checkpoints/road_shield.db-shm
+
+# Detector training (training/train_detector.py): downloaded datasets, Ultralytics
+# run folders and base weights. Regenerate with the scripts named in configs/detectors/.
+datasets/rdd2022*/
+datasets/CDSet/
+datasets/crosswalk/
+runs/
+yolo*.pt
+# scripts/detect_scene.py default output
+out/

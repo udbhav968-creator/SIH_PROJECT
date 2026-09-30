@@ -22,3 +22,7 @@ tests/**
 *.mov
 *.zip
 scripts/**
+
+# YOLO training weights; the server loads only the exported .onnx files.
+checkpoints/detectors/*.pt
+runs/**

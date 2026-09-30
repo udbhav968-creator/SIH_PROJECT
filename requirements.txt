@@ -3,10 +3,16 @@ pillow>=10.0.0
 # Pickled estimators are NOT portable across scikit-learn minor versions. A
 # segmenter trained on 1.8 failed to load on 1.9 with "No module named '_loss'",
 # the pipeline silently fell back to brightness proposals, and that is the
-# configuration that reports zebra crossings as potholes. The floor is what the
-# code needs; the ceiling is what the shipped checkpoints were trained with.
-# If you raise the ceiling, retrain: python -m training.train_segmenter --images 2000
-scikit-learn>=1.3.0,<1.9
+# configuration that reports zebra crossings as potholes. The pin is the minor
+# version the shipped checkpoints were pickled with (8 of 9 report 1.9.0).
+# If you change it, retrain: python -m scripts.run_full_pipeline
+scikit-learn>=1.9,<1.10
 scikit-image>=0.21.0
 opencv-python-headless>=4.8.0,<5  # 5.x removed cv2.HOGDescriptor; includes cv2.dnn ONNX runtime for serverless
 joblib>=1.3.0
+# Serves the CNN backbone and every YOLO detector. Without it those fall back
+# to cv2.dnn, which is slower and does not support every exported operator.
+onnxruntime>=1.17
+# Detector training configs (configs/detectors/*.yaml). Training itself needs
+# requirements-train.txt; serving does not.
+pyyaml>=6.0
