@@ -12,6 +12,7 @@ import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 
@@ -284,28 +285,62 @@ class ModelCardLoadingTests(unittest.TestCase):
             self.assertFalse(rsp.RoadScenePerception._load_trained("crosswalk", tmp).is_ready)
 
 
-def _trained_weights_present():
-    return all(os.path.exists(os.path.join(rsp.DETECTOR_DIR, f"{name}.{ext}"))
-               for name in ("road_damage", "crosswalk") for ext in ("onnx", "json"))
+def _trained(name):
+    return all(os.path.exists(os.path.join(rsp.DETECTOR_DIR, f"{name}.{ext}")) for ext in ("onnx", "json"))
 
 
-@unittest.skipUnless(_trained_weights_present(), "trained detectors not present; run training.train_detector")
 class TrainedDetectorIntegrationTests(unittest.TestCase):
+    """Run against whichever trained detectors are on disk; each skips on its own."""
+
     @classmethod
     def setUpClass(cls):
         cls.perception = rsp.RoadScenePerception()
 
-    def test_trained_heads_load_with_card_thresholds(self):
-        described = self.perception.describe()
-        for key in ("damage", "markings"):
-            self.assertTrue(described[key]["ready"], key)
-            for value in described[key]["serving_thresholds"].values():
-                self.assertTrue(0.0 < value < 1.0)
+    def _require(self, name):
+        if not _trained(name):
+            self.skipTest(f"{name} not trained; run training.train_detector configs/detectors/{name}.yaml")
 
-    def test_blank_frame_produces_no_road_findings(self):
+    def _check_artifact(self, name, head_key):
+        import hashlib
+        import json
+        card = json.loads(Path(rsp.DETECTOR_DIR, f"{name}.json").read_text(encoding="utf-8"))
+        onnx = Path(rsp.DETECTOR_DIR, card["artifacts"]["onnx"]["file"])
+        self.assertEqual(hashlib.sha256(onnx.read_bytes()).hexdigest(), card["artifacts"]["onnx"]["sha256"],
+                         "the served ONNX file is not the one the model card describes")
+        described = self.perception.describe()[head_key]
+        self.assertTrue(described["ready"])
+        for value in described["serving_thresholds"].values():
+            self.assertTrue(0.0 < value < 1.0)
+        self.assertIn("test", card["metrics"])
+
+    def test_road_damage_artifact(self):
+        self._require("road_damage")
+        self._check_artifact("road_damage", "damage")
+
+    def test_crosswalk_artifact(self):
+        self._require("crosswalk")
+        self._check_artifact("crosswalk", "markings")
+
+    def test_crosswalk_found_in_a_held_out_frame(self):
+        self._require("crosswalk")
+        test_labels = Path(rsp.CKPT_DIR).parent / "datasets" / "crosswalk" / "labels" / "test"
+        if not test_labels.is_dir():
+            self.skipTest("crosswalk test split not prepared")
+        from PIL import Image
+        hits = 0
+        frames = [lab for lab in sorted(test_labels.glob("*.txt")) if lab.read_text().startswith("0 ")][:10]
+        for label in frames:
+            image = Path(str(label).replace("labels", "images")).with_suffix(".jpg")
+            result = self.perception.analyze(np.asarray(Image.open(image).convert("RGB")), groups={"markings"})
+            hits += result["scene"]["zebra_crossing_visible"]
+        self.assertGreaterEqual(hits, 6, f"found crossings in {hits}/10 labelled held-out frames")
+
+    def test_featureless_frame_yields_no_road_findings(self):
+        if not (_trained("road_damage") or _trained("crosswalk")):
+            self.skipTest("no trained road detector")
         grey = np.full((720, 1280, 3), 110, dtype=np.uint8)
-        result = self.perception.analyze(grey, groups={"damage", "markings"})
-        self.assertEqual(result["detections"], [], "a featureless frame should not yield damage or markings")
+        result = self.perception.analyze(grey, groups={"damage", "markings"}, gate=False)
+        self.assertEqual(result["detections"], [], "the model itself, not only the gate, must stay quiet")
 
 
 if __name__ == "__main__":

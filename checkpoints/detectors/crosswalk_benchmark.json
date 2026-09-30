@@ -1,0 +1,31 @@
+{
+  "question": "does this frame contain a zebra crossing?",
+  "data": "data.yaml:test",
+  "frames": 620,
+  "frames_with_crossing": 357,
+  "frames_without_crossing": 263,
+  "learned_yolo_onnx": {
+    "precision": 1.0,
+    "recall": 0.7535,
+    "f1": 0.8594,
+    "false_alarm_rate_on_crossing_free_frames": 0.0,
+    "tp": 269,
+    "fp": 0,
+    "fn": 88,
+    "median_ms": 81.1,
+    "thresholds": {
+      "crosswalk": 0.551,
+      "guide_arrows": 0.422
+    }
+  },
+  "geometric_bar_finder": {
+    "precision": 0.9333,
+    "recall": 0.2353,
+    "f1": 0.3758,
+    "false_alarm_rate_on_crossing_free_frames": 0.0228,
+    "tp": 84,
+    "fp": 6,
+    "fn": 273,
+    "median_ms": 16.8
+  }
+}

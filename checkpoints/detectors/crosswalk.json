@@ -1,0 +1,128 @@
+{
+  "name": "crosswalk",
+  "description": "Detects zebra crossings and painted lane guide arrows in forward-facing dashcam frames.",
+  "classes": [
+    "crosswalk",
+    "guide_arrows"
+  ],
+  "serving_thresholds": {
+    "crosswalk": 0.551,
+    "guide_arrows": 0.422
+  },
+  "architecture": "yolo11n",
+  "input_size": 416,
+  "created_utc": "2026-09-30T15:21:40+00:00",
+  "train_seconds": 5067.7,
+  "hardware": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel (cpu)",
+  "dataset": {
+    "yaml": "data.yaml",
+    "license": "Apache-2.0 (CDSet-3434, Zhang et al. 2022)"
+  },
+  "config": {
+    "name": "crosswalk",
+    "data": "data.yaml",
+    "base_model": "yolo11n.pt",
+    "imgsz": 416,
+    "epochs": 60,
+    "hours": 2.0,
+    "batch": 16,
+    "patience": 15,
+    "workers": 4,
+    "cache": "ram",
+    "seed": 0,
+    "device": "cpu",
+    "description": "Detects zebra crossings and painted lane guide arrows in forward-facing dashcam frames.",
+    "dataset_license": "Apache-2.0 (CDSet-3434, Zhang et al. 2022)",
+    "train_args": {
+      "cos_lr": true,
+      "close_mosaic": 3,
+      "fliplr": 0.5,
+      "hsv_v": 0.5
+    }
+  },
+  "metrics": {
+    "val": {
+      "precision": 0.8093,
+      "recall": 0.815,
+      "mAP50": 0.867,
+      "mAP50_95": 0.5293,
+      "per_class": {
+        "crosswalk": {
+          "precision": 0.9152,
+          "recall": 0.868,
+          "mAP50": 0.9322,
+          "mAP50_95": 0.5661
+        },
+        "guide_arrows": {
+          "precision": 0.7034,
+          "recall": 0.7619,
+          "mAP50": 0.8018,
+          "mAP50_95": 0.4925
+        }
+      },
+      "speed_ms_per_image": {
+        "preprocess": 0.79,
+        "inference": 40.43,
+        "loss": 0.0,
+        "postprocess": 1.15
+      }
+    },
+    "test": {
+      "precision": 0.8875,
+      "recall": 0.7725,
+      "mAP50": 0.8694,
+      "mAP50_95": 0.5738,
+      "per_class": {
+        "crosswalk": {
+          "precision": 0.9679,
+          "recall": 0.7605,
+          "mAP50": 0.8775,
+          "mAP50_95": 0.5492
+        },
+        "guide_arrows": {
+          "precision": 0.8071,
+          "recall": 0.7845,
+          "mAP50": 0.8614,
+          "mAP50_95": 0.5985
+        }
+      },
+      "speed_ms_per_image": {
+        "preprocess": 0.72,
+        "inference": 37.94,
+        "loss": 0.0,
+        "postprocess": 1.73
+      }
+    },
+    "test_image_level": {
+      "images": 620,
+      "background_images": 182,
+      "background_false_alarm_rate": 0.1154,
+      "per_class": {
+        "crosswalk": {
+          "tp": 269,
+          "fp": 2,
+          "fn": 88,
+          "precision": 0.9926,
+          "recall": 0.7535
+        },
+        "guide_arrows": {
+          "tp": 84,
+          "fp": 25,
+          "fn": 12,
+          "precision": 0.7706,
+          "recall": 0.875
+        }
+      }
+    }
+  },
+  "artifacts": {
+    "pt": {
+      "file": "crosswalk.pt",
+      "sha256": "416c911b60f77527ee480ec4ccf5d58983343a09c458c7b50f4cd4fb8bfec4f0"
+    },
+    "onnx": {
+      "file": "crosswalk.onnx",
+      "sha256": "7a4a163a311817e2f4ec23a0f64dda5d8a80b1f69cd6d6857220300fa41eb0c7"
+    }
+  }
+}
