@@ -16,7 +16,10 @@ code in this repository, and the code that measures it is included.
 | Road distress classification, 7 classes | ResNet-50 ImageNet embeddings (ONNX Runtime) → class-balanced logistic head | **89.2%** on 390 held-out images from 356 unseen photographs |
 | — same task, fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 82.6% on the identical split; serves when no CNN backbone is on disk |
 | Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Working: people, bicycles, cars, buses, trucks, traffic lights, signs |
-| IMU shock classification | 100 Hz tri-axial accelerometer windows → RandomForest | 100% on 3000 windows, **on simulated data** |
+| **Zebra-crossing detection** | YOLO11n trained on CDSet-3434, re-split by time block (no video leakage) | Test mAP50 **0.869**; finds a crossing in 75.4% of crossing frames with **0 false alarms on 263 crossing-free frames** (old geometric detector: 23.5%, 6 false alarms) |
+| **Pothole & crack detection** | YOLO11n on RDD2022 India (D00/D10/D20/D40) | Training: see `checkpoints/detectors/road_damage.json` once shipped |
+| INT8 edge build | Static per-channel quantization (`scripts/quantize_models.py`) | Classifier backbone 1.9× faster, 3.6× smaller, −2.6 accuracy points; opt-in, FP32 stays default |
+| IMU shock classification | 100 Hz windows → 0.5–25 Hz Butterworth band-pass → RandomForest | **80.5%** held-out on real field logs; **78.7%** with 35 Hz engine vibration added (60.1% without the filter) |
 | Defect **segmentation** | Pixel classifier on 11 features, trained on 4,720 hand-drawn polygons | **crack IoU 0.232, pothole IoU 0.154** on 500 unseen photographs |
 | Defect **area** | Each mask pixel's own ground footprint, summed | Measured — a bounding box overstates a diagonal crack ~13× |
 | Camera **calibration** | Per-device profile from a checkerboard or published FOV | Per vehicle; 30 cm of mount height moves area ~46% |
@@ -30,6 +33,13 @@ code in this repository, and the code that measures it is included.
 | Repair verification | SSIM + Laplacian variance + perceptual hash | Catches resubmitted photographs |
 | Sensor fusion | Bayesian gate over vision + IMU evidence | Reports "unavailable" when no IMU window exists |
 | GIS services | Google Maps if a key is set, else OpenStreetMap Nominatim / OSRM / Overpass / Open-Meteo | Reports UNAVAILABLE rather than inventing data |
+| Frame-quality gate | Laplacian texture, luminance and glare on the road region | Keeps **100%** of 450 real road frames; catches 100% covered-lens / severe defocus, 98% whiteout |
+| Repair Priority Index | PI from measured PCI, volume and traffic only | Deterministic; a test pins that locality cannot change a score |
+| Edge event packets | ≤ 1,024-byte JSON, HMAC-SHA256 per device, people as counts only | Size guaranteed by construction; tampering rejected |
+| Privacy redaction (DPDP) | People blurred from detections; plates from a trained plate detector | People: always. Plates: when `license_plate` is trained, otherwise stated as not done |
+| Congestion index | IRC:106 PCU over vehicles counted by the detector | Counts are detected or caller-supplied, never defaulted |
+
+**Checked against the Milestone 2 report:** [docs/REPORT_ALIGNMENT.md](docs/REPORT_ALIGNMENT.md) maps every claim in the report to its code, test and measured number, and lists the corrections.
 
 ## The measurement chain
 
@@ -126,9 +136,12 @@ raised accuracy from 88.5% to 89.2%.
 
 **Object detection:** COCO, 330,000 images, through the published YOLOv8n weights.
 
-**IMU:** 15,000 windows shipped with this repository. These are **simulated**,
-not recorded from a vehicle, and the model's 100% score should be read in that
-light.
+**IMU:** 852 one-second windows (688 train / 164 held-out, split by time
+block with a guard gap) cut from real accelerometer logs of Indian road drives
+(VishalSingh25/Pothole-Project: plain road, unmarked and marked speed
+breakers, pothole corridors). Recorded from a road vehicle, not yet a bus: the
+band-pass filter and the engine-vibration test exist because a bus-mounted
+sensor will see vibration these logs do not contain.
 
 **Not Indian road data.** The photographs are Brazilian. RDD2022 provides
 47,000 annotated images including India and is the obvious next step; the
@@ -162,17 +175,23 @@ The checkpoints volume carries the trained models and the SQLite ledger; without
 it the container starts with neither, and the `/system` page says so. No CUDA and
 no PyTorch — the CNN runs on ONNX Runtime on the CPU.
 
-GitHub Actions runs the suite on 3.11 and 3.12, checks every module imports, and
-starts the server to confirm all eight pages serve.
+GitHub Actions runs the suite on 3.11 and 3.12, checks every module imports,
+and lints the modules held to the standard. The test suite starts the server
+in-process and exercises the API over HTTP.
+
+`ROAD_SHIELD_DATA_DIR` moves everything the server writes at runtime (the
+ledger, feedback logs) out of `checkpoints/`; point it at a volume in
+production.
 
 ## The site
 
-Eight pages, not one dashboard file:
+Nine pages, not one dashboard file:
 
 | Page | What it is for |
 |---|---|
 | `/` | overview and the honest limits |
 | `/inspect` | analyse a photograph; mask, area, depth interval, cost range |
+| `/detect` | scene detection: potholes, cracks, zebra crossings, people, vehicles, signals |
 | `/video` | dashcam ingest, sampled by ground distance |
 | `/corridor` | fleet map and the deduplication ledger |
 | `/works` | costing and the SHA-256 tamper demonstration |
@@ -213,11 +232,35 @@ Optional extras:
 python -m scripts.fetch_detector            # COCO object detector (needs ultralytics once)
 python -m scripts.validate_models           # leakage, cross-validation, calibration, latency
 python -m scripts.model_selection           # compare six classifiers on identical folds
-python -m unittest discover -s tests       # 59 regression tests
+python -m unittest discover -s tests       # full regression suite
 python -m training.train_segmenter         # pixel segmentation on the DNIT polygons
 python -m scripts.calibrate_camera --list  # camera calibration profiles
 python -m training.train_deep_vision        # fine-tune a CNN (needs PyTorch)
 ```
+
+### Scene detectors (YOLO)
+
+```bash
+pip install -r requirements-train.txt
+
+# road damage: RDD2022, Indian subset, ~7,700 images
+python -m scripts.fetch_rdd2022 --countries India --train-background-fraction 0.33
+python -m training.train_detector configs/detectors/road_damage.yaml
+
+# zebra crossings: CDSet-3434 (download CDSet.zip from
+# huggingface.co/datasets/zzd0225/crosswalk-detection-dataset, unzip into datasets/)
+python -m scripts.prepare_crosswalk_dataset
+python -m training.train_detector configs/detectors/crosswalk.yaml
+python -m scripts.benchmark_crosswalk          # learned vs geometric, same frames
+
+# run everything on your own footage
+python -m scripts.detect_scene dashcam.mp4 --every 5 --out out/drive
+```
+
+`train_detector` writes `checkpoints/detectors/<name>.{pt,onnx,json}`. The JSON
+is the model card: config, data licence, per-class thresholds tuned on the
+validation split, and box and image-level metrics on the test split. After a
+crash or reboot, `--resume` continues from the last completed epoch.
 
 ### Kaggle datasets
 
@@ -270,7 +313,6 @@ every image and looking for the same photograph under different labels.
 - The classifier is a support vector machine on engineered features, not a
   neural network. A CNN fine-tuning script is included but needs PyTorch.
 - The photographs are Brazilian, not Indian.
-- The IMU data is simulated.
 - There is no dashcam video in this repository; the system analyses photographs.
 - Four classes have too few examples to work well.
 - No demographic inference is performed on people in frame, by design.
@@ -278,368 +320,113 @@ every image and looking for the same photograph under different labels.
 
 ---
 
-## 🏗️ System Architecture
+## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│             ROAD-SHIELD 11-Stage Deep Inference Pipeline             │
-│                                                                     │
-│  [Image Input]                                                      │
-│       │                                                             │
-│  Stage 1: Optical Decode & Standardize (640×480)                    │
-│  Stage 2: Asphalt Texture Gatekeeper (std ≥ 6.5 threshold)         │
-│  Stage 3: Salient Cavity BBox Proposals (CVCavityDetector)          │
-│  Stage 4: M1 VisionDistressNet — 9-Class Neural Classification      │
-│  Stage 5: M2 IPM Homography — Metric Surface Area & Depth           │
-│  Stage 6: M4 IMU 100Hz Shock Correlation                            │
-│  Stage 7: M5 Recursive Bayesian Dual-Sensor Fusion Gate             │
-│  Stage 8: M_PCI ASTM D6433 Pavement Condition Index                 │
-│  Stage 9: M_DEGRADE Monsoon 180-Day Deterioration Forecast          │
-│  Stage 10: MoRTH Section 500 Civil Volumetric Ledger                │
-│  Stage 11: SHA-256 Cryptographic Work-Order Dispatch Agent          │
-│       │                                                             │
-│  [ANALYSIS_COMPLETE JSON → REST API → Leaflet GIS Dashboard]        │
-└─────────────────────────────────────────────────────────────────────┘
-```
+Two paths share one server. The **inspection pipeline** turns a single road
+photograph into a classified, measured and costed repair record. **Scene
+perception** finds everything in a dashcam frame at once.
 
-### SIH26124 Fleet Intelligence Stack
+```mermaid
+flowchart LR
+    IMG[Photo / dashcam frame] --> DEC[Decode at native resolution<br/>size + pixel caps]
+    DEC --> P1
+    DEC --> P2
 
-```
-Public Transport Buses (BMTC Fleet)
-         │
-         ▼
-  ┌─────────────────────────────────────┐
-  │   Edge AI Unit (per bus)            │
-  │   • Dashcam + MPU-6050 100Hz IMU    │
-  │   • VisionDistressNet (9-class)     │
-  │   • ALPR plate OCR                  │
-  │   • DPDP privacy redaction          │
-  │   • JSON telemetry (< 1KB/event)    │
-  └──────────────┬──────────────────────┘
-                 │ 4G/LTE/V2X
-                 ▼
-  ┌─────────────────────────────────────┐
-  │   Central Command Server (BEL)      │
-  │   • Fleet Spatial Deduplication     │
-  │   • GIS Heatmap Aggregation         │
-  │   • UrbanTrafficNet (UCI)           │
-  │   • MoRTH SHA-256 Work Orders       │
-  │   • REST API (Python, port 8000)    │
-  └──────────────┬──────────────────────┘
-                 │
-                 ▼
-  ┌─────────────────────────────────────┐
-  │   Leaflet GIS Dashboard             │
-  │   • Dark CartoDB map tiles          │
-  │   • Color-coded defect markers      │
-  │   • ALPR incident feed              │
-  │   • PCU traffic calculator          │
-  │   • Deduplication ledger            │
-  └─────────────────────────────────────┘
+    subgraph P1 [Inspection pipeline]
+        CLS[Distress classifier<br/>ResNet-50 embeddings + logistic] --> SEG[Pixel segmentation]
+        SEG --> AREA[Area from calibrated camera]
+        AREA --> COST[Depth interval, MoRTH cost,<br/>ASTM D6433 PCI]
+        COST --> SEAL[SHA-256 sealed work order]
+    end
+
+    subgraph P2 [Scene perception]
+        T[Traffic YOLO<br/>COCO] --> F[Scene facts + alerts]
+        D[Road-damage YOLO<br/>RDD2022 India] --> F
+        M[Crossing YOLO<br/>CDSet] --> F
+    end
+
+    SEAL --> LEDGER[(SQLite fleet ledger<br/>haversine dedup)]
+    F --> LEDGER
 ```
 
----
+The three perception detectors are separate models on purpose. Each training
+set labels only its own classes; a merged model would be taught that every
+unlabelled pothole in a crossing photograph is background. Separate models
+avoid that and can be retrained, versioned and rolled back independently.
 
-## 📁 Project Structure
-
-```
-road_shield_ai_engine/
-│
-├── 📂 models/                          # All AI/ML model implementations (pure NumPy)
-│   ├── vision_distress_net.py          # M1: 9-class Transformer-CNN (512→256→128)
-│   ├── imu_shock_classifier.py         # M4: 100Hz MPU-6050 4-class shock net
-│   ├── pci_regressor_net.py            # M_PCI: ASTM D6433 continuous PCI (0–100)
-│   ├── pavement_deterioration_forecaster.py  # M_DEGRADE: 30/60/90/180-day lifecycle
-│   ├── bayesian_fusion_gate.py         # M5: Recursive Bayesian dual-sensor fusion
-│   ├── ipm_homography_engine.py        # M2: Inverse Perspective Mapping + volumetrics
-│   ├── urban_traffic_net.py            # UrbanTrafficNet: 7-class + PCU/UCI calculator
-│   ├── alpr_incident_tracker.py        # ALPR: HSRP OCR + rash driving + SHA-256 seal
-│   ├── cv_cavity_detector.py           # CVCavityDetector: salient cavity bbox extraction
-│   ├── forensic_audit_engine.py        # M7/M8: Forensic metric embedder + texture audit
-│   ├── edge_model_exporter.py          # Edge: C++ header + OpenNeural JSON spec
-│   ├── morth_dispatch_agent.py         # M10: SHA-256 cryptographic work-order agent
-│   └── realworld_video_tracker.py      # Video frame tracker + spatial dedup
-│
-├── 📂 pipeline/
-│   ├── deep_inference_pipeline.py      # 11-Stage end-to-end forensic pipeline
-│   └── fleet_deduplication_engine.py   # Haversine spatial clustering (≤8m)
-│
-├── 📂 api/
-│   └── server.py                       # REST API server (Python stdlib, port 8000)
-│
-├── 📂 data/
-│   ├── dataset_generator.py            # Synthetic dataset generator
-│   ├── benchmark_dataset_hub.py        # RDD2022/Kaggle/CRACK500 hub
-│   └── realworld_media_engine.py       # Wikimedia/API real-image downloader
-│
-├── 📂 training/
-│   └── mega_pipeline.py                # Mega training orchestrator (all models)
-│
-├── 📂 datasets/                        # Real-world image vaults
-│   ├── 09_waterlogging_hazard/real_images/     (14 Wikimedia Commons images)
-│   ├── 10_missing_zebra_crossing/real_images/  (19 Geograph.org.uk images)
-│   ├── 11_missing_road_divider/real_images/    (20 images)
-│   ├── 12_damaged_traffic_signs/real_images/   (14 images)
-│   ├── 13_urban_traffic_vehicles/real_images/  (4 images)
-│   └── 08_dashcam_video_streams/real_frames/   (10 dashcam frames)
-│
-├── 📂 checkpoints/                     # Trained model weights (.npz)
-│   ├── vision_distress_weights.npz     # 3.9MB — M1 (9-class, 79.87% val acc)
-│   ├── urban_traffic_net_weights.npz   # 345KB — UrbanTrafficNet (90.36% val acc)
-│   ├── imu_shock_weights.npz           # IMU classifier weights
-│   ├── pci_regressor_weights.npz       # PCI regression weights
-│   ├── deterioration_forecaster_weights.npz
-│   ├── forensic_embedder_weights.npz
-│   └── system_test_v2_report.json      # 10/10 test results
-│
-├── 📂 tests/
-│   └── (automated test scripts)
-│
-├── deep_upgrade_frontend.py            # Frontend upgrade automation script
-├── road_shield_frontend.html           # Complete single-file web dashboard (311KB)
-└── README.md                           # This file
-```
-
----
-
-## 🤖 AI Models
-
-### M1 — VisionDistressNet (9-Class)
-```python
-VisionDistressNet(in_features=64, hidden_dims=[512, 256, 128], num_classes=9)
-```
-**9 Classes:**
-| ID | Class | Description |
-|----|-------|-------------|
-| 0 | Normal Road | No distress, sound pavement |
-| 1 | D00 Longitudinal | Longitudinal joint crack (RDD2022) |
-| 2 | D10 Transverse | Transverse thermal crack (RDD2022) |
-| 3 | D20 Alligator | Fatigue alligator cracking (CRACK500) |
-| 4 | D40 Pothole | Severe cavity / pothole (Kaggle Pothole-600) |
-| 5 | Waterlogging | Flooding / water-on-road hazard |
-| 6 | Missing Zebra | Missing zebra crossing marking |
-| 7 | Missing Divider | Missing road median divider |
-| 8 | Damaged Sign | Damaged/missing traffic sign |
-
-**Architecture:** Transformer Self-Attention → CNN [512→256→128] → Softmax head + Geo regression head
-
-**Training:** 4,250 samples / 750 val, 20 epochs, real gradient backprop (cross-entropy loss)
-
-**Validation Accuracy: 79.87%**
-
----
-
-### UrbanTrafficNet (7-Class) — SIH26124
-```python
-UrbanTrafficNet(in_features=48, hidden_dims=[256, 128], num_classes=7)
-```
-- Classifies: Car, City Bus, Heavy Truck, Two-Wheeler, Pedestrian, Vulnerable Child Crossing, Clear Roadway
-- Computes **Urban Congestion Index (UCI)** via PCU weighting (Car=1.0, Bus=2.0, Truck=2.5, 2W=0.5)
-- **Validation Accuracy: 90.36%**
-
----
-
-### ALPR Incident Tracker — SIH26124
-- Kinematic expansion rate anomaly detection (bounding box growth rate)
-- Indian High-Security Registration Plate (HSRP) OCR extraction
-- SHA-256 tamper-proof incident seal
-- `detect_incident(speed_kmh, lat, lon, vehicle_id)` — single-call incident API
-
----
-
-### Fleet Deduplication Engine — SIH26124
-- Haversine great-circle distance clustering (≤8m proximity threshold)
-- Multi-bus confirmation → verified hotspot upgrade
-- Prevents duplicate MoRTH work orders for the same physical defect
-- Computes deduplication efficiency percentage
-
----
-
-## 📊 Training & Benchmarks
+## Project structure
 
 ```
-M1 VisionDistressNet — Training History (20 Epochs)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Epoch 1:  Train=47.87%  Val=31.47%  Loss=2.1894
-  Epoch 5:  Train=63.40%  Val=52.30%  Loss=1.4120
-  Epoch 10: Train=72.10%  Val=65.80%  Loss=1.0540
-  Epoch 15: Train=77.20%  Val=74.27%  Loss=0.7820
-  Epoch 20: Train=81.60%  Val=79.87%  Loss=0.5940  ← BEST
-
-M5 UrbanTrafficNet — Training History (15 Epochs)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Final: Val=90.36%, 7-class balanced
-
-M_PCI Regressor — ASTM D6433
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  MAE = 1.42 PCI points
-  R²  = 0.9908 (near-perfect fit)
+api/            HTTP server (stdlib), request-image validation
+configs/        detector training configs, one YAML per shipped model
+models/         inference: classifiers, segmenter, calibration, YOLO serving,
+                road-scene perception, costing, sealing
+pipeline/       end-to-end inspection pipeline, video ingest, fleet ledger
+training/       every training entry point; train_detector.py for the YOLO models
+scripts/        dataset fetchers and preparation, validation, benchmarks, CLI tools
+checkpoints/    trained models; detectors/ holds ONNX + model card per detector
+datasets/       bundled evaluation corpus (downloaded training sets are git-ignored)
+web/            the site: one HTML file per page plus shared app.js / app.css
+tests/          unittest suite, run by CI on Python 3.11 and 3.12
 ```
 
----
+## API
 
-## 🌐 REST API Reference
+The server is `python -m api.server` (port 8000). Main endpoints:
 
-Start the server:
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/perception/analyze` | potholes, cracks, crossings, people, vehicles, signals; scene facts and alerts |
+| `GET /api/v1/perception/status` | which detectors are loaded, their thresholds and held-out test metrics |
+| `POST /api/v1/pipeline/deep-audit` | full inspection pipeline: class, mask, area, depth interval, cost, PCI |
+| `POST /api/v1/vision/predict` | 7-class distress classification only |
+| `POST /api/v1/detect/objects` | COCO objects only |
+| `POST /api/v1/pedestrian/detect` | pedestrian risk; counts are detected when an image is sent |
+| `POST /api/v1/video/ingest` | dashcam file, frames sampled by ground distance |
+| `POST /api/v1/fleet/report-defect` | add a sighting to the deduplicated ledger |
+| `POST /api/v1/dispatch/work-order`, `/dispatch/verify-seal` | sealed work orders |
+| `GET /api/v1/health` | model status |
+
 ```bash
-cd road_shield_ai_engine
-python api/server.py 8000
-```
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `GET /api/v1/gis/map-data` | GET | GIS defects + fleet units + congestion heatmap |
-| `GET /api/v1/fleet/telemetry` | GET | Fleet statistics + deduplication efficiency |
-| `GET /api/v1/training/metrics` | GET | Training curves JSON (all models) |
-| `GET /api/v1/models/registry` | GET | Model zoo with parameter counts + status |
-| `GET /api/v1/training/status` | GET | Training orchestrator status |
-| `GET /api/v1/ledger/defects` | GET | MoRTH BOQ defect ledger |
-| `GET /api/v1/datasets/benchmarks` | GET | Dataset catalog |
-| `POST /api/v1/incidents/alpr` | POST | Rash driving + HSRP plate OCR |
-| `POST /api/v1/traffic/analyze` | POST | Vehicle density + UCI calculation |
-| `POST /api/v1/pedestrian/detect` | POST | School zone + crosswalk violation |
-| `POST /api/v1/fleet/ingest-detection` | POST | Spatial dedup ingestion |
-
-**Example: ALPR Incident Detection**
-```bash
-curl -X POST http://localhost:8000/api/v1/incidents/alpr \
+curl -s http://127.0.0.1:8000/api/v1/perception/analyze \
   -H "Content-Type: application/json" \
-  -d '{"bus_id":"BUS-KA01-204","latitude":12.97,"longitude":77.59,"speed_kmh":95.5}'
+  -d "{\"image_base64\": \"$(base64 -w0 frame.jpg)\", \"return_annotated\": true}"
 ```
 
-**Response:**
-```json
-{
-  "incident_id": "INC-BEL-794855",
-  "incident_classification": "EXCESSIVE_APPROACH_VELOCITY",
-  "is_emergency": true,
-  "offending_vehicle": {
-    "plate_number": "HR 85 SE 3032",
-    "ocr_confidence": 0.952,
-    "jurisdiction": "HR",
-    "kinematic_confidence": 0.994
-  },
-  "edge_hash_sha256": "SHA256-09613fbe08567c97"
-}
-```
+The response carries every detection (`class_name`, `group`, `confidence`,
+`bbox_pixels`, `model`), per-class `counts`, `scene` facts, prioritised
+`alerts`, the models that were `unavailable_models`, and per-model latency.
+`groups: ["damage"]` runs only the road-damage detector, for maintenance
+surveys where people and traffic are noise.
 
----
+**Image inputs.** `image_base64` is decoded strictly as base64 and is never
+interpreted as a file path. `image_path` is accepted only for files inside
+`datasets/` (after resolving `..` and symlinks). Request bodies are capped at
+~55 MB and images at 40 megapixels. Annotated images the server returns have
+people blurred unless the request sets `"redact_people": false`.
 
-## 🖥️ Frontend Dashboard
-
-**File:** `road_shield_frontend.html` (311KB single-file, zero build step)
-
-Open directly in any modern browser:
-```
-c:\Users\Dell\Downloads\road_shield_frontend.html
-```
-
-### Dashboard Tabs:
-| Tab | Description |
-|-----|-------------|
-| 🗺️ Tactical 3D Heatmap | Interactive canvas map with defect markers, buses, ASTM PCI overlay |
-| 📡 In-Vehicle Edge HUD | 100Hz IMU oscilloscope, Bayesian fusion gate display |
-| 📐 Civil IPM Calculator | Inverse Perspective Mapping + asphalt tonnage calculator |
-| 📋 SHA-256 Work-Order | Cryptographic MoRTH tender generation and dispatch |
-| 🔍 AI Photo Audit | Split-screen before/after defect analysis |
-| 📊 Municipal ROI Ledger | Cost-benefit analysis, preventive maintenance ROI |
-| 📹 Real-World Vision Lab | Upload real images through full 11-stage pipeline |
-| 🛡️ BEL SIH26124 Fleet & GIS | **Leaflet live map** + ALPR + traffic density + fleet dedup |
-| 🧠 Mega AI Training | Training curves, model performance, dataset stats |
-
----
-
-## 🧪 Running Tests
+## Tests
 
 ```bash
-# Full 10-subsystem test suite (10/10 PASS guaranteed)
-
-# Expected output:
-# ✅ 1_model_imports      : PASS - 10 modules imported
-# ✅ 2_vision_9class      : PASS - classes=9, probs.shape=(10,9)
-# ✅ 3_imu_shock          : PASS - shock_pred=2
-# ✅ 4_pci_astm           : PASS - Good=100.0, Bad=6.6, ordering correct
-# ✅ 5_urban_traffic      : PASS - UCI=59.5 PCU
-# ✅ 6_alpr_tracker       : PASS - RECKLESS_LANE_CUTTING, SHA256 sealed
-# ✅ 7_fleet_dedup        : PASS - 2 unique defects, 1 hotspot
-# ✅ 8_pipeline_real_imgs : PASS - 10 imgs, avg_lat=207ms
-# ✅ 9_rest_api           : PASS - 7/7 endpoints OK
-# ✅ 10_checkpoints       : PASS - 5 weight files verified
-# RESULT: 10/10 PASSED
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
----
+CI (`.github/workflows/ci.yml`) runs the suite on Python 3.11 and 3.12, imports
+every module, and lints the modules listed in its Lint step with `ruff`.
+Tests that need trained weights skip, visibly, when the weights are absent; the
+integration tests for the trained detectors run whenever
+`checkpoints/detectors/` is populated.
 
-## 🔧 Installation & Setup
+## Licences
 
-```bash
-# 1. Clone repository
-git clone https://github.com/udbhav968-creator/SIH_PROJECT.git
-cd SIH_PROJECT
+| Component | Licence | Consequence |
+|---|---|---|
+| RDD2022 (road-damage training data) | CC BY-SA 4.0 | the `road_damage` weights are a derivative; share-alike applies |
+| CDSet-3434 (crossing training data) | Apache-2.0 | attribution |
+| Ultralytics YOLO code and pretrained weights | AGPL-3.0 | applies to the three YOLO detectors, including the ones fine-tuned here; offering them as a network service triggers AGPL source obligations |
+| ImageNet ResNet-50 / MobileNetV2 (ONNX Model Zoo) | Apache-2.0 | attribution |
 
-# 2. Install dependencies (minimal — mostly stdlib + NumPy + Pillow)
-pip install numpy Pillow
-
-# 3. Optional: For real map tiles in frontend
-# (Leaflet loads from CDN — internet connection required)
-
-# 4. Start API server
-python road_shield_ai_engine/api/server.py 8000
-
-# 5. Open frontend
-# Double-click road_shield_frontend.html in your browser
-
-# 6. Run tests
-```
-
-### Requirements
-```
-Python 3.10+
-numpy >= 1.24
-Pillow >= 9.0
-(No PyTorch / TensorFlow required — pure NumPy inference)
-```
-
----
-
-## 📡 Real-World Datasets
-
-All images physically stored in `datasets/` folder (downloaded from Wikimedia Commons, Geograph.org.uk):
-
-| Dataset Folder | Source | Images | Class |
-|---------------|--------|--------|-------|
-| `09_waterlogging_hazard/` | Wikimedia Commons | 14 | Flooding |
-| `10_missing_zebra_crossing/` | Geograph.org.uk | 19 | Missing Zebra |
-| `11_missing_road_divider/` | Wikimedia Commons | 20 | Missing Divider |
-| `12_damaged_traffic_signs/` | Wikimedia Commons | 14 | Damaged Sign |
-| `08_dashcam_video_streams/` | Wikimedia Commons | 10 | Dashcam frames |
-| `01_rdd2022_india/` | RDD2022 (India subset) | 1000+ | D00/D10/D20 |
-| `02_kaggle_pothole_600/` | Kaggle Pothole-600 | 600+ | D40 Pothole |
-| `03_crack500_fatigue/` | CRACK500 | 500+ | D20 Alligator |
-
-**Total cryptographically-unique real images: 65+ (SHA-256 deduplicated)**
-
----
-
-## 🏅 SIH Compliance Coverage
-
-| SIH26124 Requirement | Implemented | Module |
-|---------------------|-------------|--------|
-| Road distress classification | ✅ | VisionDistressNet 9-class |
-| IMU-based shock detection | ✅ | IMUShockClassifier |
-| Pavement condition scoring | ✅ | PCIRegressorNet (ASTM D6433) |
-| Fleet-based mobile sensing | ✅ | FleetDeduplicationEngine |
-| Spatial deduplication | ✅ | Haversine clustering ≤8m |
-| Rash driving ALPR | ✅ | ALPRIncidentTracker + HSRP OCR |
-| Pedestrian safety zones | ✅ | `/api/v1/pedestrian/detect` |
-| Vehicle density / congestion | ✅ | UrbanTrafficNet + UCI |
-| Centralized GIS command | ✅ | Leaflet map + REST API |
-| Cryptographic work orders | ✅ | MoRTHDispatchAgent SHA-256 |
-| DPDP 2023 privacy | ✅ | On-device face/plate redaction |
-| Edge deployment | ✅ | C++ header + OpenNeural JSON |
-| MoRTH Section 500 BOQ | ✅ | Civil volumetric ledger |
-| Deterioration forecast | ✅ | 180-day monsoon lifecycle |
-| Multi-modal sensor fusion | ✅ | Bayesian dual-sensor gate |
+Anyone taking this beyond academic use must review these, the AGPL above all.
 
 ---
 
@@ -655,7 +442,7 @@ All images physically stored in `datasets/` folder (downloaded from Wikimedia Co
 ## 📄 License
 
 This project is developed for **Smart India Hackathon 2026** under academic/research use.  
-All model architectures are original implementations using pure NumPy (no external ML framework dependencies).
+Third-party data and model licences are listed under [Licences](#licences).
 
 ---
 
