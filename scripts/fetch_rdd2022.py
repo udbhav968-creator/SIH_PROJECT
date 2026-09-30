@@ -46,7 +46,7 @@ SHARDS = {
     "valid": [f"shard_{i:03d}" for i in range(2)],
     "test": [f"shard_{i:03d}" for i in range(2)],
 }
-DEFAULT_OUT = Path("datasets") / "rdd2022"
+DEFAULT_OUT = Path("datasets") / "rdd2022_india"  # what configs/detectors/road_damage.yaml reads
 
 
 @dataclass(frozen=True)

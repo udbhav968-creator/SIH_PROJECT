@@ -39,6 +39,7 @@ from pathlib import Path
 LOG = logging.getLogger("prepare_crosswalk_dataset")
 
 CLASS_NAMES = ("crosswalk", "guide_arrows")
+DEFAULT_OUT = Path("datasets") / "crosswalk"  # what configs/detectors/crosswalk.yaml reads
 FRAME_RE = re.compile(r"^(?P<video>\d+_\d+)_filename(?P<frame>\d+)$")
 # Per-video block assignment cycle: 7 train, 1 val, 2 test blocks out of 10.
 # Interleaving (rather than "last 30% is test") keeps every split covering
@@ -167,7 +168,7 @@ def build(src: Path, out: Path, block_size: int, purge: int) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Leakage-free re-split of CDSet-3434")
     parser.add_argument("--src", type=Path, default=Path("datasets/CDSet"))
-    parser.add_argument("--out", type=Path, default=Path("datasets/crosswalk"))
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--block-size", type=int, default=300, help="frames per time block")
     parser.add_argument("--purge", type=int, default=30, help="frames dropped at split boundaries")
     args = parser.parse_args(argv)

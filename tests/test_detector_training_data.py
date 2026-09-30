@@ -149,6 +149,17 @@ class TrainDetectorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             train_detector.apply_overrides(config, argparse.Namespace(imgsz=500))
 
+    def test_data_scripts_write_where_the_configs_read(self):
+        """A fetch that lands anywhere else leaves training with no data.yaml."""
+        root = Path(train_detector.PROJECT_ROOT)
+        expected = {
+            "road_damage": fetch_rdd2022.DEFAULT_OUT / "data.yaml",
+            "crosswalk": pcd.DEFAULT_OUT / "data.yaml",
+        }
+        for name, produced in expected.items():
+            config = train_detector.DetectorConfig.load(root / "configs" / "detectors" / f"{name}.yaml")
+            self.assertEqual(Path(config.data), (root / produced).resolve(), name)
+
     def test_serving_threshold_is_the_f1_peak(self):
         px = np.linspace(0, 1, 1000)
         peaked = np.exp(-((px - 0.42) ** 2) / 0.01)      # F1 peaks at confidence 0.42
