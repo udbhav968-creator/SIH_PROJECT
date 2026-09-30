@@ -54,7 +54,28 @@ class _ArrayReader:
         return next(self._items, None)
 
 
-def quantize(fp32_path, int8_path, input_name, calibration_arrays):
+def yolo_head_nodes(model_path):
+    """
+    Names of the nodes in a YOLO export's final block (the detection head).
+
+    The head concatenates box coordinates (0..input size, in pixels) with
+    class probabilities (0..1) into one output. Quantized with one shared
+    INT8 scale, the probabilities collapse: measured on the crossing
+    detector, mAP50 fell from 0.864 to 0.100. Keeping the head in FP32 and
+    quantizing the backbone and neck avoids that.
+    """
+    import re
+
+    import onnx
+    graph = onnx.load(str(model_path)).graph
+    blocks = [int(m.group(1)) for n in graph.node if (m := re.match(r"^/model\.(\d+)/", n.name))]
+    if not blocks:
+        return []
+    head = f"/model.{max(blocks)}/"
+    return [n.name for n in graph.node if n.name.startswith(head)]
+
+
+def quantize(fp32_path, int8_path, input_name, calibration_arrays, nodes_to_exclude=()):
     import onnx
     from onnx import version_converter
     from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_static
@@ -71,7 +92,7 @@ def quantize(fp32_path, int8_path, input_name, calibration_arrays):
     quant_pre_process(str(source), str(prepared))
     quantize_static(str(prepared), str(int8_path), _ArrayReader(input_name, calibration_arrays),
                     quant_format=QuantFormat.QDQ, per_channel=True, activation_type=QuantType.QUInt8,
-                    weight_type=QuantType.QInt8,
+                    weight_type=QuantType.QInt8, nodes_to_exclude=list(nodes_to_exclude),
                     calibrate_method={"minmax": CalibrationMethod.MinMax, "percentile": CalibrationMethod.Percentile,
                                       "entropy": CalibrationMethod.Entropy}[CALIBRATION["method"]])
     prepared.unlink(missing_ok=True)
@@ -178,7 +199,9 @@ def detector(name, calibration_images=128):
         canvas, *_ = letterbox(np.asarray(Image.open(pairs[i][0]).convert("RGB")), size)
         calibration.append((np.asarray(canvas, dtype=np.float32) / 255.0).transpose(2, 0, 1)[None])
     input_name = _session(fp32_path).get_inputs()[0].name
-    int8_path = quantize(fp32_path, INT8_DIR / f"{name}.int8.onnx", input_name, calibration)
+    head = yolo_head_nodes(fp32_path)
+    int8_path = quantize(fp32_path, INT8_DIR / f"{name}.int8.onnx", input_name, calibration,
+                         nodes_to_exclude=head)
 
     result = {}
     for label, path in (("fp32", fp32_path), ("int8", int8_path)):
@@ -189,6 +212,7 @@ def detector(name, calibration_images=128):
                          "ms_per_image": _latency_ms(_session(path), {input_name: calibration[0]}),
                          "mb": round(path.stat().st_size / 2**20, 1)}
     result["int8_file"] = str(int8_path.relative_to(ROOT))
+    result["fp32_nodes_kept"] = f"{len(head)} detection-head nodes left in FP32"
     return result
 
 
