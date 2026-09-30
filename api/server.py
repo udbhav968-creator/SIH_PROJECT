@@ -61,6 +61,7 @@ from models.automotive_telematics_engine import AutomotiveTelematicsEngine
 import urllib.parse
 from services.google_maps_service import google_maps_service
 from api.request_images import RequestImageError, MAX_IMAGE_BYTES, decode_base64_image, request_image
+from models.priority_index import describe as describe_priority, rank_defects
 
 
 # ==============================================================================
@@ -130,8 +131,9 @@ PERCEPTION_GROUPS = set(scene_perception.heads)
 # honestly by /api/v1/fleet/telemetry rather than hidden.
 from pipeline.defect_store import DefectStore
 defect_store = DefectStore(os.path.join(WRITABLE_DIR, "road_shield.db"))
-fleet_dedup_engine = FleetDeduplicationEngine(proximity_threshold_meters=10.0,
-                                              store=defect_store)
+# Engine default (8 m): urban GPS drifts 3-5 m, so two honest fixes of one
+# pothole can sit ~8 m apart; adjacent distinct defects rarely do.
+fleet_dedup_engine = FleetDeduplicationEngine(store=defect_store)
 
 # Seed demo defects ONLY when the ledger is empty. Re-seeding on every start
 # would duplicate fixtures into a durable store, which is exactly the bug
@@ -612,13 +614,26 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     "estimated_repair_tonnes": round(tonnage, 3),
                     "estimated_repair_inr": round(cost, 2),
                     "address": d.get("address"),
+                    # Inputs to the priority index. Volume uses the same 6 cm
+                    # assumed depth as the costing above; traffic only if measured.
+                    "pci": float(d.get("severity_pci", 50.0)),
+                    "volume_m3": round(area * 0.06, 4),
+                    "daily_traffic": d.get("daily_traffic"),
                 })
+            # Repair queue order is decided by measured road quantities only.
+            ranked = rank_defects(enriched)
             self._send_json(200, {
-                "total_active_defects": len(enriched),
+                "total_active_defects": len(ranked),
                 "total_morth_tonnage_tonnes": round(total_tonnage, 3),
                 "total_budget_inr": round(total_cost, 2),
-                "defects": enriched,
+                "ordering": "priority_index, descending (models/priority_index.py)",
+                "priority_model": describe_priority(),
+                "defects": ranked,
             })
+            return
+
+        if path == "/api/v1/priority/describe":
+            self._send_json(200, describe_priority())
             return
 
         if path == "/api/v1/vision/curated-videos":
