@@ -1,0 +1,31 @@
+{
+  "thresholds": {
+    "texture_min": 5.0,
+    "dark_mean_max": 15.0,
+    "glare_fraction_max": 0.5
+  },
+  "real_frames": 450,
+  "real_frames_kept_pct": 100.0,
+  "per_source": {
+    "rdd2022_india": {
+      "frames": 150,
+      "kept_pct": 100.0
+    },
+    "cdset_dashcam": {
+      "frames": 150,
+      "kept_pct": 100.0
+    },
+    "project_photos": {
+      "frames": 150,
+      "kept_pct": 100.0
+    }
+  },
+  "degraded_frames_per_type": 100,
+  "caught_pct": {
+    "lens_covered": 100.0,
+    "severe_defocus": 100.0,
+    "moderate_defocus": 89.0,
+    "horizontal_motion_blur": 4.0,
+    "whiteout": 98.0
+  }
+}

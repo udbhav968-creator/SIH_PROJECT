@@ -40,10 +40,12 @@ jobs:
         run: |
           ruff check \
             api/request_images.py \
+            models/frame_gate.py \
             models/priority_index.py \
             models/road_scene_perception.py \
             pipeline/edge_event.py \
             scripts/benchmark_crosswalk.py \
+            scripts/calibrate_frame_gate.py \
             scripts/detect_scene.py \
             scripts/fetch_rdd2022.py \
             scripts/prepare_crosswalk_dataset.py \
