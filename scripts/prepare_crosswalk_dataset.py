@@ -85,6 +85,16 @@ def collect_frames(src: Path) -> list[Frame]:
     return frames
 
 
+def block_split(index: int, block_size: int) -> str:
+    """The split a frame index falls in, before any boundary purge."""
+    return SPLIT_CYCLE[(index // block_size) % len(SPLIT_CYCLE)]
+
+
+def near_boundary(index: int, block_size: int, purge: int) -> bool:
+    split = block_split(index, block_size)
+    return block_split(index - purge, block_size) != split or block_split(index + purge, block_size) != split
+
+
 def assign_splits(frames: list[Frame], block_size: int, purge: int) -> dict[Frame, str]:
     """Map each frame to train/val/test by time block, dropping boundary frames."""
     by_video: dict[str, list[Frame]] = defaultdict(list)
@@ -94,7 +104,7 @@ def assign_splits(frames: list[Frame], block_size: int, purge: int) -> dict[Fram
     assignment: dict[Frame, str] = {}
     for _video, video_frames in sorted(by_video.items()):
         def split_of(index: int) -> str:
-            return SPLIT_CYCLE[(index // block_size) % len(SPLIT_CYCLE)]
+            return block_split(index, block_size)
 
         for frame in video_frames:
             split = split_of(frame.index)
@@ -157,7 +167,10 @@ def build(src: Path, out: Path, block_size: int, purge: int) -> dict:
         "split_method": f"time blocks of {block_size} frames per video, purge margin {purge} frames",
         "total_frames_seen": len(frames),
         "frames_kept": len(assignment),
-        "frames_purged": len(frames) - len(assignment),
+        "frames_purged_at_boundaries": sum(1 for f in frames if f not in assignment
+                                           and near_boundary(f.index, block_size, purge)),
+        "negatives_kept_out_of_training": sum(1 for f in frames if f not in assignment
+                                              and not near_boundary(f.index, block_size, purge)),
         "splits": {k: dict(v) for k, v in sorted(stats.items())},
         "negative_images": {k: sorted(v) for k, v in negatives.items()},
     }
@@ -179,8 +192,9 @@ def main(argv: list[str] | None = None) -> int:
                   "https://huggingface.co/datasets/zzd0225/crosswalk-detection-dataset", args.src)
         return 1
     manifest = build(args.src, args.out, args.block_size, args.purge)
-    LOG.info("kept %d of %d frames (%d purged at boundaries)", manifest["frames_kept"],
-             manifest["total_frames_seen"], manifest["frames_purged"])
+    LOG.info("kept %d of %d frames: %d purged at split boundaries, %d crossing-free frames "
+             "kept out of training by design", manifest["frames_kept"], manifest["total_frames_seen"],
+             manifest["frames_purged_at_boundaries"], manifest["negatives_kept_out_of_training"])
     for split, counts in manifest["splits"].items():
         LOG.info("%-5s %s", split, counts)
     return 0
