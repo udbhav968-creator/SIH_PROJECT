@@ -321,9 +321,12 @@ every image and looking for the same photograph under different labels.
 - **The crossing detector has seen three videos.** CDSet comes from three
   dashcam recordings and its dataset card does not say where; it has not been
   measured on Indian crossings or faded paint.
-- **Plates are blurred only once the plate model is trained.** Until then the
-  output says plates were not redacted. Redaction blurs whole person boxes, not
-  faces.
+- **Redaction is only as good as detection.** People are blurred where the
+  COCO detector finds them and it misses some (in our demo frame, one of
+  five pedestrians was not blurred). It blurs whole person boxes, not faces,
+  and plates are blurred only once the plate model is trained; until then
+  the output says plates were not redacted. Do not treat it as a guarantee
+  of anonymity.
 - **The IMU model is trained on real logs from a road vehicle, not a bus.** The
   engine-vibration test simulates what a bus adds; it is not a recording.
 - **No dashcam video dataset ships with the repository.** Video is decoded and

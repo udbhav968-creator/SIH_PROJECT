@@ -283,7 +283,7 @@ const limits = [
   bullet("Accelerometer logs come from a road vehicle, not yet a bus; the vibration test simulates engine vibration rather than recording it."),
   bullet("Zebra-crossing data comes from three videos; performance on Indian crossings with faded paint is not yet measured."),
   bullet("The road-damage detector is under-trained (validation mAP50 still rising at the last epoch) and does not detect transverse cracks, for which the Indian subset has 50 training boxes."),
-  bullet("Redaction blurs whole person boxes rather than faces, and plate redaction depends on a detector still to be trained."),
+  bullet("Redaction is only as good as person detection: people the COCO detector misses are not blurred (in one demonstration frame, one of five pedestrians was missed). It blurs whole person boxes rather than faces, plate redaction depends on a detector still to be trained, and it is not a guarantee of anonymity."),
   bullet("Horizontal motion blur mostly passes the frame-quality gate."),
   bullet("No demographic inference is made about people in frame, by design; people are only counted and blurred."),
   bullet("The Priority Index removes locality from the decision, but its weights are a policy choice and should be set with municipal stakeholders."),
