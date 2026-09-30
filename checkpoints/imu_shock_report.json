@@ -1,6 +1,8 @@
 {
   "model": "IMUShockClassifier",
-  "classifier": "StandardScaler -> RandomForestClassifier",
+  "classifier": "Butterworth band-pass 0.5-25 Hz (order 4, zero phase) -> window features -> StandardScaler -> RandomForestClassifier",
+  "held_out_accuracy_with_engine_vibration": 0.7866,
+  "engine_vibration_test": "35 Hz sinusoid, 1.5 m/s^2 on all axes, random phase per window (seed 1)",
   "class_names": [
     "Smooth Asphalt",
     "Expansion Joint",
@@ -9,73 +11,73 @@
   ],
   "train_windows": 688,
   "held_out_validation_windows": 164,
-  "held_out_validation_accuracy": 0.8232,
+  "held_out_validation_accuracy": 0.8049,
   "random_guess_baseline": 0.25,
   "confusion_matrix": [
     [
-      95,
+      92,
+      11,
       6,
-      8,
+      0
+    ],
+    [
+      3,
+      24,
+      2,
+      3
+    ],
+    [
+      2,
+      5,
+      4,
       0
     ],
     [
       0,
-      25,
-      3,
-      4
-    ],
-    [
-      4,
-      3,
-      4,
-      0
-    ],
-    [
       0,
-      1,
       0,
-      11
+      12
     ]
   ],
   "per_class_report": {
     "Smooth Asphalt": {
-      "precision": 0.9595959595959596,
-      "recall": 0.8715596330275229,
-      "f1-score": 0.9134615384615384,
+      "precision": 0.9484536082474226,
+      "recall": 0.8440366972477065,
+      "f1-score": 0.8932038834951457,
       "support": 109.0
     },
     "Expansion Joint": {
-      "precision": 0.7142857142857143,
-      "recall": 0.78125,
-      "f1-score": 0.746268656716418,
+      "precision": 0.6,
+      "recall": 0.75,
+      "f1-score": 0.6666666666666666,
       "support": 32.0
     },
     "Rumble Strip": {
-      "precision": 0.26666666666666666,
+      "precision": 0.3333333333333333,
       "recall": 0.36363636363636365,
-      "f1-score": 0.3076923076923077,
+      "f1-score": 0.34782608695652173,
       "support": 11.0
     },
     "Pothole Impact": {
-      "precision": 0.7333333333333333,
-      "recall": 0.9166666666666666,
-      "f1-score": 0.8148148148148148,
+      "precision": 0.8,
+      "recall": 1.0,
+      "f1-score": 0.8888888888888888,
       "support": 12.0
     },
-    "accuracy": 0.823170731707317,
+    "accuracy": 0.8048780487804879,
     "macro avg": {
-      "precision": 0.6684704184704184,
-      "recall": 0.7332781658326383,
-      "f1-score": 0.6955593294212697,
+      "precision": 0.670446735395189,
+      "recall": 0.7394182652210175,
+      "f1-score": 0.6991463815018057,
       "support": 164.0
     },
     "weighted avg": {
-      "precision": 0.8486977791855841,
-      "recall": 0.823170731707317,
-      "f1-score": 0.8329896211562575,
+      "precision": 0.8283421339368034,
+      "recall": 0.8048780487804879,
+      "f1-score": 0.8121055503505646,
       "support": 164.0
     }
   },
   "data_provenance": "Real field-recorded 100-sample tri-axial accelerometer windows (Ax, Ay, Az in m/s^2) from Indian road vehicular drives in VishalSingh25/Pothole-Project (10 CSV drive logs, 205,491 raw samples across smooth road, unmarked speed bumps/joints, marked speed breakers/rumble strips, and pothole corridors), split with a strict temporal block boundary and guard gap between train and held-out validation.",
-  "trained_at_unix": 1790751641
+  "trained_at_unix": 1790780362
 }

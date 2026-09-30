@@ -38,6 +38,14 @@ def _load_split(name):
     return data["imu_signals"], data["labels"]
 
 
+def add_engine_vibration(X, amplitude=1.5, hz=35.0, seed=1):
+    """Held-out windows with a diesel-engine-like vibration added (deterministic)."""
+    rng = np.random.default_rng(seed)
+    t = np.arange(X.shape[1]) / 100.0
+    phase = rng.uniform(0.0, 2.0 * np.pi, (X.shape[0], 1))
+    return (X + (amplitude * np.sin(2.0 * np.pi * hz * t[None, :] + phase))[:, :, None]).astype(np.float32)
+
+
 def run_training(save_dir=None):
     save_dir = save_dir or CKPT_DIR
     os.makedirs(save_dir, exist_ok=True)
@@ -53,6 +61,10 @@ def run_training(save_dir=None):
     print(f"  trained in {time.time() - t0:.1f}s")
 
     metrics = model.evaluate(X_val, y_val)
+    # The band-pass exists for vibration a bus engine adds; measure that directly.
+    vibrated = add_engine_vibration(X_val)
+    vibration_accuracy = model.evaluate(vibrated, y_val)["accuracy"]
+    print(f"  held-out accuracy with 35 Hz engine vibration added: {vibration_accuracy * 100:.1f}%")
     print(f"  HELD-OUT validation accuracy: {metrics['accuracy'] * 100:.1f}% "
           f"(random-guess baseline for {len(IMUShockClassifier.CLASS_NAMES)} classes = "
           f"{100.0 / len(IMUShockClassifier.CLASS_NAMES):.1f}%)")
@@ -62,7 +74,10 @@ def run_training(save_dir=None):
 
     report = {
         "model": "IMUShockClassifier",
-        "classifier": "StandardScaler -> RandomForestClassifier",
+        "classifier": "Butterworth band-pass 0.5-25 Hz (order 4, zero phase) -> window features "
+                      "-> StandardScaler -> RandomForestClassifier",
+        "held_out_accuracy_with_engine_vibration": round(vibration_accuracy, 4),
+        "engine_vibration_test": "35 Hz sinusoid, 1.5 m/s^2 on all axes, random phase per window (seed 1)",
         "class_names": IMUShockClassifier.CLASS_NAMES,
         "train_windows": int(X_train.shape[0]),
         "held_out_validation_windows": int(X_val.shape[0]),
