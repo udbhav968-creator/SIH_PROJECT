@@ -7,7 +7,7 @@ data: datasets/rdd2022_india/data.yaml
 dataset_license: CC BY-SA 4.0 (RDD2022, Arya et al. 2022)
 base_model: yolo11n.pt
 imgsz: 512          # RDD India frames are 720x720; thin cracks stay visible at 512 and it halves CPU cost vs 640
-hours: 3.5
+hours: 6.0          # ~15 epochs on a 4-core laptop CPU; on a GPU use --epochs 100 instead
 epochs: 80
 batch: 16
 patience: 20
