@@ -1,0 +1,172 @@
+{
+  "name": "road_damage",
+  "description": "Detects longitudinal, transverse and alligator cracks and potholes on Indian road imagery.",
+  "classes": [
+    "longitudinal_crack",
+    "transverse_crack",
+    "alligator_crack",
+    "pothole"
+  ],
+  "serving_thresholds": {
+    "longitudinal_crack": 0.156,
+    "transverse_crack": 0.05,
+    "alligator_crack": 0.326,
+    "pothole": 0.17
+  },
+  "architecture": "yolo11n",
+  "input_size": 512,
+  "created_utc": "2026-09-30T22:48:06+00:00",
+  "train_seconds": 21964.4,
+  "epochs_trained": 16,
+  "hardware": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel (cpu)",
+  "dataset": {
+    "yaml": "data.yaml",
+    "license": "CC BY-SA 4.0 (RDD2022, Arya et al. 2022)"
+  },
+  "config": {
+    "name": "road_damage",
+    "data": "data.yaml",
+    "base_model": "yolo11n.pt",
+    "imgsz": 512,
+    "epochs": 80,
+    "hours": 6.0,
+    "batch": 16,
+    "patience": 20,
+    "workers": 4,
+    "cache": "ram",
+    "seed": 0,
+    "device": "cpu",
+    "description": "Detects longitudinal, transverse and alligator cracks and potholes on Indian road imagery.",
+    "dataset_license": "CC BY-SA 4.0 (RDD2022, Arya et al. 2022)",
+    "train_args": {
+      "cos_lr": true,
+      "close_mosaic": 3,
+      "fliplr": 0.5,
+      "flipud": 0.0,
+      "mosaic": 1.0
+    }
+  },
+  "metrics": {
+    "val": {
+      "precision": 0.529,
+      "recall": 0.3209,
+      "mAP50": 0.257,
+      "mAP50_95": 0.1192,
+      "per_class": {
+        "longitudinal_crack": {
+          "precision": 0.3351,
+          "recall": 0.2373,
+          "mAP50": 0.2183,
+          "mAP50_95": 0.092
+        },
+        "transverse_crack": {
+          "precision": 1.0,
+          "recall": 0.0,
+          "mAP50": 0.0039,
+          "mAP50_95": 0.0005
+        },
+        "alligator_crack": {
+          "precision": 0.4223,
+          "recall": 0.6254,
+          "mAP50": 0.5303,
+          "mAP50_95": 0.2423
+        },
+        "pothole": {
+          "precision": 0.3585,
+          "recall": 0.4208,
+          "mAP50": 0.2755,
+          "mAP50_95": 0.142
+        }
+      },
+      "speed_ms_per_image": {
+        "preprocess": 1.51,
+        "inference": 94.69,
+        "loss": 0.0,
+        "postprocess": 2.11
+      }
+    },
+    "test": {
+      "precision": 0.5314,
+      "recall": 0.2781,
+      "mAP50": 0.2448,
+      "mAP50_95": 0.1113,
+      "per_class": {
+        "longitudinal_crack": {
+          "precision": 0.3539,
+          "recall": 0.2009,
+          "mAP50": 0.1916,
+          "mAP50_95": 0.0759
+        },
+        "transverse_crack": {
+          "precision": 1.0,
+          "recall": 0.0,
+          "mAP50": 0.0002,
+          "mAP50_95": 0.0
+        },
+        "alligator_crack": {
+          "precision": 0.4442,
+          "recall": 0.5979,
+          "mAP50": 0.5431,
+          "mAP50_95": 0.2437
+        },
+        "pothole": {
+          "precision": 0.3275,
+          "recall": 0.3134,
+          "mAP50": 0.2445,
+          "mAP50_95": 0.1254
+        }
+      },
+      "speed_ms_per_image": {
+        "preprocess": 1.45,
+        "inference": 91.38,
+        "loss": 0.0,
+        "postprocess": 2.23
+      }
+    },
+    "test_image_level": {
+      "images": 1166,
+      "background_images": 725,
+      "background_false_alarm_rate": 0.16,
+      "per_class": {
+        "longitudinal_crack": {
+          "tp": 64,
+          "fp": 55,
+          "fn": 98,
+          "precision": 0.5378,
+          "recall": 0.3951
+        },
+        "transverse_crack": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 6,
+          "precision": null,
+          "recall": 0.0
+        },
+        "alligator_crack": {
+          "tp": 170,
+          "fp": 31,
+          "fn": 81,
+          "precision": 0.8458,
+          "recall": 0.6773
+        },
+        "pothole": {
+          "tp": 75,
+          "fp": 99,
+          "fn": 74,
+          "precision": 0.431,
+          "recall": 0.5034
+        }
+      }
+    }
+  },
+  "artifacts": {
+    "pt": {
+      "file": "road_damage.pt",
+      "sha256": "a8689b0160233dd03ec16d0fa8100e9c484432ca91f455b9718dbf6cbc37f99b"
+    },
+    "onnx": {
+      "file": "road_damage.onnx",
+      "sha256": "3c8be7c0c813949f54e17b4a6572511e02536b73273e7f719edbac77daccb7ef"
+    }
+  }
+}

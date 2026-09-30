@@ -1,0 +1,11 @@
+{
+  "frame": "1280x720",
+  "runs": 15,
+  "median_ms": {
+    "traffic": 203.4,
+    "damage": 114.6,
+    "markings": 75.7,
+    "all three": 391.1
+  },
+  "machine": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel"
+}

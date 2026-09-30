@@ -25,7 +25,9 @@ const rdTest = RD ? RD.metrics.test : null;
 const rdEpochs = RD ? (RD.epochs_trained || RD.config.epochs) : null;
 const rdClass = (name) => {
   const m = rdTest && rdTest.per_class[name];
-  return m ? [f3(m.precision), f3(m.recall), f3(m.mAP50), f3(m.mAP50_95)] : [PENDING, PENDING, PENDING, PENDING];
+  if (!m) return [PENDING, PENDING, PENDING, PENDING];
+  // With no correct detections precision is undefined; the evaluator reports 1.0, which would mislead.
+  return [m.recall === 0 ? "— (no detections)" : f3(m.precision), f3(m.recall), f3(m.mAP50), f3(m.mAP50_95)];
 };
 
 // "**bold** plain" -> runs. A PENDING token is highlighted so it cannot be missed.
@@ -122,7 +124,7 @@ const abstract = [
   h1("Abstract"),
   p("Milestone 2 described ROAD-SHIELD, a system that turns city buses into a road-inspection network: a dashcam and an accelerometer on each bus, an edge computer that finds and measures road defects, and a central ledger that deduplicates reports and issues tamper-evident repair orders. Milestone 3 set out to move the system from photographs of single defects to full dashcam scenes on Indian roads, to implement the privacy and edge-transmission design stated in Milestone 2, and to measure every claim against held-out data."),
   p("This milestone adds a scene-perception layer of three separately trained YOLO detectors — traffic participants (COCO), road damage (RDD2022, Indian subset) and road markings (CDSet-3434) — served on the CPU through ONNX Runtime. The zebra-crossing detector reaches **test mAP50 0.869** and, asked whether a frame contains a crossing, is correct **every time it says yes (0 false alarms on 263 crossing-free frames)** while finding 75.4% of crossings — 3.2 times more than the geometric method it replaces. We implemented the Milestone 2 design items that existed only on paper: DPDP privacy redaction, sub-kilobyte signed edge packets, the Butterworth IMU filter (78.7% accuracy under engine vibration versus 60.1% without it), a calibrated frame-quality gate, the fairness-constrained repair Priority Index and INT8 quantization (crossing detector 1.3× faster and 2.4× smaller for a 0.006 mAP50 cost)."),
-  p("Measuring the Milestone 2 claims also corrected eleven of them, listed in Section 6. The software is now covered by 175 automated tests run on every commit; two security defects in the web API were found and fixed. " + (RD ? `The road-damage detector, trained on a laptop CPU, reaches test mAP50 ${f3(rdTest.mAP50)}; Section 5.2 explains why this is a lower bound and how the provided GPU notebook raises it.` : "Road-damage detection results are PENDING the completion of training.")),
+  p("Measuring the Milestone 2 claims also corrected eleven of them, listed in Section 6. The software is now covered by 178 automated tests run on every commit; two security defects in the web API were found and fixed. " + (RD ? `The road-damage detector, trained on a laptop CPU, reaches test mAP50 ${f3(rdTest.mAP50)}; Section 5.2 reports it class by class, including the class it does not yet detect.` : "Road-damage detection results are PENDING the completion of training.")),
 ];
 
 const progress = [
@@ -218,7 +220,7 @@ const results = [
     ["**All classes**", ...(rdTest ? [rdTest.precision, rdTest.recall, rdTest.mAP50, rdTest.mAP50_95].map((x) => `**${f3(x)}**`) : [PENDING, PENDING, PENDING, PENDING])],
   ], [3, 1.5, 1.5, 1.5, 1.5]),
   caption(RD ? `Table 7. Road-damage test metrics on 1,166 held-out Indian images (YOLO11n, ${RD.input_size} px, ${rdEpochs} epochs, ${(RD.train_seconds / 3600).toFixed(1)} h on a laptop CPU). Serving thresholds tuned on the validation split: ${Object.entries(RD.serving_thresholds).map(([k, v]) => k.replace("_", " ") + " " + v).join(", ")}.` : "Table 7. Road-damage test metrics on 1,166 held-out Indian images. PENDING training completion; values will be copied from checkpoints/detectors/road_damage.json."),
-  ...(RD ? [p(`These figures are a lower bound. Road damage is a much harder detection problem than zebra crossings: cracks are thin and low-contrast, and the Indian subset has only 50 transverse-crack boxes for training. ${rdEpochs} epochs at ${RD.input_size} px is what a four-core laptop CPU completes in six hours; the provided GPU notebook trains the same configuration for 100 epochs at 640 px. On images, the detector answers "does this frame show a pothole?" with precision ${f3(RD.metrics.test_image_level.per_class.pothole.precision)} and recall ${f3(RD.metrics.test_image_level.per_class.pothole.recall)}, and raises an alarm on ${(100 * RD.metrics.test_image_level.background_false_alarm_rate).toFixed(1)}% of clean-road frames.`)] : []),
+  ...(RD ? [p(`These figures come from a short CPU training run (${rdEpochs} epochs at ${RD.input_size} px) and are a baseline. Validation mAP50 was still rising when the time budget ended (0.253 at epoch 15, 0.257 at epoch 16), so the model is under-trained; we have not measured how much longer training on a GPU improves it. Results differ sharply by class. Alligator cracks are detected best (mAP50 ${f3(rdTest.per_class.alligator_crack.mAP50)}); potholes and longitudinal cracks are fair; **transverse cracks are not detected at all** — the Indian subset gives only 50 training and 7 test boxes for that class, so its row is not a stable measurement. At image level the detector answers "does this frame show a pothole?" with precision ${f3(RD.metrics.test_image_level.per_class.pothole.precision)} and recall ${f3(RD.metrics.test_image_level.per_class.pothole.recall)}, and raises an alarm on ${(100 * RD.metrics.test_image_level.background_false_alarm_rate).toFixed(1)}% of clean-road frames. It is a screening aid for routing a survey crew, not yet a substitute for one.`)] : []),
   h2("5.3 IMU band-pass filter"),
   table(["Condition (164 held-out windows, 5 seeds)", "Without filter", "With 0.5–25 Hz filter"], [
     ["Clean recordings", "83.7%", "81.5%"],
@@ -242,7 +244,7 @@ const results = [
     ...(QUANT.road_damage && QUANT.road_damage.int8 ? [["Road-damage detector", `mAP50 ${f3(QUANT.road_damage.fp32.mAP50)} → ${f3(QUANT.road_damage.int8.mAP50)}`, `${Math.round(QUANT.road_damage.fp32.ms_per_image)} → ${Math.round(QUANT.road_damage.int8.ms_per_image)} ms (${(QUANT.road_damage.fp32.ms_per_image / QUANT.road_damage.int8.ms_per_image).toFixed(1)}×)`, `${QUANT.road_damage.fp32.mb} → ${QUANT.road_damage.int8.mb} MB`]] : []),
     ["Classifier backbone (MobileNetV2)", "Accuracy 93.4% → 90.8%", "21 → 12 ms (1.8×)", "13.3 → 3.7 MB"],
   ], [3, 2.6, 2, 1.8]),
-  caption("Table 10. INT8 results (percentile calibration). The detector loses almost nothing; the classifier loses 2.6 points, so full precision remains the default and INT8 is offered for low-power edge boards. The classifier figures compare FP32 and INT8 on identical images; because the DNIT crops were regenerated, that image set is not exactly the published held-out split, so the absolute 93.4% is not comparable to the published 90.1% — the 2.6-point difference is the measurement."),
+  caption("Table 10. INT8 results (percentile calibration). The detector loses almost nothing; the classifier loses 2.6 points, so full precision remains the default and INT8 is offered for low-power edge boards. Detector mAP50 values here are scored through the ONNX files at batch size 1, so they differ slightly from Tables 5 and 7; the FP32-to-INT8 difference is the measurement. Calibration used 128 images (48 for the road-damage detector, which ran out of memory with more). The classifier figures compare FP32 and INT8 on identical images; because the DNIT crops were regenerated, that image set is not exactly the published held-out split, so the absolute 93.4% is not comparable to the published 90.1% — the 2.6-point difference is the measurement."),
   h2("5.6 Latency"),
   p(LAT ? `On a ${LAT.frame} frame (laptop CPU, median of ${LAT.runs} runs, including the quality gate): ${Object.entries(LAT.median_ms).map(([k, v]) => k + " " + Math.round(v) + " ms").join(", ")}; classifier backbone 21 ms.`
        : "On a 1280×720 frame (laptop CPU, median of 15 runs): COCO traffic detector 202 ms, crossing detector 76 ms, both together 276 ms; classifier backbone 21 ms. The three-detector total is PENDING the road-damage model."),
@@ -253,7 +255,7 @@ const corrections = [
   p("Checking each Milestone 2 claim against the code and measurements produced the following corrections. We report them in the same spirit as Milestone 2's disclosure on macro-F1: a number that cannot be reproduced should not be cited."),
   table(["#", "Milestone 2 stated", "Measured / actual"], [
     ["C1", "Classifier detects 9 classes", "7 classes; the new detectors add 4 damage, 2 marking and COCO traffic classes"],
-    ["C2", "10/10 subsystem tests pass", "175 automated tests, run by CI on Python 3.11 and 3.12"],
+    ["C2", "10/10 subsystem tests pass", "178 automated tests, run by CI on Python 3.11 and 3.12"],
     ["C3", "IMU telemetry simulated (spring-mass-damper); 15,000 windows", "852 real field-recorded windows; 80.5% held-out"],
     ["C4", "Gatekeeper threshold: Laplacian variance 42.5", "Would drop 10.4% of real frames; calibrated gate keeps 100%"],
     ["C5", "UrbanTrafficNet 90.36% accuracy", "Not reproducible — no such trained network exists; counts now come from the COCO detector"],
@@ -269,7 +271,7 @@ const corrections = [
 
 const engineering = [
   h1("7. Software Engineering and Security"),
-  bullet("**Testing.** 175 automated tests, including the web API exercised over real HTTP, per-model integration tests that verify the deployed model file against the SHA-256 in its model card, and fairness and privacy properties."),
+  bullet("**Testing.** 178 automated tests, including the web API exercised over real HTTP, per-model integration tests that verify the deployed model file against the SHA-256 in its model card, and fairness and privacy properties."),
   bullet("**Security.** The API opened any file on the server whose path was sent in an image field, and accepted a path to any file on the machine. Image fields are now decoded strictly as data, paths are confined to the dataset folder, and request sizes are capped."),
   bullet("**Dependencies.** Model files had been saved with a newer scikit-learn than the requirements allowed, so CI loaded them on a different version than the one they were trained with; the pin was corrected."),
   bullet("**Reproducibility.** Every figure in this report is regenerated by a script named in docs/REPORT_ALIGNMENT.md; detector training also runs in a provided Google Colab notebook."),
@@ -280,6 +282,7 @@ const limits = [
   h1("8. Limitations and Ethical Considerations"),
   bullet("Accelerometer logs come from a road vehicle, not yet a bus; the vibration test simulates engine vibration rather than recording it."),
   bullet("Zebra-crossing data comes from three videos; performance on Indian crossings with faded paint is not yet measured."),
+  bullet("The road-damage detector is under-trained (validation mAP50 still rising at the last epoch) and does not detect transverse cracks, for which the Indian subset has 50 training boxes."),
   bullet("Redaction blurs whole person boxes rather than faces, and plate redaction depends on a detector still to be trained."),
   bullet("Horizontal motion blur mostly passes the frame-quality gate."),
   bullet("No demographic inference is made about people in frame, by design; people are only counted and blurred."),

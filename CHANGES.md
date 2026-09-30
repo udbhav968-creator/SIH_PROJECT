@@ -1,6 +1,49 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
-## Latest: deep CNN embeddings replace hand-engineered features
+## Latest: whole-scene detection, privacy, and a report that matches the code
+
+The system used to classify a single photograph. It now also looks at a whole
+dashcam frame and finds potholes, cracks, zebra crossings, people and vehicles
+at once (`models/road_scene_perception.py`). Three separately trained YOLO
+detectors do the work, kept separate because each dataset labels only its own
+classes: a merged model would learn that every unlabelled pothole in a crossing
+photograph is background.
+
+| Detector | Data | Held-out result |
+|---|---|---|
+| Zebra crossings, guide arrows | CDSet-3434, re-split by time block | mAP50 0.869; finds 75% of crossings with 0 false alarms on 263 crossing-free frames (the geometric detector it replaces finds 24%, 6 false alarms) |
+| Potholes and cracks | RDD2022 India, 7,706 images | mAP50 0.245 after 16 CPU epochs; alligator 0.543, pothole 0.244, transverse 0.000 (50 training boxes). Under-trained: validation mAP50 was still rising |
+| Licence plates (for blurring) | 8,823 images, synthetic ones train-only | **Not trained yet.** Data, config and notebook section are ready; until it is trained, output states plates were not redacted |
+
+Two findings changed how the data is used. CDSet's official test split is one or
+two video frames from training frames, so every score on it measures
+memorisation; it is re-split by time block with a purge margin. And 44% of the
+plate dataset is rendered plates, which would flatter any test score, so they
+are confined to training.
+
+Things the Milestone 2 report described but the code did not do, now implemented
+and tested: DPDP redaction of people (and of plates once their model exists),
+sub-kilobyte HMAC-signed edge packets, the Butterworth IMU filter (78.7%
+under engine vibration against 60.1% without it), a frame-quality gate, the
+Priority Index with a test that locality cannot change a score, and INT8
+quantization. The gate's threshold came from measurement: the report's fixed
+Laplacian value of 42.5 would have discarded 10% of real road frames.
+`docs/REPORT_ALIGNMENT.md` maps every report claim to code, test and number, and
+lists eleven corrections.
+
+Two security holes are closed. Any path sent in an image field was opened from
+the server's disk, and `image_path` accepted any file on the machine; image
+fields are now decoded strictly as data and paths are confined to `datasets/`.
+`requirements.txt` capped scikit-learn below the version eight of the nine
+shipped model files were saved with.
+
+Detectors train from one script and one YAML per model
+(`training/train_detector.py`, `configs/detectors/`), run on CPU or a Colab GPU
+(`notebooks/train_detectors_colab.ipynb`), resume after interruption, tune
+per-class thresholds on the validation split and write a model card with the
+SHA-256 of each artifact.
+
+## Earlier: deep CNN embeddings replace hand-engineered features
 
 The classifier's input used to be HOG gradients, local binary patterns and
 colour histograms — 4,419 numbers written by hand. It is now the output of a

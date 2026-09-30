@@ -335,6 +335,24 @@ class TrainedDetectorIntegrationTests(unittest.TestCase):
             hits += result["scene"]["zebra_crossing_visible"]
         self.assertGreaterEqual(hits, 6, f"found crossings in {hits}/10 labelled held-out frames")
 
+    def test_road_damage_model_finds_potholes_in_held_out_photos(self):
+        """A floor, not a target: the CPU-trained model found 18 of these 40; a broken export finds ~0."""
+        self._require("road_damage")
+        test_labels = Path(rsp.CKPT_DIR).parent / "datasets" / "rdd2022_india" / "labels" / "test"
+        if not test_labels.is_dir():
+            self.skipTest("RDD2022 India test split not downloaded")
+        from PIL import Image
+        photos = [lab for lab in sorted(test_labels.glob("*.txt"))
+                  if any(line.startswith("3 ") for line in lab.read_text().splitlines())][:40]
+        if len(photos) < 40:
+            self.skipTest("fewer than 40 labelled pothole photos available")
+        hits = 0
+        for label in photos:
+            image = Path(str(label).replace("labels", "images")).with_suffix(".jpg")
+            result = self.perception.analyze(np.asarray(Image.open(image).convert("RGB")), groups={"damage"})
+            hits += result["counts"].get("pothole", 0) > 0
+        self.assertGreaterEqual(hits, 10, f"found a pothole in only {hits}/40 held-out pothole photos")
+
     def test_featureless_frame_yields_no_road_findings(self):
         if not (_trained("road_damage") or _trained("crosswalk")):
             self.skipTest("no trained road detector")
