@@ -79,3 +79,4 @@ checkpoints/detectors/*.pt
 
 # report generator dependencies (npm install in docs/report)
 docs/report/node_modules/
+datasets/coco8/  # Ultralytics' own sample dataset, auto-downloaded; not part of this project
