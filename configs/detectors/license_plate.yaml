@@ -7,8 +7,10 @@ data: datasets/license_plates/data.yaml
 dataset_license: CC BY 4.0 (Vehicle Registration Plates, Augmented Startups / Roboflow Universe)
 base_model: yolo11n.pt
 imgsz: 640          # plates are small objects; do not go lower
-hours: 3.0          # CPU budget; on a GPU use --epochs 60 instead (see the Colab notebook)
-epochs: 60
+hours: 6.0          # safety ceiling; 30 epochs measured at ~10.2 min/epoch = ~5.1h, well under this
+# cut from 60: 1 calibration epoch already reached mAP50 0.717 (single, simple class);
+# a full 30-epoch cos_lr schedule that actually anneals beats a 60-epoch one cut short
+epochs: 30
 batch: 16
 patience: 15
 workers: 4
