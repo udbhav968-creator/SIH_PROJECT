@@ -40,6 +40,7 @@ jobs:
         run: |
           ruff check \
             api/request_images.py \
+            api/vercel_app.py \
             models/frame_gate.py \
             models/priority_index.py \
             models/road_scene_perception.py \
@@ -58,7 +59,8 @@ jobs:
             tests/test_edge_event.py \
             tests/test_imu_bandpass.py \
             tests/test_priority_index.py \
-            tests/test_road_scene_perception.py
+            tests/test_road_scene_perception.py \
+            tests/test_vercel_app.py
 
       - name: Check every module imports
         run: |

@@ -38,7 +38,10 @@ Everything that is a stored measurement rather than a live computation:
 model card, per-class scores, confusion matrix, segmentation IoU, dataset
 lineage, calibration profiles. Those are the numbers a judge or an evaluator
 actually wants to check, and they are read from the same files the training
-scripts wrote.
+scripts wrote. This includes the three YOLO scene detectors (road damage,
+zebra crossings, licence plates) in `/api/v1/perception/status`: their
+measured test-split scores, same as `/inspect`'s other model-card endpoints,
+even though none of the three is ever loaded here.
 
 Endpoints that need the models return 503 with a plain explanation and the
 command to run locally - not a fabricated result.
@@ -61,7 +64,7 @@ STATIC_TYPES = {
 PAGE_ROUTES = {
     "/": "index.html", "/inspect": "inspect.html", "/video": "video.html",
     "/corridor": "corridor.html", "/works": "works.html", "/models": "models.html",
-    "/data": "data.html", "/system": "system.html",
+    "/data": "data.html", "/system": "system.html", "/detect": "detect.html",
 }
 
 # Endpoints that genuinely need the model stack. Listed explicitly so the
@@ -77,6 +80,18 @@ NEEDS_ENGINE = {
     "/api/v1/telemetry/imu": "run the IMU classifier",
     "/api/v1/fusion/gate": "run the Bayesian fusion gate",
     "/api/v1/training/launch": "train models",
+    "/api/v1/perception/analyze": "run the traffic/damage/marking detectors on an image",
+    "/api/v1/traffic/analyze": "count vehicles with the COCO detector",
+}
+
+# models/road_scene_perception.py's RoadScenePerception.heads, plus the
+# standalone "privacy" (licence-plate) head, each backed by one model card
+# under checkpoints/detectors/ (absent for "traffic": it serves published
+# COCO weights with no project-specific test split, so there is no card to
+# report). Kept in one place so the status endpoint and the model card
+# reader agree on where each head's evidence lives.
+DETECTOR_CARDS = {
+    "traffic": None, "damage": "road_damage", "markings": "crosswalk", "privacy": "license_plate",
 }
 
 
@@ -85,7 +100,7 @@ def read_json(name):
     if not os.path.exists(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             return json.load(fh)
     except Exception:
         return None
@@ -96,6 +111,30 @@ def list_reports(prefix, suffix):
         return []
     return sorted(n for n in os.listdir(CKPT_DIR)
                   if n.startswith(prefix) and n.endswith(suffix))
+
+
+def describe_detector_head(card_name):
+    """
+    Mirror models.road_scene_perception._Head.describe()'s card-derived
+    fields exactly, so web/detect.html renders identically whether it is
+    talking to this static deployment or a live engine. `ready` and the
+    live-only fields (`backend`, `input_size`) are never present here: no
+    detector is ever loaded in this deployment, only its model card is read.
+    """
+    if card_name is None:
+        return {"ready": False}
+    card = read_json(os.path.join("detectors", f"{card_name}.json"))
+    if not card:
+        return {"ready": False}
+    test = card.get("metrics", {}).get("test", {})
+    return {
+        "ready": False,
+        "classes": card.get("classes"),
+        "serving_thresholds": card.get("serving_thresholds"),
+        "test_metrics": {k: test.get(k) for k in ("mAP50", "mAP50_95", "precision", "recall")},
+        "trained_utc": card.get("created_utc"),
+        "dataset_license": card.get("dataset", {}).get("license"),
+    }
 
 
 class handler(BaseHTTPRequestHandler):
@@ -180,6 +219,18 @@ class handler(BaseHTTPRequestHandler):
                     "imu_shock_classifier": "REPORTED - not loaded in this deployment",
                     "astm_d6433_pci_engine": "READY_FORMULA_BASED",
                     "deterioration_forecaster": "READY_FORMULA_BASED",
+                    "road_damage_detector": (
+                        "REPORTED - not loaded in this deployment"
+                        if read_json(os.path.join("detectors", "road_damage.json"))
+                        else "NOT_TRAINED (configs/detectors/road_damage.yaml)"),
+                    "crosswalk_detector": (
+                        "REPORTED - not loaded in this deployment"
+                        if read_json(os.path.join("detectors", "crosswalk.json"))
+                        else "NOT_TRAINED (configs/detectors/crosswalk.yaml)"),
+                    "license_plate_detector": (
+                        "REPORTED - not loaded in this deployment"
+                        if read_json(os.path.join("detectors", "license_plate.json"))
+                        else "NOT_TRAINED (configs/detectors/license_plate.yaml)"),
                 },
             })
             return
@@ -220,6 +271,17 @@ class handler(BaseHTTPRequestHandler):
                 "features": r.get("features"), "trained_on": r.get("trained_on"),
                 "split_strategy": r.get("split_strategy"),
                 "decision_rule": r.get("decision_rule"),
+            })
+            return
+
+        if path == "/api/v1/perception/status":
+            models = {key: describe_detector_head(card) for key, card in DETECTOR_CARDS.items()}
+            self._send(200, {
+                "ready": False, "deployment": "vercel-static", "models": models,
+                "note": ("Static deployment: per-class scores below are the measured test-split "
+                         "results from each detector's model card. None of the three detectors "
+                         "(or the COCO traffic model) are loaded here - /api/v1/perception/analyze "
+                         "needs the engine."),
             })
             return
 
@@ -301,6 +363,7 @@ class handler(BaseHTTPRequestHandler):
                              "deployment": "vercel-static",
                              "available": ["/api/v1/health", "/api/v1/training/metrics",
                                            "/api/v1/segmentation/status",
+                                           "/api/v1/perception/status",
                                            "/api/v1/calibration/profiles",
                                            "/api/v1/claims"]})
             return

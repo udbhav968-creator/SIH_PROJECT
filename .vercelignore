@@ -23,6 +23,9 @@ tests/**
 *.zip
 scripts/**
 
-# YOLO training weights; the server loads only the exported .onnx files.
+# YOLO training weights (the local/Docker engine loads only the exported
+# .onnx files) and the .onnx files themselves (this deployment is stdlib-only
+# and never loads them - /api/v1/perception/status reads only the .json cards).
 checkpoints/detectors/*.pt
+checkpoints/detectors/*.onnx
 runs/**
