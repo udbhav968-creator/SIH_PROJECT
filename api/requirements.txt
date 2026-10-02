@@ -1,0 +1,1 @@
+# Vercel function is stdlib-only (see api/vercel_app.py). Full stack: ../requirements.txt
