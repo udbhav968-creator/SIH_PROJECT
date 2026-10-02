@@ -71,3 +71,10 @@ datasets/rdd2022_india/
 runs/
 yolo11n.pt
 .env*.local
+
+# never commit secrets or Vercel's local link
+.env
+.env*.local
+*.pem
+*.key
+.vercel
