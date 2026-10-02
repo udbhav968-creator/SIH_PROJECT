@@ -68,9 +68,10 @@
       <h2 style="margin-bottom:14px">How one photograph becomes a bill</h2>
       <ol style="padding-left:18px;margin:0">
         <li style="margin-bottom:11px"><strong style="color:var(--white)">Classify.</strong>
-          A ResNet-50 trained on ImageNet's 1.28 million images, frozen, run through
-          ONNX Runtime. A class-balanced logistic head maps its embeddings to seven
-          road conditions. <span class="badge measured">measured</span></li>
+          A MobileNetV2 trained on ImageNet's 1.28 million images, frozen, run through
+          ONNX Runtime on the photograph and its mirror image. A soft-voting ensemble
+          (SVC, logistic regression, neural net), chosen by cross-validation, maps the
+          embeddings to seven road conditions. <span class="badge measured">measured</span></li>
         <li style="margin-bottom:11px"><strong style="color:var(--white)">Segment.</strong>
           A pixel classifier trained on 4,720 hand-drawn polygons produces a defect
           mask — the defect's own footprint, not a rectangle around it.
@@ -96,9 +97,9 @@
       <div class="label">what we will not claim</div>
       <h3 style="margin-bottom:12px">The honest limits</h3>
       <div class="kv"><span>Depth</span><span>estimated, never measured</span></div>
-      <div class="kv"><span>IMU data</span><span>simulated, not from a vehicle</span></div>
+      <div class="kv"><span>IMU data</span><span>real drive logs, not yet from a bus</span></div>
       <div class="kv"><span>Road photographs</span><span>Brazilian + Kaggle, not Indian yet</span></div>
-      <div class="kv"><span>Four rare classes</span><span>2–3 test images each</span></div>
+      <div class="kv"><span>Four rare classes</span><span>7–8 test images each</span></div>
       <div class="kv"><span>Camera calibration</span><span id="calibKv">checking…</span></div>
       <p class="small muted" style="margin:14px 0 0">
         A judge who finds a limitation themselves marks you down. One who is told

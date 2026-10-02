@@ -31,11 +31,12 @@
     <ul style="margin:0;padding-left:18px" class="small">
       <li style="margin-bottom:7px">Accuracy is dominated by three classes that hold almost every test image.
         macro-F1 is the number that reflects the rare ones, and it is much lower. Both are shown.</li>
-      <li style="margin-bottom:7px">Segmentation IoU in the 0.15–0.25 band is a working model, not a solved
-        problem. It replaces a bounding box that had no measured accuracy at all, and a box
+      <li style="margin-bottom:7px">Segmentation IoU in the 0.14–0.24 band is a working model, not a solved
+        problem. On clean roads it still draws a false blob on about one photograph in four;
+        the classifier in front of it limits the damage. It replaces a bounding box that had no measured accuracy at all, and a box
         around a diagonal crack overstates its area by roughly 13×.</li>
-      <li style="margin-bottom:7px">The IMU classifier's 100% is on <strong>simulated</strong> accelerometer
-        windows. It means the code works; it says nothing about a real vehicle.</li>
+      <li style="margin-bottom:7px">The IMU classifier is trained on <strong>real</strong> drive logs, but only ten of
+        them, from one vehicle on Indian roads. It is not yet validated on a bus fleet.</li>
       <li>Photographs are Brazilian and Kaggle sourced. No Indian road data yet.</li>
     </ul>
   </div>
@@ -81,7 +82,7 @@
     <div class="label">IMU shock · RandomForest</div>
     <div class="stat" style="color:var(--warn)">${i.held_out_validation_accuracy != null
       ? (i.held_out_validation_accuracy * 100).toFixed(1) + "%" : "—"}</div>
-    <div class="stat-sub">on <strong>simulated</strong> windows — read accordingly</div></div>`);
+    <div class="stat-sub">on real drive logs · 10 logs, time-block split</div></div>`);
 
   el("cards").innerHTML = cards.join("");
 

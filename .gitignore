@@ -60,3 +60,14 @@ checkpoints/google_maps_api_key.txt
 checkpoints/road_shield.db
 checkpoints/road_shield.db-wal
 checkpoints/road_shield.db-shm
+
+# Local data and run outputs - large, re-downloadable, or personal (licence
+# plates are personal data and must not be published)
+datasets/_downloads/
+datasets/CDSet/
+datasets/crosswalk/
+datasets/license_plates/
+datasets/rdd2022_india/
+runs/
+yolo11n.pt
+.env*.local

@@ -1,6 +1,21 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
-## Latest: reproducible retrain, thirteen fixes, honest model selection, API under test
+## Latest: website brought in line with the models
+
+- Homepage, architecture, data-lineage and model-card pages described the
+  previous configuration (ResNet-50 + logistic head, simulated IMU, 2-3 rare-class
+  test images). They now describe what is served: MobileNetV2 with flip
+  averaging and a cross-validated soft-voting ensemble, real IMU drive logs,
+  7-8 rare-class test images, and the segmenter's clean-road false-alarm rate.
+- The stale ResNet-50 head and its report are removed. They came from an older
+  data snapshot and a scikit-learn 1.9 pickle, and because neither head report
+  is flagged active, the homepage could headline the old 89.2% instead of the
+  served 88.8%. Retrain it after fetching its backbone if you want that path.
+- `.vercelignore` excludes model binaries and local run outputs; the Vercel
+  handler reads only the JSON reports. `.gitignore` excludes local datasets,
+  YOLO run folders and weights, and `.env*.local`.
+
+## Previous: reproducible retrain, thirteen fixes, honest model selection, API under test
 
 Every shipped checkpoint was retrained under scikit-learn 1.8.0 from a clean
 data fetch, the test suite grew from 78 to 140 tests, and the REST API went

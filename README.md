@@ -14,7 +14,7 @@ code in this repository, and the code that measures it is included.
 | Capability | How it works | Status |
 |---|---|---|
 | Road distress classification, 7 classes | MobileNetV2 ImageNet embeddings (ONNX Runtime), flip test-time augmentation → soft-voting ensemble (SVC + logistic + MLP), chosen by grouped cross-validation | **88.8%**, macro-F1 0.747, on 502 held-out images from 483 unseen photographs, scored once |
-| — same task, ResNet-50 path | ResNet-50 embeddings → logistic head | 89.2% (earlier data snapshot); needs the 98 MB backbone and a retrain of its head — see CHANGES.md |
+| — same task, ResNet-50 path | ResNet-50 embeddings | not shipped: fetch the 98 MB backbone, then `python -m training.train_cnn_head --backbone resnet50 --compare` |
 | — same task, fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 86.2% on its own 807-photo split, 79.9% on the CNN head's split; serves when no CNN backbone is on disk |
 | Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Working: people, bicycles, cars, buses, trucks, traffic lights, signs |
 | IMU shock classification | 100 Hz tri-axial accelerometer windows → RandomForest | **87.2%** on 164 held-out windows of real Indian-road drive logs, time-block split |

@@ -40,8 +40,9 @@
             <td class="small">waterlogging, zebra, divider, sign</td><td class="num">67</td>
             <td class="small">the four starved classes</td></tr>
         <tr><td>IMU accelerometer windows</td><td class="small">in repository</td>
-            <td class="small">4 shock classes</td><td class="num">15,000</td>
-            <td class="small"><span class="badge bad">simulated</span> not recorded from a vehicle</td></tr>
+            <td class="small">4 shock classes</td><td class="num">852</td>
+            <td class="small"><span class="badge measured">real</span> 10 drive logs on Indian roads,
+              205,491 samples at 100 Hz, split by time block; not yet from a bus</td></tr>
         <tr style="opacity:.55"><td><del><code>andrewmvd/road-sign-detection</code></del></td>
             <td class="small">Kaggle API</td><td class="small"><del>damaged sign</del></td>
             <td class="num">removed</td>
@@ -117,8 +118,8 @@
     <div class="card"><div class="label">classes</div>
       <div class="stat" style="color:var(--violet)">${entries.length}</div></div>
     <div class="card"><div class="label">IMU windows</div>
-      <div class="stat" style="color:var(--warn)">15,000</div>
-      <div class="stat-sub">simulated</div></div>`;
+      <div class="stat" style="color:var(--warn)">852</div>
+      <div class="stat-sub">real drive logs (10)</div></div>`;
 
   el("inv").innerHTML = `<div class="card"><div class="table-wrap"><table>
     <thead><tr><th>class</th><th class="num">images</th><th class="num">distinct photographs</th><th>status</th></tr></thead>
