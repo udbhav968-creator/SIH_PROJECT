@@ -128,6 +128,12 @@ class handler(BaseHTTPRequestHandler):
         self._send(204, b"", "text/plain", raw=True)
 
     def do_POST(self):
+        # Read the request body before answering. Replying while unread bytes
+        # sit in the socket makes Windows reset the connection (WinError 10053)
+        # instead of closing it, so the client never receives the response.
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > 0:
+            self.rfile.read(length)
         self.do_GET()
 
     # ------------------------------------------------------------------
