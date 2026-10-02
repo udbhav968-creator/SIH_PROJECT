@@ -74,6 +74,12 @@ CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
 IS_SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 _ckpt_writable = os.access(CKPT_DIR, os.W_OK) if os.path.isdir(CKPT_DIR) else os.access(ENGINE_ROOT, os.W_OK)
 WRITABLE_DIR = CKPT_DIR if (_ckpt_writable and not IS_SERVERLESS) else os.path.join("/tmp", "road_shield")
+# Explicit override: the test suite points this at a temporary directory so it
+# never writes work orders or sightings into the real fleet ledger, and an
+# operator can put the ledger on a mounted volume without moving checkpoints/.
+if os.environ.get("ROAD_SHIELD_WRITABLE_DIR"):
+    WRITABLE_DIR = os.environ["ROAD_SHIELD_WRITABLE_DIR"]
+    os.makedirs(WRITABLE_DIR, exist_ok=True)
 
 print("[AI Server] Loading trained models from:", CKPT_DIR)
 
@@ -885,6 +891,13 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
 
         if path == "/api/v1/dispatch/verify-seal":
             work_order = body.get("work_order", body)
+            if not isinstance(work_order, dict):
+                self._send_json(400, {
+                    "is_valid": False,
+                    "status": "MALFORMED_WORK_ORDER",
+                    "error": "work_order must be the JSON object returned by /api/v1/dispatch/work-order",
+                })
+                return
             clean_wo = {k: v for k, v in work_order.items() if k not in ("model", "latency_ms")}
             is_valid = dispatch_agent.verify_work_order_seal(clean_wo)
             self._send_json(200, {
@@ -1039,6 +1052,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                         "active_tracks_count": tracking_res["active_tracks_count"],
                         "total_unique_potholes_counted": tracking_res["total_unique_potholes_counted"],
                         "total_unique_cracks_counted": tracking_res["total_unique_cracks_counted"],
+                        "total_unique_other_hazards_counted": tracking_res["total_unique_other_hazards_counted"],
                     },
                     "latency_ms": round((time.time() - t0) * 1000.0, 3),
                 })
@@ -1302,13 +1316,19 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # ALPR / rash-driving incident report (real kinematics + real OCR when an image is given)
         # ----------------------------------------------------------------------
         if path == "/api/v1/incidents/alpr":
-            bus_id = body.get("bus_id", "BUS-KA01-204")
-            gps = body.get("gps", {"lat": 12.9780, "lng": 77.6020})
-            track_history = body.get("track_history") or [
-                {"timestamp": 0.0, "bbox": [200, 150, 80, 60]},
-                {"timestamp": 0.2, "bbox": [180, 160, 140, 110]},
-                {"timestamp": 0.4, "bbox": [140, 175, 260, 210]},
-            ]
+            bus_id = body.get("bus_id", "UNKNOWN")
+            gps = body.get("gps")  # absent -> the report carries no location
+            track_history = body.get("track_history")
+            if not isinstance(track_history, list) or len(track_history) < 3 or not all(
+                    isinstance(t, dict) and "timestamp" in t and isinstance(t.get("bbox"), list)
+                    and len(t["bbox"]) == 4 for t in track_history):
+                # This endpoint used to substitute a demo track and a fixed GPS
+                # fix when none was sent, then seal the result as an incident.
+                self._send_json(400, {
+                    "error": "track_history is required: at least 3 entries of "
+                             "{timestamp: seconds, bbox: [x, y, w, h]} from a real tracker",
+                })
+                return
             vehicle_crop = None
             if body.get("vehicle_image_base64"):
                 try:

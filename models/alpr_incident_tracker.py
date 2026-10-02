@@ -199,11 +199,16 @@ class ALPRIncidentTracker:
             "incident_id": f"INC-BEL-{int(time.time() * 1000) % 1000000:06d}",
             "reporting_bus_unit": bus_id,
             "timestamp_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "gps_coordinates": {
-                "latitude": gps_coords.get("lat", 28.6139),
-                "longitude": gps_coords.get("lng", 77.2090),
-                "accuracy_meters": 2.5,
-            },
+            # No GPS fix means no location. Defaulting to a city centre put
+            # incidents on the map at a place they did not happen.
+            "gps_coordinates": (
+                {"latitude": float(gps_coords["lat"]),
+                 "longitude": float(gps_coords.get("lng", gps_coords.get("lon"))),
+                 "accuracy_meters": 2.5}
+                if isinstance(gps_coords, dict) and gps_coords.get("lat") is not None
+                and (gps_coords.get("lng", gps_coords.get("lon")) is not None)
+                else None
+            ),
             "incident_classification": kinematics["anomaly_type"],
             "is_emergency": kinematics["is_rash_driving"],
             "offending_vehicle": {
@@ -236,7 +241,9 @@ class ALPRIncidentTracker:
         if speed_kmh > 100.0:
             incident_class = "EXCESSIVE_APPROACH_VELOCITY"
         elif speed_kmh > 80.0:
-            incident_class = "RECKLESS_LANE_CUTTING"
+            # A scalar speed cannot observe lane changes; lane cutting is only
+            # ever inferred from a track, in analyze_vehicle_kinematics().
+            incident_class = "OVERSPEEDING"
         else:
             incident_class = "NORMAL_FLOW"
 

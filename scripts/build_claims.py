@@ -37,23 +37,54 @@ def main():
         with open(p, encoding="utf-8") as fh:
             r = json.load(fh)
         heads[r.get("backbone")] = r
+    # M1 must describe the head the server actually serves. The loader prefers
+    # ResNet-50 only when its backbone is on disk; otherwise MobileNetV2 serves.
+    # Filling M1 from the ResNet-50 report regardless meant the architecture
+    # page quoted a model that was not running.
+    def _served():
+        for bb in ("resnet50", "mobilenetv2"):
+            if bb in heads and os.path.exists(os.path.join(CKPT, f"cnn_backbone_{bb}.onnx")):
+                return bb
+        return None
+    served = _served()
     seg = rep("defect_segmenter_report.json")
     imu = rep("imu_shock_report.json")
 
     # Refresh only the measured numbers; the prose is deliberate and stays.
     for sub in claims["subsystems"]:
         m = sub.setdefault("measured", {})
-        if sub["id"] == "M1" and "resnet50" in heads:
-            r = heads["resnet50"]
-            m.update(held_out_accuracy=r.get("held_out_test_accuracy"),
+        if sub["id"] == "M1" and served:
+            r = heads[served]
+            sub["architecture"] = (f"{'ResNet-50' if served == 'resnet50' else 'MobileNetV2'} "
+                                   f"(ImageNet, frozen, ONNX Runtime) -> class-balanced "
+                                   f"{r.get('head', 'logistic')} head")
+            sub["evidence"] = f"checkpoints/cnn_head_{served}_report.json"
+            sub["reproduce"] = f"python -m training.train_cnn_head --backbone {served} --compare"
+            m.update(served_backbone=served,
+                     held_out_accuracy=r.get("held_out_test_accuracy"),
                      held_out_macro_f1=r.get("held_out_test_macro_f1"),
                      test_images=r.get("held_out_test_images"),
                      test_photographs=r.get("held_out_test_photographs"))
-        elif sub["id"] == "M1-fallback" and "resnet50" in heads:
-            b = heads["resnet50"].get("handcrafted_baseline", {})
+        elif sub["id"] == "M1-fallback" and served:
+            b = heads[served].get("handcrafted_baseline", {})
+            sub["evidence"] = f"checkpoints/cnn_head_{served}_report.json (scored on the identical split)"
             m.update(held_out_accuracy=b.get("accuracy"), held_out_macro_f1=b.get("macro_f1"))
+            # Measured from the fitted model, never carried over by hand: this
+            # value was 0.451 in the file while the retrained model kept 0.415.
+            try:
+                import joblib
+                blob = joblib.load(os.path.join(CKPT, "vision_distress_model.joblib"))
+                pipe = blob.get("pipeline") or blob.get("model") if isinstance(blob, dict) else blob
+                pca = next(st for name, st in pipe.steps if "pca" in name.lower())
+                var = round(float(pca.explained_variance_ratio_.sum()), 4)
+                m.update(pca_components=int(pca.n_components_), pca_variance_retained=var)
+                sub["not_claimed"] = (f"PCA retains {var * 100:.1f}% of variance at "
+                                      f"{int(pca.n_components_)} components, measured from the fitted model.")
+            except Exception as e:
+                print(f"  could not measure PCA variance: {e}")
         elif sub["id"] == "M1-edge" and "mobilenetv2" in heads:
             r = heads["mobilenetv2"]
+            sub["architecture"] = f"MobileNetV2 (14 MB ONNX) -> {r.get('head', 'logistic')} head"
             m.update(held_out_accuracy=r.get("held_out_test_accuracy"),
                      held_out_macro_f1=r.get("held_out_test_macro_f1"))
         elif sub["id"] == "M_SEG" and seg:

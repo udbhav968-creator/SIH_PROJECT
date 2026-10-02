@@ -533,7 +533,17 @@ def calibrate_thresholds(clf, recs, rng, grid=None, max_images=60):
     """
     import cv2
     grid = grid if grid is not None else np.round(np.arange(0.10, 0.91, 0.05), 2)
-    sample = recs[:max_images]
+    # Defect AND clean photographs must both reach this step. The caller passes
+    # cal_recs + neg_cal (240 defect photographs, then the clean ones), and the
+    # previous recs[:max_images] kept only the first 60 - so no clean road was
+    # ever seen while choosing the operating point, and a looser pothole
+    # threshold won on a near-flat IoU curve. On a clean photograph every road
+    # pixel is truth = sound, so a false defect pixel enlarges the IoU union:
+    # the same objective, now penalising what users saw as zebra "potholes".
+    defect = [r for r in recs if not r.get("negative")][:max_images]
+    clean = [r for r in recs if r.get("negative")][:max_images // 2]
+    sample = defect + clean
+    print(f"    calibrating on {len(defect)} defect + {len(clean)} clean photographs")
     cached = []
     for rec in sample:
         img = cv2.imread(rec["path"])
@@ -545,7 +555,7 @@ def calibrate_thresholds(clf, recs, rng, grid=None, max_images=60):
 
     best = {}
     for cls_name, cls_id in (("crack", CLASS_CRACK), ("pothole", CLASS_POTHOLE)):
-        best_t, best_iou = 0.5, -1.0
+        curve = []
         for t in grid:
             inter = union = 0
             for proba, truth, shape in cached:
@@ -556,10 +566,18 @@ def calibrate_thresholds(clf, recs, rng, grid=None, max_images=60):
                 inter += int(np.logical_and(t_mask, p_mask).sum())
                 union += int(np.logical_or(t_mask, p_mask).sum())
             iou = inter / union if union else 0.0
-            if iou > best_iou:
-                best_t, best_iou = float(t), iou
+            curve.append((float(t), iou))
+        # Near-ties go to the STRICTER threshold. The pothole IoU curve is
+        # nearly flat (0.070 at both 0.20 and 0.30 on one run), and taking the
+        # first maximum on an ascending grid always picked the loosest - the
+        # operating point that floods clean roads. When the objective cannot
+        # tell two thresholds apart, fewer false defects is the better answer.
+        peak = max(iou for _t, iou in curve)
+        tol = max(0.002, 0.03 * peak)
+        best_t, best_iou = max((t, iou) for t, iou in curve if iou >= peak - tol)
         best[cls_name] = best_t
-        print(f"    {cls_name:8s} threshold {best_t:.2f}  (validation IoU {best_iou:.3f})")
+        print(f"    {cls_name:8s} threshold {best_t:.2f}  (validation IoU {best_iou:.3f}; "
+              f"peak {peak:.3f}, strictest within {tol:.3f})")
     return best
 
 

@@ -257,6 +257,13 @@ def robustness(items, seed=42, per_class=12):
         if len(by_class[cls]) < per_class:
             by_class[cls].append(path)
     eval_set = [(p, c) for c, ps in by_class.items() for p in ps]
+    # Sampling is capped per class, so the rare classes make up about half of
+    # this set. The figure is therefore CLASS-BALANCED accuracy, comparable to
+    # macro recall - not to the headline accuracy, which is dominated by the
+    # three large classes. What matters here is the change under degradation.
+    counts = {int(c): len(ps) for c, ps in sorted(by_class.items())}
+    print(f"  {len(eval_set)} held-out images, class-balanced {counts}")
+    print("  (absolute level ~ macro recall; read the DELTA column, not the level)")
 
     def bright(img, factor):
         return np.clip(np.asarray(img, np.float32) * factor, 0, 255).astype(np.uint8)
@@ -297,6 +304,9 @@ def robustness(items, seed=42, per_class=12):
         results[name] = {"accuracy": round(acc, 4), "delta_vs_original": round(delta, 4)}
         print(f"  {name:16s} accuracy {acc * 100:5.1f}%   {delta * 100:+5.1f} points")
     results["_n_images"] = len(eval_set)
+    results["_per_class_images"] = counts
+    results["_metric"] = ("class-balanced accuracy on a per-class-capped sample; "
+                          "compare deltas, not the level, with headline accuracy")
     return results
 
 

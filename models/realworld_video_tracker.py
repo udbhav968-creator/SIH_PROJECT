@@ -19,6 +19,7 @@ class SpatialTemporalVideoTracker:
         self.active_tracks = {}
         self.total_unique_potholes_counted = 0
         self.total_unique_cracks_counted = 0
+        self.total_unique_other_hazards_counted = 0
 
     def compute_iou(self, boxA, boxB):
         """Computes 2D Intersection-over-Union between two [u, v, w, h] boxes."""
@@ -101,8 +102,13 @@ class SpatialTemporalVideoTracker:
                 if is_distress:
                     if "Pothole" in cls_name:
                         self.total_unique_potholes_counted += 1
-                    else:
+                    elif "Crack" in cls_name:
                         self.total_unique_cracks_counted += 1
+                    else:
+                        # waterlogging, missing markings, damaged signs: real
+                        # hazards, but counting them as cracks inflated the
+                        # crack tally and the repair estimate built on it
+                        self.total_unique_other_hazards_counted += 1
 
                 det_out = dict(det)
                 det_out["persistent_track_id"] = f"TRK-{new_id:03d}"
@@ -122,5 +128,6 @@ class SpatialTemporalVideoTracker:
             "tracked_detections": tracked_outputs,
             "active_tracks_count": len(self.active_tracks),
             "total_unique_potholes_counted": self.total_unique_potholes_counted,
-            "total_unique_cracks_counted": self.total_unique_cracks_counted
+            "total_unique_cracks_counted": self.total_unique_cracks_counted,
+            "total_unique_other_hazards_counted": self.total_unique_other_hazards_counted,
         }

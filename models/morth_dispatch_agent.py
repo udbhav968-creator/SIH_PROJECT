@@ -11,6 +11,7 @@ needed cleaning up.
 import hashlib
 import json
 import time
+import uuid
 
 class MoRTHDispatchAgent:
     def __init__(self, authority="National Highways Authority of India (NHAI) / MoRTH"):
@@ -33,7 +34,11 @@ class MoRTHDispatchAgent:
             mix = "IRC_SP_79_COLD_EMULSION"
             
         timestamp_utc = int(time.time())
-        order_uuid = f"MORTH-WO-{timestamp_utc % 1000000:06d}-{corridor_id[:4]}"
+        # The time prefix keeps IDs human-sortable; the random suffix makes them
+        # unique. Time alone collided for every order issued on one corridor in
+        # the same second - routine when several buses report one pothole.
+        order_uuid = (f"MORTH-WO-{timestamp_utc % 1000000:06d}-{corridor_id[:4]}"
+                      f"-{uuid.uuid4().hex[:8].upper()}")
         
         # Cast inputs to native Python types
         area_sqm = float(area_sqm)
@@ -77,6 +82,8 @@ class MoRTHDispatchAgent:
     @staticmethod
     def verify_work_order_seal(work_order):
         """Recomputes the SHA-256 digest and checks it against the stored seal."""
+        if not isinstance(work_order, dict):
+            return False
         order_copy = dict(work_order)
         original_seal = order_copy.pop("sha256_cryptographic_seal", None)
         if not original_seal:

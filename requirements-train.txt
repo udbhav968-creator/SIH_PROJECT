@@ -1,0 +1,12 @@
+# Optional: only needed to RETRAIN two models. Serving never needs these.
+#
+#   training/train_dan_dag.py      joint CAM + residual MLP is optimised in PyTorch,
+#                                  then exported as plain NumPy arrays
+#   training/train_deep_vision.py  full CNN fine-tuning
+#
+# CPU-only wheels are much smaller than the default CUDA build:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+-r requirements.txt
+torch>=2.2
+torchvision>=0.17
+coverage>=7.0

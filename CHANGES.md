@@ -1,6 +1,120 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
-## Latest: deep CNN embeddings replace hand-engineered features
+## Latest: reproducible retrain, thirteen fixes, honest model selection, API under test
+
+Every shipped checkpoint was retrained under scikit-learn 1.8.0 from a clean
+data fetch, the test suite grew from 78 to 140 tests, and the REST API went
+from 0% to tested. Numbers below are what the training scripts printed.
+
+### Models retrained
+
+| Model | Held-out result | Notes |
+|---|---|---|
+| MobileNetV2 + flip TTA -> soft-voting ensemble | **88.8% accuracy, macro-F1 0.747** | chosen by grouped CV over 13 candidates; test scored once |
+| same split, hand-crafted baseline | 79.9%, macro-F1 0.520 | |
+| HOG/LBP/colour -> SVM (own split) | 86.2% | 807 held-out photographs |
+| IMU shock classifier | 87.2% | real Indian-road drive logs, time-block split |
+| Defect segmenter | crack IoU 0.231, pothole IoU 0.144; clean-road false blobs 23.3% | shipped: 0.228 / 0.126; pothole precision 0.186 -> 0.242 |
+| PCI / deterioration / depth | R² 0.94 / 0.98 / 1.00 | **surrogate fits to engineering formulas, not field accuracy** |
+
+**Classifier: selected honestly, not a measured gain.** The trainer used to fit
+three heads and keep whichever scored best on the test set. It now selects by
+5-fold cross-validation grouped by photograph inside the training split. The
+winner - a soft-voting ensemble of SVC, logistic regression and an MLP on
+mirror-averaged embeddings (CV 84.9%, macro-F1 0.769) - beat every single head
+in CV and was then scored on the test set once. Its 88.8% sits within two
+images of the earlier 89.2%, so this is a more trustworthy number rather than a
+higher one. The previous committed head (90.1% on a different split) cannot be
+compared fairly: scored on this split its rare-class recall of 96.9% shows most
+of those test photographs were in its training data. Flip TTA doubles the
+embedding cost to about 30 ms.
+
+**Segmenter: two calibration bugs fixed, false alarms back under the gate.**
+The first retrain failed two regression tests (28.3% of clean photographs with a
+false blob against a 25% gate; 3 of 5 zebra crossings reported). Swapping models
+one at a time showed neither new model failed alone - only the pair. The cause
+was in threshold calibration (fixes 11 and 12 below). After both fixes the
+pothole threshold is 0.30 rather than 0.20, false blobs fall to
+23.3%, pothole IoU and precision both rise, and every guard passes.
+
+The ResNet-50 head was not retrained (its backbone was unreachable from the
+build machine) and still carries a scikit-learn 1.9 pickle; it stays dormant
+unless the backbone is fetched, in which case retrain it first. DAN-DAG was not
+retrained (needs PyTorch, now in `requirements-train.txt`); it stores plain
+NumPy arrays and is unaffected by the version issue.
+
+**Surrogate models.** The depth regressor's targets are computed from its own
+inputs, so R² = 1.00 means it reproduced a formula. PCI and deterioration are
+likewise fitted to ASTM D6433 / HDM-4 curves. Never quote these R² as accuracy.
+
+### Bugs fixed
+
+1. **`train_cnn_head --compare` always crashed** before saving. Training sub-crops
+   made the label vector longer than the baseline's feature matrix (4,006 vs
+   2,953). The documented reproduce command and stage 5 of `run_full_pipeline`
+   could never produce a model. Labels for the baseline now come from the items.
+2. **Work-order IDs collided** — five orders on one corridor in one second all
+   got the same ID. IDs now carry a random suffix.
+3. **`/dispatch/verify-seal` crashed** on a non-object `work_order`; now 400.
+4. **Incident reports invented a location** (Delhi) when no GPS was supplied;
+   now `gps_coordinates: null`.
+5. **`/incidents/alpr` fabricated an incident** from an empty request (demo
+   track + Bengaluru GPS, then sealed it). A real track is now required.
+6. **The video tracker counted every non-pothole hazard as a crack.** Waterlogging,
+   markings and signs now go to `total_unique_other_hazards_counted`.
+7. **A speed reading was labelled "reckless lane cutting"**; it is now
+   `OVERSPEEDING`. Lane cutting is only inferred from a track.
+8. **Fresh edge export crashed**: the exporter read `PCI.SEVERITY_CAP`, removed
+   when the PCI engine moved to deduct curves. It now exports the curves.
+   `/models/registry` hid this by reusing old files already on disk.
+
+9. **The claims registry described a model that was not running.** M1 was always
+   filled from the ResNet-50 report, but the server serves MobileNetV2 whenever
+   the ResNet-50 backbone is absent - which it is in this repository. M1 now
+   follows the head the loader would actually pick. Its PCA-variance figure was
+   also hand-carried (45.1%) while the retrained model keeps 41.5%; it is now
+   measured from the fitted model on every refresh.
+10. **The robustness check's level was misleading.** It samples up to 12 images
+    per class, so the rare classes are half the set and the figure (47.6%) is
+    class-balanced accuracy, not comparable to headline accuracy. The output
+    and report now say so; read the deltas under degradation.
+
+11. **Segmenter calibration never saw a clean road.** It was passed 240 defect
+    photographs followed by the clean ones and truncated to the first 60, so
+    the clean-road photographs that exist to stop zebra-crossing false alarms
+    never influenced the operating point. It now samples 60 defect and 30 clean.
+12. **Threshold near-ties went to the loosest option.** The pothole IoU curve is
+    nearly flat (0.070 at both 0.20 and 0.30), and the first maximum on an
+    ascending grid always won. Within 3% of the peak, the strictest threshold
+    now wins: when the objective cannot tell them apart, fewer false defects is
+    the better answer.
+13. **The classifier head was chosen on the test set.** Now chosen by grouped
+    cross-validation on the training split; the test set is scored once.
+
+### Dependencies
+
+- `scikit-learn>=1.8.0,<1.9` — the checkpoints had been pickled under 1.9.0
+  while this file capped the version below 1.9, so every load crossed a
+  version. All retrained checkpoints now load with zero version warnings.
+- `onnxruntime` added. The CNN head was trained on ONNX Runtime embeddings;
+  without it the embedder silently falls back to cv2.dnn.
+- `requirements-train.txt` for the optional PyTorch trainers.
+
+### Tests
+
+| File | Tests | Covers |
+|---|---|---|
+| `tests/test_api_server.py` (new) | 34 | every page and frontend endpoint, tamper seal, path traversal, CORS, malformed input, video probe + ingest, edge export, Vercel entrypoint |
+| `tests/test_untested_modules.py` (new) | 28 | ALPR, video tracker, augmentation, late fusion, ADAS policy, CAN encoding, edge exporter |
+| existing three files | 78 | unchanged |
+
+The API tests run the real server on an ephemeral port against a temporary
+ledger. `ROAD_SHIELD_WRITABLE_DIR` (new) points the server's writable state at
+any directory; the tests use it so they never touch `checkpoints/road_shield.db`.
+
+---
+
+## Previous: deep CNN embeddings replace hand-engineered features
 
 The classifier's input used to be HOG gradients, local binary patterns and
 colour histograms — 4,419 numbers written by hand. It is now the output of a

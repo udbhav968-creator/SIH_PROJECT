@@ -255,6 +255,12 @@ class CNNHeadClassifier(VisionDistressNet):
         if not self.is_ready:
             raise RuntimeError("CNN head not available")
         vec = self.embedder.embed(image_rgb).reshape(1, -1)
+        if self.report.get("tta_flip"):
+            # The head was trained on the mean of an image's embedding and its
+            # mirror's, so inference must present the same averaged vector.
+            import numpy as _np
+            flipped = _np.ascontiguousarray(_np.asarray(image_rgb)[:, ::-1])
+            vec = 0.5 * (vec + self.embedder.embed(flipped).reshape(1, -1))
         if hasattr(self.head, "predict_proba"):
             return self.head.predict_proba(vec)[0]
         # decision_function fallback, squashed to a distribution

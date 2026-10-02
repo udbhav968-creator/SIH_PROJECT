@@ -270,8 +270,8 @@ def run_training(backbone="mobilenetv2", max_per_class=1500, epochs=65, seed=42)
         X_fit, y_fit, P_fit, D_fit = cached["X_fit"], cached["y_fit"], cached["P_fit"], cached["D_fit"]
         X_test, y_test, P_test, D_test = cached["X_test"], cached["y_test"], cached["P_test"], cached["D_test"]
     else:
-        X_fit, y_fit, P_fit, D_fit = embed_items(embedder, fit_items, "training")
-        X_test, y_test, P_test, D_test = embed_items(embedder, test_items, "held-out")
+        X_fit, y_fit, P_fit, D_fit = embed_items(embedder, fit_items, "training")[:4]
+        X_test, y_test, P_test, D_test = embed_items(embedder, test_items, "held-out")[:4]
         np.savez_compressed(
             cache_file,
             X_fit=X_fit.astype(np.float32),

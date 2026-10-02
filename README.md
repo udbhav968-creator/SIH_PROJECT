@@ -13,11 +13,12 @@ code in this repository, and the code that measures it is included.
 
 | Capability | How it works | Status |
 |---|---|---|
-| Road distress classification, 7 classes | ResNet-50 ImageNet embeddings (ONNX Runtime) → class-balanced logistic head | **89.2%** on 390 held-out images from 356 unseen photographs |
-| — same task, fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 82.6% on the identical split; serves when no CNN backbone is on disk |
+| Road distress classification, 7 classes | MobileNetV2 ImageNet embeddings (ONNX Runtime), flip test-time augmentation → soft-voting ensemble (SVC + logistic + MLP), chosen by grouped cross-validation | **88.8%**, macro-F1 0.747, on 502 held-out images from 483 unseen photographs, scored once |
+| — same task, ResNet-50 path | ResNet-50 embeddings → logistic head | 89.2% (earlier data snapshot); needs the 98 MB backbone and a retrain of its head — see CHANGES.md |
+| — same task, fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 86.2% on its own 807-photo split, 79.9% on the CNN head's split; serves when no CNN backbone is on disk |
 | Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Working: people, bicycles, cars, buses, trucks, traffic lights, signs |
-| IMU shock classification | 100 Hz tri-axial accelerometer windows → RandomForest | 100% on 3000 windows, **on simulated data** |
-| Defect **segmentation** | Pixel classifier on 11 features, trained on 4,720 hand-drawn polygons | **crack IoU 0.232, pothole IoU 0.154** on 500 unseen photographs |
+| IMU shock classification | 100 Hz tri-axial accelerometer windows → RandomForest | **87.2%** on 164 held-out windows of real Indian-road drive logs, time-block split |
+| Defect **segmentation** | Pixel classifier on 11 features, trained on 4,720 hand-drawn polygons | **crack IoU 0.231, pothole IoU 0.144** on 500 unseen photographs; 23.3% of clean photographs still show a false blob |
 | Defect **area** | Each mask pixel's own ground footprint, summed | Measured — a bounding box overstates a diagonal crack ~13× |
 | Camera **calibration** | Per-device profile from a checkerboard or published FOV | Per vehicle; 30 cm of mount height moves area ~46% |
 | Defect **depth** | IRC band placed by measured extent / cavity contrast | **Estimate with an interval**, never a measurement |
@@ -40,7 +41,7 @@ measurements and half are estimates:
 | Stage | What it is | Provenance |
 |---|---|---|
 | Classification | ResNet-50 embeddings → logistic head | **measured**, 89.2% |
-| Segmentation | pixel classifier on 4,720 real polygons | **measured**, crack IoU 0.232 |
+| Segmentation | pixel classifier on 4,720 real polygons | **measured**, crack IoU 0.231 |
 | Area | each mask pixel's ground footprint, summed | **measured** *if* the camera is calibrated |
 | Camera geometry | per-device profile, rescaled per request | **measured** with a profile, **estimate** without |
 | Depth | IRC band placed by extent or cavity contrast | **estimate**, always with an interval |
@@ -55,37 +56,59 @@ why every response carries the provenance of the numbers in it.
 
 | Test | Result |
 |---|---|
-| Held-out accuracy | **89.2%**, macro-F1 0.675, on 390 images from 356 unseen photographs (random guess 14.3%) |
-| Same split, hand-crafted features | 82.6%, macro-F1 0.642 |
-| Same split, ResNet-50 + SVC-RBF head | 86.9%, macro-F1 0.609 |
-| Grouped 5-fold cross-validation (baseline features) | 84.1% ± 1.8, macro-F1 0.696 |
-| Leakage audit | 0 cross-class duplicates, 0 groups spanning splits |
-| Calibration (ECE, baseline) | 0.064 |
-| Latency | 33 ms per image for the ResNet-50 embedding, 257 ms full pipeline (p50) |
+| Held-out accuracy | **88.8%**, macro-F1 0.747, on 502 images from 483 unseen photographs (random guess 14.3%) |
+| Same split, hand-crafted features | 79.9%, macro-F1 0.520 |
+| Model selection | 5-fold cross-validation on the training split only, grouped by source photograph; the test set is scored once, by the selected model |
+| Leakage audit | 0 cross-class duplicates, 0 photograph groups spanning splits (`checkpoints/validation_report.json`) |
+| Latency | ~30 ms for the two MobileNetV2 embeddings (image + mirror); full pipeline 1.7–2.4 s on a single-core VM, dominated by pixel segmentation |
 
-Reproduce: `python -m training.train_cnn_head --compare`. The test set is split
-by source photograph, so no augmented copy of a training image appears in it,
-and it is scored once.
+Reproduce: `python -m training.train_cnn_head --backbone mobilenetv2 --compare`.
 
-### Per class — ResNet-50 embeddings + logistic head
+### How the head was chosen
+
+Thirteen candidates — three head families at several settings, on plain and on
+flip-averaged embeddings, plus a soft-voting ensemble — were scored by grouped
+cross-validation inside the training split. The ensemble on flip-averaged
+embeddings scored best and is the only model that saw the test set. CV figures
+are lower than the test figure because the validation folds also contain the
+harder region-scale sub-crops.
+
+| Head | Features | CV accuracy | CV macro-F1 |
+|---|---|---|---|
+| ensemble_soft | flip_tta | 84.9% ± 1.8 | 0.769 ± 0.033 |
+| svc_C10 | flip_tta | 84.3% ± 2.6 | 0.765 ± 0.036 |
+| mlp_512_256 | flip_tta | 84.2% ± 1.8 | 0.764 ± 0.029 |
+| svc_C30 | flip_tta | 83.9% ± 2.4 | 0.764 ± 0.033 |
+| svc_C3 | flip_tta | 83.6% ± 2.8 | 0.762 ± 0.037 |
+| svc_C10 | plain | 83.6% ± 2.3 | 0.758 ± 0.033 |
+| svc_C30 | plain | 83.5% ± 2.9 | 0.758 ± 0.035 |
+| svc_C3 | plain | 83.2% ± 2.5 | 0.759 ± 0.034 |
+| mlp_512_256 | plain | 82.9% ± 2.6 | 0.749 ± 0.037 |
+| logistic_C0.3 | flip_tta | 82.3% ± 1.8 | 0.732 ± 0.031 |
+| logistic_C1 | flip_tta | 81.7% ± 1.5 | 0.720 ± 0.031 |
+| logistic_C0.3 | plain | 81.4% ± 0.9 | 0.715 ± 0.020 |
+| logistic_C1 | plain | 81.3% ± 1.4 | 0.714 ± 0.028 |
+
+The previous version picked its head by test-set score, which inflates the
+reported figure. This one did not, so its 88.8% is directly
+comparable to unseen data; the 0.4-point difference from the earlier 89.2% is
+two images and within noise.
+
+### Per class
 
 | Class | Precision | Recall | F1 | Test images |
 |---|---|---|---|---|
-| Normal Road / Sound Pavement | 0.98 | 0.90 | 0.94 | 140 |
-| Crack (Longitudinal / Transverse / Alligator) | 0.84 | 0.91 | 0.87 | 120 |
-| Pothole Cavity | 0.89 | 0.90 | 0.90 | 120 |
-| Waterlogging / Flooding Hazard | 0.50 | 1.00 | 0.67 | 2 |
-| Missing Zebra Crossing | 0.25 | 0.33 | 0.29 | 3 |
-| Missing Road Divider | 0.50 | 0.33 | 0.40 | 3 |
-| Damaged Traffic Sign | 1.00 | 0.50 | 0.67 | 2 |
+| Normal Road / Sound Pavement | 0.88 | 0.86 | 0.87 | 77 |
+| Crack (Longitudinal / Transverse / Alligator) | 0.90 | 0.93 | 0.91 | 184 |
+| Pothole Cavity | 0.93 | 0.90 | 0.91 | 211 |
+| Waterlogging / Flooding Hazard | 0.67 | 0.86 | 0.75 | 7 |
+| Missing Zebra Crossing | 0.43 | 0.38 | 0.40 | 8 |
+| Missing Road Divider | 0.45 | 0.62 | 0.53 | 8 |
+| Damaged Traffic Sign | 0.86 | 0.86 | 0.86 | 7 |
 
-The three classes carrying the workload — normal, crack, pothole — are scored on
-380 of the 390 test images and sit between 0.87 and 0.94 F1. The other four have
-two or three test images each, so their F1 moves by 0.3 or more on a single
-image and is not a stable measurement of anything. Macro-F1 of 0.675 is
-dominated by that noise, which is why both numbers are reported rather than
-whichever one flatters the model. It is a data volume problem, it is visible on
-the dashboard's model card, and it is not hidden behind an average.
+Normal road, crack and pothole carry 472 of the 502 test images. The other four
+classes have seven or eight test images each, so one image moves their F1 by
+more than 0.1. That is a data-volume problem and it is shown, not averaged away.
 
 ## Data
 
@@ -138,8 +161,8 @@ downloader is written and waiting on a GPU.
 
 | Class | IoU | Dice | Pixel precision | Pixel recall |
 |---|---|---|---|---|
-| Crack | 0.232 | 0.376 | 0.414 | 0.345 |
-| Pothole | 0.154 | 0.266 | 0.320 | 0.228 |
+| Crack | 0.231 | 0.376 | 0.373 | 0.379 |
+| Pothole | 0.144 | 0.251 | 0.242 | 0.262 |
 
 500 unseen photographs, split by photograph, scored only on pixels inside the
 lane polygon. Trained on 5.6 million labelled pixels from 4,720 hand-drawn
@@ -213,7 +236,7 @@ Optional extras:
 python -m scripts.fetch_detector            # COCO object detector (needs ultralytics once)
 python -m scripts.validate_models           # leakage, cross-validation, calibration, latency
 python -m scripts.model_selection           # compare six classifiers on identical folds
-python -m unittest discover -s tests       # 59 regression tests
+python -m unittest discover -s tests       # 140 tests: models, pipeline, REST API, Vercel entrypoint
 python -m training.train_segmenter         # pixel segmentation on the DNIT polygons
 python -m scripts.calibrate_camera --list  # camera calibration profiles
 python -m training.train_deep_vision        # fine-tune a CNN (needs PyTorch)
@@ -267,10 +290,12 @@ every image and looking for the same photograph under different labels.
 
 ## Honest limitations
 
-- The classifier is a support vector machine on engineered features, not a
-  neural network. A CNN fine-tuning script is included but needs PyTorch.
+- The classifier is a frozen ImageNet CNN with a trained head, not a fine-tuned
+  network. Fine-tuning (`training/train_deep_vision.py`) needs PyTorch: `pip install -r requirements-train.txt`.
 - The photographs are Brazilian, not Indian.
-- The IMU data is simulated.
+- The IMU data is real but small: 10 drive logs from one project, not a fleet.
+- The segmenter still draws a false blob on 23.3% of clean road photographs (the regression gate is 25%). The classifier in front of it limits the damage; painted markings remain the hardest case.
+- PCI, deterioration and depth models are fitted to engineering formulas (ASTM D6433, HDM-4, an IRC depth band). Their R² measures fidelity to the formula, not field accuracy.
 - There is no dashcam video in this repository; the system analyses photographs.
 - Four classes have too few examples to work well.
 - No demographic inference is performed on people in frame, by design.

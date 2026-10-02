@@ -95,11 +95,17 @@ class EdgeModelExporter:
                     }
 
         # Deterministic formula-based engines - genuinely embeddable, no weights to export.
-        from models.pci_regressor_net import PavementConditionIndexEngine
+        # The PCI engine moved from fixed severity caps to ASTM deduct-value
+        # curves; the exporter still read the removed SEVERITY_CAP constant and
+        # crashed on any fresh export. Export what the engine actually uses.
+        from models.pci_regressor_net import DEFAULT_ASTM_CURVES, DEFAULT_DENSITY_GRID
 
         specs["Model_PCI_ASTM_D6433"] = {
             "architecture": "Deterministic ASTM D6433 deduct-value formula (no trained weights)",
-            "severity_caps": PavementConditionIndexEngine.SEVERITY_CAP,
+            "density_grid_pct": DEFAULT_DENSITY_GRID.tolist(),
+            "deduct_curves": {distress: {sev: curve.tolist() for sev, curve in sevs.items()}
+                              for distress, sevs in DEFAULT_ASTM_CURVES.items()},
+            "interpolation": "linear in density, per distress type and severity",
         }
 
         from models.pavement_deterioration_forecaster import PavementDeteriorationForecaster
