@@ -9,25 +9,25 @@
   ],
   "train_windows": 688,
   "held_out_validation_windows": 164,
-  "held_out_validation_accuracy": 0.8232,
+  "held_out_validation_accuracy": 0.872,
   "random_guess_baseline": 0.25,
   "confusion_matrix": [
     [
-      95,
-      6,
-      8,
+      106,
+      2,
+      1,
       0
     ],
     [
-      0,
-      25,
-      3,
-      4
+      4,
+      23,
+      2,
+      3
     ],
     [
-      4,
+      7,
+      1,
       3,
-      4,
       0
     ],
     [
@@ -39,43 +39,43 @@
   ],
   "per_class_report": {
     "Smooth Asphalt": {
-      "precision": 0.9595959595959596,
-      "recall": 0.8715596330275229,
-      "f1-score": 0.9134615384615384,
+      "precision": 0.905982905982906,
+      "recall": 0.9724770642201835,
+      "f1-score": 0.9380530973451328,
       "support": 109.0
     },
     "Expansion Joint": {
-      "precision": 0.7142857142857143,
-      "recall": 0.78125,
-      "f1-score": 0.746268656716418,
+      "precision": 0.8518518518518519,
+      "recall": 0.71875,
+      "f1-score": 0.7796610169491526,
       "support": 32.0
     },
     "Rumble Strip": {
-      "precision": 0.26666666666666666,
-      "recall": 0.36363636363636365,
-      "f1-score": 0.3076923076923077,
+      "precision": 0.5,
+      "recall": 0.2727272727272727,
+      "f1-score": 0.35294117647058826,
       "support": 11.0
     },
     "Pothole Impact": {
-      "precision": 0.7333333333333333,
+      "precision": 0.7857142857142857,
       "recall": 0.9166666666666666,
-      "f1-score": 0.8148148148148148,
+      "f1-score": 0.8461538461538461,
       "support": 12.0
     },
-    "accuracy": 0.823170731707317,
+    "accuracy": 0.8719512195121951,
     "macro avg": {
-      "precision": 0.6684704184704184,
-      "recall": 0.7332781658326383,
-      "f1-score": 0.6955593294212697,
+      "precision": 0.7608872608872609,
+      "recall": 0.7201552509035307,
+      "f1-score": 0.7292022842296799,
       "support": 164.0
     },
     "weighted avg": {
-      "precision": 0.8486977791855841,
-      "recall": 0.823170731707317,
-      "f1-score": 0.8329896211562575,
+      "precision": 0.8593900453656551,
+      "recall": 0.8719512195121951,
+      "f1-score": 0.8611776783415548,
       "support": 164.0
     }
   },
   "data_provenance": "Real field-recorded 100-sample tri-axial accelerometer windows (Ax, Ay, Az in m/s^2) from Indian road vehicular drives in VishalSingh25/Pothole-Project (10 CSV drive logs, 205,491 raw samples across smooth road, unmarked speed bumps/joints, marked speed breakers/rumble strips, and pothole corridors), split with a strict temporal block boundary and guard gap between train and held-out validation.",
-  "trained_at_unix": 1790751641
+  "trained_at_unix": 1790935616
 }

@@ -1,22 +1,23 @@
 {
-  "generated_unix": 1790754420,
+  "generated_unix": 1790945278,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
       "id": "M1",
       "name": "Vision distress classifier",
-      "architecture": "ResNet-50 (ImageNet, frozen, ONNX Runtime) -> class-balanced logistic head",
+      "architecture": "MobileNetV2 (ImageNet, frozen, ONNX Runtime) -> class-balanced ensemble_soft head",
       "role": "7-class road condition classification",
       "why": "Transfer learning from 1.28M ImageNet images. With ~2,400 road photographs, fine-tuning 25.5M parameters or training a ViT from scratch overfits badly; freezing the backbone and fitting a convex logistic head does not.",
       "rejected_alternative": "Vision Transformers - low inductive bias, need >100k images. PyTorch - 2+ GB and its DLLs fail to load on the target laptop; ONNX Runtime is 55 MB and runs on any CPU.",
       "measured": {
-        "held_out_accuracy": 0.8991,
-        "held_out_macro_f1": 0.7387,
-        "test_images": 347,
-        "test_photographs": 328
+        "held_out_accuracy": 0.8884,
+        "held_out_macro_f1": 0.7471,
+        "test_images": 502,
+        "test_photographs": 483,
+        "served_backbone": "mobilenetv2"
       },
-      "evidence": "checkpoints/cnn_head_resnet50_report.json",
-      "reproduce": "python -m training.train_cnn_head --compare",
+      "evidence": "checkpoints/cnn_head_mobilenetv2_report.json",
+      "reproduce": "python -m training.train_cnn_head --backbone mobilenetv2 --compare",
       "not_claimed": "Latency is NOT 15.6 ms. Measured 76-97 ms per image for the ResNet-50 embedding on a laptop CPU; 15.6 ms was the old hand-crafted feature extraction and does not apply to this model.",
       "status_endpoint": "/api/v1/health"
     },
@@ -27,23 +28,23 @@
       "role": "Zero-dependency fallback when no ONNX backbone is on disk",
       "why": "Pure classical CV. If neural weights are missing or storage is wiped, the camera does not stop classifying.",
       "measured": {
-        "held_out_accuracy": null,
-        "held_out_macro_f1": null,
+        "held_out_accuracy": 0.7988,
+        "held_out_macro_f1": 0.5198,
         "pca_components": 64,
-        "pca_variance_retained": 0.4512
+        "pca_variance_retained": 0.4151
       },
-      "evidence": "checkpoints/cnn_head_resnet50_report.json (scored on the identical split)",
-      "not_claimed": "PCA retains 45.1% of variance at 64 components, measured from the fitted model - NOT 56%."
+      "evidence": "checkpoints/cnn_head_mobilenetv2_report.json (scored on the identical split)",
+      "not_claimed": "PCA retains 41.5% of variance at 64 components, measured from the fitted model."
     },
     {
       "id": "M1-edge",
       "name": "MobileNetV2 edge alternative",
-      "architecture": "MobileNetV2 (14 MB ONNX) -> logistic head",
+      "architecture": "MobileNetV2 (14 MB ONNX) -> ensemble_soft head",
       "role": "Low-power edge deployment (Raspberry Pi, Jetson Nano)",
       "why": "Depthwise separable convolutions; 14 MB against ResNet-50's 98 MB.",
       "measured": {
-        "held_out_accuracy": 0.9012,
-        "held_out_macro_f1": 0.7981,
+        "held_out_accuracy": 0.8884,
+        "held_out_macro_f1": 0.7471,
         "backbone_size_mb": 14.0
       },
       "evidence": "checkpoints/cnn_head_mobilenetv2_report.json",
@@ -57,14 +58,14 @@
       "why": "A bounding box around a diagonal crack overstates its area by about 13x, and area drives tonnage which drives cost. A per-pixel mask gives the defect's own footprint. It also decides where a defect IS, which is now the proposal stage for the whole pipeline.",
       "rejected_alternative": "argmax over the three classes. With ~97% of pixels sound road that floods the mask; per-class thresholds are tuned for IoU on a split the test set never sees.",
       "measured": {
-        "crack_iou": 0.2283,
-        "crack_dice": 0.3717,
-        "pothole_iou": 0.1258,
-        "pothole_dice": 0.2235,
+        "crack_iou": 0.2314,
+        "crack_dice": 0.3758,
+        "pothole_iou": 0.1437,
+        "pothole_dice": 0.2513,
         "test_photographs": 500,
-        "training_pixels": 3696337,
-        "clean_road_false_blob_rate": 0.0092,
-        "clean_photographs_scored": 109
+        "training_pixels": 3692729,
+        "clean_road_false_blob_rate": 0.2333,
+        "clean_photographs_scored": 120
       },
       "evidence": "checkpoints/defect_segmenter_report.json",
       "reproduce": "python -m training.train_segmenter --images 2000",
@@ -94,7 +95,7 @@
       "why": "Suspension vibration is periodic and noisy. RMS, peak-to-peak, crest factor, kurtosis and spectral power separate a sharp impact from a repetitive wave. Tree ensembles are immune to the noise and need no sequence buffer.",
       "rejected_alternative": "LSTM / 1D CNN - slow, vanishing gradients, needless here.",
       "measured": {
-        "held_out_accuracy": 0.8232,
+        "held_out_accuracy": 0.872,
         "n_estimators": 300,
         "feature_dim": 36
       },

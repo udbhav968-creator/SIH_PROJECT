@@ -15,20 +15,20 @@
       "Normal Road / Sound Pavement": {
         "class_id": 0,
         "folder": "05_morth_civil_hard_negatives",
-        "usable_photos": 613,
-        "distinct_source_photos": 385
+        "usable_photos": 614,
+        "distinct_source_photos": 386
       },
       "Crack (Longitudinal / Transverse / Alligator)": {
         "class_id": 1,
         "folder": "03_crack500_fatigue",
-        "usable_photos": 830,
-        "distinct_source_photos": 830
+        "usable_photos": 1230,
+        "distinct_source_photos": 1230
       },
       "Pothole Cavity": {
         "class_id": 2,
         "folder": "02_kaggle_pothole_600",
-        "usable_photos": 1161,
-        "distinct_source_photos": 1161
+        "usable_photos": 1404,
+        "distinct_source_photos": 1404
       },
       "Waterlogging / Flooding Hazard": {
         "class_id": 3,
@@ -61,133 +61,133 @@
       "07_monsoon_pavement_deterioration": 12
     }
   },
-  "train_photos": 1937,
-  "train_photos_after_augmentation": 3874,
-  "held_out_validation_photos": 646,
-  "held_out_validation_accuracy": 0.8359,
+  "train_photos": 2420,
+  "train_photos_after_augmentation": 4840,
+  "held_out_validation_photos": 807,
+  "held_out_validation_accuracy": 0.8625,
   "random_guess_baseline": 0.1429,
   "confusion_matrix": [
     [
-      72,
-      0,
-      13,
+      83,
       2,
-      9,
-      0,
-      0
-    ],
-    [
-      0,
-      200,
-      8,
-      0,
-      0,
-      0,
-      0
-    ],
-    [
       3,
-      37,
-      249,
+      1,
+      5,
+      3,
+      0
+    ],
+    [
+      0,
+      289,
+      19,
       0,
       0,
+      0,
+      0
+    ],
+    [
+      6,
+      36,
+      308,
+      1,
+      0,
+      0,
+      0
+    ],
+    [
+      4,
+      0,
+      2,
+      3,
+      2,
       0,
       1
     ],
     [
-      3,
+      7,
+      0,
+      0,
       0,
       4,
       2,
-      2,
-      0,
-      1
+      0
     ],
     [
-      6,
-      0,
-      0,
-      0,
       8,
       0,
-      0
-    ],
-    [
-      5,
+      1,
       0,
-      1,
-      1,
-      1,
-      6,
+      0,
+      5,
       0
     ],
     [
+      6,
+      0,
       2,
       0,
-      6,
-      1,
       0,
       0,
-      3
+      4
     ]
   ],
   "per_class_report": {
     "Normal Road / Sound Pavement": {
-      "precision": 0.7912087912087912,
-      "recall": 0.75,
-      "f1-score": 0.7700534759358288,
-      "support": 96.0
+      "precision": 0.7280701754385965,
+      "recall": 0.8556701030927835,
+      "f1-score": 0.7867298578199052,
+      "support": 97.0
     },
     "Crack (Longitudinal / Transverse / Alligator)": {
-      "precision": 0.8438818565400844,
-      "recall": 0.9615384615384616,
-      "f1-score": 0.898876404494382,
-      "support": 208.0
+      "precision": 0.8837920489296636,
+      "recall": 0.9383116883116883,
+      "f1-score": 0.9102362204724409,
+      "support": 308.0
     },
     "Pothole Cavity": {
-      "precision": 0.8861209964412812,
-      "recall": 0.8586206896551725,
-      "f1-score": 0.87215411558669,
-      "support": 290.0
+      "precision": 0.9194029850746268,
+      "recall": 0.8774928774928775,
+      "f1-score": 0.8979591836734694,
+      "support": 351.0
     },
     "Waterlogging / Flooding Hazard": {
-      "precision": 0.3333333333333333,
-      "recall": 0.16666666666666666,
-      "f1-score": 0.2222222222222222,
-      "support": 12.0
-    },
-    "Missing Zebra Crossing": {
-      "precision": 0.4,
-      "recall": 0.5714285714285714,
-      "f1-score": 0.47058823529411764,
-      "support": 14.0
-    },
-    "Missing Road Divider": {
-      "precision": 1.0,
-      "recall": 0.42857142857142855,
-      "f1-score": 0.6,
-      "support": 14.0
-    },
-    "Damaged Traffic Sign": {
       "precision": 0.6,
       "recall": 0.25,
       "f1-score": 0.35294117647058826,
       "support": 12.0
     },
-    "accuracy": 0.8359133126934984,
+    "Missing Zebra Crossing": {
+      "precision": 0.36363636363636365,
+      "recall": 0.3076923076923077,
+      "f1-score": 0.3333333333333333,
+      "support": 13.0
+    },
+    "Missing Road Divider": {
+      "precision": 0.5,
+      "recall": 0.35714285714285715,
+      "f1-score": 0.4166666666666667,
+      "support": 14.0
+    },
+    "Damaged Traffic Sign": {
+      "precision": 0.8,
+      "recall": 0.3333333333333333,
+      "f1-score": 0.47058823529411764,
+      "support": 12.0
+    },
+    "accuracy": 0.862453531598513,
     "macro avg": {
-      "precision": 0.6935064253604987,
-      "recall": 0.5695465454086144,
-      "f1-score": 0.5981193757148328,
-      "support": 646.0
+      "precision": 0.6849859390113215,
+      "recall": 0.5599490238665498,
+      "f1-score": 0.5954935248186459,
+      "support": 807.0
     },
     "weighted avg": {
-      "precision": 0.8347655713380079,
-      "recall": 0.8359133126934984,
-      "f1-score": 0.8292667421412422,
-      "support": 646.0
+      "precision": 0.8600600725853124,
+      "recall": 0.862453531598513,
+      "f1-score": 0.8573708118850973,
+      "support": 807.0
     }
   },
   "note": "Validation photos and their augmented copies are strictly disjoint from the training set. Accuracy is limited mainly by how few distinct source photos exist for some classes (see dataset_inventory) - this is a data problem, not an unreported one.",
-  "trained_at_unix": 1790754418
+  "trained_at_unix": 1790935614
 }

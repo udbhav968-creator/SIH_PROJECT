@@ -19,7 +19,7 @@
   ],
   "thresholds": {
     "crack": 0.55,
-    "pothole": 0.35
+    "pothole": 0.3
   },
   "decision_rule": "per-class probability threshold tuned for IoU on a calibration split, not argmax",
   "trained_on": {
@@ -27,16 +27,30 @@
     "train_photographs": 1260,
     "calibration_photographs": 240,
     "test_photographs": 500,
-    "training_pixels": 3696337,
+    "training_pixels": 3692729,
     "max_pixels_cap": 4500000,
     "pixel_cap_applied": 4500000,
-    "per_class_pixels_used": 590,
-    "memory_note": "7,221 MB free - the requested cap fits",
-    "clean_pixel_share": 0.35,
+    "per_class_pixels_used": 623,
+    "memory_note": "3,480 MB free - the requested cap fits",
+    "corpus_policy": {
+      "enabled": true,
+      "excluded_sources": {
+        "kag_surface-crack": {
+          "reason": "227x227 close-ups of cracked concrete and plaster surfaces (SDNET-style texture patches). No road surface, no horizon and no camera geometry, so neither the region-of-interest rule nor the area model applies.",
+          "files_dropped": 1193
+        }
+      },
+      "reproduce_unfiltered_with": "ROAD_SHIELD_NO_CORPUS_FILTER=1",
+      "not_deleted": "The files remain on disk; only this corpus excludes them."
+    },
+    "clean_pixel_share_requested": 0.35,
+    "clean_scene_count": 230,
+    "clean_scene_diversity": 0.697,
+    "clean_pixel_share_effective": 0.2439,
     "pixels_per_class": {
-      "0": 3040978,
-      "1": 544830,
-      "2": 110529
+      "0": 3007073,
+      "1": 568509,
+      "2": 117147
     },
     "source": "DNIT Cracks and Potholes in Road Images - hand-drawn polygons",
     "clean_photographs": {
@@ -45,17 +59,17 @@
         "10_missing_zebra_crossing",
         "11_missing_road_divider"
       ],
-      "train": 142,
-      "calibration": 28,
-      "test": 109,
-      "pixels_contributed": 780858,
+      "train": 422,
+      "calibration": 83,
+      "test": 146,
+      "pixels_contributed": 574342,
       "why": "Every DNIT photograph contains a defect, so the first version of this model had never seen fresh white paint on dark asphalt without a defect nearby. It called zebra crossings potholes."
     },
     "hard_negative_mining": {
-      "images_mined": 142,
-      "false_pixels_found": 33331,
-      "false_pixels_per_image_mean": 234.7,
-      "pixels_added_to_training": 29920,
+      "images_mined": 220,
+      "false_pixels_found": 79606,
+      "false_pixels_per_image_mean": 361.8,
+      "pixels_added_to_training": 77791,
       "ran": true
     }
   },
@@ -63,49 +77,39 @@
   "scored_on": "pixels inside the lane polygon only; sky and verge excluded",
   "iou": {
     "crack": {
-      "iou": 0.2283,
-      "dice": 0.3717,
-      "pixel_precision": 0.3599,
-      "pixel_recall": 0.3843,
-      "true_pixels": 581391,
-      "predicted_pixels": 620814
+      "iou": 0.2314,
+      "dice": 0.3758,
+      "pixel_precision": 0.3729,
+      "pixel_recall": 0.3787,
+      "true_pixels": 610039,
+      "predicted_pixels": 619523
     },
     "pothole": {
-      "iou": 0.1258,
-      "dice": 0.2235,
-      "pixel_precision": 0.2379,
-      "pixel_recall": 0.2107,
-      "true_pixels": 147076,
-      "predicted_pixels": 130237
+      "iou": 0.1437,
+      "dice": 0.2513,
+      "pixel_precision": 0.242,
+      "pixel_recall": 0.2615,
+      "true_pixels": 147007,
+      "predicted_pixels": 158857
     }
   },
   "false_positives_on_clean_roads": {
-    "clean_photographs_scored": 109,
+    "clean_photographs_scored": 120,
     "min_blob_px": 250,
-    "pixel_rate_crack": 0.00475,
-    "pixel_rate_pothole": 0.0015,
-    "photo_rate_any_blob": 0.0092,
+    "pixel_rate_crack": 0.00609,
+    "pixel_rate_pothole": 0.01641,
+    "photo_rate_any_blob": 0.2333,
     "per_folder": {
       "05_morth_civil_hard_negatives": {
-        "photos": 100,
-        "flagged": 0,
-        "rate": 0.0
-      },
-      "10_missing_zebra_crossing": {
-        "photos": 6,
-        "flagged": 1,
-        "rate": 0.167
-      },
-      "11_missing_road_divider": {
-        "photos": 3,
-        "flagged": 0,
-        "rate": 0.0
+        "photos": 120,
+        "flagged": 28,
+        "rate": 0.233
       }
     }
   },
   "why_two_metrics": "IoU is measured only on photographs that contain a defect, so it cannot detect a model that invents defects on clean roads. That failure is what users actually saw, so it is measured separately on photographs held out of training.",
-  "inference_ms_per_image": 743.0,
-  "trained_at_unix": 1789239473,
+  "inference_ms_per_image": 1342.1,
+  "trained_at_unix": 1790944333,
   "sklearn_version": "1.8.0",
   "joblib_version": "1.5.3",
   "portability_note": "This file is a pickled scikit-learn estimator. It loads only under a compatible scikit-learn. If it fails, retrain in place: python -m training.train_segmenter --images 2000 (about 12 minutes on a laptop CPU). Nothing else is needed - the training data is in the repository."

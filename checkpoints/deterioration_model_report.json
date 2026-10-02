@@ -8,11 +8,11 @@
     "horizon_days"
   ],
   "held_out_area_r2": 0.9759,
-  "held_out_area_mae": 0.1404,
-  "held_out_depth_r2": 0.9818,
-  "held_out_depth_mae": 0.0639,
-  "sklearn_version": "1.9.0",
-  "trained_at_unix": 1790751652,
+  "held_out_area_mae": 0.1399,
+  "held_out_depth_r2": 0.9817,
+  "held_out_depth_mae": 0.064,
+  "sklearn_version": "1.8.0",
+  "trained_at_unix": 1790937934,
   "train_records": 2400,
   "held_out_test_records": 600,
   "basis": "HDM-4 / CSIR-CRRI / FHWA LTPP empirical distress progression + monotonic HistGradientBoostingRegressor"

@@ -1,11 +1,11 @@
 {
-  "real_road_crops_used": 335,
+  "real_road_crops_used": 329,
   "held_out_pothole_r2": 1.0,
-  "held_out_pothole_mae_cm": 0.0112,
+  "held_out_pothole_mae_cm": 0.0107,
   "held_out_crack_r2": 0.9998,
-  "sklearn_version": "1.9.0",
-  "trained_at_unix": 1790751662,
-  "train_records": 3632,
-  "held_out_test_records": 908,
+  "sklearn_version": "1.8.0",
+  "trained_at_unix": 1790937937,
+  "train_records": 3612,
+  "held_out_test_records": 904,
   "basis": "Photometric cavity contrast & edge gradients extracted from real pothole/crack photographs + monotonic HistGradientBoostingRegressor calibrated to IRC:SP:83 & IRC:82"
 }
