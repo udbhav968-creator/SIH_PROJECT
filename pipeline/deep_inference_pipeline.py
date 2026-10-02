@@ -236,6 +236,15 @@ class DeepInferencePipeline:
                 seg_out = self.segmenter.segment(img_np)
             except Exception as e:
                 print(f"[WARN] segmentation failed, falling back to box area: {e}")
+        # Semantic gate: keep segmenter pothole pixels only where the CNN
+        # classifier also sees a pothole (models/semantic_gate.py has the
+        # measurement). Skipped with the hand-crafted fallback classifier.
+        if seg_out is not None and getattr(self, "vision_backend", "") == "cnn_embeddings":
+            try:
+                from models import semantic_gate
+                seg_out = semantic_gate.apply(seg_out, self.vision_model, img_np)
+            except Exception as e:
+                print(f"[WARN] semantic gate skipped: {e}")
         self._seg_out = seg_out
         dag_exec.mark("N3_pixel_segmenter", "COMPLETED" if seg_out else "SKIPPED")
 

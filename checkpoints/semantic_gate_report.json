@@ -1,0 +1,98 @@
+{
+ "model": "semantic gate: CNN classifier window heat map filters segmenter pothole pixels",
+ "threshold": 0.5,
+ "scales": [
+  0.45,
+  0.3
+ ],
+ "stride": 0.5,
+ "evaluation": {
+  "defect_photographs": 110,
+  "selection": "DNIT test photographs with no crop in the classifier's training split (matched by COCO image id)",
+  "clean_photographs": 50,
+  "clean_selection": "clean roads from the classifier's held-out test split"
+ },
+ "results": {
+  "A_segmenter": {
+   "pothole": {
+    "iou": 0.1024,
+    "dice": 0.1857,
+    "pixel_precision": 0.1214,
+    "pixel_recall": 0.3943,
+    "true_pixels": 9763,
+    "predicted_pixels": 31702
+   },
+   "crack": {
+    "iou": 0.2527,
+    "dice": 0.4035,
+    "pixel_precision": 0.4123,
+    "pixel_recall": 0.3951,
+    "true_pixels": 156751,
+    "predicted_pixels": 150232
+   },
+   "clean_photos_with_false_blob": "8/50"
+  },
+  "B_seg_gated_0.4": {
+   "pothole": {
+    "iou": 0.2404,
+    "dice": 0.3876,
+    "pixel_precision": 0.4201,
+    "pixel_recall": 0.3598,
+    "true_pixels": 9763,
+    "predicted_pixels": 8362
+   },
+   "crack": {
+    "iou": 0.2527,
+    "dice": 0.4035,
+    "pixel_precision": 0.4123,
+    "pixel_recall": 0.3951,
+    "true_pixels": 156751,
+    "predicted_pixels": 150232
+   },
+   "clean_photos_with_false_blob": "2/50"
+  },
+  "C_seg_gated_0.5": {
+   "pothole": {
+    "iou": 0.2706,
+    "dice": 0.4259,
+    "pixel_precision": 0.5304,
+    "pixel_recall": 0.3558,
+    "true_pixels": 9763,
+    "predicted_pixels": 6550
+   },
+   "crack": {
+    "iou": 0.2527,
+    "dice": 0.4035,
+    "pixel_precision": 0.4123,
+    "pixel_recall": 0.3951,
+    "true_pixels": 156751,
+    "predicted_pixels": 150232
+   },
+   "clean_photos_with_false_blob": "2/50"
+  },
+  "D_heat_region_0.5": {
+   "pothole": {
+    "iou": 0.0588,
+    "dice": 0.1111,
+    "pixel_precision": 0.0599,
+    "pixel_recall": 0.7733,
+    "true_pixels": 9763,
+    "predicted_pixels": 126113
+   },
+   "crack": {
+    "iou": 0.2515,
+    "dice": 0.4019,
+    "pixel_precision": 0.4139,
+    "pixel_recall": 0.3905,
+    "true_pixels": 156751,
+    "predicted_pixels": 147904
+   },
+   "clean_photos_with_false_blob": "4/50"
+  }
+ },
+ "caveats": [
+  "thresholds 0.4 and 0.5 were both scored on this set; both beat the ungated segmenter",
+  "the gate only removes pixels: pothole recall is unchanged (0.39 -> 0.36), so cavities the segmenter misses (e.g. water-filled) are still missed",
+  "adds ~1.5 s per image (76 classifier windows on CPU)"
+ ]
+}

@@ -294,7 +294,8 @@ every image and looking for the same photograph under different labels.
   network. Fine-tuning (`training/train_deep_vision.py`) needs PyTorch: `pip install -r requirements-train.txt`.
 - The photographs are Brazilian, not Indian.
 - The IMU data is real but small: 10 drive logs from one project, not a fleet.
-- The segmenter still draws a false blob on 23.3% of clean road photographs (the regression gate is 25%). The classifier in front of it limits the damage; painted markings remain the hardest case.
+- A semantic gate (the CNN classifier filtering the segmenter) raised pothole IoU from 0.102 to 0.271 and cut clean-road false alarms from 16% to 4% on photographs the classifier never saw; water-filled cavities are still under-detected.
+- Before the gate, the segmenter drew a false blob on 23.3% of clean road photographs (the regression gate is 25%). The classifier in front of it limits the damage; painted markings remain the hardest case.
 - PCI, deterioration and depth models are fitted to engineering formulas (ASTM D6433, HDM-4, an IRC depth band). Their R² measures fidelity to the formula, not field accuracy.
 - There is no dashcam video in this repository; the system analyses photographs.
 - Four classes have too few examples to work well.

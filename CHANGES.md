@@ -1,6 +1,19 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
-## Latest: website brought in line with the models
+## Latest: semantic gate - pothole precision 0.12 -> 0.53
+
+The pixel segmenter judges pixels from 11 local features and marks rough
+foreground asphalt and dark crack lines as "pothole". The CNN classifier now
+scores overlapping windows, and segmenter pothole pixels it does not see as
+pothole are dropped (`models/semantic_gate.py`). On 110 annotated photographs
+with no crop in the classifier's training data and 50 clean roads from its test
+split: pothole IoU 0.102 -> 0.271, precision 0.12 -> 0.53, recall 0.39 -> 0.36,
+crack IoU unchanged, clean roads falsely flagged 8/50 -> 2/50
+(`checkpoints/semantic_gate_report.json`). It cannot add pixels the segmenter
+missed, so water-filled cavities remain under-detected; that needs a stronger
+segmenter or pixel labels for such cavities. Cost: about 1.5 s per image.
+
+## Previous: website brought in line with the models
 
 - Homepage, architecture, data-lineage and model-card pages described the
   previous configuration (ResNet-50 + logistic head, simulated IMU, 2-3 rare-class
