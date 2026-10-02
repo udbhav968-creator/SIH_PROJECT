@@ -1,19 +1,19 @@
 {
-  "generated_unix": 1790960997,
+  "generated_unix": 1790967983,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
       "id": "M1",
       "name": "Vision distress classifier",
-      "architecture": "MobileNetV2 (ImageNet, frozen, ONNX Runtime) -> class-balanced ensemble_soft head",
+      "architecture": "MobileNetV2 (ImageNet, frozen, ONNX Runtime) -> class-balanced svc_C3 head",
       "role": "7-class road condition classification",
       "why": "Transfer learning from 1.28M ImageNet images. With ~2,400 road photographs, fine-tuning 25.5M parameters or training a ViT from scratch overfits badly; freezing the backbone and fitting a convex logistic head does not.",
       "rejected_alternative": "Vision Transformers - low inductive bias, need >100k images. PyTorch - 2+ GB and its DLLs fail to load on the target laptop; ONNX Runtime is 55 MB and runs on any CPU.",
       "measured": {
-        "held_out_accuracy": 0.8884,
-        "held_out_macro_f1": 0.7471,
-        "test_images": 502,
-        "test_photographs": 483,
+        "held_out_accuracy": 0.8704,
+        "held_out_macro_f1": 0.6995,
+        "test_images": 625,
+        "test_photographs": 589,
         "served_backbone": "mobilenetv2"
       },
       "evidence": "checkpoints/cnn_head_mobilenetv2_report.json",
@@ -28,8 +28,8 @@
       "role": "Zero-dependency fallback when no ONNX backbone is on disk",
       "why": "Pure classical CV. If neural weights are missing or storage is wiped, the camera does not stop classifying.",
       "measured": {
-        "held_out_accuracy": 0.7988,
-        "held_out_macro_f1": 0.5198,
+        "held_out_accuracy": 0.7904,
+        "held_out_macro_f1": 0.5222,
         "pca_components": 64,
         "pca_variance_retained": 0.4151
       },
@@ -39,12 +39,12 @@
     {
       "id": "M1-edge",
       "name": "MobileNetV2 edge alternative",
-      "architecture": "MobileNetV2 (14 MB ONNX) -> ensemble_soft head",
+      "architecture": "MobileNetV2 (14 MB ONNX) -> svc_C3 head",
       "role": "Low-power edge deployment (Raspberry Pi, Jetson Nano)",
       "why": "Depthwise separable convolutions; 14 MB against ResNet-50's 98 MB.",
       "measured": {
-        "held_out_accuracy": 0.8884,
-        "held_out_macro_f1": 0.7471,
+        "held_out_accuracy": 0.8704,
+        "held_out_macro_f1": 0.6995,
         "backbone_size_mb": 14.0
       },
       "evidence": "checkpoints/cnn_head_mobilenetv2_report.json",

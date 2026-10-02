@@ -1,0 +1,196 @@
+{
+ "before": {
+  "images": 997,
+  "accuracy": 0.334,
+  "macro_f1": 0.3273,
+  "per_class_f1": {
+   "normal": 0.5023,
+   "crack": 0.2306,
+   "pothole": 0.249
+  },
+  "per_class_images": {
+   "normal": 400,
+   "crack": 400,
+   "pothole": 197
+  },
+  "confusion_rows_true_cols_pred": [
+   [
+    214,
+    16,
+    101,
+    25,
+    18,
+    26,
+    0
+   ],
+   [
+    138,
+    55,
+    152,
+    27,
+    27,
+    1,
+    0
+   ],
+   [
+    100,
+    6,
+    64,
+    6,
+    20,
+    1,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  ],
+  "backend": "cnn_embeddings",
+  "seconds": 64.1,
+  "measured_unix": 1790966208
+ },
+ "dataset": {
+  "source": "C:\\Users\\Dell\\SIH_PROJECT\\datasets\\rdd2022_india",
+  "class_names": [
+   "longitudinal_crack",
+   "transverse_crack",
+   "alligator_crack",
+   "pothole"
+  ],
+  "mapping": {
+   "longitudinal_crack": "Crack (Longitudinal / Transverse / Alligator)",
+   "transverse_crack": "Crack (Longitudinal / Transverse / Alligator)",
+   "alligator_crack": "Crack (Longitudinal / Transverse / Alligator)",
+   "pothole": "Pothole Cavity"
+  },
+  "training_crops": {
+   "crack": 1200,
+   "pothole": 1147,
+   "normal": 600
+  },
+  "training_photographs": 2173,
+  "eval_crops": {
+   "crack": 400,
+   "pothole": 197,
+   "normal": 400
+  },
+  "eval_photographs": 778,
+  "eval_split": "RDD2022 India 'test' - never written to a training folder"
+ },
+ "after": {
+  "images": 997,
+  "accuracy": 0.8044,
+  "macro_f1": 0.7814,
+  "per_class_f1": {
+   "normal": 0.9345,
+   "crack": 0.7568,
+   "pothole": 0.6531
+  },
+  "per_class_images": {
+   "normal": 400,
+   "crack": 400,
+   "pothole": 197
+  },
+  "confusion_rows_true_cols_pred": [
+   [
+    378,
+    17,
+    2,
+    1,
+    1,
+    1,
+    0
+   ],
+   [
+    22,
+    280,
+    98,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    9,
+    43,
+    144,
+    0,
+    1,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  ],
+  "backend": "cnn_embeddings",
+  "seconds": 48.3,
+  "measured_unix": 1790967979
+ }
+}
