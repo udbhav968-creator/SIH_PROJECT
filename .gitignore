@@ -78,3 +78,7 @@ yolo11n.pt
 *.pem
 *.key
 .vercel
+
+# RDD2022 India crops (scripts/ingest_rdd2022_india.py) - regenerated from the local dataset
+datasets/*/real_images/rddin_*.jpg
+datasets/_eval_rdd2022_india/

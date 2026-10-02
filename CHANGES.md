@@ -1,6 +1,18 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
-## Latest: semantic gate - pothole precision 0.12 -> 0.53
+## Latest: RDD2022 India - training data and an Indian-roads test
+
+`scripts/ingest_rdd2022_india.py` reads the YOLO-format RDD2022 India set
+(images/labels split into train/valid/test). Crack (D00/D10/D20) and pothole
+(D40) boxes from train+valid become `rddin_*` training crops; photographs with
+no label supply capped normal-road crops. The RDD **test** split goes only to
+`datasets/_eval_rdd2022_india/`, which no training run reads, and
+`scripts/eval_indian_roads.py` scores the served classifier on it - the first
+accuracy figure measured on Indian roads. Crops from one photograph share a
+group key, so they never straddle a split. Tested on a synthetic RDD layout,
+including the guarantee that no test-split photograph reaches a training folder.
+
+## Previous: semantic gate - pothole precision 0.12 -> 0.53
 
 The pixel segmenter judges pixels from 11 local features and marks rough
 foreground asphalt and dark crack lines as "pothole". The CNN classifier now
