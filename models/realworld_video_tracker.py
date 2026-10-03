@@ -67,7 +67,7 @@ class SpatialTemporalVideoTracker:
                 trk["bbox"] = det_box
                 trk["last_frame"] = frame_idx
                 trk["hits"] += 1
-                trk["confidence"] = max(trk["confidence"], det.get("confidence", 0.9))
+                trk["confidence"] = max(trk["confidence"], float(det.get("confidence") or 0.0))
                 trk["distance_meters"] = det.get("distance_meters", 5.0)
                 matched_tracks.add(best_trk_id)
                 matched_dets.add(det_idx)
@@ -94,7 +94,7 @@ class SpatialTemporalVideoTracker:
                     "first_frame": frame_idx,
                     "last_frame": frame_idx,
                     "hits": 1,
-                    "confidence": det.get("confidence", 0.9),
+                    "confidence": float(det.get("confidence") or 0.0),  # no invented 0.9 default
                     "distance_meters": det.get("distance_meters", 10.0),
                     "is_distress": is_distress
                 }

@@ -140,14 +140,10 @@ def run_benchmark(target_count=30):
 
         try:
             t0 = time.time()
-            audit = pipeline.audit_image(
-                path,
-                corridor_id="NH-44-BENCHMARK",
-                latitude=28.6139,
-                longitude=77.2090,
-                chainage_km=round(100.0 + i * 0.5, 2),
-                vehicle_speed_kmh=45.0,
-            )
+            # No GPS or chainage: these photographs have none, and inventing
+            # them (this used to pass a fixed point in Delhi) would seal work
+            # orders at a made-up location.
+            audit = pipeline.audit_image(path, corridor_id="BENCHMARK")
             lat_ms = audit.get("latency_ms", (time.time() - t0) * 1000.0)
             total_pipeline_time += lat_ms
 
@@ -156,14 +152,14 @@ def run_benchmark(target_count=30):
 
             primary = audit.get("primary_detection") or audit.get("primary_distress") or {}
             cls_name = primary.get("class_name", "Normal Road / Sound Pavement")
-            conf = primary.get("confidence", 0.0)
+            conf = primary.get("confidence") or 0.0
             area = primary.get("surface_area_m2", 0.0)
             depth = primary.get("depth_cm", 0.0)
             cost = audit.get("morth_civil_ledger", {}).get("total_estimated_repair_inr", 0.0)
 
             if not gatekeeper_passed:
                 cls_name = "REJECTED (Non-Pavement)"
-                conf = 0.99
+                conf = 0.0  # rule decision - no model confidence exists
                 area = 0.0
                 depth = 0.0
                 cost = 0.0
@@ -191,6 +187,11 @@ def run_benchmark(target_count=30):
                 "pci_score": audit.get("astm_d6433_pci", {}).get("pci_score") if gatekeeper_passed else None,
                 "pci_category": audit.get("astm_d6433_pci", {}).get("rating_category") if gatekeeper_passed else None,
                 "num_detections": len(audit.get("all_detections", [])),
+                "tonnage_t": (audit.get("morth_civil_ledger") or {}).get("total_bitumen_tonnage_t", 0.0) if gatekeeper_passed else 0.0,
+                "work_order_issued": bool(audit.get("cryptographic_work_order")),
+                "work_order_seal_verified": bool(pipeline.dispatch_agent.verify_work_order_seal(
+                    {k: v for k, v in audit["cryptographic_work_order"].items() if k != "seal_verification_status"}))
+                    if audit.get("cryptographic_work_order") else None,
                 "vision_backend": audit.get("vision_backend", pipeline.vision_backend),
             })
         except Exception as ex:
@@ -221,8 +222,12 @@ def run_benchmark(target_count=30):
 
     print("\nBENCHMARK SUMMARY & INTEGRITY METRICS:")
     print(f"- Total Real Road Images Evaluated: {len(real_images_res)}")
-    print(f"- Cryptographically Distinct SHA-256 Hashes: {distinct_hashes} / {len(real_images_res)} (100% Unique Physical Scenes)")
-    print(f"- Texture Gatekeeper Pass Rate on Road Pavement: {sum(1 for r in real_images_res if r['gatekeeper_passed'])} / {len(real_images_res)} (100%)")
+    n_real = max(1, len(real_images_res))
+    n_pass = sum(1 for r in real_images_res if r['gatekeeper_passed'])
+    print(f"- Distinct SHA-256 hashes: {distinct_hashes} / {len(real_images_res)}")
+    print(f"- Texture gatekeeper pass rate on road photographs: {n_pass} / {len(real_images_res)} ({100.0 * n_pass / n_real:.0f}%)")
+    print("- NOTE: images are drawn from the dataset folders, which include training images -"
+          " this measures the pipeline end to end, not held-out accuracy")
     control_res = [r for r in results if r.get("is_control")]
     if control_res:
         print(f"- Non-Pavement Texture Rejection Test: {'PASSED (Successfully Rejected)' if not control_res[0]['gatekeeper_passed'] else 'FAILED'}")
@@ -245,6 +250,14 @@ def run_benchmark(target_count=30):
             "mean_latency_ms": round(avg_lat, 2),
             "throughput_fps": round(throughput_fps, 2),
             "total_repair_cost_inr": round(total_cost, 2),
+            "total_tonnage_t": round(sum(r.get("tonnage_t") or 0.0 for r in real_images_res), 3),
+            "work_orders_issued": sum(1 for r in real_images_res if r.get("work_order_issued")),
+            "work_orders_seal_verified": sum(1 for r in real_images_res if r.get("work_order_seal_verified")),
+            "gatekeeper_pass_rate": round(n_pass / n_real, 4),
+            "images_are_held_out": False,
+            "note": "Images are drawn from the dataset folders (training images included); this measures the "
+                    "pipeline end to end, not accuracy. No GPS is supplied, so work orders are HELD_NO_GPS.",
+            "cpu_count": os.cpu_count(),
             "class_distribution": dict(class_dist),
             "records": results,
         }, f, indent=2)
@@ -256,4 +269,4 @@ def run_benchmark(target_count=30):
 
 if __name__ == "__main__":
     count = int(sys.argv[1]) if len(sys.argv) > 1 else 30
-    run_benchmark(count)
+    run_benchmark(count)

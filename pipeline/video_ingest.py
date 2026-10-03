@@ -196,7 +196,7 @@ class VideoIngestor:
                 progress(analysed, frame_idx, info["frame_count"])
 
             top = (result.get("all_detections") or [{}])[0]
-            conf = float(top.get("confidence", 0.0))
+            conf = float(top.get("confidence") or 0.0)  # None = rule decision, not a score
             cls_name = top.get("class_name", "")
             is_defect = conf >= min_confidence and "Normal" not in cls_name
 

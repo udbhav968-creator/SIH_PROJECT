@@ -2,8 +2,8 @@
 Model M4: 100 Hz 3-axis IMU shock classifier.
 
 Turns a 1-second window (100 samples x 3 axes) of accelerometer readings into
-one of four classes: smooth asphalt, expansion joint, rumble strip, or a
-pothole impact. The time -> feature step (extract_temporal_features) is
+one of four classes: smooth asphalt, unmarked speed breaker / bump, marked
+speed breaker, or a pothole impact. The time -> feature step (extract_temporal_features) is
 plain, well-understood signal processing (mean/std/energy/zero-crossing-rate/
 jerk per axis); the classifier on top of it is a real scikit-learn model
 trained on datasets/04_mobile_imu_telemetry_100hz.
@@ -19,7 +19,11 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 
 
 class IMUShockClassifier:
-    CLASS_NAMES = ["Smooth Asphalt", "Expansion Joint", "Rumble Strip", "Pothole Impact"]
+    # Names follow the source logs (plain_road / unmarked_sb / marked_sb /
+    # potholes in VishalSingh25/Pothole-Project). Classes 1 and 2 used to be
+    # called "Expansion Joint" and "Rumble Strip", which the data never contained:
+    # they are unmarked and marked speed breakers.
+    CLASS_NAMES = ["Smooth Asphalt", "Unmarked Speed Breaker / Bump", "Marked Speed Breaker", "Pothole Impact"]
     POTHOLE_CLASS_ID = 3
 
     def __init__(self, model_path=None, n_estimators=300, random_state=42):
@@ -137,3 +141,62 @@ class IMUShockClassifier:
 
     def load(self, path):
         self.pipeline = joblib.load(path)
+
+
+class IMUShockCNN:
+    """ONNX Runtime inference for the 1-D CNN trained by training/train_imu_deep.py.
+
+    Same predict() contract as IMUShockClassifier, so the pipeline does not
+    care which one answers. Served only when checkpoints/imu_model_selection.json
+    says so (a rule fixed before the held-out windows were scored)."""
+
+    CLASS_NAMES = IMUShockClassifier.CLASS_NAMES
+    POTHOLE_CLASS_ID = IMUShockClassifier.POTHOLE_CLASS_ID
+
+    def __init__(self, onnx_path, sidecar_path):
+        import json
+        import onnxruntime as ort
+        with open(sidecar_path) as fh:
+            self.meta = json.load(fh)
+        self.scale = np.asarray(self.meta["axis_scale"], dtype=np.float32)
+        self.session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+        self.input_name = self.session.get_inputs()[0].name
+        self.path = onnx_path
+
+    @property
+    def is_ready(self):
+        return self.session is not None
+
+    def predict(self, X_raw):
+        X = np.asarray(X_raw, dtype=np.float32)
+        if X.ndim == 2:
+            X = X[None]
+        Xc = X - X.mean(axis=1, keepdims=True)
+        x = np.transpose(Xc / self.scale[None, None, :], (0, 2, 1)).astype(np.float32)
+        probs = self.session.run(None, {self.input_name: x})[0]
+        preds = np.argmax(probs, axis=-1)
+        return preds, probs[:, self.POTHOLE_CLASS_ID], probs
+
+
+def load_served_imu_model(checkpoints_dir):
+    """(model, name). The CNN when the recorded selection names it and its files
+    load; otherwise the RandomForest checkpoint; (None, 'none') if neither."""
+    import json
+    sel_path = os.path.join(checkpoints_dir, "imu_model_selection.json")
+    sel = {}
+    if os.path.exists(sel_path):
+        try:
+            with open(sel_path) as fh:
+                sel = json.load(fh)
+        except Exception:
+            sel = {}
+    if sel.get("served") == "cnn":
+        onnx_path = os.path.join(checkpoints_dir, "imu_shock_cnn.onnx")
+        side = os.path.join(checkpoints_dir, "imu_shock_cnn.json")
+        if os.path.exists(onnx_path) and os.path.exists(side):
+            try:
+                return IMUShockCNN(onnx_path, side), "cnn"
+            except Exception as e:
+                print(f"[IMU] CNN selected but would not load ({e}); using the RandomForest")
+    rf = IMUShockClassifier(model_path=os.path.join(checkpoints_dir, "imu_shock_model.joblib"))
+    return (rf, "random_forest") if rf.is_ready else (None, "none")

@@ -23,6 +23,8 @@ import os
 import glob
 import json
 import time
+import base64
+import io
 import socketserver
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import numpy as np
@@ -86,8 +88,11 @@ print("[AI Server] Loading trained models from:", CKPT_DIR)
 from models.deep_vision_net import load_best_vision_model
 vision_model, VISION_BACKEND = load_best_vision_model(CKPT_DIR)
 
-imu_model = IMUShockClassifier(model_path=os.path.join(CKPT_DIR, "imu_shock_model.joblib"))
-print("  ✓ IMU shock classifier", "loaded" if imu_model.is_ready else "NOT TRAINED YET (run training/train_imu.py)")
+from models.imu_shock_classifier import load_served_imu_model
+imu_model, imu_backend = load_served_imu_model(CKPT_DIR)
+if imu_model is None:
+    imu_model = IMUShockClassifier()
+print("  ✓ IMU shock classifier", f"loaded ({imu_backend})" if imu_model.is_ready else "NOT TRAINED YET (run training/train_imu.py)")
 
 bayesian_gate = BayesianFusionGate(prior_pothole_prob=0.05, decision_threshold_log_odds=1.8)
 # Standalone IPM for the /civil/ipm-tonnage endpoint. Built from the default
@@ -118,19 +123,21 @@ print("  ✓ Deep inference pipeline initialized.")
 # honestly by /api/v1/fleet/telemetry rather than hidden.
 from pipeline.defect_store import DefectStore
 defect_store = DefectStore(os.path.join(WRITABLE_DIR, "road_shield.db"))
-fleet_dedup_engine = FleetDeduplicationEngine(proximity_threshold_meters=10.0,
+fleet_dedup_engine = FleetDeduplicationEngine(proximity_threshold_meters=8.0,
                                               store=defect_store)
 
-# Seed demo defects ONLY when the ledger is empty. Re-seeding on every start
-# would duplicate fixtures into a durable store, which is exactly the bug
-# deduplication exists to prevent.
-if not fleet_dedup_engine.defect_registry:
+# Demo defects are OFF by default: five invented bus reports in a ledger that
+# the dashboard presents as the city's repair backlog is fabricated data.
+# Set ROAD_SHIELD_SEED_DEMO=1 to seed them for a demo (only when the ledger is
+# empty - re-seeding a durable store would duplicate the fixtures).
+SEED_DEMO = os.environ.get("ROAD_SHIELD_SEED_DEMO") == "1"
+if SEED_DEMO and not fleet_dedup_engine.defect_registry:
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9716, 77.5946, "Pothole Cavity", 42.0, 1.85, enrich_location=False)
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.97163, 77.59457, "Pothole Cavity", 38.0, 2.10, enrich_location=False)  # ~5 m away -> merges into the first, confirming it
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9750, 77.5980, "Waterlogging / Flooding Hazard", 35.0, 5.20, enrich_location=False)
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-308", 12.9680, 77.5910, "Missing Zebra Crossing", 60.0, 3.40, enrich_location=False)
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.9800, 77.6050, "Damaged Traffic Sign", 55.0, 0.80, enrich_location=False)
-    print(f"  ✓ Fleet ledger created and seeded with 5 demo reports "
+    print(f"  ✓ Fleet ledger seeded with 5 DEMO reports (ROAD_SHIELD_SEED_DEMO=1) "
           f"-> {defect_store.db_path}")
 else:
     print(f"  ✓ Fleet ledger loaded: {len(fleet_dedup_engine.defect_registry)} defects "
@@ -189,6 +196,43 @@ def get_session_tracker(session_id="default", reset=False):
 # ==============================================================================
 # HTTP REQUEST HANDLER WITH CORS SUPPORT
 # ==============================================================================
+def _first(src, *keys):
+    """First present, non-empty value among keys in a dict (or a parse_qs dict)."""
+    for k in keys:
+        if k in src:
+            v = src[k]
+            if isinstance(v, list):
+                v = v[0] if v else None
+            if v is not None and v != "":
+                return v
+    return None
+
+
+def _float_or_none(src, *keys):
+    v = _first(src, *keys)
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        raise ValueError(f"{keys[0]} must be a number, got {v!r}")
+
+
+def _require_latlon(src, lat_keys=("lat", "latitude"), lon_keys=("lon", "lng", "longitude")):
+    """(lat, lon, error). The API never substitutes a default city centre for a
+    missing coordinate - that is how a request with no location used to come
+    back with an address in Bengaluru or Delhi."""
+    try:
+        lat, lon = _float_or_none(src, *lat_keys), _float_or_none(src, *lon_keys)
+    except ValueError as e:
+        return None, None, str(e)
+    if lat is None or lon is None:
+        return None, None, f"{lat_keys[0]} and {lon_keys[0]} are required"
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        return None, None, "lat/lon out of range"
+    return lat, lon, None
+
+
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
@@ -374,30 +418,38 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
 
         if path == "/api/v1/maps/reverse-geocode":
             q_params = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
-            lat = float(q_params.get("lat", [12.9716])[0])
-            lon = float(q_params.get("lon", q_params.get("lng", [77.5946]))[0])
+            lat, lon, err = _require_latlon(q_params)
+            if err:
+                self._send_json(400, {"error": err})
+                return
             self._send_json(200, google_maps_service.reverse_geocode(lat, lon))
             return
 
         if path == "/api/v1/maps/elevation":
             q_params = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
-            lat = float(q_params.get("lat", [12.9716])[0])
-            lon = float(q_params.get("lon", q_params.get("lng", [77.5946]))[0])
+            lat, lon, err = _require_latlon(q_params)
+            if err:
+                self._send_json(400, {"error": err})
+                return
             self._send_json(200, google_maps_service.get_elevation(lat, lon))
             return
 
         if path == "/api/v1/maps/places-nearby":
             q_params = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
-            lat = float(q_params.get("lat", [12.9716])[0])
-            lon = float(q_params.get("lon", q_params.get("lng", [77.5946]))[0])
+            lat, lon, err = _require_latlon(q_params)
+            if err:
+                self._send_json(400, {"error": err})
+                return
             fac_type = q_params.get("type", ["all"])[0]
             self._send_json(200, google_maps_service.find_nearby_civil_facilities(lat, lon, fac_type))
             return
 
         if path == "/api/v1/maps/streetview-url":
             q_params = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
-            lat = float(q_params.get("lat", [12.9716])[0])
-            lon = float(q_params.get("lon", q_params.get("lng", [77.5946]))[0])
+            lat, lon, err = _require_latlon(q_params)
+            if err:
+                self._send_json(400, {"error": err})
+                return
             self._send_json(200, google_maps_service.get_streetview_metadata(lat, lon))
             return
 
@@ -414,10 +466,17 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     elev = google_maps_service.get_elevation(d["lat"], d["lon"])
                     d["elevation_m"] = elev.get("elevation_meters")
                     d["drainage_risk"] = elev.get("drainage_risk_category")
-            civil_depots = google_maps_service.find_nearby_civil_facilities(12.9716, 77.5946)["facilities"]
+            # Depots near the ledger's own defects (their centroid), not near a
+            # hard-coded city centre; none at all when the ledger is empty.
+            if defects:
+                c_lat = sum(d["lat"] for d in defects) / len(defects)
+                c_lon = sum(d["lon"] for d in defects) / len(defects)
+                civil_depots = google_maps_service.find_nearby_civil_facilities(c_lat, c_lon)["facilities"]
+            else:
+                civil_depots = []
             self._send_json(200, {
                 "system": "ROAD-SHIELD Fleet & Defect GIS Dashboard",
-                "note": "deduplicated_defects is real, computed state from fleet_dedup_engine (seeded with 5 demo reports at server startup). There is no live bus GPS/traffic feed in this project, so fleet_units/congestion figures below are not shown here - see /api/v1/fleet/telemetry for the real dedup registry stats instead.",
+                "note": "deduplicated_defects is real, computed state from fleet_dedup_engine (demo reports only if the server was started with ROAD_SHIELD_SEED_DEMO=1). There is no live bus GPS/traffic feed in this project, so fleet_units/congestion figures below are not shown here - see /api/v1/fleet/telemetry for the real dedup registry stats instead.",
                 "google_maps_status": google_maps_service.get_service_status(),
                 "tile_layers": google_maps_service.get_tile_layers(),
                 "default_tile_layer": "google_roadmap",
@@ -463,8 +522,11 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 with open(cnn_report, "r", encoding="utf-8") as f:
                     blob = json.load(f)
                 key = f"cnn_head_{blob.get('backbone', 'unknown')}"
-                blob["active"] = bool(loaded.get("backbone") == blob.get("backbone"))
+                blob["active"] = bool(VISION_BACKEND == "cnn_embeddings"
+                                      and loaded.get("backbone") == blob.get("backbone"))
                 out[key] = blob
+            from models.served_report import training_extras
+            out.update(training_extras(CKPT_DIR))
             self._send_json(200, out)
             return
 
@@ -709,10 +771,11 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/v1/maps/directions":
-            origin_lat = float(body.get("origin_lat", 12.9725))
-            origin_lng = float(body.get("origin_lng", 77.5955))
-            dest_lat = float(body.get("dest_lat", 12.9780))
-            dest_lng = float(body.get("dest_lng", 77.6020))
+            origin_lat, origin_lng, e1 = _require_latlon(body, ("origin_lat",), ("origin_lng", "origin_lon"))
+            dest_lat, dest_lng, e2 = _require_latlon(body, ("dest_lat",), ("dest_lng", "dest_lon"))
+            if e1 or e2:
+                self._send_json(400, {"error": e1 or e2})
+                return
             avoid_defects = bool(body.get("avoid_defects", False))
             known_defects = fleet_dedup_engine.get_all_deduplicated_defects()
             dirs = google_maps_service.get_directions(origin_lat, origin_lng, dest_lat, dest_lng, avoid_defects=avoid_defects, known_defects=known_defects)
@@ -724,14 +787,18 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/v1/maps/reverse-geocode":
-            lat = float(body.get("lat", body.get("latitude", 12.9716)))
-            lon = float(body.get("lon", body.get("lng", body.get("longitude", 77.5946))))
+            lat, lon, err = _require_latlon(body)
+            if err:
+                self._send_json(400, {"error": err})
+                return
             self._send_json(200, google_maps_service.reverse_geocode(lat, lon))
             return
 
         if path == "/api/v1/maps/elevation":
-            lat = float(body.get("lat", body.get("latitude", 12.9716)))
-            lon = float(body.get("lon", body.get("lng", body.get("longitude", 77.5946))))
+            lat, lon, err = _require_latlon(body)
+            if err:
+                self._send_json(400, {"error": err})
+                return
             self._send_json(200, google_maps_service.get_elevation(lat, lon))
             return
 
@@ -802,7 +869,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             delta_z = float(np.max(raw[0, :, 2]) - np.min(raw[0, :, 2]))
 
             self._send_json(200, {
-                "model": "IMUShockClassifier",
+                "model": "IMUShockClassifier" if imu_backend == "random_forest" else "IMUShockCNN (1-D CNN, ONNX)",
                 "data_source": data_source,
                 "class_id": cls_id,
                 "shock_classification": IMUShockClassifier.CLASS_NAMES[cls_id],
@@ -875,15 +942,37 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # MoRTH cryptographic work-order dispatch (Model M10)
         # ----------------------------------------------------------------------
         if path == "/api/v1/dispatch/work-order":
-            work_order = dispatch_agent.generate_work_order(
-                corridor_id=str(body.get("corridor_id", body.get("highway", "NH-44"))),
-                latitude=float(body.get("latitude", body.get("lat", 28.7041))),
-                longitude=float(body.get("longitude", body.get("lng", body.get("lon", 77.1025)))),
-                distress_class=str(body.get("distress_class", body.get("distress_type", "Pothole Cavity"))),
-                area_sqm=float(body.get("area_sqm", body.get("area_m2", 2.2))),
-                depth_cm=float(body.get("depth_cm", 6.5)),
-                pci_score=int(body.get("pci_score", 42)),
-            )
+            # A sealed work order is a billing document. Every measured field
+            # must come from the caller; the old defaults (a 2.2 m2, 6.5 cm
+            # pothole at PCI 42 in Delhi) sealed an invented defect whenever a
+            # field was missing - and web/works.html sends defect_class/pci,
+            # which were silently ignored. GPS is optional: without it the
+            # order is issued with dispatch_status HELD_NO_GPS.
+            try:
+                fields = {
+                    "distress_class": _first(body, "distress_class", "distress_type", "defect_class"),
+                    "area_sqm": _float_or_none(body, "area_sqm", "area_m2"),
+                    "depth_cm": _float_or_none(body, "depth_cm"),
+                    "pci_score": _float_or_none(body, "pci_score", "pci"),
+                    "latitude": _float_or_none(body, "latitude", "lat"),
+                    "longitude": _float_or_none(body, "longitude", "lng", "lon"),
+                }
+            except ValueError as e:
+                self._send_json(400, {"error": str(e)})
+                return
+            missing = [k for k in ("distress_class", "area_sqm", "depth_cm", "pci_score") if fields[k] is None]
+            if missing:
+                self._send_json(400, {"error": "missing required fields: " + ", ".join(missing),
+                                      "required": ["distress_class", "area_sqm", "depth_cm", "pci_score"],
+                                      "optional": ["latitude", "longitude", "corridor_id"]})
+                return
+            try:
+                work_order = dispatch_agent.generate_work_order(
+                    corridor_id=str(body.get("corridor_id", body.get("highway", "UNSPECIFIED"))),
+                    **fields)
+            except ValueError as e:
+                self._send_json(400, {"error": str(e)})
+                return
             work_order["model"] = "MoRTHDispatchAgent"
             work_order["latency_ms"] = round((time.time() - t0) * 1000.0, 3)
             self._send_json(200, work_order)
@@ -1128,22 +1217,35 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             filename = body.get("filename", "")
             if filename and filename not in corridor:
                 corridor = f"{corridor} {filename}"
-            lat = float(body.get("latitude", body.get("lat", 28.7041)))
-            lng = float(body.get("longitude", body.get("lng", 77.1025)))
-            chainage = float(body.get("chainage_km", 108.4))
-            traffic_esal = float(body.get("traffic_esal", 7500))
-            rain_mm = float(body.get("rain_mm", 650.0))
-            age_yr = float(body.get("age_years", 3.5))
+            # Absent GPS stays absent (None) and absent forecast inputs are
+            # filled by the pipeline and listed under modelling_assumptions.
+            try:
+                lat = _float_or_none(body, "latitude", "lat")
+                lng = _float_or_none(body, "longitude", "lng", "lon")
+                chainage = _float_or_none(body, "chainage_km")
+                traffic_esal = _float_or_none(body, "traffic_esal")
+                rain_mm = _float_or_none(body, "rain_mm")
+                age_yr = _float_or_none(body, "age_years", "pavement_age_yr")
+            except ValueError as e:
+                self._send_json(400, {"error": str(e)})
+                return
             imu_series = body.get("imu_series")  # only used if the caller supplies a real (100,3) window
             device_id = body.get("device_id")  # camera calibration profile, if the caller has one
 
             if not image_input:
-                default_pothole = os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "real_images", "1014628_RS_386_386RS124739_30065_RAW.jpg")
-                if os.path.exists(default_pothole):
-                    image_input = default_pothole
-                else:
-                    self._send_json(400, {"error": "Missing image_base64 or image_path payload"})
+                # Used to audit a bundled pothole photograph instead, so an
+                # empty request came back with a confident pothole detection.
+                self._send_json(400, {"error": "Missing image_base64 or image_path payload"})
+                return
+            if not body.get("image_base64"):
+                # image_path is a convenience for local datasets only; a remote
+                # caller must not be able to make the server open any file.
+                datasets_root = os.path.realpath(os.path.join(ENGINE_ROOT, "datasets"))
+                real = os.path.realpath(os.path.join(ENGINE_ROOT, str(image_input)))
+                if not real.startswith(datasets_root + os.sep) or not os.path.isfile(real):
+                    self._send_json(400, {"error": "image_path must name an existing file under datasets/"})
                     return
+                image_input = real
 
             try:
                 audit_result = deep_pipeline.audit_image(
@@ -1302,12 +1404,21 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # Fleet defect ingestion / deduplication
         # ----------------------------------------------------------------------
         if path == "/api/v1/fleet/report-defect":
+            # Every field of a sighting comes from the bus. Missing GPS used to
+            # become Bengaluru's city centre and a missing class a pothole.
             bus_id = body.get("bus_id", "BUS-UNKNOWN")
-            lat = float(body.get("lat", 12.9716))
-            lon = float(body.get("lon", 77.5946))
-            cls_name = body.get("defect_class", "Pothole Cavity")
-            pci = float(body.get("severity_pci", 42.0))
-            area = float(body.get("area_m2", 1.85))
+            lat, lon, err = _require_latlon(body)
+            cls_name = _first(body, "defect_class")
+            try:
+                pci = _float_or_none(body, "severity_pci", "pci")
+                area = _float_or_none(body, "area_m2", "area_sqm")
+            except ValueError as e:
+                err = err or str(e)
+                pci = area = None
+            missing = [n for n, v in (("defect_class", cls_name), ("severity_pci", pci), ("area_m2", area)) if v is None]
+            if err or missing:
+                self._send_json(400, {"error": err or ("missing required fields: " + ", ".join(missing))})
+                return
             res = fleet_dedup_engine.ingest_fleet_detection(bus_id, lat, lon, cls_name, pci, area)
             self._send_json(200, res)
             return
@@ -1315,6 +1426,29 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # ----------------------------------------------------------------------
         # ALPR / rash-driving incident report (real kinematics + real OCR when an image is given)
         # ----------------------------------------------------------------------
+        if path == "/api/v1/privacy/redact":
+            # Blur people (head region) and number plates before an image is
+            # shared. Returns the redacted JPEG and what was found; it does not
+            # claim a recall figure (there is no annotated set to measure one).
+            b64 = body.get("image_base64")
+            if not b64:
+                self._send_json(400, {"error": "image_base64 is required"})
+                return
+            try:
+                from models.privacy_redactor import redact
+                from PIL import Image
+                img = np.asarray(Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB"))
+            except Exception as e:
+                self._send_json(400, {"error": f"could not decode image: {e}"})
+                return
+            red, rep = redact(img, detector=deep_pipeline.object_detector)
+            buf = io.BytesIO()
+            Image.fromarray(red).save(buf, format="JPEG", quality=88)
+            rep["latency_ms"] = round((time.time() - t0) * 1000.0, 1)
+            self._send_json(200, {"redacted_image_base64": base64.b64encode(buf.getvalue()).decode("ascii"),
+                                  "report": rep})
+            return
+
         if path == "/api/v1/incidents/alpr":
             bus_id = body.get("bus_id", "UNKNOWN")
             gps = body.get("gps")  # absent -> the report carries no location

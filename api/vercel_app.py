@@ -53,6 +53,17 @@ ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__fil
 CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
 WEB_DIR = os.path.join(ENGINE_ROOT, "web")
 
+def _served_report():
+    """models/served_report.py, loaded by path: it is stdlib-only, and loading it
+    this way keeps the serverless bundle from importing the models package."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "served_report", os.path.join(ENGINE_ROOT, "models", "served_report.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
     ".js": "application/javascript; charset=utf-8", ".json": "application/json",
@@ -208,9 +219,13 @@ class handler(BaseHTTPRequestHandler):
                 if score > best_score:
                     best, best_score = key, score
                 out[key] = r
-            # Mark the head that WOULD serve, by the same rule the loader uses.
-            if best:
+            extras = _served_report().training_extras(CKPT_DIR, require_files=False)
+            # Mark the head that WOULD serve, by the same rule the loader uses -
+            # and only if no fine-tuned network has been selected over it.
+            served = extras.get("served_classifier") or {}
+            if best and served.get("kind") != "fine_tuned_cnn":
                 out[best]["active"] = True
+            out.update(extras)
             self._send(200, out)
             return
 

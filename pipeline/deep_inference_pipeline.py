@@ -84,6 +84,12 @@ ASSUMED_FRAME_PAVEMENT_AREA_M2 = 25.0  # rough visible-pavement extent in one da
 class DeepInferencePipeline:
     """Wires the project's real models together into one road-photo/telemetry audit."""
 
+    # Typical values for the deterioration forecast when the caller supplies
+    # none. Reported back as assumptions, never as measurements.
+    DEFAULT_TRAFFIC_ESAL = 7500
+    DEFAULT_RAIN_MM = 650.0
+    DEFAULT_PAVEMENT_AGE_YR = 3.5
+
     def __init__(self, checkpoints_dir=None):
         self.ckpt_dir = checkpoints_dir or os.path.join(ENGINE_ROOT, "checkpoints")
 
@@ -104,12 +110,11 @@ class DeepInferencePipeline:
             print("[WARN] No trained vision model found - run training/train_deep_vision.py "
                   "(deep) or training/train_vision.py (baseline).")
 
-        self.imu_model = IMUShockClassifier()
-        imu_ckpt = os.path.join(self.ckpt_dir, "imu_shock_model.joblib")
-        if os.path.exists(imu_ckpt):
-            self.imu_model.load(imu_ckpt)
-        else:
-            print(f"[WARN] IMU model not found at: {imu_ckpt} - run training/train_imu.py first.")
+        from models.imu_shock_classifier import load_served_imu_model
+        self.imu_model, self.imu_backend = load_served_imu_model(self.ckpt_dir)
+        if self.imu_model is None:
+            self.imu_model = IMUShockClassifier()  # not ready; the IMU stage reports that plainly
+            print("[WARN] IMU model not found - run training/train_imu.py first.")
 
         # Geometry comes from a calibration profile rather than constants. With
         # no profile on disk this resolves to the historical assumed mount and
@@ -159,13 +164,13 @@ class DeepInferencePipeline:
         self,
         image_input,
         corridor_id="NH-44",
-        latitude=28.7041,
-        longitude=77.1025,
-        chainage_km=108.4,
+        latitude=None,
+        longitude=None,
+        chainage_km=None,
         imu_series=None,
-        traffic_esal=7500,
-        rain_mm=650.0,
-        pavement_age_yr=3.5,
+        traffic_esal=None,
+        rain_mm=None,
+        pavement_age_yr=None,
         device_id=None,
         vehicle_speed_kmh=45.0,
         **_extra,
@@ -177,6 +182,25 @@ class DeepInferencePipeline:
         stage below for what happens when it's omitted.
         """
         t0 = time.time()
+        # No location is ever invented. A photograph without GPS is reported
+        # with lat/lng = None and any work order is held, not placed at a
+        # default coordinate (this used to default to a point in Delhi).
+        latitude = None if latitude is None else float(latitude)
+        longitude = None if longitude is None else float(longitude)
+        # The deterioration forecast needs traffic, rainfall and age. When the
+        # caller does not know them, typical values are used and the response
+        # lists them under "modelling_assumptions", so a forecast built on
+        # assumed inputs cannot pass as one built on measured ones.
+        self._assumed_inputs = {}
+        if traffic_esal is None:
+            traffic_esal = self.DEFAULT_TRAFFIC_ESAL
+            self._assumed_inputs["traffic_esal_per_day"] = traffic_esal
+        if rain_mm is None:
+            rain_mm = self.DEFAULT_RAIN_MM
+            self._assumed_inputs["seasonal_rain_mm"] = rain_mm
+        if pavement_age_yr is None:
+            pavement_age_yr = self.DEFAULT_PAVEMENT_AGE_YR
+            self._assumed_inputs["pavement_age_years"] = pavement_age_yr
         from models.dan_dag_network import DualAttentionModule, PipelineExecutionDAG
         dag_exec = PipelineExecutionDAG()
 
@@ -486,11 +510,18 @@ class DeepInferencePipeline:
             },
             "monsoon_deterioration_forecast": degrade_report,
             "morth_civil_ledger": {
-                "asphalt_density_t_m3": 2.40,
-                "compaction_factor": 1.15,
+                "asphalt_density_t_m3": IPMHomographyEngine.MATERIAL_PROPERTIES["DBM_SECTION_500"]["density_t_per_m3"],
+                "compaction_factor": IPMHomographyEngine.COMPACTION_FACTOR,
                 "total_bitumen_tonnage_t": total_tonnage,
-                "mix_rate_inr_per_tonne": 7500.0,
+                "mix_rate_inr_per_tonne": IPMHomographyEngine.MATERIAL_PROPERTIES["DBM_SECTION_500"]["cost_per_tonne_inr"],
+                "rate_basis": IPMHomographyEngine.RATE_BASIS,
                 "total_estimated_repair_inr": total_repair_inr,
+            },
+            "modelling_assumptions": {
+                "assumed_inputs": dict(self._assumed_inputs),
+                "note": ("Inputs listed here were not supplied by the caller; typical "
+                         "values were used for the deterioration forecast only.")
+                        if self._assumed_inputs else "All forecast inputs were supplied by the caller.",
             },
             "cryptographic_work_order": work_order,
             "deep_forensic_intelligence": {
@@ -1083,15 +1114,11 @@ class DeepInferencePipeline:
                     dan_res = self.dan_dag_net.predict_image(eval_crop)
                     self._last_dag_trace = dan_res.get("dag_trace", [])
                     consensus = (dan_res["class_id"] == cls_id) or (dan_res["dag_leaf_class_id"] == cls_id)
-                    if consensus:
-                        boosted = min(
-                            0.995,
-                            max(
-                                float(pred["confidence"]),
-                                0.55 * float(pred["confidence"]) + 0.45 * float(dan_res["confidence"]) + 0.03,
-                            ),
-                        )
-                        pred["confidence"] = round(boosted, 4)
+                    # The reported confidence stays the classifier's own
+                    # probability. Agreement with DAN-DAG is recorded beside it
+                    # (consensus_agreement) but does not raise the number: the
+                    # old blend took max(p, 0.55p + 0.45q + 0.03), so it could
+                    # only ever go up and carried an unjustified +0.03.
                     dan_dag_info = {
                         "dan_dag_class_id": dan_res["class_id"],
                         "dan_dag_class_name": dan_res["class_name"],
@@ -1309,7 +1336,10 @@ class DeepInferencePipeline:
         return {
             "class_id": 0,
             "class_name": "Normal Road / Sound Pavement",
-            "confidence": 0.99,
+            # Not a model probability: no distress region survived the gates,
+            # so there is no classifier score to report. (Was a fixed 0.99.)
+            "confidence": None,
+            "decision_basis": "no distress region survived proposal, classifier and plausibility gates",
             "shannon_entropy_bits": 0.0,
             "uncertainty_rating": "LOW_UNCERTAINTY",
             "astm_d6433_severity": "NONE",
@@ -1395,7 +1425,8 @@ class DeepInferencePipeline:
         cls_name = IMUShockClassifier.CLASS_NAMES[int(preds[0])]
         p_imu = float(pothole_conf[0])
         return (
-            {"available": True, "shock_classification": cls_name, "peak_delta_z_ms2": round(delta_z, 2), "pothole_shock_probability": round(p_imu, 4)},
+            {"available": True, "shock_classification": cls_name, "peak_delta_z_ms2": round(delta_z, 2),
+             "pothole_shock_probability": round(p_imu, 4), "model": getattr(self, "imu_backend", "random_forest")},
             delta_z,
             p_imu,
             True,
@@ -1436,7 +1467,10 @@ class DeepInferencePipeline:
         placeholder = {
             "class_name": "Non-Pavement Surface (Rejected)",
             "is_distress": False,
-            "confidence": 0.99,
+            # Rule-based rejection (texture std below threshold), not a model
+            # probability - so no confidence is claimed. (Was a fixed 0.99.)
+            "confidence": None,
+            "decision_basis": "luminance standard deviation below the texture-gate threshold",
             "surface_area_m2": 0.0,
             "depth_cm": 0.0,
             "bbox_pixels": None,
@@ -1510,7 +1544,9 @@ class DeepInferencePipeline:
 
         for idx, img_path in enumerate(image_paths):
             try:
-                rec = self.audit_image(image_input=img_path, corridor_id=corridor_id, chainage_km=100.0 + idx * 0.25, **kwargs)
+                # chainage is whatever the caller supplies (default None) - it used
+                # to be invented as 100 km + 250 m per file, which no survey records
+                rec = self.audit_image(image_input=img_path, corridor_id=corridor_id, **kwargs)
                 rec["image_path"] = img_path
                 rec["image_name"] = os.path.basename(img_path)
                 records.append(rec)

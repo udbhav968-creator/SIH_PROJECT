@@ -31,9 +31,9 @@
           <div class="field"><label for="pci">PCI</label>
             <input id="pci" type="number" step="1" value="42"></div>
           <div class="field"><label for="lat">Latitude</label>
-            <input id="lat" type="number" step="0.00001" value="12.97160"></div>
+            <input id="lat" type="number" step="0.00001" placeholder="from the bus GPS (optional)"></div>
           <div class="field"><label for="lon">Longitude</label>
-            <input id="lon" type="number" step="0.00001" value="77.59450"></div>
+            <input id="lon" type="number" step="0.00001" placeholder="from the bus GPS (optional)"></div>
         </div>
         <button class="primary" id="issue">Generate sealed work order</button>
       </div>
@@ -68,14 +68,17 @@ let issued = null;
 
 el("issue").addEventListener("click", async () => {
   setLoading(el("order"), true, "computing tonnage and sealing…");
-  const r = await API.post("/api/v1/dispatch/work-order", {
-    defect_class: el("cls").value,
-    area_m2: parseFloat(el("area").value),
-    depth_cm: parseFloat(el("depth").value),
-    pci: parseFloat(el("pci").value),
-    latitude: parseFloat(el("lat").value),
-    longitude: parseFloat(el("lon").value),
-  });
+  // Empty GPS boxes send nothing: the server then issues the order held
+  // (HELD_NO_GPS) instead of placing it at an invented coordinate.
+  const num = id => { const v = parseFloat(el(id).value); return Number.isFinite(v) ? v : null; };
+  const payload = {
+    distress_class: el("cls").value,
+    area_sqm: num("area"),
+    depth_cm: num("depth"),
+    pci_score: num("pci"),
+  };
+  if (num("lat") != null && num("lon") != null) { payload.latitude = num("lat"); payload.longitude = num("lon"); }
+  const r = await API.post("/api/v1/dispatch/work-order", payload);
   if (!r.ok) { el("order").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`); return; }
   issued = r.data;
   el("verify").disabled = false;
@@ -84,21 +87,28 @@ el("issue").addEventListener("click", async () => {
 });
 
 function renderOrder(d) {
-  const wo = d.work_order || d;
-  const seal = d.seal || d.cryptographic_seal || wo.seal || {};
-  const sealHex = seal.sha256 || seal.seal_sha256 || d.seal_sha256 || "—";
+  // Field names are the ones MoRTHDispatchAgent actually returns. The page used
+  // to read names the server never sends and fall back to the form inputs, so
+  // it displayed what was typed rather than what was sealed.
+  const wo = d;
+  const sealHex = wo.sha256_cryptographic_seal || "—";
+  const gps = wo.coordinates ? `${fmt.num(wo.coordinates.lat, 5)}, ${fmt.num(wo.coordinates.lon, 5)}` : "none - order held";
   el("order").innerHTML = `
     <div class="card accent">
       <div class="label">work order · issued</div>
-      <h2 style="margin:2px 0 12px;font-size:1.15rem">${wo.order_id || wo.work_order_id || "—"}</h2>
-      <div class="kv"><span>Defect</span><span>${wo.defect_class || el("cls").value}</span></div>
-      <div class="kv"><span>Area</span><span>${fmt.num(wo.area_m2 ?? el("area").value, 2)} m²</span></div>
-      <div class="kv"><span>Depth</span><span>${fmt.num(wo.depth_cm ?? el("depth").value, 1)} cm</span></div>
-      <div class="kv"><span>Mix</span><span>${wo.bituminous_mix || wo.mix_type || "DBM Section 500"}</span></div>
-      <div class="kv"><span>Tonnage</span><span>${fmt.num(wo.required_mass_tonnes ?? wo.tonnage_t, 4)} t</span></div>
-      <div class="kv"><span>Cost</span><span>${fmt.inr(wo.estimated_cost_inr ?? wo.total_cost_inr ?? wo.budget_inr)}</span></div>
-      <div class="kv"><span>Priority</span><span>${wo.priority || wo.dispatch_priority || "—"}</span></div>
-      <div class="kv"><span>SLA</span><span>${wo.sla_hours ? wo.sla_hours + " h" : (wo.response_sla || "—")}</span></div>
+      <h2 style="margin:2px 0 12px;font-size:1.15rem">${wo.work_order_id || "—"}</h2>
+      <div class="kv"><span>Defect</span><span>${wo.distress_type || "—"}</span></div>
+      <div class="kv"><span>Area</span><span>${fmt.num(wo.surface_area_sqm, 2)} m²</span></div>
+      <div class="kv"><span>Depth</span><span>${fmt.num(wo.depth_cm, 1)} cm</span></div>
+      <div class="kv"><span>PCI</span><span>${wo.pavement_pci ?? "—"}</span></div>
+      <div class="kv"><span>GPS</span><span>${gps}</span></div>
+      <div class="kv"><span>Dispatch</span><span>${wo.dispatch_status || "—"}</span></div>
+      <div class="kv"><span>Mix</span><span>${wo.asphalt_mix || "—"}</span></div>
+      <div class="kv"><span>Tonnage</span><span>${fmt.num(wo.required_mass_tonnes, 3)} t</span></div>
+      <div class="kv"><span>Budget</span><span>${fmt.inr(wo.allocated_budget_inr)}</span></div>
+      <div class="kv"><span>Priority</span><span>${wo.priority || "—"}</span></div>
+      <div class="kv"><span>SLA</span><span>${wo.sla_resolution_hours != null ? wo.sla_resolution_hours + " h" : "—"}</span></div>
+      <p class="small muted" style="margin:6px 0 0">${wo.rate_basis || ""}</p>
       <div class="rule" style="margin:12px 0"></div>
       <div class="label">SHA-256 seal</div>
       <pre style="word-break:break-all;white-space:pre-wrap">${sealHex}</pre>
@@ -115,19 +125,9 @@ function renderOrder(d) {
 
 async function doVerify(tampered) {
   if (!issued) return;
-  const wo = JSON.parse(JSON.stringify(issued.work_order || issued));
-  if (tampered) {
-    const v = parseFloat(el("tamper").value);
-    for (const k of ["estimated_cost_inr", "total_cost_inr", "budget_inr"]) {
-      if (k in wo) wo[k] = v;
-    }
-    if (!("estimated_cost_inr" in wo) && !("total_cost_inr" in wo)) wo.budget_inr = v;
-  }
-  const seal = issued.seal || issued.cryptographic_seal || {};
-  const r = await API.post("/api/v1/dispatch/verify-seal", {
-    work_order: wo,
-    seal_sha256: seal.sha256 || seal.seal_sha256 || issued.seal_sha256,
-  });
+  const wo = JSON.parse(JSON.stringify(issued));
+  if (tampered) wo.allocated_budget_inr = parseFloat(el("tamper").value);
+  const r = await API.post("/api/v1/dispatch/verify-seal", { work_order: wo });
   const ok = r.ok && (r.data.seal_valid ?? r.data.valid ?? r.data.is_valid);
   el("sealout").innerHTML = `<div class="card" style="border-color:${ok ? "rgba(52,211,153,.45)" : "rgba(251,113,133,.5)"}">
     <div class="label" style="color:${ok ? "var(--ok)" : "var(--bad)"}">
