@@ -76,8 +76,13 @@ async function pollHealth() {
   const r = await API.get("/api/v1/health");
   if (r.ok && r.data.status === "ONLINE") {
     pill.className = "status-pill online";
-    const backend = (r.data.models?.vision_distress_net || "").replace("LOADED (", "").replace(")", "");
-    text.textContent = `online · ${backend || "models loaded"}`;
+    if (r.data.inference_available === false) {
+      // Static deployment (Vercel): measured results only, no live inference.
+      text.textContent = "online · measured results (live analysis runs on the engine)";
+    } else {
+      const backend = (r.data.models?.vision_distress_net || "").replace("LOADED (", "").replace(")", "");
+      text.textContent = `online · ${backend || "models loaded"}`;
+    }
     text.title = JSON.stringify(r.data.models, null, 2);
   } else {
     pill.className = "status-pill offline";

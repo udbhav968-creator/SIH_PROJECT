@@ -68,7 +68,7 @@
     cards.push(`<div class="card accent">
       <div class="label" style="color:var(--accent)">${served.label} · serving</div>
       <div class="stat">${(served.held_out_test_accuracy * 100).toFixed(1)}%</div>
-      <div class="stat-sub">macro-F1 ${served.held_out_test_macro_f1} ·
+      <div class="stat-sub">macro-F1 ${Number(served.held_out_test_macro_f1).toFixed(3)} ·
         ${served.held_out_test_images} images from ${served.held_out_test_photographs} unseen photographs</div>
       ${ind ? `<div class="kv" style="margin-top:10px"><span>Indian roads (RDD2022 test)</span>
         <span>${(ind.accuracy * 100).toFixed(1)}% · F1 ${ind.macro_f1}</span></div>` : ""}
@@ -94,7 +94,7 @@
       <div class="label" style="${live ? "color:var(--accent)" : ""}">
         ${r.backbone} embeddings → ${r.head}${live ? " · serving" : ""}</div>
       <div class="stat">${(r.held_out_test_accuracy * 100).toFixed(1)}%</div>
-      <div class="stat-sub">macro-F1 ${r.held_out_test_macro_f1} ·
+      <div class="stat-sub">macro-F1 ${Number(r.held_out_test_macro_f1).toFixed(3)} ·
         ${r.held_out_test_images} images from ${r.held_out_test_photographs} unseen photographs</div>
       ${r.handcrafted_baseline ? `<div class="kv" style="margin-top:10px">
         <span>hand-crafted baseline</span>
