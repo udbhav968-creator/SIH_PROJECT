@@ -106,13 +106,47 @@ def _load_aligned(items):
     return imgs, np.array(ys)
 
 
+def _features_aligned(items):
+    """Hand-crafted features computed one photograph at a time (no list of
+    decoded images held in memory), labels kept in step, unreadable files dropped."""
+    from data.feature_extraction import extract_image_features
+    feats, ys = [], []
+    for path, cls, _grp in items:
+        try:
+            feats.append(np.asarray(extract_image_features(load_image(path)), dtype=np.float32))
+            ys.append(cls)
+        except Exception:
+            continue
+    return np.stack(feats), np.array(ys)
+
+
 def embed_items(embedder, items, label):
     from models.dan_dag_network import DualAttentionModule
     imgs, ys, pams, domains, groups = [], [], [], [], []
+    X_parts, Xf_parts = [], []
+    t0 = time.time()
+
+    def flush():
+        # Embed in chunks and drop the pixels. Holding every decoded photograph
+        # (plus a mirrored copy of each) took most of a 12 GB Colab runtime on the
+        # RDD-enlarged corpus and the runtime died; the vectors are identical.
+        if not imgs:
+            return
+        X_parts.append(embedder.embed_batch(imgs, progress_every=0))
+        # Mirror-image embeddings, for flip test-time augmentation. A road photo
+        # and its mirror show the same defect; averaging the two vectors removes
+        # some of the backbone's left/right bias.
+        Xf_parts.append(embedder.embed_batch([np.ascontiguousarray(im[:, ::-1]) for im in imgs],
+                                             progress_every=0))
+        imgs.clear()
+
     for idx, (path, cls, _grp) in enumerate(items):
+        if len(imgs) >= 256:
+            flush()
+            print(f"    embedded {sum(len(x) for x in X_parts)} {label} images", flush=True)
+        n_before, n_rows = len(imgs), len(ys)
         try:
             img = load_image(path)
-            n_before = len(imgs)
             imgs.append(img)
             ys.append(cls)
             pam_vec, _, pam_tel = DualAttentionModule.extract_spatial_attention(img)
@@ -154,16 +188,13 @@ def embed_items(embedder, items, label):
             # photograph's group, so cross-validation can never split them
             groups.extend([_grp] * (len(imgs) - n_before))
         except Exception:
-            del imgs[n_before:], ys[n_before:], pams[n_before:], domains[n_before:]
+            del imgs[n_before:], ys[n_rows:], pams[n_rows:], domains[n_rows:]
             continue
-    print(f"  embedding {len(imgs)} {label} images with {embedder.name} ...", flush=True)
-    t0 = time.time()
-    X = embedder.embed_batch(imgs, progress_every=12)
-    # Mirror-image embeddings, for flip test-time augmentation. A road photo
-    # and its mirror show the same defect; averaging the two vectors removes
-    # some of the backbone's left/right bias.
-    Xf = embedder.embed_batch([np.ascontiguousarray(im[:, ::-1]) for im in imgs], progress_every=0)
-    print(f"  done in {time.time() - t0:.1f}s ({1000 * (time.time() - t0) / max(1, 2 * len(imgs)):.0f} ms/embedding)", flush=True)
+    flush()
+    X = np.concatenate(X_parts, axis=0) if X_parts else np.zeros((0, embedder.dim), dtype=np.float32)
+    Xf = np.concatenate(Xf_parts, axis=0) if Xf_parts else np.zeros((0, embedder.dim), dtype=np.float32)
+    print(f"  embedded {len(X)} {label} images with {embedder.name} in {time.time() - t0:.1f}s "
+          f"({1000 * (time.time() - t0) / max(1, 2 * len(X)):.0f} ms/embedding)", flush=True)
     return (X, np.array(ys), np.asarray(pams, dtype=np.float32), np.array(domains),
             np.asarray(Xf), np.array(groups))
 
@@ -403,10 +434,8 @@ def run_training(backbone="resnet50", seed=42, max_per_class=1500, compare=False
         # only, so its labels must come from the items themselves - reusing
         # y_fit here misaligned features and labels and crashed every --compare
         # run before the model was saved.
-        imgs_fit, yb_fit = _load_aligned(fit_items)
-        imgs_test, yb_test = _load_aligned(test_items)
-        Xb_fit = extract_batch(imgs_fit)
-        Xb_test = extract_batch(imgs_test)
+        Xb_fit, yb_fit = _features_aligned(fit_items)
+        Xb_test, yb_test = _features_aligned(test_items)
         base = VisionDistressNet(random_state=seed)
         base.fit(Xb_fit, yb_fit)
         bpred, _conf, _probs = base.predict(Xb_test)
