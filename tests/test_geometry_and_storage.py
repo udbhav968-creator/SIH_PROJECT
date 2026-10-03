@@ -565,6 +565,13 @@ class FalsePositiveGate(unittest.TestCase):
             img = self.pipe.cv_detector.decode_image(path)
             H, W, _ = img.shape
             self.pipe._seg_out = self.pipe.segmenter.segment(img)
+            # This calls one stage directly, so it must also reset the other
+            # per-image state that stage reads. audit_image sets both on every
+            # call; left alone here they belong to whatever photograph an
+            # earlier test analysed (a zebra crossing's paint, a car), and they
+            # erased this photograph's pothole pixels.
+            self.pipe._paint_mask = None
+            self.pipe._object_mask = None
             for b in self.pipe._segmentation_proposals(H, W):
                 self.assertEqual(b[6], "segmentation")
                 saw_segmentation_proposal = True

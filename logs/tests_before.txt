@@ -1,0 +1,56 @@
+...........................................................Fs...................................[AI Server] Loading trained models from: /content/SIH_PROJECT/checkpoints
+  ✓ Vision classifier: deep CNN embeddings (cnn:mobilenetv2+svc_C3)
+  ✓ IMU shock classifier loaded (random_forest)
+  ✓ Defect segmenter: pixel masks ({'crack': 0.55, 'pothole': 0.3})
+  ✓ Deep inference pipeline initialized.
+  ✓ Fleet ledger seeded with 5 DEMO reports (ROAD_SHIELD_SEED_DEMO=1) -> /tmp/road_shield_api_test_969nyohb/road_shield.db
+  ✓ Defect segmenter: pixel masks ({'crack': 0.55, 'pothole': 0.3})
+  ✓ Defect segmenter: pixel masks ({'crack': 0.55, 'pothole': 0.3})
+  downloading https://example.invalid/x.zip
+..................................................................................
+======================================================================
+FAIL: test_proposals_come_from_the_mask_not_from_brightness (tests.test_geometry_and_storage.FalsePositiveGate.test_proposals_come_from_the_mask_not_from_brightness)
+The fix is architectural. If proposals silently revert to the
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/content/SIH_PROJECT/tests/test_geometry_and_storage.py", line 571, in test_proposals_come_from_the_mask_not_from_brightness
+    self.assertTrue(saw_segmentation_proposal,
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    "no proposal came from the segmentation mask on any "
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    "pothole photograph")
+                    ^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : no proposal came from the segmentation mask on any pothole photograph
+
+----------------------------------------------------------------------
+Ran 178 tests in 294.991s
+
+FAILED (failures=1, skipped=1)
+  not a zip archive (probably an error page) - ignored
+  extracting 1 India files
+  nested archive: all/RDD2022_India.zip
+[RDD India] class mapping:
+    0: D00                          -> Crack (Longitudinal / Transverse / Alligator)
+    1: D10                          -> Crack (Longitudinal / Transverse / Alligator)
+    2: D20                          -> Crack (Longitudinal / Transverse / Alligator)
+    3: D40                          -> Pothole Cavity
+    4: Repair                       -> not used
+[RDD India] training crops {'crack': 2, 'pothole': 2, 'normal': 2} from 4 photographs
+[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> /tmp/tmpwov3713g/datasets/_eval_rdd2022_india
+[RDD India] class mapping:
+    0: D00                          -> Crack (Longitudinal / Transverse / Alligator)
+    1: D10                          -> Crack (Longitudinal / Transverse / Alligator)
+    2: D20                          -> Crack (Longitudinal / Transverse / Alligator)
+    3: D40                          -> Pothole Cavity
+    4: Repair                       -> not used
+[RDD India] removed 6 crops from a previous run
+[RDD India] training crops {'crack': 2, 'pothole': 2, 'normal': 2} from 4 photographs
+[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> /tmp/tmpwov3713g/datasets/_eval_rdd2022_india
+[RDD India] class mapping:
+    0: D00                          -> Crack (Longitudinal / Transverse / Alligator)
+    1: D10                          -> Crack (Longitudinal / Transverse / Alligator)
+    2: D20                          -> Crack (Longitudinal / Transverse / Alligator)
+    3: D40                          -> Pothole Cavity
+    4: Repair                       -> not used
+[RDD India] training crops {'crack': 2, 'pothole': 2, 'normal': 2} from 4 photographs
+[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> /tmp/tmpjmwm_c56/datasets/_eval_rdd2022_india

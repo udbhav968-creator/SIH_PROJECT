@@ -1,0 +1,69 @@
+...........................................................Fs.....F.............................[AI Server] Loading trained models from: /content/SIH_PROJECT/checkpoints
+  ✓ Vision classifier: fine-tuned CNN (onnxruntime:deep_vision_mobilenet_v3_large_refit.onnx)
+  ✓ IMU shock classifier loaded (cnn)
+  ✓ Defect segmenter: pixel masks ({'crack': 0.55, 'pothole': 0.3})
+  ✓ Deep inference pipeline initialized.
+  ✓ Fleet ledger seeded with 5 DEMO reports (ROAD_SHIELD_SEED_DEMO=1) -> /tmp/road_shield_api_test_m1fzoout/road_shield.db
+  ✓ Defect segmenter: pixel masks ({'crack': 0.55, 'pothole': 0.3})
+  ✓ Defect segmenter: pixel masks ({'crack': 0.55, 'pothole': 0.3})
+  downloading https://example.invalid/x.zip
+..................................................................................
+======================================================================
+FAIL: test_proposals_come_from_the_mask_not_from_brightness (tests.test_geometry_and_storage.FalsePositiveGate.test_proposals_come_from_the_mask_not_from_brightness)
+The fix is architectural. If proposals silently revert to the
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/content/SIH_PROJECT/tests/test_geometry_and_storage.py", line 571, in test_proposals_come_from_the_mask_not_from_brightness
+    self.assertTrue(saw_segmentation_proposal,
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    "no proposal came from the segmentation mask on any "
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    "pothole photograph")
+                    ^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : no proposal came from the segmentation mask on any pothole photograph
+
+======================================================================
+FAIL: test_zebra_crossings_are_not_reported_as_potholes (tests.test_geometry_and_storage.FalsePositiveGate.test_zebra_crossings_are_not_reported_as_potholes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/content/SIH_PROJECT/tests/test_geometry_and_storage.py", line 606, in test_zebra_crossings_are_not_reported_as_potholes
+    self.assertLessEqual(len(bad), len(files) // 2,
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                         f"{len(bad)}/{len(files)} zebra crossings reported as a "
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                         f"crack or pothole: {bad}")
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 3 not less than or equal to 2 : 3/5 zebra crossings reported as a crack or pothole: ['real_05_FileZebra crossing Kingsway Newport - geograp.jpg', 'real_20_FileZebra crossing to shops Boverton - geogra.jpg', 'real_19_FileZebra crossing on Woodhouse Street - geog.jpg']
+
+----------------------------------------------------------------------
+Ran 178 tests in 191.823s
+
+FAILED (failures=2, skipped=1)
+  not a zip archive (probably an error page) - ignored
+  extracting 1 India files
+  nested archive: all/RDD2022_India.zip
+[RDD India] class mapping:
+    0: D00                          -> Crack (Longitudinal / Transverse / Alligator)
+    1: D10                          -> Crack (Longitudinal / Transverse / Alligator)
+    2: D20                          -> Crack (Longitudinal / Transverse / Alligator)
+    3: D40                          -> Pothole Cavity
+    4: Repair                       -> not used
+[RDD India] training crops {'crack': 2, 'pothole': 2, 'normal': 2} from 4 photographs
+[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> /tmp/tmp9jbh4zrn/datasets/_eval_rdd2022_india
+[RDD India] class mapping:
+    0: D00                          -> Crack (Longitudinal / Transverse / Alligator)
+    1: D10                          -> Crack (Longitudinal / Transverse / Alligator)
+    2: D20                          -> Crack (Longitudinal / Transverse / Alligator)
+    3: D40                          -> Pothole Cavity
+    4: Repair                       -> not used
+[RDD India] removed 6 crops from a previous run
+[RDD India] training crops {'crack': 2, 'pothole': 2, 'normal': 2} from 4 photographs
+[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> /tmp/tmp9jbh4zrn/datasets/_eval_rdd2022_india
+[RDD India] class mapping:
+    0: D00                          -> Crack (Longitudinal / Transverse / Alligator)
+    1: D10                          -> Crack (Longitudinal / Transverse / Alligator)
+    2: D20                          -> Crack (Longitudinal / Transverse / Alligator)
+    3: D40                          -> Pothole Cavity
+    4: Repair                       -> not used
+[RDD India] training crops {'crack': 2, 'pothole': 2, 'normal': 2} from 4 photographs
+[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> /tmp/tmpi_xl6j3j/datasets/_eval_rdd2022_india

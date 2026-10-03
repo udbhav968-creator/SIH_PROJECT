@@ -1,24 +1,36 @@
 {
-  "generated_unix": 1791031873,
+  "generated_unix": 1791038187,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
       "id": "M1",
       "name": "Vision distress classifier",
-      "architecture": "MobileNetV2 (ImageNet, frozen, ONNX Runtime) -> class-balanced svc_C3 head",
+      "architecture": "mobilenet_v3_large (ImageNet-pretrained, fine-tuned end to end on the road corpus, refit on train+val), ONNX Runtime, flip TTA",
       "role": "7-class road condition classification",
-      "why": "Transfer learning from ImageNet with a frozen backbone and a head selected by grouped cross-validation.",
-      "rejected_alternative": "Vision Transformers - low inductive bias, need >100k images. PyTorch - 2+ GB and its DLLs fail to load on the target laptop; ONNX Runtime is 55 MB and runs on any CPU.",
+      "why": "Chosen over the frozen MobileNetV2 + scikit-learn head by a rule fixed before the test set was read: it had to beat the head on both accuracy and macro-F1 on non-test data. fine-tuned mobilenet_v3_large: validation accuracy 0.9182, macro-F1 0.8807; frozen head: grouped-CV accuracy 0.8234, macro-F1 0.7520",
+      "rejected_alternative": "Frozen-embedding head (kept as the fallback); other fine-tuned architectures lost on validation - see finetune_summary.json.",
       "measured": {
-        "held_out_accuracy": 0.8704,
-        "held_out_macro_f1": 0.6995,
-        "test_images": 625,
-        "test_photographs": 589,
-        "served_backbone": "mobilenetv2"
+        "served_model": "mobilenet_v3_large_refit",
+        "held_out_accuracy": 0.9333,
+        "held_out_macro_f1": 0.8283,
+        "test_images": 630,
+        "test_photographs": 567,
+        "indian_roads": {
+          "images": 1200,
+          "accuracy": 0.9225,
+          "macro_f1": 0.9224,
+          "per_class_f1": {
+            "normal": 0.985,
+            "crack": 0.8811,
+            "pothole": 0.901
+          }
+        },
+        "onnx_cpu_ms_per_image": 7.2,
+        "onnx_size_mb": 16.8
       },
-      "evidence": "checkpoints/cnn_head_mobilenetv2_report.json",
-      "reproduce": "python -m training.train_cnn_head --backbone mobilenetv2 --compare",
-      "not_claimed": "Latency of the MobileNetV2 embedding is about 15 ms per pass on a laptop CPU, doubled by flip TTA; not measured on edge hardware.",
+      "evidence": "checkpoints/finetune_mobilenet_v3_large_refit_report.json, checkpoints/finetune_summary.json, checkpoints/vision_model_selection.json",
+      "reproduce": "python -m training.train_finetune_cnn && python -m scripts.select_vision_model",
+      "not_claimed": "Latency is 7.2 ms per image (single image, ONNX Runtime on the 2-thread training machine's CPU, before flip TTA doubles it); it was not measured on a Raspberry Pi or Jetson. The rare municipal classes have 7-8 test images each.",
       "status_endpoint": "/api/v1/health"
     },
     {
@@ -28,8 +40,8 @@
       "role": "Zero-dependency fallback when no ONNX backbone is on disk",
       "why": "Pure classical CV. If neural weights are missing or storage is wiped, the camera does not stop classifying.",
       "measured": {
-        "held_out_accuracy": 0.7904,
-        "held_out_macro_f1": 0.5222,
+        "held_out_accuracy": 0.8492,
+        "held_out_macro_f1": 0.5579,
         "pca_components": 64,
         "pca_variance_retained": 0.4151
       },
@@ -39,12 +51,12 @@
     {
       "id": "M1-edge",
       "name": "MobileNetV2 edge alternative",
-      "architecture": "MobileNetV2 (14 MB ONNX) -> svc_C3 head",
+      "architecture": "MobileNetV2 (14 MB ONNX) -> ensemble_soft head",
       "role": "Low-power edge deployment (Raspberry Pi, Jetson Nano)",
       "why": "Depthwise separable convolutions; 14 MB against ResNet-50's 98 MB.",
       "measured": {
-        "held_out_accuracy": 0.8704,
-        "held_out_macro_f1": 0.6995,
+        "held_out_accuracy": 0.8794,
+        "held_out_macro_f1": 0.7447,
         "backbone_size_mb": 14.0
       },
       "evidence": "checkpoints/cnn_head_mobilenetv2_report.json",
@@ -90,16 +102,47 @@
     {
       "id": "M4",
       "name": "IMU shock classifier",
-      "architecture": "RandomForest, 300 trees, 36 statistical features per 100 Hz window",
+      "architecture": "1-D residual CNN (3-seed ensemble), ONNX Runtime",
       "role": "SMOOTH_ASPHALT / UNMARKED_SPEED_BREAKER / MARKED_SPEED_BREAKER / POTHOLE_IMPACT",
       "why": "Suspension vibration is periodic and noisy. RMS, peak-to-peak, crest factor, kurtosis and spectral power separate a sharp impact from a repetitive wave. Tree ensembles are immune to the noise and need no sequence buffer.",
       "rejected_alternative": "A 1-D residual CNN is trained and compared on the same windows (training/train_imu_deep.py); it is served only if it beats the forest on cross-validation over the training windows.",
       "measured": {
         "held_out_accuracy": 0.872,
-        "n_estimators": 300,
-        "feature_dim": 36
+        "held_out_macro_f1": 0.6379,
+        "held_out_windows": 164,
+        "random_forest_held_out_accuracy": 0.872,
+        "random_forest_held_out_macro_f1": 0.7292,
+        "cnn_compared": {
+          "served": "random_forest",
+          "cv": {
+            "random_forest": {
+              "cv_accuracy": 0.7678,
+              "cv_accuracy_std": 0.1013,
+              "cv_macro_f1": 0.6123,
+              "cv_macro_f1_std": 0.0854
+            },
+            "cnn": {
+              "cv_accuracy": 0.7635,
+              "cv_accuracy_std": 0.0909,
+              "cv_macro_f1": 0.6622,
+              "cv_macro_f1_std": 0.1298
+            }
+          },
+          "held_out": {
+            "random_forest": {
+              "accuracy": 0.872,
+              "macro_f1": 0.7292
+            },
+            "cnn": {
+              "accuracy": 0.7805,
+              "macro_f1": 0.6037
+            }
+          }
+        }
       },
-      "not_claimed": "The windows are REAL accelerometer recordings, but from 10 car drive logs published by one GitHub project (VishalSingh25/Pothole-Project), not from a bus fleet. 164 held-out windows; the speed-breaker classes have 11-32 of them, so their scores move with single windows."
+      "not_claimed": "The windows are REAL accelerometer recordings, but from 10 car drive logs published by one GitHub project (VishalSingh25/Pothole-Project), not from a bus fleet. 164 held-out windows; the speed-breaker classes have 11-32 of them, so their scores move with single windows.",
+      "evidence": "checkpoints/imu_deep_report.json, checkpoints/imu_model_selection.json",
+      "reproduce": "python -m training.train_imu_deep"
     },
     {
       "id": "M2",
@@ -306,6 +349,11 @@
       "claim": "27.8% false positives after the segmentation gate",
       "status": "WITHDRAWN",
       "reason": "Measured by a harness that reimplemented the pipeline's region loop rather than calling audit_image(). The same build measured through the real entry point was producing 44.4%. The harness is deleted and replaced by scripts/measure_detection_quality.py, which calls audit_image() and nothing else."
+    },
+    {
+      "claim": "The IMU 1-D CNN beats the RandomForest (5-fold CV)",
+      "status": "CORRECTED (protocol fixed)",
+      "reason": "The first comparison shuffled individual 1-second windows into CV folds, so neighbouring windows from the same drive sat on both sides of a fold. CV favoured the CNN (accuracy 0.869 vs 0.849); the time-separated held-out logs then scored the CNN below the RandomForest (0.787 vs 0.872). CV now uses contiguous time blocks (training/train_imu_deep.py), and the comparison is re-run with that protocol."
     },
     {
       "claim": "Faces and number plates are blurred on the bus before transmission",
