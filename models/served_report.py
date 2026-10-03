@@ -81,4 +81,30 @@ def training_extras(ckpt, require_files=True):
         "vision_model_selection": _read(ckpt, "vision_model_selection.json"),
         "imu_model_selection": _read(ckpt, "imu_model_selection.json"),
         "indian_roads_eval": _read(ckpt, "indian_roads_eval_report.json"),
+        "segmenter": served_segmenter_summary(ckpt, require_files),
+        "road_damage_detector": _read(ckpt, "road_damage_detector_report.json"),
+    }
+
+
+def served_segmenter_summary(ckpt, require_files=True):
+    """Which segmenter serves, with its held-out numbers and the comparison that chose it."""
+    sel = _read(ckpt, "segmenter_selection.json")
+    unet_meta = _read(ckpt, "defect_segmenter_unet.json")
+    pixel = _read(ckpt, "defect_segmenter_report.json")
+    unet_ok = bool(sel and sel.get("served") == "unet" and unet_meta and
+                   (not require_files or os.path.exists(os.path.join(ckpt, "defect_segmenter_unet.onnx"))))
+    if unet_ok:
+        src = unet_meta
+        kind, label = "unet", "U-Net (ResNet-18 encoder, ImageNet-pretrained), ONNX Runtime"
+    else:
+        src = pixel or {}
+        kind, label = "pixel_classifier", "HistGradientBoosting pixel classifier on 11 features"
+    fp = src.get("false_positives_on_clean_roads") or {}
+    return {
+        "kind": kind, "label": label,
+        "iou": src.get("iou"),
+        "test_photographs": (src.get("trained_on") or {}).get("test_photographs"),
+        "clean_false_blob_rate": fp.get("photo_rate_any_blob"),
+        "selection": ({"served": sel.get("served"), "rule": sel.get("rule"), "why": sel.get("why"),
+                       "test": sel.get("test")} if sel else None),
     }

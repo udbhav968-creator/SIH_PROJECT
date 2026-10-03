@@ -80,7 +80,7 @@
           and its mirror image, sorts each region into seven road conditions.</span>
           <span class="badge measured">measured</span></li>
         <li style="margin-bottom:11px"><strong style="color:var(--white)">Segment.</strong>
-          A pixel classifier trained on 4,720 hand-drawn polygons produces a defect
+          <span id="segStepText">A pixel classifier trained on the DNIT hand-drawn polygons</span> produces a defect
           mask — the defect's own footprint, not a rectangle around it.
           <span class="badge measured">measured</span></li>
         <li style="margin-bottom:11px"><strong style="color:var(--white)">Project.</strong>
@@ -154,8 +154,11 @@
             || metrics.data.indian_roads_eval?.frozen_head) : null;
 
   const segIoU = seg.ok ? (seg.data.available ? seg.data.iou?.crack?.iou : seg.data.measured_report?.crack?.iou) : null;
+  if (seg.ok && /U-Net/.test(seg.data.model || "")) {
+    el("segStepText").textContent = "A U-Net (ResNet-18 encoder) trained on the DNIT hand-drawn polygons";
+  }
   const segNote = !seg.ok ? "status unavailable"
-    : seg.data.available ? "500 unseen photographs · DNIT polygons"
+    : seg.data.available ? `${/U-Net/.test(seg.data.model || "") ? "U-Net" : "pixel classifier"} · ${seg.data.trained_on?.test_photographs || 500} unseen photographs`
     : seg.data.model_on_disk ? "measured · model will not load here: " + ((seg.data.load_error || {}).sklearn_trained_with
         ? "scikit-learn " + seg.data.load_error.sklearn_here + " vs " + seg.data.load_error.sklearn_trained_with : "see /system")
     : "not trained — box area in use";

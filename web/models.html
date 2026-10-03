@@ -19,8 +19,14 @@
   <div id="perclass"></div>
 
   <div class="section-head"><h2>Segmentation · pixel level</h2>
-    <span class="muted small">trained on 4,720 hand-drawn polygons</span></div>
+    <span class="muted small" id="segsub">trained on the DNIT hand-drawn polygons</span></div>
   <div id="segbox"></div>
+
+  <div id="detsection" style="display:none">
+    <div class="section-head"><h2>Road-damage detector · boxes</h2>
+      <span class="muted small">YOLOv8 fine-tuned on RDD2022 India · held-out photographs, scored once</span></div>
+    <div id="detbox"></div>
+  </div>
 
   <div class="section-head"><h2>Confusion matrix</h2>
     <span class="muted small">rows are truth, columns are prediction</span></div>
@@ -31,9 +37,9 @@
     <ul style="margin:0;padding-left:18px" class="small">
       <li style="margin-bottom:7px">Accuracy is dominated by three classes that hold almost every test image.
         macro-F1 is the number that reflects the rare ones, and it is much lower. Both are shown.</li>
-      <li style="margin-bottom:7px">Segmentation IoU in the 0.14–0.24 band is a working model, not a solved
-        problem. On clean roads it still draws a false blob on about one photograph in four;
-        the classifier in front of it limits the damage. It replaces a bounding box that had no measured accuracy at all, and a box
+      <li style="margin-bottom:7px">Segmentation IoU (above) is a working model, not a solved
+        problem, and it is measured on DNIT (Brazilian) photographs. On clean roads the segmenter still
+        draws false blobs; the classifier in front of it limits the damage. It replaces a bounding box that had no measured accuracy at all, and a box
         around a diagonal crack overstates its area by roughly 13×.</li>
       <li style="margin-bottom:7px">The IMU classifier is trained on <strong>real</strong> drive logs, but only ten of
         them, from one vehicle on Indian roads. It is not yet validated on a bus fleet.</li>
@@ -70,7 +76,7 @@
       <div class="stat">${(served.held_out_test_accuracy * 100).toFixed(1)}%</div>
       <div class="stat-sub">macro-F1 ${Number(served.held_out_test_macro_f1).toFixed(3)} ·
         ${served.held_out_test_images} images from ${served.held_out_test_photographs} unseen photographs</div>
-      ${ind ? `<div class="kv" style="margin-top:10px"><span>Indian roads (RDD2022 test)</span>
+      ${ind ? `<div class="kv" style="margin-top:10px"><span>Indian roads (RDD2022 held-out)</span>
         <span>${(ind.accuracy * 100).toFixed(1)}% · F1 ${ind.macro_f1}</span></div>` : ""}
       ${served.onnx ? `<div class="kv"><span>CPU latency (ONNX)</span><span>${served.onnx.onnx_cpu_ms_per_image} ms</span></div>` : ""}
       <p class="small muted" style="margin:8px 0 0">${(served.selection || {}).evidence || ""}</p>
@@ -153,12 +159,32 @@
   }
 
   // segmentation
-  if (s.ok && s.data.available && s.data.iou) {
-    const io = s.data.iou;
+  const segSum = d.segmenter || {};
+  const segIo = (s.ok && s.data.available && s.data.iou) ? s.data.iou
+              : (s.ok && s.data.measured_report) ? s.data.measured_report : segSum.iou;
+  const segName = (s.ok && s.data.model) || segSum.label || "pixel classifier";
+  const isUnet = /U-Net/.test(segName);
+  el("segsub").textContent = (isUnet ? "U-Net · " : "pixel classifier · ") + "trained on the DNIT hand-drawn polygons";
+  const sel = segSum.selection;
+  const iouOf = (x, c) => x && x[c] && x[c].iou != null ? x[c].iou : "—";
+  const cmpHtml = sel && sel.test ? `<div class="rule" style="margin:14px 0"></div>
+      <div class="label">deep vs classical · same ${segSum.test_photographs || 500} test photographs</div>
+      <div class="table-wrap"><table><thead><tr><th>segmenter</th><th class="num">crack IoU</th>
+        <th class="num">pothole IoU</th><th>status</th></tr></thead><tbody>
+        <tr><td>U-Net (ResNet-18 encoder)</td><td class="num">${iouOf(sel.test.unet, "crack")}</td>
+          <td class="num">${iouOf(sel.test.unet, "pothole")}</td>
+          <td>${sel.served === "unet" ? '<span class="badge measured">serving</span>' : '<span class="badge warn">lost on validation</span>'}</td></tr>
+        <tr><td>pixel classifier (11 features)</td><td class="num">${iouOf(sel.test.pixel_classifier, "crack")}</td>
+          <td class="num">${iouOf(sel.test.pixel_classifier, "pothole")}</td>
+          <td>${sel.served === "unet" ? "fallback" : '<span class="badge measured">serving</span>'}</td></tr>
+      </tbody></table></div>
+      <p class="small muted" style="margin:8px 0 0">${sel.rule || ""}<br>${sel.why || ""}</p>` : "";
+  if (segIo) {
+    const io = segIo;
     el("segbox").innerHTML = `<div class="card">
       <div class="grid c2">
         ${["crack", "pothole"].map(k => io[k] ? `<div>
-          <div class="label">${k} · pixel level</div>
+          <div class="label">${k} · ${isUnet ? "U-Net" : "pixel classifier"}</div>
           <div class="stat sm" style="color:var(--accent)">IoU ${io[k].iou}</div>
           <div class="stat-sub">Dice ${io[k].dice} · precision ${io[k].pixel_precision} ·
             recall ${io[k].pixel_recall}</div></div>` : "").join("")}
@@ -171,12 +197,34 @@
       <p class="small muted" style="margin:10px 0 0">
         Thresholds are tuned for IoU on a calibration split separate from the test set,
         not by argmax — with 97% of pixels being sound road, argmax floods the mask
-        with false positives.</p></div>`;
+        with false positives.</p>${cmpHtml}</div>`;
   } else {
     el("segbox").innerHTML = `<div class="card" style="border-color:rgba(240,169,43,.4)">
       <div class="label" style="color:var(--warn)">not trained</div>
       <p class="small" style="margin:0">${s.data?.consequence || ""}</p>
       <pre style="margin-top:9px">${s.data?.fix || "python -m training.train_segmenter"}</pre></div>`;
+  }
+
+  // road-damage detector
+  const det = d.road_damage_detector;
+  if (det && det.test) {
+    el("detsection").style.display = "";
+    const t = det.test, per = t.per_class || {};
+    const names = det.classes || {};
+    el("detbox").innerHTML = `<div class="card">
+      <div class="grid c4">
+        <div><div class="label">mAP@0.5</div><div class="stat sm" style="color:var(--accent)">${t.map50}</div></div>
+        <div><div class="label">mAP@0.5:0.95</div><div class="stat sm">${t.map50_95}</div></div>
+        <div><div class="label">precision</div><div class="stat sm">${t.precision}</div></div>
+        <div><div class="label">recall</div><div class="stat sm">${t.recall}</div></div>
+      </div>
+      <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>class</th><th class="num">AP@0.5</th>
+        <th class="num">AP@0.5:0.95</th></tr></thead><tbody>
+        ${Object.entries(per).map(([k, v]) => `<tr><td>${k} · ${names[k] || ""}</td><td class="num">${v.ap50}</td>
+          <td class="num">${v.ap50_95}</td></tr>`).join("")}</tbody></table></div>
+      <div class="kv" style="margin-top:10px"><span>Held-out photographs</span><span>${(det.data && det.data.photographs && det.data.photographs.test) || "—"}</span></div>
+      <div class="kv"><span>Serving confidence</span><span>${det.serving_confidence} (chosen on validation)</span></div>
+      <p class="small muted" style="margin:8px 0 0">${det.not_claimed || ""}</p></div>`;
   }
 
   // confusion

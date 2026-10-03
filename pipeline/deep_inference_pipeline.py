@@ -106,6 +106,17 @@ class DeepInferencePipeline:
         # the pipeline says so, rather than guessing what is in frame.
         from models.onnx_object_detector import ONNXObjectDetector
         self.object_detector = ONNXObjectDetector(checkpoints_dir=self.ckpt_dir)
+        # Road-damage boxes from the YOLOv8 model trained on RDD2022 India, when
+        # it has been trained (training/train_rdd_detector.py). Independent
+        # evidence shown beside the mask; it does not change area or cost.
+        try:
+            from models.road_damage_detector import RoadDamageDetector
+            self.damage_detector = RoadDamageDetector(checkpoints_dir=self.ckpt_dir)
+            if self.damage_detector.is_ready:
+                print(f"  ✓ Road-damage detector: {self.damage_detector.backend}")
+        except Exception as e:
+            print(f"[WARN] road-damage detector unavailable: {e}")
+            self.damage_detector = None
         if self.vision_backend == "none":
             print("[WARN] No trained vision model found - run training/train_deep_vision.py "
                   "(deep) or training/train_vision.py (baseline).")
@@ -131,10 +142,13 @@ class DeepInferencePipeline:
         # such - a box around a diagonal crack overstates its area by an order
         # of magnitude, so which method answered is not a detail.
         try:
-            from models.defect_segmenter import DefectSegmenter
-            self.segmenter = DefectSegmenter()
+            # The U-Net when checkpoints/segmenter_selection.json chose it and it
+            # loads; otherwise the pixel classifier, exactly as before.
+            from models.unet_segmenter import load_best_segmenter
+            self.segmenter = load_best_segmenter()
             if self.segmenter.is_ready:
-                print(f"  ✓ Defect segmenter: pixel masks "
+                kind = "U-Net" if type(self.segmenter).__name__ == "UNetSegmenter" else "pixel classifier"
+                print(f"  ✓ Defect segmenter: {kind} masks "
                       f"({self.segmenter.thresholds})")
         except Exception as e:
             print(f"[WARN] segmenter unavailable: {e}")
@@ -283,6 +297,25 @@ class DeepInferencePipeline:
             except Exception as e:
                 scene_summary = {"available": False, "reason": f"detector error: {e}"}
 
+        # STAGE 3a': road-damage boxes (YOLOv8, RDD2022 India), when trained.
+        damage_boxes, damage_summary = [], {"available": False,
+                                            "reason": "not trained - training/train_rdd_detector.py"}
+        dd = getattr(self, "damage_detector", None)
+        if dd is not None and dd.is_ready:
+            try:
+                damage_boxes = dd.detect(img_np)
+                counts = {}
+                for d in damage_boxes:
+                    counts[d["class_name"]] = counts.get(d["class_name"], 0) + 1
+                damage_summary = {"available": True, "boxes": len(damage_boxes), "counts_by_class": counts,
+                                  "model": "YOLOv8 fine-tuned on RDD2022 India",
+                                  "confidence_threshold": dd.conf_threshold,
+                                  "test_map50": (dd.meta.get("test") or {}).get("map50"),
+                                  "role": "locates damage; area and cost come from the segmentation mask"}
+            except Exception as e:
+                damage_summary = {"available": False, "reason": f"damage detector error: {e}"}
+        self._damage = (damage_boxes, damage_summary)
+
         # STAGE 3b: region proposals (classical CV) + people + vehicles.
         person_boxes = [d for d in scene_objects if d["class_name"] == "person"]
         if person_boxes:
@@ -370,6 +403,8 @@ class DeepInferencePipeline:
             normal = self._normal_road(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
             normal["scene_objects"] = scene_objects
             normal["scene_summary"] = scene_summary
+            normal["road_damage_boxes"] = damage_boxes
+            normal["road_damage_summary"] = damage_summary
             normal["vehicles_count"] = len(vehicle_detections)
             normal["all_vehicles"] = vehicle_detections
             normal["primary_vehicle"] = primary_vehicle
@@ -538,6 +573,8 @@ class DeepInferencePipeline:
             },
             "scene_objects": scene_objects,
             "scene_summary": scene_summary,
+            "road_damage_boxes": damage_boxes,
+            "road_damage_summary": damage_summary,
             "markings": getattr(self, "_markings", {"found": False}),
             # Non-zero means at least one region could not be classified, so the
             # number of detections below is a floor, not a count.

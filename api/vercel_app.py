@@ -236,9 +236,11 @@ class handler(BaseHTTPRequestHandler):
                 self._send(200, {"available": False,
                                  "fix": "python -m training.train_segmenter"})
                 return
+            served = _served_report().served_segmenter_summary(CKPT_DIR, require_files=False)
             self._send(200, {
                 "available": True, "loaded_in_this_deployment": False,
-                "iou": r.get("iou"), "thresholds": r.get("thresholds"),
+                "model": served.get("label"), "selection": served.get("selection"),
+                "iou": served.get("iou") or r.get("iou"), "thresholds": r.get("thresholds"),
                 "features": r.get("features"), "trained_on": r.get("trained_on"),
                 "split_strategy": r.get("split_strategy"),
                 "decision_rule": r.get("decision_rule"),
