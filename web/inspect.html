@@ -39,6 +39,7 @@
         <div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap">
           <button class="primary" id="run" disabled>Analyse</button>
           <button id="sample">Use a dataset photograph</button>
+          <button id="redact" disabled title="Blur people and number plates before sharing">Blur people &amp; plates</button>
           <button id="clear">Clear</button>
         </div>
       </div>
@@ -107,6 +108,7 @@ function setImage(dataUrl) {
   img.onload = () => {
     currentImage = { dataUrl, width: img.naturalWidth, height: img.naturalHeight, img };
     el("run").disabled = false;
+    el("redact").disabled = false;
     draw();
     el("canvasNote").textContent = `${img.naturalWidth} × ${img.naturalHeight} px`;
   };
@@ -116,6 +118,7 @@ function setImage(dataUrl) {
 el("clear").addEventListener("click", () => {
   currentImage = null; lastResult = null;
   el("run").disabled = true;
+  el("redact").disabled = true;
   ctx.clearRect(0, 0, cv.width, cv.height);
   el("canvasNote").textContent = "";
   el("out").innerHTML = `<div class="card"><div class="label">cleared</div>
@@ -147,6 +150,23 @@ el("run").addEventListener("click", async () => {
   lastResult = r.data;
   render(r.data, r.ms);
   draw();
+});
+
+/* --------------------------------------------------------------- privacy - */
+el("redact").addEventListener("click", async () => {
+  if (!currentImage) return;
+  const btn = el("redact"); btn.disabled = true; btn.textContent = "blurring…";
+  const r = await API.post("/api/v1/privacy/redact", { image_base64: currentImage.dataUrl.split(",")[1] });
+  btn.textContent = "Blur people & plates"; btn.disabled = false;
+  if (!r.ok) { el("canvasNote").textContent = "redaction failed: " + (r.data.error || r.status); return; }
+  const rep = r.data.report || {};
+  lastResult = null;   // overlays belonged to the unredacted image
+  setImage("data:image/jpeg;base64," + r.data.redacted_image_base64);
+  setTimeout(() => {
+    el("canvasNote").textContent =
+      `redacted: ${rep.people_blurred || 0} people, ${rep.faces_blurred || 0} faces, ${rep.plates_blurred || 0} plates` +
+      ` · recall not measured${rep.warning ? " · " + rep.warning : ""}`;
+  }, 80);
 });
 
 /* ---------------------------------------------------------------- canvas - */

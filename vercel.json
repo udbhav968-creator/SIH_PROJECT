@@ -1,22 +1,110 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/index.py", "use": "@vercel/python", "config": { "runtime": "python3.12" } },
-    { "src": "web/**", "use": "@vercel/static" },
-    { "src": "index.html", "use": "@vercel/static" }
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "runtime": "python3.12"
+      }
+    },
+    {
+      "src": "web/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "index.html",
+      "use": "@vercel/static"
+    }
   ],
   "routes": [
-    { "src": "/api/(.*)",  "dest": "api/index.py" },
-    { "src": "/web/(.*)",  "dest": "/web/$1" },
-    { "src": "/",          "dest": "/web/index.html" },
-    { "src": "/inspect",   "dest": "/web/inspect.html" },
-    { "src": "/video",     "dest": "/web/video.html" },
-    { "src": "/corridor",  "dest": "/web/corridor.html" },
-    { "src": "/works",     "dest": "/web/works.html" },
-    { "src": "/models",    "dest": "/web/models.html" },
-    { "src": "/data",      "dest": "/web/data.html" },
-    { "src": "/system",    "dest": "/web/system.html" },
-    { "src": "/dashboard", "dest": "/index.html" },
-    { "src": "/(.*)",      "dest": "/web/index.html" }
+    {
+      "src": "/api/(.*)",
+      "dest": "api/index.py"
+    },
+    {
+      "src": "/web/(.*)",
+      "dest": "/web/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/",
+      "dest": "/web/index.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/inspect",
+      "dest": "/web/inspect.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/video",
+      "dest": "/web/video.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/corridor",
+      "dest": "/web/corridor.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/works",
+      "dest": "/web/works.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/models",
+      "dest": "/web/models.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/data",
+      "dest": "/web/data.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/system",
+      "dest": "/web/system.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/architecture",
+      "dest": "/web/architecture.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/dashboard",
+      "dest": "/index.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/web/index.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    }
   ]
 }

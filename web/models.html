@@ -37,7 +37,12 @@
         around a diagonal crack overstates its area by roughly 13×.</li>
       <li style="margin-bottom:7px">The IMU classifier is trained on <strong>real</strong> drive logs, but only ten of
         them, from one vehicle on Indian roads. It is not yet validated on a bus fleet.</li>
-      <li>Photographs are Brazilian and Kaggle sourced. No Indian road data yet.</li>
+      <li style="margin-bottom:7px">Indian road photographs come from RDD2022 (smartphone images). The Indian-roads
+        number is measured on crops from held-out RDD2022 India photographs (split by photograph — the official test
+        split has no public labels), which never enter training,
+        and it covers only three classes (normal, crack, pothole). None of the photographs were taken from a bus.</li>
+      <li>The test set is held out by source photograph, but the benchmark's pipeline photographs on the home
+        page are drawn from the same corpus. They demonstrate the pipeline; they are not a second accuracy figure.</li>
     </ul>
   </div>
 </div>

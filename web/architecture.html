@@ -41,9 +41,9 @@
   <div class="card" style="margin-top:16px">
     <div class="label">the stack</div>
     <div class="ascii">┌────────────────────────────────────────────────────────────────────────────┐
-│  PERCEPTION        MobileNetV2 (ImageNet, ONNX) + CV-chosen ensemble       │
-│  SEGMENTATION      pixel classifier on 4,720 hand-drawn polygons          │
-│  VIBRATION         RandomForest, 300 trees, 36 tabular features           │
+│  PERCEPTION        MobileNetV2 + SVM head, or fine-tuned CNN if it wins   │
+│  SEGMENTATION      pixel classifier on DNIT polygons + CNN semantic gate  │
+│  VIBRATION         RandomForest (36 features) vs 1-D CNN, chosen by CV    │
 │  SAFETY CONTEXT    YOLOv8n, COCO 80-class, ONNX                           │
 │  METRIC GEOMETRY   inverse perspective mapping, per-device calibration    │
 │  DEPTH             IRC band + interval — estimate, never a measurement    │
@@ -52,6 +52,7 @@
 │  LIFECYCLE         physics-constrained monotonic exponential growth       │
 │  BUDGET            MoRTH Section 500 — density × volume × SOR, as a range │
 │  ANTI-FRAUD        SHA-256 digest + SSIM / Laplacian / pHash forensics    │
+│  PRIVACY           people & number plates blurred before sharing          │
 │  LEDGER            SQLite, raw sightings kept as the dedup audit trail    │
 └────────────────────────────────────────────────────────────────────────────┘</div>
   </div>
