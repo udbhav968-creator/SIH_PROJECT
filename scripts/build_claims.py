@@ -49,17 +49,53 @@ def main():
     served = _served()
     seg = rep("defect_segmenter_report.json")
     imu = rep("imu_shock_report.json")
+    imu_deep = rep("imu_deep_report.json")
+    imu_sel = rep("imu_model_selection.json")
+    vsel = rep("vision_model_selection.json")
+    ft = rep("finetune_summary.json")
+    deep_served = (vsel.get("served") == "deep_cnn" and ft
+                   and glob.glob(os.path.join(CKPT, "deep_vision_*.onnx")))
 
     # Refresh only the measured numbers; the prose is deliberate and stays.
     for sub in claims["subsystems"]:
         m = sub.setdefault("measured", {})
-        if sub["id"] == "M1" and served:
+        if sub["id"] == "M1" and deep_served:
+            arch = ft["chosen_arch"]
+            fr = rep(f"finetune_{ft['served']}_report.json")
+            onnx = ft.get("served_onnx") or {}
+            sub["architecture"] = (f"{arch} (ImageNet-pretrained, fine-tuned end to end on the road corpus, "
+                                   f"refit on train+val), ONNX Runtime, flip TTA")
+            sub["why"] = ("Chosen over the frozen MobileNetV2 + scikit-learn head by a rule fixed before "
+                          "the test set was read: it had to beat the head on both accuracy and macro-F1 on "
+                          "non-test data. " + vsel.get("evidence", ""))
+            sub["rejected_alternative"] = ("Frozen-embedding head (kept as the fallback); other fine-tuned "
+                                           "architectures lost on validation - see finetune_summary.json.")
+            sub["evidence"] = f"checkpoints/finetune_{ft['served']}_report.json, checkpoints/finetune_summary.json, checkpoints/vision_model_selection.json"
+            sub["reproduce"] = "python -m training.train_finetune_cnn && python -m scripts.select_vision_model"
+            m.clear()
+            m.update(served_model=ft["served"], held_out_accuracy=ft["served_test"]["accuracy"],
+                     held_out_macro_f1=ft["served_test"]["macro_f1"], test_images=ft["served_test"]["images"],
+                     test_photographs=(fr.get("split") or {}).get("test_photographs"),
+                     indian_roads=ft.get("served_indian_roads"),
+                     onnx_cpu_ms_per_image=onnx.get("onnx_cpu_ms_per_image"),
+                     onnx_size_mb=onnx.get("onnx_size_mb"))
+            sub["not_claimed"] = (f"Latency is {onnx.get('onnx_cpu_ms_per_image')} ms per image (single "
+                                  f"image, ONNX Runtime on the {onnx.get('cpu_threads')}-thread training "
+                                  "machine's CPU, before flip TTA doubles it); it was not measured on a "
+                                  "Raspberry Pi or Jetson. The rare municipal classes have 7-8 test images each.")
+        elif sub["id"] == "M1" and served:
             r = heads[served]
             sub["architecture"] = (f"{'ResNet-50' if served == 'resnet50' else 'MobileNetV2'} "
                                    f"(ImageNet, frozen, ONNX Runtime) -> class-balanced "
                                    f"{r.get('head', 'logistic')} head")
             sub["evidence"] = f"checkpoints/cnn_head_{served}_report.json"
             sub["reproduce"] = f"python -m training.train_cnn_head --backbone {served} --compare"
+            sub["why"] = ("Transfer learning from ImageNet with a frozen backbone and a head selected by grouped "
+                          "cross-validation." + (" End-to-end fine-tuning was trained and compared on the identical "
+                          "split but did not beat this head on non-test data: " + vsel.get("evidence", "")
+                          if ft else ""))
+            sub["not_claimed"] = ("Latency of the MobileNetV2 embedding is about 15 ms per pass on a laptop "
+                                  "CPU, doubled by flip TTA; not measured on edge hardware.")
             m.update(served_backbone=served,
                      held_out_accuracy=r.get("held_out_test_accuracy"),
                      held_out_macro_f1=r.get("held_out_test_macro_f1"),
@@ -130,8 +166,22 @@ def main():
                     clean_photographs=q.get("clean_photographs"),
                     defect_photographs=q.get("defect_photographs"),
                     measured_through=q.get("measured_through"))
+        elif sub["id"] == "M4" and imu_sel.get("served") == "cnn" and imu_deep:
+            h = imu_deep["held_out"]["cnn"]
+            sub["architecture"] = "1-D residual CNN (3-seed ensemble), ONNX Runtime"
+            sub["evidence"] = "checkpoints/imu_deep_report.json, checkpoints/imu_model_selection.json"
+            sub["reproduce"] = "python -m training.train_imu_deep"
+            m.clear()
+            m.update(held_out_accuracy=h["accuracy"], held_out_macro_f1=h["macro_f1"],
+                     held_out_windows=imu_deep["data"]["held_out_windows"],
+                     random_forest_held_out_accuracy=imu_deep["held_out"]["random_forest"]["accuracy"],
+                     random_forest_held_out_macro_f1=imu_deep["held_out"]["random_forest"]["macro_f1"])
         elif sub["id"] == "M4" and imu:
             m["held_out_accuracy"] = imu.get("held_out_validation_accuracy")
+            if imu_deep:
+                m["cnn_compared"] = {"served": imu_sel.get("served"),
+                                     "cv": imu_sel.get("cv"),
+                                     "held_out": imu_sel.get("held_out_for_reporting")}
 
     claims["generated_unix"] = int(time.time())
     with open(TARGET, "w", encoding="utf-8") as fh:
