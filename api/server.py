@@ -588,13 +588,27 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/segmentation/status":
             seg = getattr(deep_pipeline, "segmenter", None)
             if seg is None or not seg.is_ready:
-                self._send_json(200, {
+                out = {
                     "available": False,
                     "area_method": "bounding-box corners projected to the ground plane",
                     "consequence": "A box around a diagonal crack overstates its area by "
                                    "roughly an order of magnitude, and cost is linear in area.",
                     "fix": "python -m training.train_segmenter",
-                })
+                }
+                if seg is not None and seg.file_exists:
+                    # Trained, but will not load here (usually a scikit-learn
+                    # version gap). Say that, and show the measured report,
+                    # rather than claiming it was never trained.
+                    out["model_on_disk"] = True
+                    out["load_error"] = seg.load_error_detail
+                    out["fix"] = (seg.load_error_detail or {}).get("fix", out["fix"])
+                    rp = os.path.splitext(seg.model_path)[0] + "_report.json"
+                    try:
+                        with open(rp, "r", encoding="utf-8") as fh:
+                            out["measured_report"] = json.load(fh).get("iou")
+                    except Exception:
+                        pass
+                self._send_json(200, out)
                 return
             self._send_json(200, {"available": True, **seg.describe()})
             return

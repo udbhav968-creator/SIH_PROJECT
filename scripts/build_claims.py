@@ -9,7 +9,7 @@ hand, so a claim about accuracy cannot drift away from the number the training
 script actually produced - which is exactly how the five corrections listed in
 it came to be needed in the first place.
 """
-import json, os, sys, time, glob
+import json, os, re, sys, time, glob
 
 ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ENGINE_ROOT not in sys.path:
@@ -183,11 +183,113 @@ def main():
                                      "cv": imu_sel.get("cv"),
                                      "held_out": imu_sel.get("held_out_for_reporting")}
 
+    _refresh_prose(claims, rep, imu_sel, imu_deep)
     claims["generated_unix"] = int(time.time())
     with open(TARGET, "w", encoding="utf-8") as fh:
         json.dump(claims, fh, indent=2)
     print(f"refreshed {TARGET}")
     print(f"  {len(claims['subsystems'])} subsystems, {len(claims['corrections'])} corrections")
+
+
+AUDIT_CORRECTIONS = [
+    ("Faces and number plates are blurred on the bus before transmission", "FIXED (implemented)",
+     "No such code existed. models/privacy_redactor.py now blurs the head region of detected people and "
+     "plates found inside detected vehicles (/api/v1/privacy/redact). Its recall is not measured - there is "
+     "no annotated face/plate set - and no bus deployment exists."),
+    ("A request without GPS is located in Delhi / Bengaluru", "FIXED",
+     "The API and pipeline defaulted missing coordinates to 28.7041, 77.1025 or 12.9716, 77.5946. Location is "
+     "now null and work orders without GPS are issued HELD_NO_GPS."),
+    ("A work order is sealed even when its measurements are missing", "FIXED",
+     "Missing fields became a 2.2 m2, 6.5 cm pothole at PCI 42, then SHA-256 sealed. The endpoint now returns "
+     "400 with the missing field list; the Works page also sent field names the server ignored."),
+    ("Detections carry a model confidence", "CORRECTED",
+     "Rule decisions reported a fixed 0.99, agreement with DAN-DAG raised confidence by max(p, 0.55p+0.45q+0.03), "
+     "and ALPR kinematics used a formula with a 0.75 floor. All removed; rule decisions report no confidence."),
+    ("The ledger shows the city's defects", "QUALIFIED",
+     "Five invented bus reports were seeded on every fresh start. Demo rows are now opt-in (ROAD_SHIELD_SEED_DEMO=1)."),
+    ("IMU classes include expansion joints and rumble strips", "CORRECTED",
+     "The drive logs contain unmarked and marked speed breakers; the classes are now named for what they contain."),
+    ("Laplacian-variance gate (42.5), 4th-order Butterworth filter, CLAHE, 2.45 m camera", "WITHDRAWN",
+     "None of these exist in the code. The gate is luminance std < 6.5, IMU windows are mean-centred with FFT "
+     "band energies, there is no CLAHE step, and the default camera height is an assumed 1.45 m."),
+]
+
+
+def _refresh_prose(claims, rep, imu_sel, imu_deep):
+    """Prose that quotes a number is regenerated from the report that measured it,
+    so text and figure cannot disagree (they did: '5.5% false blobs' beside a
+    measured 23.3%, '8.3% false positives' beside a measured 11.1%)."""
+    subs = {s["id"]: s for s in claims["subsystems"]}
+    seg = rep("defect_segmenter_report.json")
+    gate = rep("semantic_gate_report.json")
+    if "M_SEG" in subs and seg:
+        fp = (seg.get("false_positives_on_clean_roads") or {})
+        io = seg.get("iou", {})
+        r = (gate.get("results") or {})
+        a, c = r.get("A_segmenter", {}), r.get("C_seg_gated_0.5", {})
+        subs["M_SEG"]["not_claimed"] = (
+            f"IoU of {io.get('crack', {}).get('iou')} (crack) and {io.get('pothole', {}).get('iou')} (pothole) is a "
+            f"working model, not a solved problem. On held-out clean roads the segmenter alone draws a false blob on "
+            f"{fp.get('photo_rate_any_blob', 0) * 100:.1f}% of {fp.get('clean_photographs_scored')} photographs. "
+            + (f"The CNN semantic gate in front of it reduced clean roads with a false blob from "
+               f"{a.get('clean_photos_with_false_blob')} to {c.get('clean_photos_with_false_blob')} and raised "
+               f"pothole IoU from {a.get('pothole', {}).get('iou')} to {c.get('pothole', {}).get('iou')} "
+               f"(checkpoints/semantic_gate_report.json, measured with the frozen-embedding classifier). "
+               if a and c else "")
+            + "Water-filled potholes are still under-detected.")
+    if "M_GATE" in subs:
+        m = subs["M_GATE"].get("measured", {})
+        fpr, det = m.get("false_positive_rate"), m.get("detection_rate")
+        nc, nd = m.get("clean_photographs"), m.get("defect_photographs")
+        if fpr is not None and det is not None:
+            subs["M_GATE"]["not_claimed"] = (
+                f"{fpr * 100:.1f}% false positives is better, not solved - {round(fpr * (nc or 0))} of {nc} clean "
+                f"photographs are still reported as defective. Detection is {det * 100:.1f}% of {nd} defect "
+                f"photographs. Measured through audit_image() by scripts/measure_detection_quality.py.")
+    if "M4" in subs:
+        s = subs["M4"]
+        s["role"] = "SMOOTH_ASPHALT / UNMARKED_SPEED_BREAKER / MARKED_SPEED_BREAKER / POTHOLE_IMPACT"
+        s["rejected_alternative"] = (
+            "A 1-D residual CNN is trained and compared on the same windows (training/train_imu_deep.py); it is "
+            "served only if it beats the forest on cross-validation over the training windows.")
+        s["not_claimed"] = (
+            "The windows are REAL accelerometer recordings, but from 10 car drive logs published by one GitHub "
+            "project (VishalSingh25/Pothole-Project), not from a bus fleet. 164 held-out windows; the speed-breaker "
+            "classes have 11-32 of them, so their scores move with single windows.")
+    if "M_DET" in subs:
+        subs["M_DET"]["why"] = (
+            "Single-stage, 12.8 MB, runs on CPU. Detects that a person is PRESENT and how far away, without storing "
+            "any identity; the same boxes drive the privacy redactor that blurs heads and plates before sharing.")
+    if "M_PRIVACY" not in subs:
+        claims["subsystems"].append({
+            "id": "M_PRIVACY", "name": "Privacy redaction",
+            "architecture": "COCO person / vehicle boxes -> head-region and contour-localised plate Gaussian blur "
+                            "(+ Haar frontal-face cascade when installed)",
+            "role": "Blur people and number plates before an image is shared (DPDP Act 2023)",
+            "why": "The report promised it; it did not exist. Uses detections the pipeline already computes.",
+            "measured": {"recall_measured": False},
+            "evidence": "models/privacy_redactor.py, tests/test_integrity_fixes.py PrivacyRedaction",
+            "not_claimed": "No recall figure: there is no annotated face/plate set in this project. A missed face "
+                           "or plate is possible; the API reports which detectors ran.",
+            "status_endpoint": "/api/v1/privacy/redact"})
+    for c in claims["corrections"]:
+        if c.get("claim") == "PCA retains 56% of variance":
+            m = (subs.get("M1-fallback") or {}).get("measured", {})
+            v = m.get("pca_variance_retained")
+            if v:
+                c["status"] = f"CORRECTED to {v * 100:.1f}%"
+                c["reason"] = (f"Measured from the fitted model: {m.get('pca_components')} components, "
+                               f"explained_variance_ratio_.sum() = {v}.")
+        if c.get("claim") == "Reported defects are trustworthy without a gate":
+            gm = (subs.get("M_GATE") or {}).get("measured", {})
+            if gm.get("false_positive_rate") is not None:
+                c["reason"] = re.sub(r"Now [\d.]+% false positives with [\d.]+% detection",
+                                     f"Now {gm['false_positive_rate'] * 100:.1f}% false positives with "
+                                     f"{gm['detection_rate'] * 100:.1f}% detection", c["reason"])
+    have = {c.get("claim") for c in claims["corrections"]}
+    for claim, status, reason in AUDIT_CORRECTIONS:
+        if claim not in have:
+            claims["corrections"].append({"claim": claim, "status": status, "reason": reason})
 
 
 if __name__ == "__main__":

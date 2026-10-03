@@ -2,189 +2,173 @@
 
 SIH 2026 · Problem statement SIH26124 · Bharat Electronics Limited
 
+Every number on this sheet comes from a file in `checkpoints/`. If the Colab
+run finished and served a fine-tuned network, the site shows *that* number —
+**read the number off the Models page and say that one**, not the one printed here.
+
 ---
 
 ## 1. Before you leave (10 minutes)
 
 ```powershell
-cd $env:USERPROFILE\Desktop\SIH_PROJECT
-$py = ".\.venv\Scripts\python.exe"
-
-& $py -m scripts.fix_label_conflicts                                  # once
-& $py -m scripts.fetch_cracks_potholes_dataset --limit 2235 --workers 12
-& $py -m training.train_mega_suite                                    # ~3 min
-& $py -m scripts.fetch_cnn_backbone                                   # 98 MB, once
-& $py -m training.train_cnn_head --compare                            # ~2 min
-& $py -m api.server
+cd C:\Users\Dell\SIH_PROJECT
+git pull
+python -m unittest discover -s tests -t .        # should end in OK
+python -m api.server                             # leave this window open
 ```
 
-Open `http://127.0.0.1:8000/dashboard`. Check four things:
+Open `http://127.0.0.1:8000/` and check:
 
-1. The server printed `✓ Vision classifier: deep CNN embeddings
-   (cnn:resnet50+logistic)` — if it says `HOG/LBP + SVM baseline` instead, the
-   backbone download didn't finish and you're demoing the 82.6% path, not 89.2%
-2. Header says **engine online · 2 models loaded**
-3. Model card tab shows **89.2%**, not 36.6%
-4. Upload any road photo — a box is drawn and numbers appear
+1. The server printed which vision classifier it loaded (fine-tuned CNN or
+   `cnn:mobilenetv2` head). If it says `HOG/LBP + SVM baseline`, the backbone is
+   missing — run `python -m scripts.fetch_cnn_backbone --model mobilenetv2`.
+2. Overview: four headline cards show numbers, not dashes.
+3. Models page: held-out accuracy and the per-class table load.
+4. Inspection → "Use a dataset photograph" draws a mask and shows a cost range.
+5. Architecture page: the claims table and the corrections table load.
 
-If the object detector is installed (`checkpoints/road_shield_detector.onnx`),
-the health endpoint also lists `coco_object_detector`, and photos with people
-or vehicles get a second set of boxes.
-
-**Have a fallback.** Screenshot each tab now and put the images in your slides.
-If the venue wifi or the laptop misbehaves, you still have the evidence.
+**Have a fallback.** Screenshot every page now and put them in the slides. The
+Corridor map needs internet for tiles; without it the page draws a plain plot of
+the same points, so it still works — but screenshots are safer.
 
 ---
 
 ## 2. The three-minute demo
 
-**Open on the Inspection tab, photo already chosen.**
+**Open on Inspection, photograph already chosen.**
 
-> "ROAD-SHIELD turns an ordinary road photograph into a costed repair order.
-> Everything you're about to see is computed live on this laptop."
+> "ROAD-SHIELD turns a photograph from a bus camera into a costed, sealed repair
+> order. Everything you see is computed live on this laptop, on the CPU."
 
-**Drop the photo in.** While it runs:
+**Click Analyse.** While it runs:
 
-> "The image goes to a trained classifier, a geometry stage that converts
-> pixels to square metres, and a costing stage that uses the MoRTH Section 500
-> bitumen tables."
+> "A classifier decides what the defect is, a segmenter draws its outline, the
+> camera geometry turns pixels into square metres, and the MoRTH Section 500
+> tables turn that into tonnes of mix and rupees."
 
-**Point at the result:**
+**Point at the result** — read what is on screen, and point at the badges:
 
-> "Pothole, 48% confidence, 6.6 square metres, 2cm deep, 0.36 tonnes of mix,
-> ₹2,737 to repair. The confidence is honest — this is a hard photograph."
+> "Green numbers are measured. Amber ones are estimates and carry a range —
+> depth, for example, is never a measurement from one photograph, so we show an
+> interval rather than a fake precise figure."
 
-**Switch to Works & costing. Click Generate work order, then Tamper.**
+**Click "Blur people & plates".**
 
-> "Every work order is sealed with SHA-256. I'll change the budget field and
-> re-verify — the seal breaks. A contractor cannot quietly inflate a bill."
+> "Before any image leaves the system, people and number plates are blurred, for
+> the DPDP Act. We haven't measured its recall yet, and the screen says so."
 
-**Switch to Corridor map.**
+**Switch to Works. Generate a work order, then Tamper.**
 
-> "Five buses reported four defects here. Two reports were the same pothole,
-> five metres apart, so the system merged them by GPS distance. You pay to fix
-> it once."
+> "Every work order is sealed with SHA-256. I change the budget and re-verify —
+> the seal breaks. And if a report arrives without GPS, the order is held, not
+> given an invented location."
 
-**Finish on Model card.**
+**Switch to Corridor.**
 
-> "And here is what we actually measured: 89.2% on images from 356 photographs
-> the model never saw, split by source photograph so no augmented copy leaks
-> across. Normal road 0.94 F1, potholes 0.90, cracks 0.87. The four rare classes
-> have two or three test images each, so their scores aren't stable — we'd
-> rather show you that than average it away."
+> "Several buses report the same pothole. Reports of the same defect class
+> within 8 metres merge into one, so you pay to fix it once. The raw sightings
+> are kept as evidence that the merge happened."
+
+**Finish on Models.**
+
+> "Here is what we measured: 87% on 625 images from 589 photographs the model
+> never saw, split by source photograph so no copy leaks across. On Indian
+> roads — the official RDD2022 India test split, never used in training — 80%.
+> Before we added Indian data it was 33%. The four rare classes have seven or
+> eight test images each, so their scores swing — we show that rather than
+> average it away."
 
 ---
 
 ## 3. Questions judges will ask
 
 **"What's your accuracy?"**
-89.2%, macro-F1 0.675, on 390 images from 356 photographs the model never saw.
-Normal road 0.94 F1, potholes 0.90, cracks 0.87 — those three carry 380 of the
-390 test images. The other four classes have two or three test images each and
-their scores swing on a single image, which is what drags macro-F1 down. Both
-numbers are on the model card; we didn't pick the flattering one.
+87.0%, macro-F1 0.70, on 625 held-out images from 589 photographs. On Indian
+roads, 80.4%, macro-F1 0.78, on 997 crops from the RDD2022 India test split.
+Normal road, crack and pothole are each around 0.87–0.89 F1 and carry 595 of the
+625 test images. (If the fine-tuned CNN is served, quote the Models page.)
 
-**"Why is macro-F1 so much lower than accuracy?"**
-Because four of the seven classes have almost no data. That gap is the honest
-statement of what this system still needs, and no change of architecture closes
-it — only more photographs of waterlogging, zebra crossings and dividers.
+**"Why is macro-F1 lower than accuracy?"**
+Four of the seven classes — waterlogging, zebra crossings, dividers, damaged
+signs — have about 50 photographs each and 7–8 test images. One image moves
+their F1 by more than 0.1. Only more photographs fixes that.
 
-**"What model is it?"**
-A ResNet-50 trained on ImageNet, frozen, used as a feature extractor through
-ONNX Runtime; a class-balanced logistic head learns the mapping from its
-embeddings to the seven road classes. With roughly 1,600 images, training only
-the head beats fine-tuning the whole network and takes two minutes on a CPU.
-The comparison against hand-engineered features on the identical split —
-89.2% versus 82.6% on the identical split — is in
-`checkpoints/cnn_head_resnet50_report.json`, produced by
-`python -m training.train_cnn_head --compare`.
-
-**"Why not fine-tune, or use a transformer?"**
-Both were available; neither is justified by 1,600 images. Fine-tuning ResNet-50
-end to end on this dataset overfits, and we can't demonstrate it on this laptop
-because PyTorch won't load on it. What we can demonstrate, we measured.
+**"What model is it? Is this deep learning?"**
+Yes. A MobileNetV2 CNN pretrained on ImageNet extracts features, with a flipped
+copy averaged in; an SVM head maps them to our seven classes. It runs on ONNX
+Runtime, no GPU. We also fine-tuned EfficientNet-B0/B2, MobileNetV3 and
+ResNet-50 end to end on a Colab GPU. Which one is served is decided by a rule
+fixed *before* looking at test scores: the fine-tuned network wins only if it
+beats the head on validation accuracy *and* macro-F1. Object detection is
+YOLOv8n trained on COCO. Hand-crafted HOG/LBP features score 79.0% on the same
+split — that's the baseline we beat.
 
 **"How do I know you're not testing on training data?"**
-We split at the level of the source photograph, not the file. Augmented copies
-of a photograph stay with their original, so no version of a test image is
-ever seen in training. We also hash every image and check for near-duplicates
-across the split — `scripts/validate_models.py` runs that audit.
+The split is by source photograph, not by file, so augmented copies stay with
+their original. Every image is perceptually hashed and near-duplicates are
+rejected — one Kaggle set was 94% a re-upload of another and 700 of its 739
+images were dropped. The Indian test crops come from RDD2022's own test split
+and are never written to a training folder.
 
 **"Where did the data come from?"**
-2,373 distinct photographs. The core is 2,235 from DNIT, the Brazilian federal
-highway department, with 1,921 crack and 564 pothole annotations, each cropped
-into a training example. On top of that, four Kaggle datasets pulled through the
-official API by `scripts/fetch_kaggle_datasets.py`. Every incoming image is
-perceptually hashed against what we already hold — one of those Kaggle sets
-turned out to be 94% a re-upload of another, and 351 of its 374 images were
-rejected as duplicates. Without that check they would have landed in training
-and test both. We are not claiming Indian road data yet; that's RDD2022, next.
+DNIT, the Brazilian highway department (2,235 photographs, 4,720 hand-drawn
+polygons — the segmenter trains on those); RDD2022 India, 2,173 training
+photographs; three Kaggle pothole sets; and 207 Wikimedia and field photographs
+for the rare classes. We *excluded* 622 concrete-wall crack close-ups: correctly
+labelled, but not road scenes, and they were teaching the model that a linear
+feature on grey is "clean road".
 
-**"Is this deep learning?"**
-Yes. A ResNet-50 trained on ImageNet's 1.28 million images does the seeing; a
-small classifier learns the mapping from its embeddings to our seven classes.
-The network is frozen rather than fine-tuned, which is the correct choice at
-2,400 images. It runs through ONNX Runtime, not PyTorch — PyTorch will not load
-on this laptop, and not depending on it turned out to be an advantage. Object
-detection is YOLOv8 trained on COCO's 330,000 images, also through ONNX Runtime.
-The hand-engineered HOG/LBP pipeline is still in the repo as the fallback, and
-we score it on the identical split every run: 82.6% against the CNN's 89.2%.
-
-**"Why are some classes so weak?"**
-Waterlogging, zebra crossings, dividers and damaged signs have two or three test
-images each. No model learns a class from a handful of pictures. We report them
-rather than dropping them to flatter the average.
+**"Is the IMU data real?"**
+Yes — 10 drive logs on Indian roads, 205,491 samples at 100 Hz, from a car.
+RandomForest scores 87.2% on 164 held-out windows split by time block. A 1-D CNN
+is compared by 5-fold CV and served only if it is better. Not yet from a bus.
 
 **"Could a contractor game this?"**
-Three defences. Work orders are SHA-256 sealed, so fields can't be edited after
-issue. Before-and-after repair photos are compared with SSIM and Laplacian
-variance, so a re-submitted old photo is rejected. And GPS deduplication means
-the same pothole can't be billed twice from two reports.
+Three defences: SHA-256 sealed work orders; before/after repair photos compared
+with SSIM, sharpness and perceptual hashes so an old photo is rejected; and
+class-aware GPS deduplication so one pothole can't be billed twice.
+
+**"How accurate is the area and the cost?"**
+Area is measured *if* the camera is calibrated: on one photograph, the assumed
+mount gave 0.007 m² and the calibrated one 0.049 m² — seven times. That's why
+every vehicle gets a calibration profile and every number carries its
+provenance. Depth is an estimate with an interval, so cost is a range.
 
 **"What's the inference time?"**
-Measured, not estimated: about 80 ms for the ResNet-50 embedding on this laptop
-CPU, inside a full pipeline that also does geometry, costing and PCI. No GPU
-anywhere. On a slower machine we can swap in MobileNetV2 — 14 MB instead of
-98 MB, roughly three times faster, a few points less accurate — and the loader
-pairs each classifier head with the backbone it was trained on so the two can
-never be mixed.
+About 30 ms for the two MobileNetV2 embeddings; the full pipeline is 1.7–2.4 s
+on a single-core VM, dominated by the pixel segmenter.
 
 **"What would you do with more time?"**
-Photographs of the four starved classes — that is the binding constraint, not
-the model. Then RDD2022's 47,000 annotated Indian road images, fine-tuning on a
-GPU, and real accelerometer recordings to replace the simulated IMU data. All
-three are prepared in the repo and waiting on compute.
+A bus-mounted pilot: real bus camera footage and accelerometer logs, measured
+pothole depths for ground truth, more photographs of the four rare classes, and
+an annotated set to measure the privacy blur's recall.
 
 ---
 
 ## 4. Things not to claim
 
-- Not trained on Indian roads yet. The photographs are Brazilian.
-- The IMU model's 100% accuracy is on simulated data, and means little.
-- There is no dashcam video in the project; it analyses photographs.
-- The system does not identify people. It detects that a person is present,
-  which is what pedestrian safety needs, and nothing more.
-- The damaged-sign class has 2 test images. During development it briefly
-  scored 0.98 F1 because a Kaggle dataset of *road signs* had been filed under
-  *damaged road signs* - the model had learned "a sign is here", not "this sign
-  is broken". Removing those 299 images raised overall accuracy from 88.5% to
-  89.2%. If a judge asks about the weakest part of the system, this is a better
-  answer than a defensive one.
+- Indian photographs are RDD2022 smartphone images; none were taken from a bus.
+- The Indian test covers three classes (normal, crack, pothole), not seven.
+- IMU logs are from a car, not a bus fleet.
+- Depth is an estimate, never a measurement.
+- PCI and deterioration models reproduce engineering formulas (ASTM D6433,
+  HDM-4 style); they are not validated against field surveys.
+- Privacy blur recall has not been measured.
+- The system does not identify people; it detects that a person is present.
 
 Saying these before a judge finds them is worth more than the marks you'd lose
-by having them found.
+by having them found. The Architecture page lists every claim we withdrew.
 
 ---
 
 ## 5. The story that wins
 
-Most teams show a number. Your story is stronger:
-
-> "We started at 36.6%. We audited our own dataset and found twenty
-> photographs filed under three contradictory labels at once — the same
-> picture labelled normal, cracked and potholed. We fixed it: 79.4%. Then we
-> brought in 1,700 real annotated defects from a national highway department:
-> 85.8%. Every number on that screen is measured, and the code that measures it
-> is in the repository."
+> "We started at 36.6%. We audited our own dataset and found twenty photographs
+> filed under three contradictory labels at once. Fixing that took us to 79%.
+> Real annotated defects from a national highway department and ImageNet
+> features took us to 89% — but on Indian roads that model scored 33%. So we
+> brought in RDD2022 India, threw out data that wasn't road scenes, and now
+> score 80% on an Indian test set the model never saw. Every number on the
+> screen is measured, and the code that measures it is in the repository."
 
 That is an engineering team talking, not a demo.
