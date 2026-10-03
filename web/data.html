@@ -28,11 +28,12 @@
         <tr><td><strong>RDD2022 India</strong><br><span class="small muted">CRDDC 2022 official release (smartphone, Indian roads)</span></td>
             <td class="small">figshare release; VOC boxes cropped per defect (D00/D10/D20 &rarr; crack, D40 &rarr; pothole)</td>
             <td class="small">crack, pothole, normal</td>
-            <td class="num">2,947</td>
-            <td class="small"><span class="badge measured">Indian</span> 2,173 training photographs. A separate
-              997-crop set from 778 photographs of the official <em>test</em> split is never written to a training folder</td></tr>
+            <td class="num" id="rddKept">3,000</td>
+            <td class="small" id="rddNote"><span class="badge measured">Indian</span> Labelled photographs split 70/15/15 by
+              photograph (the official test split has no public labels). The held-out 15% is the Indian test set and is
+              never written to a training folder</td></tr>
         <tr><td><code>arunrk7/surface-crack-detection</code></td><td class="small">Kaggle API</td>
-            <td class="small">crack, normal</td><td class="num">0 <span class="muted">of 622</span></td>
+            <td class="small">crack, normal</td><td class="num">0 <span class="muted">of 2,376</span></td>
             <td class="small"><span class="badge bad">excluded</span> 227&times;227 close-ups of concrete and plaster walls &mdash;
               no road, no horizon, no perspective. Kept on disk, excluded from road-scene training and measurement
               (<code>pipeline/corpus_policy.py</code>)</td></tr>
@@ -112,6 +113,17 @@
 <script src="/web/app.js"></script>
 <script>
 (async () => {
+  // RDD2022 row from the manifest of the run that produced the checkpoints.
+  API.get("/api/v1/training/metrics").then(m => {
+    const ds = m.ok && m.data.indian_roads_eval && m.data.indian_roads_eval.dataset;
+    if (!ds || !ds.training_crops) return;
+    const sum = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
+    el("rddKept").textContent = sum(ds.training_crops).toLocaleString();
+    el("rddNote").innerHTML = `<span class="badge measured">Indian</span> ${sum(ds.training_crops).toLocaleString()} training
+      crops from ${(ds.training_photographs || 0).toLocaleString()} photographs. Indian test set:
+      ${sum(ds.eval_crops).toLocaleString()} crops from ${(ds.eval_photographs || 0).toLocaleString()} held-out photographs
+      (split by photograph; the official test split has no public labels), never written to a training folder`;
+  });
   const r = await API.get("/api/v1/datasets/benchmarks");
   if (!r.ok) { el("inv").innerHTML = errorCard("dataset inventory unavailable"); return; }
   const inv = r.data.labeled_photo_classes || r.data.labeled_classes || {};

@@ -60,13 +60,13 @@ def build(ck, tests_line, bench=None):
         rows[k] = [f2(p), f2(r), f2(f), str(n)]
     rows["Serving Model (Overall"] = [f"{macro_p:.3f}", f"{macro_r:.3f}", f"Macro: {mf1:.3f}", f"Accuracy: {pct(acc)} ({n_img})"]
 
-    ind_txt = (f" On {ind['images']} crops from RDD2022 India test photographs that no training run reads, it scored "
+    ind_txt = (f" On {ind['images']} crops from held-out RDD2022 India photographs (split by photograph; no training run reads them), it scored "
                f"{pct(ind['accuracy'])} accuracy (macro-F1 {ind['macro_f1']:.3f}).") if ind else ""
 
     E = []
     E.append(("our classifier scored 88.8% accuracy (macro-F1 0.747) on 502 images from photographs it never saw, the hand-crafted baseline scored 79.9% on the same split, and all 140 automated tests pass end-to-end",
               f"our classifier scored {pct(acc)} accuracy (macro-F1 {mf1:.3f}) on {n_img} images from {n_ph} photographs it never saw, the hand-crafted baseline scored {pct(base['accuracy'])} on the same split, and the code has {tests_line}"
-              + (f". On {ind['images']} crops from RDD2022 India test photographs that no training run reads, the classifier scored {pct(ind['accuracy'])} accuracy (macro-F1 {ind['macro_f1']:.3f})" if ind else "")))
+              + (f". On {ind['images']} crops from held-out RDD2022 India photographs (split by photograph; no training run reads them), the classifier scored {pct(ind['accuracy'])} accuracy (macro-F1 {ind['macro_f1']:.3f})" if ind else "")))
     E.append(("It uses a ResNet-50 feature backbone running on CPU via ONNX Runtime to spot 9 classes of road defects,",
               f"It uses {model_phrase} to sort each region into 7 road-condition classes,"))
     if deep:
