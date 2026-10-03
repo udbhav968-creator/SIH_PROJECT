@@ -166,7 +166,7 @@
       <div class="label">classifier · held-out</div>
       <div class="stat">${acc != null ? (acc * 100).toFixed(1) + "%" : "—"}</div>
       <div class="stat-sub">${imgs ? imgs + " unseen photographs" : "no report on disk"} ·
-        macro-F1 ${f1 ?? "—"}</div>
+        macro-F1 ${f1 != null ? Number(f1).toFixed(3) : "—"}</div>
     </div>
     <div class="card">
       <div class="label">segmentation · crack IoU</div>
@@ -181,7 +181,7 @@
     <div class="card">
       <div class="label">indian roads · RDD2022 held-out</div>
       <div class="stat" style="color:var(--violet)">${ie ? (ie.accuracy * 100).toFixed(1) + "%" : "—"}</div>
-      <div class="stat-sub">${ie ? `${ie.images} crops never used in training · macro-F1 ${ie.macro_f1}` : "no Indian evaluation on disk"}</div>
+      <div class="stat-sub">${ie ? `${ie.images} crops never used in training · macro-F1 ${Number(ie.macro_f1).toFixed(3)}` : "no Indian evaluation on disk"}</div>
     </div>`;
 
   const kv = el("calibKv");
