@@ -31,6 +31,9 @@ if ENGINE_ROOT not in sys.path:
 
 _TMP = tempfile.mkdtemp(prefix="road_shield_api_test_")
 os.environ["ROAD_SHIELD_WRITABLE_DIR"] = _TMP
+# Demo fixtures are opt-in since they are invented reports; these tests use
+# them to check deduplication end to end, so they switch them on explicitly.
+os.environ["ROAD_SHIELD_SEED_DEMO"] = "1"
 
 import api.server as srv  # noqa: E402  (must follow the env override)
 
@@ -197,9 +200,75 @@ class APIServerTest(unittest.TestCase):
         ids = set()
         for _ in range(5):
             _c, wo = self.post_json("/api/v1/dispatch/work-order",
-                                    {"corridor_id": "NH-48", "distress_class": "Pothole Cavity"})
+                                    {"corridor_id": "NH-48", "distress_class": "Pothole Cavity",
+                                     "area_sqm": 1.0, "depth_cm": 5.0, "pci_score": 40})
             ids.add(wo["work_order_id"])
         self.assertEqual(len(ids), 5, "work-order IDs collided for orders issued in the same second")
+
+    # -- nothing is invented for a missing field (October 2026 audit) -------
+    def test_work_order_refuses_missing_measurements(self):
+        code, r = self.post_json("/api/v1/dispatch/work-order", {"corridor_id": "NH-48"})
+        self.assertEqual(code, 400, "a work order was sealed for an invented defect")
+        for f in ("distress_class", "area_sqm", "depth_cm", "pci_score"):
+            self.assertIn(f, r["error"])
+
+    def test_work_order_accepts_the_field_names_the_site_sends(self):
+        # web/works.html posts defect_class / area_m2 / pci; these used to be ignored
+        code, wo = self.post_json("/api/v1/dispatch/work-order", {
+            "defect_class": "Crack (Longitudinal / Transverse / Alligator)", "area_m2": 0.7,
+            "depth_cm": 2.0, "pci": 55})
+        self.assertEqual(code, 200, wo)
+        self.assertEqual(wo["distress_type"], "Crack (Longitudinal / Transverse / Alligator)")
+        self.assertEqual(wo["pavement_pci"], 55)
+        self.assertIsNone(wo["coordinates"])
+        self.assertEqual(wo["dispatch_status"], "HELD_NO_GPS")
+
+    def test_deep_audit_without_an_image_is_refused(self):
+        code, r = self.post_json("/api/v1/pipeline/deep-audit", {})
+        self.assertEqual(code, 400, "an empty request was answered with a bundled photo's audit")
+
+    def test_deep_audit_image_path_cannot_leave_datasets(self):
+        for evil in ("api/server.py", "../../etc/passwd", "/etc/hostname"):
+            code, r = self.post_json("/api/v1/pipeline/deep-audit", {"image_path": evil})
+            self.assertEqual(code, 400, evil)
+
+    def test_deep_audit_reports_no_location_when_none_given(self):
+        img = _first_image("02_kaggle_pothole_600")
+        if not img:
+            self.skipTest("no photographs on disk")
+        code, r = self.post_json("/api/v1/pipeline/deep-audit", {"image_base64": _b64(img)}, timeout=300)
+        self.assertEqual(code, 200, str(r)[:300])
+        self.assertIsNone(r["location"]["lat"])
+        self.assertNotIn("28.7041", json.dumps(r))
+
+    def test_maps_endpoints_require_coordinates(self):
+        for path in ("/api/v1/maps/reverse-geocode", "/api/v1/maps/elevation",
+                     "/api/v1/maps/places-nearby", "/api/v1/maps/streetview-url"):
+            code, r = self.get_json(path)
+            self.assertEqual(code, 400, f"{path} answered for a default city centre")
+        code, r = self.post_json("/api/v1/maps/directions", {})
+        self.assertEqual(code, 400)
+
+    def test_fleet_report_requires_its_fields(self):
+        code, r = self.post_json("/api/v1/fleet/report-defect", {"bus_id": "B-1"})
+        self.assertEqual(code, 400, "a sighting with no GPS was filed in Bengaluru")
+        code, r = self.post_json("/api/v1/fleet/report-defect", {
+            "bus_id": "B-1", "lat": 12.97161, "lon": 77.59461, "defect_class": "Pothole Cavity",
+            "severity_pci": 40, "area_m2": 0.9})
+        self.assertEqual(code, 200, r)
+        # lands on the seeded pothole, so it merges rather than growing the ledger
+        self.assertEqual(r["action"], "DEDUPLICATED_AND_UPDATED")
+
+    def test_privacy_redaction_endpoint(self):
+        code, r = self.post_json("/api/v1/privacy/redact", {})
+        self.assertEqual(code, 400)
+        img = _first_image("08_dashcam_video_streams") or _first_image("02_kaggle_pothole_600")
+        if not img:
+            self.skipTest("no photographs on disk")
+        code, r = self.post_json("/api/v1/privacy/redact", {"image_base64": _b64(img)}, timeout=120)
+        self.assertEqual(code, 200, str(r)[:300])
+        self.assertTrue(r["redacted_image_base64"])
+        self.assertFalse(r["report"]["recall_measured"])
 
     def test_verify_seal_rejects_malformed_input_without_crashing(self):
         for body in ({"work_order": "not-an-object"}, {"work_order": []}, {"work_order": None}):

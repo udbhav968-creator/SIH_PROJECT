@@ -5,6 +5,7 @@ When several buses (or the same bus on repeat trips) photograph the same
 pothole, this merges those reports into one persistent defect record instead
 of double-counting it, using real Haversine great-circle distance against a
 proximity threshold (default 8m, roughly GPS accuracy under tree cover).
+Only reports of the same defect class are merged.
 """
 import math
 import time
@@ -64,7 +65,15 @@ class FleetDeduplicationEngine:
         matched_id = None
         min_dist = float('inf')
         
+        lat, lon = float(lat), float(lon)
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            raise ValueError(f"GPS out of range: lat={lat}, lon={lon}")
         for d_id, record in self.defect_registry.items():
+            # Only the same kind of defect can be the same defect. A damaged
+            # sign 5 m from a pothole is two problems for two crews; merging
+            # them (as this used to, on distance alone) silently dropped one.
+            if record.get("defect_class") != defect_class:
+                continue
             dist = self.haversine_distance(lat, lon, record["lat"], record["lon"])
             if dist <= self.proximity_threshold_m and dist < min_dist:
                 min_dist = dist

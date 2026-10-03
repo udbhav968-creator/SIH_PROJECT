@@ -285,11 +285,13 @@ def cross_validate_candidates(features, y, groups, seed=42, folds=5):
 _ENSEMBLE_MEMBERS = (10.0, 1.0)
 
 
-def run_training(backbone="resnet50", seed=42, max_per_class=1500, compare=False):
-    embedder = CNNEmbedder(prefer=(backbone, "mobilenetv2", "resnet50"))
-    if not embedder.is_ready:
-        sys.exit("No CNN backbone found. Run:  python -m scripts.fetch_cnn_backbone")
+def capped_grouped_split(seed=42, max_per_class=1500):
+    """The corpus and split every image classifier in this repo is scored on.
 
+    Shared by train_cnn_head.py and train_finetune_cnn.py so the frozen-embedding
+    head and the fine-tuned networks are compared on the identical held-out
+    photographs. Returns (capped_items, (train, val, test)).
+    """
     items = collect_files()
     if not items:
         sys.exit("No training images. Run scripts/fetch_cracks_potholes_dataset.py first.")
@@ -305,8 +307,15 @@ def run_training(backbone="resnet50", seed=42, max_per_class=1500, compare=False
             idx = sorted(rng.choice(len(lst), max_per_class, replace=False))
             lst = [lst[i] for i in idx]
         capped.extend(lst)
+    return capped, grouped_split(capped, seed=seed)
 
-    train_items, val_items, test_items = grouped_split(capped, seed=seed)
+
+def run_training(backbone="resnet50", seed=42, max_per_class=1500, compare=False):
+    embedder = CNNEmbedder(prefer=(backbone, "mobilenetv2", "resnet50"))
+    if not embedder.is_ready:
+        sys.exit("No CNN backbone found. Run:  python -m scripts.fetch_cnn_backbone")
+
+    capped, (train_items, val_items, test_items) = capped_grouped_split(seed, max_per_class)
     # the head trains on train+val; test stays untouched until the end
     fit_items = train_items + val_items
     print(f"[CNN head] backbone {embedder.name} | {len(capped)} images "
