@@ -109,6 +109,10 @@ class CachedImages:
     every epoch would starve the GPU."""
 
     def __init__(self, paths, short):
+        # Kept as re-encoded JPEG bytes (~40 KB each), not decoded arrays: raw
+        # arrays for the RDD-enlarged corpus, copied into each DataLoader worker,
+        # would not fit a 12 GB Colab runtime. Decoding a 300-px JPEG is cheap.
+        import io
         from PIL import Image
         self.arrays = []
         for p in paths:
@@ -117,7 +121,9 @@ class CachedImages:
             s = short / float(min(w, h))
             if s < 1.0:
                 im = im.resize((max(1, round(w * s)), max(1, round(h * s))), Image.BILINEAR)
-            self.arrays.append(np.asarray(im, dtype=np.uint8))
+            buf = io.BytesIO()
+            im.save(buf, format="JPEG", quality=95)
+            self.arrays.append(buf.getvalue())
 
 
 def make_loaders(train_items, val_items, test_items, size, batch, workers, seed):
@@ -150,7 +156,8 @@ def make_loaders(train_items, val_items, test_items, size, batch, workers, seed)
             return len(self.arrays)
 
         def __getitem__(self, i):
-            return self.tf(Image.fromarray(self.arrays[i])), int(self.labels[i])
+            import io
+            return self.tf(Image.open(io.BytesIO(self.arrays[i])).convert("RGB")), int(self.labels[i])
 
     y_tr = np.array([i[1] for i in train_items])
     counts = np.bincount(y_tr, minlength=len(CLASS_NAMES)).astype(float)
@@ -381,6 +388,10 @@ def main(argv=None):
     ap.add_argument("--out", default=CKPT_DIR)
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--no-refit", action="store_true", help="serve the train-only model of the chosen arch")
+    ap.add_argument("--resume", action="store_true", help="skip architectures whose report already exists")
+    ap.add_argument("--train-only", action="store_true",
+                    help="train/score the listed architectures and stop (no selection, refit or cleanup); "
+                         "used to train one architecture per call so a disconnect loses at most one")
     a = ap.parse_args(argv)
 
     from training.train_cnn_head import capped_grouped_split
@@ -394,8 +405,18 @@ def main(argv=None):
 
     reports = {}
     for arch in [s.strip() for s in a.archs.split(",") if s.strip()]:
+        done = os.path.join(a.out, f"finetune_{arch}_report.json")
+        if a.resume and os.path.exists(done):
+            # A Colab runtime can disconnect mid-run; an architecture that already
+            # finished (report written, test scored once) is not trained again.
+            reports[arch] = json.load(open(done))
+            print(f"  [{arch}] already trained - reusing {os.path.basename(done)}", flush=True)
+            continue
         reports[arch] = train_arch(arch, splits, a.epochs, a.batch, a.lr, a.seed, a.workers, a.patience,
                                    a.out, smoke=a.smoke)
+
+    if a.train_only:
+        return {"trained": list(reports)}
 
     # Select by validation only, among networks small enough to commit (GitHub
     # refuses files over 100 MB) - a deployment constraint fixed before training.
@@ -407,8 +428,14 @@ def main(argv=None):
         # Pre-declared: the served network is the chosen architecture refit on
         # train+val for its best validation epoch count - the same data the
         # frozen head is fitted on. Its test score is reported as the served one.
-        refit_rep = train_arch(chosen, splits, max(1, reports[chosen]["training"]["best_epoch"]), a.batch, a.lr,
-                               a.seed, a.workers, a.patience, a.out, smoke=a.smoke, refit=True)
+        refit_done = os.path.join(a.out, f"finetune_{chosen}_refit_report.json")
+        refit_onnx = os.path.join(a.out, f"deep_vision_{chosen}_refit.onnx")
+        if a.resume and os.path.exists(refit_done) and os.path.exists(refit_onnx):
+            refit_rep = json.load(open(refit_done))
+            print(f"  [{chosen} refit] already trained - reusing", flush=True)
+        else:
+            refit_rep = train_arch(chosen, splits, max(1, reports[chosen]["training"]["best_epoch"]), a.batch,
+                                   a.lr, a.seed, a.workers, a.patience, a.out, smoke=a.smoke, refit=True)
         served_tag = f"{chosen}_refit"
     served = refit_rep or reports[chosen]
     head_rep_path = os.path.join(a.out, "cnn_head_mobilenetv2_report.json")

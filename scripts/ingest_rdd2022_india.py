@@ -143,7 +143,8 @@ def main(argv=None):
                 "mapping": {n: (CLASS_FOLDERS[m][1] if m is not None else None) for n, m in zip(names, mapping.values())},
                 "training_crops": pretty(counts["train"]), "training_photographs": photos["train"],
                 "eval_crops": pretty(counts["eval"]), "eval_photographs": photos["eval"],
-                "eval_split": "RDD2022 India 'test' - never written to a training folder"}
+                "eval_split": ("held-out 15% of the labelled RDD2022 India photographs, split by photograph "
+                               "(the official test split has no public labels) - never written to a training folder")}
     os.makedirs(EVAL_DIR, exist_ok=True)
     json.dump(manifest, open(os.path.join(EVAL_DIR, "manifest.json"), "w"), indent=1)
     print(f"[RDD India] training crops {pretty(counts['train'])} from {photos['train']} photographs")

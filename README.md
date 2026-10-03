@@ -13,35 +13,41 @@ code in this repository, and the code that measures it is included.
 
 | Capability | How it works | Status |
 |---|---|---|
-| Road distress classification, 7 classes | MobileNetV2 ImageNet embeddings (ONNX Runtime), flip test-time augmentation → soft-voting ensemble (SVC + logistic + MLP), chosen by grouped cross-validation | **88.8%**, macro-F1 0.747, on 502 held-out images from 483 unseen photographs, scored once |
-| — same task, ResNet-50 path | ResNet-50 embeddings | not shipped: fetch the 98 MB backbone, then `python -m training.train_cnn_head --backbone resnet50 --compare` |
-| — same task, fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 86.2% on its own 807-photo split, 79.9% on the CNN head's split; serves when no CNN backbone is on disk |
-| Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Working: people, bicycles, cars, buses, trucks, traffic lights, signs |
-| IMU shock classification | 100 Hz tri-axial accelerometer windows → RandomForest | **87.2%** on 164 held-out windows of real Indian-road drive logs, time-block split |
-| Defect **segmentation** | Pixel classifier on 11 features, trained on 4,720 hand-drawn polygons | **crack IoU 0.231, pothole IoU 0.144** on 500 unseen photographs; 23.3% of clean photographs still show a false blob |
-| Defect **area** | Each mask pixel's own ground footprint, summed | Measured — a bounding box overstates a diagonal crack ~13× |
+| Road distress classification, 7 classes | Frozen MobileNetV2 ImageNet embeddings (ONNX Runtime), flip test-time augmentation → RBF SVM head, chosen by grouped 5-fold cross-validation | **87.0%**, macro-F1 0.700, on 625 held-out images from 589 unseen photographs, scored once |
+| — same task, end-to-end fine-tuned CNN | EfficientNet-B0/B2, MobileNetV3-L, ResNet-50 fine-tuned on a Colab GPU (`training/train_finetune_cnn.py`), exported to ONNX | Served **only** if it beats the head on validation accuracy *and* macro-F1 (`scripts/select_vision_model.py`); the site shows whichever is served |
+| — on Indian roads | Same classifier on crops from held-out RDD2022 India photographs (15%, split by photograph; the official test split has no public labels), never used in training | **80.4%**, macro-F1 0.781, on 997 crops from 778 photographs (normal / crack / pothole) — 33.4% before Indian data was added |
+| — fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 79.0%, macro-F1 0.522, on the same split; serves when no CNN backbone is on disk |
+| Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Pretrained; people, vehicles, traffic lights, signs. Not re-trained or re-measured here |
+| IMU shock classification | 100 Hz tri-axial accelerometer windows → RandomForest; a 1-D CNN is compared by 5-fold CV and served only if better | **87.2%** on 164 held-out windows of real Indian-road drive logs, time-block split |
+| Defect **segmentation** | Pixel classifier on 11 features, trained on the DNIT polygons | **crack IoU 0.231, pothole IoU 0.144** on 500 unseen photographs; 23.3% of clean photographs show a false blob before the gate |
+| Semantic gate | CNN window heat map filters segmenter pothole pixels | pothole IoU 0.102 → 0.271, clean-road false blobs 8/50 → 2/50 |
+| Defect **area** | Each mask pixel's own ground footprint, summed | Measured if the camera is calibrated — a bounding box overstates a diagonal crack ~13× |
 | Camera **calibration** | Per-device profile from a checkerboard or published FOV | Per vehicle; 30 cm of mount height moves area ~46% |
 | Defect **depth** | IRC band placed by measured extent / cavity contrast | **Estimate with an interval**, never a measurement |
+| Privacy redaction | People (head region), number plates and faces blurred before an image is shared | Implemented; **recall not measured** (no annotated set) |
 | Video ingest | cv2 decode, frames sampled by ground distance, pHash suppression | Real decoding; refuses to invent GPS |
-| Fleet ledger | SQLite, raw sightings kept as the dedup audit trail | Survives restart |
-| Repair costing | MoRTH Section 500 bitumen tonnage and rates | Deterministic |
-| Pavement condition index | ASTM D6433 deduct-value procedure | Deterministic |
-| Tamper-proof work orders | SHA-256 seal over the order fields | Verified by tests |
-| Fleet deduplication | Haversine distance clustering of reports | Verified by tests |
+| Fleet ledger + deduplication | SQLite; haversine 8 m, same defect class only; raw sightings kept as the audit trail | Survives restart; verified by tests |
+| Repair costing | MoRTH Section 500 bitumen tonnage and rates (compaction factor 1.15) | Deterministic; rate basis shown in every output |
+| Pavement condition index | ASTM D6433 deduct-value procedure | Reproduces the deduct curves; not validated against field surveys |
+| Tamper-proof work orders | SHA-256 seal over the order fields; no GPS → `HELD_NO_GPS`, never a made-up location | Verified by tests |
 | Repair verification | SSIM + Laplacian variance + perceptual hash | Catches resubmitted photographs |
 | Sensor fusion | Bayesian gate over vision + IMU evidence | Reports "unavailable" when no IMU window exists |
 | GIS services | Google Maps if a key is set, else OpenStreetMap Nominatim / OSRM / Overpass / Open-Meteo | Reports UNAVAILABLE rather than inventing data |
 
+The live numbers are in `checkpoints/claims.json`, rebuilt from the reports by
+`python -m scripts.build_claims`, and the site reads the checkpoints directly —
+if a retraining run changes a number, the site changes with it.
+
 ## The measurement chain
 
-The classifier's 89.2% is measured. Everything *after* it decides the rupee
-figure, and those stages are now labelled individually — because half are
+The classifier's accuracy is measured. Everything *after* it decides the rupee
+figure, and those stages are labelled individually — because half are
 measurements and half are estimates:
 
 | Stage | What it is | Provenance |
 |---|---|---|
-| Classification | ResNet-50 embeddings → logistic head | **measured**, 89.2% |
-| Segmentation | pixel classifier on 4,720 real polygons | **measured**, crack IoU 0.231 |
+| Classification | MobileNetV2 embeddings → SVM head (or the fine-tuned CNN, if selected) | **measured**, 87.0% |
+| Segmentation | pixel classifier on real polygons | **measured**, crack IoU 0.231 |
 | Area | each mask pixel's ground footprint, summed | **measured** *if* the camera is calibrated |
 | Camera geometry | per-device profile, rescaled per request | **measured** with a profile, **estimate** without |
 | Depth | IRC band placed by extent or cavity contrast | **estimate**, always with an interval |
@@ -56,106 +62,79 @@ why every response carries the provenance of the numbers in it.
 
 | Test | Result |
 |---|---|
-| Held-out accuracy | **88.8%**, macro-F1 0.747, on 502 images from 483 unseen photographs (random guess 14.3%) |
-| Same split, hand-crafted features | 79.9%, macro-F1 0.520 |
+| Held-out accuracy | **87.0%**, macro-F1 0.700, on 625 images from 589 unseen photographs (random guess 14.3%) |
+| Indian roads (RDD2022 India, held-out photographs) | **80.4%**, macro-F1 0.781, 997 crops / 778 photographs, 3 classes |
+| Same split, hand-crafted features | 79.0%, macro-F1 0.522 |
 | Model selection | 5-fold cross-validation on the training split only, grouped by source photograph; the test set is scored once, by the selected model |
 | Leakage audit | 0 cross-class duplicates, 0 photograph groups spanning splits (`checkpoints/validation_report.json`) |
 | Latency | ~30 ms for the two MobileNetV2 embeddings (image + mirror); full pipeline 1.7–2.4 s on a single-core VM, dominated by pixel segmentation |
 
-Reproduce: `python -m training.train_cnn_head --backbone mobilenetv2 --compare`.
+Reproduce: `python -m training.train_cnn_head --backbone mobilenetv2 --compare`
+and `python -m scripts.eval_indian_roads`. The full GPU run (fine-tuning, IMU
+CNN, benchmark, claims, report) is `scripts/colab_train_all.sh`.
 
 ### How the head was chosen
 
 Thirteen candidates — three head families at several settings, on plain and on
 flip-averaged embeddings, plus a soft-voting ensemble — were scored by grouped
-cross-validation inside the training split. The ensemble on flip-averaged
-embeddings scored best and is the only model that saw the test set. CV figures
-are lower than the test figure because the validation folds also contain the
-harder region-scale sub-crops.
+cross-validation inside the training split (score = mean of accuracy and
+macro-F1). The best is the only model that saw the test set.
 
 | Head | Features | CV accuracy | CV macro-F1 |
 |---|---|---|---|
-| ensemble_soft | flip_tta | 84.9% ± 1.8 | 0.769 ± 0.033 |
-| svc_C10 | flip_tta | 84.3% ± 2.6 | 0.765 ± 0.036 |
-| mlp_512_256 | flip_tta | 84.2% ± 1.8 | 0.764 ± 0.029 |
-| svc_C30 | flip_tta | 83.9% ± 2.4 | 0.764 ± 0.033 |
-| svc_C3 | flip_tta | 83.6% ± 2.8 | 0.762 ± 0.037 |
-| svc_C10 | plain | 83.6% ± 2.3 | 0.758 ± 0.033 |
-| svc_C30 | plain | 83.5% ± 2.9 | 0.758 ± 0.035 |
-| svc_C3 | plain | 83.2% ± 2.5 | 0.759 ± 0.034 |
-| mlp_512_256 | plain | 82.9% ± 2.6 | 0.749 ± 0.037 |
-| logistic_C0.3 | flip_tta | 82.3% ± 1.8 | 0.732 ± 0.031 |
-| logistic_C1 | flip_tta | 81.7% ± 1.5 | 0.720 ± 0.031 |
-| logistic_C0.3 | plain | 81.4% ± 0.9 | 0.715 ± 0.020 |
-| logistic_C1 | plain | 81.3% ± 1.4 | 0.714 ± 0.028 |
+| **svc_C3** | flip_tta | 80.4% ± 1.4 | 0.751 ± 0.031 |
+| svc_C10 | flip_tta | 80.5% ± 1.7 | 0.750 ± 0.029 |
+| svc_C30 | flip_tta | 80.3% ± 1.7 | 0.750 ± 0.029 |
+| ensemble_soft | flip_tta | 80.4% ± 1.8 | 0.747 ± 0.038 |
+| svc_C3 | plain | 80.1% ± 1.3 | 0.743 ± 0.028 |
+| svc_C10 | plain | 79.7% ± 1.8 | 0.741 ± 0.033 |
+| svc_C30 | plain | 79.0% ± 1.8 | 0.738 ± 0.034 |
+| mlp_512_256 | flip_tta | 78.6% ± 2.0 | 0.728 ± 0.033 |
+| mlp_512_256 | plain | 79.0% ± 2.5 | 0.724 ± 0.036 |
+| logistic_C0.3 | flip_tta | 77.2% ± 1.3 | 0.703 ± 0.021 |
+| logistic_C1 | flip_tta | 76.9% ± 1.4 | 0.697 ± 0.022 |
+| logistic_C0.3 | plain | 76.2% ± 1.2 | 0.682 ± 0.020 |
+| logistic_C1 | plain | 75.4% ± 1.5 | 0.677 ± 0.022 |
 
-The previous version picked its head by test-set score, which inflates the
-reported figure. This one did not, so its 88.8% is directly
-comparable to unseen data; the 0.4-point difference from the earlier 89.2% is
-two images and within noise.
+CV figures are lower than the test figure because the validation folds also
+contain the harder region-scale sub-crops and the Indian training crops.
 
 ### Per class
 
 | Class | Precision | Recall | F1 | Test images |
 |---|---|---|---|---|
-| Normal Road / Sound Pavement | 0.88 | 0.86 | 0.87 | 77 |
-| Crack (Longitudinal / Transverse / Alligator) | 0.90 | 0.93 | 0.91 | 184 |
-| Pothole Cavity | 0.93 | 0.90 | 0.91 | 211 |
-| Waterlogging / Flooding Hazard | 0.67 | 0.86 | 0.75 | 7 |
-| Missing Zebra Crossing | 0.43 | 0.38 | 0.40 | 8 |
-| Missing Road Divider | 0.45 | 0.62 | 0.53 | 8 |
-| Damaged Traffic Sign | 0.86 | 0.86 | 0.86 | 7 |
+| Normal Road / Sound Pavement | 0.85 | 0.94 | 0.89 | 148 |
+| Crack (Longitudinal / Transverse / Alligator) | 0.84 | 0.92 | 0.88 | 225 |
+| Pothole Cavity | 0.92 | 0.82 | 0.87 | 222 |
+| Waterlogging / Flooding Hazard | 1.00 | 0.14 | 0.25 | 7 |
+| Missing Zebra Crossing | 0.71 | 0.62 | 0.67 | 8 |
+| Missing Road Divider | 0.75 | 0.38 | 0.50 | 8 |
+| Damaged Traffic Sign | 1.00 | 0.71 | 0.83 | 7 |
 
-Normal road, crack and pothole carry 472 of the 502 test images. The other four
+Normal road, crack and pothole carry 595 of the 625 test images. The other four
 classes have seven or eight test images each, so one image moves their F1 by
 more than 0.1. That is a data-volume problem and it is shown, not averaged away.
 
 ## Data
 
-| # | Class | Images | Distinct photographs |
+| Source | Classes | Kept | Note |
 |---|---|---|---|
-| 0 | Normal Road / Sound Pavement | 1807 | ~1580 |
-| 1 | Crack (Longitudinal / Transverse / Alligator) | 2413 | ~2400 |
-| 2 | Pothole Cavity | 1404 | ~1400 |
-| 3 | Waterlogging / Flooding Hazard | 14 | 14 |
-| 4 | Missing Zebra Crossing | 19 | 19 |
-| 5 | Missing Road Divider | 20 | 20 |
-| 6 | Damaged Traffic Sign | 14 | 14 |
+| DNIT *Cracks and Potholes in Road Images* (Brazil) | crack, pothole, normal | 1,667 crops | 2,235 photographs, 4,720 polygons; the only source with polygons, so the segmenter trains on it |
+| RDD2022 India (CRDDC 2022, smartphone) | crack, pothole, normal | ~3,000 crops | labelled photographs split 70/15/15 by photograph; the held-out 15% is the Indian test set and is never trained on |
+| Kaggle pothole sets (3) | pothole, normal | 1,287 | `virenbr11/...` was 94% a re-upload: 700 of 739 rejected as perceptual duplicates |
+| Kaggle surface cracks (concrete walls) | — | 0 of 2,376 | **Excluded**: close-ups of concrete and plaster, no road, no horizon (`pipeline/corpus_policy.py`); kept on disk, reproducible with `ROAD_SHIELD_NO_CORPUS_FILTER=1` |
+| Wikimedia Commons / Geograph + field photographs | waterlogging, zebra, divider, sign | 207 | 67 field + 140 Wikimedia (35 per class); still ~50 photographs per class |
+| IMU drive logs (`VishalSingh25/Pothole-Project`) | 4 shock classes | 852 windows | 10 real drives on Indian roads, 205,491 samples at 100 Hz, from a car — not a bus |
 
-2,373 distinct photographs in total after the Kaggle ingest. The imbalance is
-the point: classes 3-6 are the ones holding macro-F1 down, and no amount of
-modelling substitutes for photographs of them.
+Original DNIT data: github.com/biankatpas/Cracks-and-Potholes-in-Road-Images-Dataset ·
+RDD2022: Arya et al., *RDD2022: A multi-national image dataset for automatic road damage detection* (figshare).
 
-**Primary source:** *Cracks and Potholes in Road Images* — 2,235 photographs
-collected by DNIT, the Brazilian federal highway department, with 1,921 crack
-and 564 pothole polygon annotations. Each annotated defect is cropped into a
-training example by `scripts/fetch_cracks_potholes_dataset.py`.
-Original: github.com/biankatpas/Cracks-and-Potholes-in-Road-Images-Dataset ·
-COCO conversion: github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset
-
-**Kaggle:** four datasets pulled through the official API — surface cracks
-(concrete, close range: real crack texture but not road scenes), and three
-pothole/plain-road sets. `virenbr11/pothole-and-plain-rode-images` turned out to
-be 94% a re-upload of `atulyakumar98/pothole-detection-dataset`; 700 of its 739
-images were rejected as perceptual duplicates. That check is the difference
-between an honest score and an inflated one.
-
-A fifth, `andrewmvd/road-sign-detection`, was removed after it went in: it is a
-dataset of road signs, not damaged road signs, so the model learned "a sign is
-present" under a label claiming "this sign is damaged". Removing its 299 images
-raised accuracy from 88.5% to 89.2%.
-
-**Smaller classes:** Wikimedia Commons and Geograph photographs.
+`andrewmvd/road-sign-detection` was removed after it went in: it is a dataset of
+road signs, not *damaged* road signs, so the model learned "a sign is present"
+under a label claiming "this sign is damaged". Removing its 299 images raised
+accuracy (88.5% → 89.2% on the corpus of that time).
 
 **Object detection:** COCO, 330,000 images, through the published YOLOv8n weights.
-
-**IMU:** 15,000 windows shipped with this repository. These are **simulated**,
-not recorded from a vehicle, and the model's 100% score should be read in that
-light.
-
-**Not Indian road data.** The photographs are Brazilian. RDD2022 provides
-47,000 annotated images including India and is the obvious next step; the
-downloader is written and waiting on a GPU.
 
 ### Segmentation — measured
 
@@ -165,7 +144,7 @@ downloader is written and waiting on a GPU.
 | Pothole | 0.144 | 0.251 | 0.242 | 0.262 |
 
 500 unseen photographs, split by photograph, scored only on pixels inside the
-lane polygon. Trained on 5.6 million labelled pixels from 4,720 hand-drawn
+lane polygon. Trained on 3.7 million labelled pixels from the DNIT hand-drawn
 polygons. The decision is a per-class threshold tuned for IoU on a separate
 calibration split rather than argmax — with ~97% of pixels being sound road,
 argmax floods the mask with false positives, and fixing that alone took crack
@@ -186,7 +165,7 @@ it the container starts with neither, and the `/system` page says so. No CUDA an
 no PyTorch — the CNN runs on ONNX Runtime on the CPU.
 
 GitHub Actions runs the suite on 3.11 and 3.12, checks every module imports, and
-starts the server to confirm all eight pages serve.
+starts the server to confirm every page serves.
 
 ## The site
 
@@ -218,17 +197,23 @@ Or stage by stage:
 ```bash
 python -m scripts.fetch_cracks_potholes_dataset --limit 2235   # ~70 s, real data
 python -m training.train_mega_suite                            # ~3 min, baseline models
-python -m scripts.fetch_cnn_backbone                           # 98 MB ResNet-50, once
-python -m training.train_cnn_head --compare                    # ~4 min, the 89.2% model
-python -m api.server                                           # http://127.0.0.1:8000/dashboard
+python -m scripts.fetch_cnn_backbone --model mobilenetv2       # 14 MB backbone, once
+python -m training.train_cnn_head --backbone mobilenetv2 --compare   # the 87.0% model
+python -m api.server                                           # http://127.0.0.1:8000/
 ```
 
-On startup the server prints which classifier it loaded. `deep CNN embeddings
-(cnn:resnet50+logistic)` is the 89.2% path; `HOG/LBP + SVM baseline` means the
-backbone is missing and it fell back. On a slow machine,
-`python -m scripts.fetch_cnn_backbone --model mobilenetv2` is 14 MB and 10 ms
-per image instead of 33, at 83.5% accuracy. A head only ever runs with the
-backbone it was trained on — the loader pairs them and skips mismatches.
+On startup the server prints which classifier it loaded: the fine-tuned CNN if
+`checkpoints/vision_model_selection.json` selected it, otherwise the MobileNetV2
+head; `HOG/LBP + SVM baseline` means no backbone is on disk and it fell back. A
+head only ever runs with the backbone it was trained on — the loader pairs them
+and skips mismatches.
+
+Deep training (GPU) runs end to end in Colab — open
+`notebooks/ROAD_SHIELD_colab_training.ipynb`, or:
+
+```bash
+bash scripts/colab_train_all.sh 2>&1 | tee logs/colab_run.txt   # resumable if Google Drive is mounted
+```
 
 Optional extras:
 
@@ -236,10 +221,12 @@ Optional extras:
 python -m scripts.fetch_detector            # COCO object detector (needs ultralytics once)
 python -m scripts.validate_models           # leakage, cross-validation, calibration, latency
 python -m scripts.model_selection           # compare six classifiers on identical folds
-python -m unittest discover -s tests       # 140 tests: models, pipeline, REST API, Vercel entrypoint
+python -m unittest discover -s tests -t .  # 178 tests: models, pipeline, REST API, integrity fixes, Vercel entrypoint
 python -m training.train_segmenter         # pixel segmentation on the DNIT polygons
 python -m scripts.calibrate_camera --list  # camera calibration profiles
-python -m training.train_deep_vision        # fine-tune a CNN (needs PyTorch)
+python -m training.train_finetune_cnn       # fine-tune CNNs (needs PyTorch + GPU)
+python -m training.train_imu_deep           # IMU 1-D CNN vs RandomForest
+python -m scripts.fetch_rdd2022_india       # RDD2022 India (official release)
 ```
 
 ### Kaggle datasets
@@ -266,9 +253,8 @@ JPEG re-encode and at most 8 after a half-size re-upload, while genuinely
 different photographs sat at 18 bits and above.
 
 Surface-crack datasets are close-range concrete, not road scenes. They are
-real crack images and they help, but the domain gap is real; the catalogue
-marks them `domain="concrete"` and the ingest manifest records how many images
-came from each domain.
+excluded from road-scene training and measurement by `pipeline/corpus_policy.py`;
+the files stay on disk and the exclusion is listed in every report that depends on it.
 
 A Google Maps key is optional and not needed for anything in the demo; without
 one the system uses OpenStreetMap (Nominatim, OSRM, Overpass) and Open-Meteo,
@@ -283,21 +269,22 @@ and reports `UNAVAILABLE` rather than inventing a result.
 | Label conflicts fixed | 79.4% | 20 photographs were filed under three contradictory labels at once |
 | Real dataset added | 83.4% | 133 → 1,800 distinct photographs |
 | ImageNet CNN embeddings | 88.5% | ResNet-50 replaces hand-written features |
-| Kaggle ingest + a labelling fix | **89.2%** | 2,373 distinct photographs; removing 299 mislabelled sign images *raised* accuracy |
+| Kaggle ingest + a labelling fix | 89.2% | 2,373 distinct photographs; removing 299 mislabelled sign images *raised* accuracy |
+| Concrete patches excluded, RDD2022 India added, larger test set | **87.0%** | 589-photograph test set (was 356) with Indian crops in it; Indian-roads test 33.4% → 80.4% |
 
 `scripts/validate_models.py` is what found the label conflicts, by hashing
 every image and looking for the same photograph under different labels.
 
 ## Honest limitations
 
-- The classifier is a frozen ImageNet CNN with a trained head, not a fine-tuned
-  network. Fine-tuning (`training/train_deep_vision.py`) needs PyTorch: `pip install -r requirements-train.txt`.
-- The photographs are Brazilian, not Indian.
-- The IMU data is real but small: 10 drive logs from one project, not a fleet.
+- The served classifier is a frozen ImageNet CNN with a trained head unless a fine-tuned network beats it on validation; the rule is fixed in advance and the choice is recorded in `checkpoints/vision_model_selection.json`.
+- Indian photographs come from RDD2022 (smartphone); none were taken from a bus, and the Indian test covers three classes only.
+- The IMU data is real but small: 10 drive logs from a car, not a bus fleet.
+- Privacy redaction is implemented but its recall has not been measured.
 - A semantic gate (the CNN classifier filtering the segmenter) raised pothole IoU from 0.102 to 0.271 and cut clean-road false alarms from 16% to 4% on photographs the classifier never saw; water-filled cavities are still under-detected.
 - Before the gate, the segmenter drew a false blob on 23.3% of clean road photographs (the regression gate is 25%). The classifier in front of it limits the damage; painted markings remain the hardest case.
 - PCI, deterioration and depth models are fitted to engineering formulas (ASTM D6433, HDM-4, an IRC depth band). Their R² measures fidelity to the formula, not field accuracy.
-- There is no dashcam video in this repository; the system analyses photographs.
+- There is no dashcam video in this repository; the video page decodes a clip you upload. The rest of the system analyses photographs.
 - Four classes have too few examples to work well.
 - No demographic inference is performed on people in frame, by design.
 
