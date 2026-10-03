@@ -453,6 +453,13 @@ class FalsePositiveGate(unittest.TestCase):
         # compares against would be drawn from different populations.
         from pipeline.corpus_policy import filter_paths
         files, _ = filter_paths(files)
+        # These tests exercise the whole-frame pipeline (horizon rule, ground
+        # area). RDD2022 training crops (rddin_*) are tight cut-outs of a single
+        # defect with no road geometry, written into these folders by
+        # scripts/ingest_rdd2022_india.py on a training machine; sampling them
+        # made the proposals test fail because the horizon rule (correctly)
+        # discards a cut-out, not because the pipeline was wrong.
+        files = [p for p in files if not os.path.basename(p).startswith("rddin_")]
         random.Random(seed).shuffle(files)
         return files[:n]
 
