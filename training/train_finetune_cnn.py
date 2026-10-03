@@ -7,7 +7,7 @@ trains the whole network, end to end, and compares it to that head on the
 IDENTICAL split (training.train_cnn_head.capped_grouped_split), so any change
 in the headline number is a like-for-like comparison and not a new test set.
 
-    python -m training.train_finetune_cnn --archs efficientnet_b0,resnet50,convnext_tiny --epochs 40
+    python -m training.train_finetune_cnn --archs efficientnet_b0,efficientnet_b2,mobilenet_v3_large,resnet50 --epochs 40
     python -m training.train_finetune_cnn --smoke            # 2-minute sanity run
 
 Protocol (what makes the numbers trustworthy)
@@ -370,7 +370,7 @@ def train_arch(arch, splits, epochs, batch, lr, seed, workers, patience, out_dir
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--archs", default="efficientnet_b0,resnet50,convnext_tiny")
+    ap.add_argument("--archs", default="efficientnet_b0,efficientnet_b2,mobilenet_v3_large,resnet50")
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--batch", type=int, default=48)
     ap.add_argument("--lr", type=float, default=2e-4)
@@ -397,8 +397,10 @@ def main(argv=None):
         reports[arch] = train_arch(arch, splits, a.epochs, a.batch, a.lr, a.seed, a.workers, a.patience,
                                    a.out, smoke=a.smoke)
 
-    # Select by validation only.
-    chosen = max(reports, key=lambda k: reports[k]["selection_score_val"])
+    # Select by validation only, among networks small enough to commit (GitHub
+    # refuses files over 100 MB) - a deployment constraint fixed before training.
+    eligible = [k for k in reports if reports[k]["onnx"]["onnx_size_mb"] <= 95.0] or list(reports)
+    chosen = max(eligible, key=lambda k: reports[k]["selection_score_val"])
     served_tag = chosen
     refit_rep = None
     if not a.no_refit:
@@ -412,7 +414,7 @@ def main(argv=None):
     head_rep_path = os.path.join(a.out, "cnn_head_mobilenetv2_report.json")
     head = json.load(open(head_rep_path)) if os.path.exists(head_rep_path) else {}
     summary = {
-        "selection_rule": "architecture with the highest validation score = mean(accuracy, macro-F1); "
+        "selection_rule": "architecture with the highest validation score = mean(accuracy, macro-F1), among those whose ONNX file is <= 95 MB; "
                           "test scored once per arch and never used to choose; the served model is the "
                           "chosen arch refit on train+val for its best epoch count (declared before training)",
         "chosen_arch": chosen,

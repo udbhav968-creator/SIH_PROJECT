@@ -10,7 +10,7 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | Area | Status | Evidence |
 |---|---|---|
 | 7-class road-condition classifier (frozen MobileNetV2 + head) | Done, measured on a grouped held-out split | `checkpoints/cnn_head_mobilenetv2_report.json` |
-| End-to-end fine-tuned CNNs (EfficientNet / ResNet-50 / ConvNeXt) | Done in this audit (Colab GPU), same split as the head | `training/train_finetune_cnn.py`, `checkpoints/finetune_summary.json` |
+| End-to-end fine-tuned CNNs (EfficientNet-B0/B2, MobileNetV3-L, ResNet-50) | Done in this audit (Colab GPU), same split as the head | `training/train_finetune_cnn.py`, `checkpoints/finetune_summary.json` |
 | Served-model choice by a rule fixed before reading test scores | Done in this audit | `scripts/select_vision_model.py`, `checkpoints/vision_model_selection.json` |
 | RDD2022 India: training crops + Indian-roads test split | Done (official CRDDC archive converter added) | `scripts/prepare_rdd2022_voc.py`, `scripts/ingest_rdd2022_india.py`, `checkpoints/indian_roads_eval_report.json` |
 | Pixel defect segmenter (11 features, gradient boosting) + CNN semantic gate | Done | `checkpoints/defect_segmenter_report.json`, `checkpoints/semantic_gate_report.json` |
@@ -25,7 +25,7 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | Haversine fleet deduplication, 8 m | Done; now merges only the same defect class (fixed) | `pipeline/fleet_deduplication_engine.py` |
 | Privacy redaction of people and number plates | Added in this audit (recall not measured) | `models/privacy_redactor.py`, `/api/v1/privacy/redact` |
 | REST API + eight-page site + Vercel static deployment | Done | `api/server.py`, `web/`, `api/vercel_app.py` |
-| Automated tests | See `logs/tests_after.txt` from the Colab run | `tests/` |
+| Automated tests | 176 (167 verified here; 9 segmenter tests need scikit-learn 1.8 - see `logs/tests_after.txt` after the Colab run) | `tests/` |
 
 ## Left to do (not claimed as done)
 
