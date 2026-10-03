@@ -276,8 +276,12 @@ class DeepInferencePipeline:
                 print(f"[WARN] segmentation failed, falling back to box area: {e}")
         # Semantic gate: keep segmenter pothole pixels only where the CNN
         # classifier also sees a pothole (models/semantic_gate.py has the
-        # measurement). Skipped with the hand-crafted fallback classifier.
-        if seg_out is not None and getattr(self, "vision_backend", "") == "cnn_embeddings":
+        # measurement). Runs with either CNN classifier - the frozen-embedding head
+        # or the fine-tuned network - since both expose predict_probabilities with
+        # the same class order. It used to check for the head by name only, so
+        # serving the fine-tuned CNN silently switched the gate off and zebra
+        # crossings came back as potholes. Skipped with the hand-crafted fallback.
+        if seg_out is not None and getattr(self, "vision_backend", "") in ("cnn_embeddings", "deep_cnn"):
             try:
                 from models import semantic_gate
                 seg_out = semantic_gate.apply(seg_out, self.vision_model, img_np)
