@@ -42,9 +42,10 @@
     <div class="label">the stack</div>
     <div class="ascii">┌────────────────────────────────────────────────────────────────────────────┐
 │  PERCEPTION        MobileNetV2 + SVM head, or fine-tuned CNN if it wins   │
-│  SEGMENTATION      pixel classifier on DNIT polygons + CNN semantic gate  │
+│  SEGMENTATION      U-Net or pixel classifier (chosen on val) + CNN gate   │
 │  VIBRATION         RandomForest (36 features) vs 1-D CNN, chosen by CV    │
 │  SAFETY CONTEXT    YOLOv8n, COCO 80-class, ONNX                           │
+│  DAMAGE BOXES      YOLOv8 fine-tuned on RDD2022 India (when trained)      │
 │  METRIC GEOMETRY   inverse perspective mapping, per-device calibration    │
 │  DEPTH             IRC band + interval — estimate, never a measurement    │
 │  SENSOR FUSION     recursive log-odds gate, neutral prior when no IMU     │

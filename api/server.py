@@ -605,12 +605,20 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     rp = os.path.splitext(seg.model_path)[0] + "_report.json"
                     try:
                         with open(rp, "r", encoding="utf-8") as fh:
-                            out["measured_report"] = json.load(fh).get("iou")
+                            _rep = json.load(fh)
+                        out["measured_report"] = _rep.get("iou")
+                        out["trained_on"] = _rep.get("trained_on")
+                        out["thresholds"] = _rep.get("thresholds")
                     except Exception:
                         pass
                 self._send_json(200, out)
                 return
-            self._send_json(200, {"available": True, **seg.describe()})
+            from models.unet_segmenter import read_selection
+            sel = read_selection(CKPT_DIR) or {}
+            self._send_json(200, {"available": True, **seg.describe(),
+                                  "model": seg.describe().get("model") or
+                                  "HistGradientBoosting pixel classifier on 11 features",
+                                  "selection": {k: sel.get(k) for k in ("served", "rule", "why")} if sel else None})
             return
 
         if path == "/api/v1/datasets/benchmarks":
