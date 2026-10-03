@@ -34,7 +34,7 @@ This document separates two things everywhere, because mixing them is how a desi
 |---|---|---|
 | Honesty of numbers | every figure labelled measured / estimate / range; nothing defaulted | Implemented (and tested) |
 | Edge latency | < 50 ms per frame on a CPU | EfficientNet-B0 ONNX measured at 16.5 ms per image on CPU |
-| Server latency | < 3 s per new defect, end to end | 1.7–2.4 s measured on one CPU core |
+| Server latency | < 3 s per new defect, end to end | 1.7–2.6 s measured (single CPU core; 2-vCPU Colab VM) |
 | Availability | no lost reports when the network drops | Designed: on-bus queue, idempotent upload |
 | Privacy | no identifiable person or plate stored | blur implemented; on-device blur designed |
 | Auditability | every number traceable to a report, every model to a checksum | claims registry + model registry implemented |

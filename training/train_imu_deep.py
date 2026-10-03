@@ -54,8 +54,11 @@ def normalise(X, scale):
 
 def scores(y, p):
     from sklearn.metrics import accuracy_score, f1_score
-    return float(accuracy_score(y, p)), float(f1_score(y, p, labels=list(range(N_CLASSES)),
-                                                       average="macro", zero_division=0))
+    # Macro-F1 over the classes present in this fold's truth: a blocked fold can
+    # lack a class entirely, and scoring an absent class as F1 = 0 would penalise
+    # both models by an amount that depends only on how the blocks fell.
+    present = sorted(set(np.asarray(y).tolist()))
+    return float(accuracy_score(y, p)), float(f1_score(y, p, labels=present, average="macro", zero_division=0))
 
 
 def build_net(width=32):
@@ -135,8 +138,16 @@ def cnn_predict(net, X):
     return lo.softmax(1).cpu().numpy()
 
 
+BLOCK = 25   # windows per contiguous group (~25 s of driving)
+
+
+def blocked_groups(n, block=BLOCK):
+    """Group id per window: consecutive windows share a group, so a fold never splits a block."""
+    return np.arange(n) // block
+
+
 def main():
-    from sklearn.model_selection import StratifiedKFold
+    from sklearn.model_selection import StratifiedGroupKFold
     import torch
 
     Xtr_raw, ytr = load("train")
@@ -145,8 +156,16 @@ def main():
     Xtr, Xva = normalise(Xtr_raw, scale), normalise(Xva_raw, scale)
     print(f"[IMU deep] train {len(ytr)} | held-out {len(yva)} | class counts train {np.bincount(ytr).tolist()}")
 
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    folds = list(skf.split(Xtr_raw, ytr))
+    # Folds of contiguous TIME BLOCKS, not shuffled windows. The training windows
+    # are stored in time order per drive; neighbouring 1-second windows are nearly
+    # the same signal. The first version shuffled windows into folds, so a
+    # window's neighbour sat in the training fold: CV then rewarded memorisation,
+    # picked the CNN (CV acc 0.869 vs 0.849), and the time-separated held-out
+    # logs reversed the verdict (RF 0.872 vs CNN 0.787). Blocks of BLOCK windows
+    # stay together, mirroring how the held-out split itself was made.
+    groups = blocked_groups(len(ytr))
+    skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
+    folds = list(skf.split(Xtr_raw, ytr, groups))
     cv = {"random_forest": [], "cnn_w32": [], "cnn_w48": []}
     t0 = time.time()
     for k, (a, b) in enumerate(folds):
@@ -214,7 +233,13 @@ def main():
         "cv_on_train_only": cv_table,
         "best_cnn_config": best_cnn,
         "decision_rule": "serve the CNN only if its mean 5-fold CV accuracy AND macro-F1 on the training windows "
-                         "beat the RandomForest's; fixed before the held-out windows were scored",
+                         "beat the RandomForest's; folds are contiguous time blocks of "
+                         f"{BLOCK} windows (no neighbouring window on both sides); fixed before the held-out "
+                         "windows were scored",
+        "cv_protocol": f"StratifiedGroupKFold(5) over contiguous blocks of {BLOCK} windows",
+        "protocol_history": ("v1 shuffled individual windows into folds, which leaks neighbouring windows across "
+                             "folds; it chose the CNN, and the time-separated held-out logs then scored the CNN "
+                             "below the RandomForest (0.787 vs 0.872). Replaced by blocked folds."),
         "served": "cnn" if serve_cnn else "random_forest",
         "held_out": {"random_forest": held(yva, rf_pred), "cnn": held(yva, cnn_pred)},
         "onnx_parity_max_abs_prob_diff": round(parity, 7),

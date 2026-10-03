@@ -7,7 +7,8 @@
 # It unpacks the zip over the repo (checkpoints, logs, the rebuilt report),
 # shows what changed, commits on the audit branch and pushes. Nothing goes to master.
 param([string]$Zip = "$env:USERPROFILE\Downloads\road_shield_colab_outputs.zip",
-      [string]$ExtraZip = "$env:USERPROFILE\Downloads\road_shield_extra_outputs.zip")
+      [string]$ExtraZip = "$env:USERPROFILE\Downloads\road_shield_extra_outputs.zip",
+      [string]$ImuZip = "$env:USERPROFILE\Downloads\road_shield_imu_fix.zip")
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repo
@@ -18,6 +19,8 @@ if ($haveMain) { Write-Host "Unpacking $Zip into $repo" -ForegroundColor Cyan; E
 # The extra models (U-Net segmenter, RDD2022 detector) are applied after the main run, so their
 # claims and selection files win.
 if ($haveExtra) { Write-Host "Unpacking $ExtraZip into $repo" -ForegroundColor Cyan; Expand-Archive -LiteralPath $ExtraZip -DestinationPath $repo -Force }
+# The IMU re-run with time-blocked folds supersedes the main run's IMU decision.
+if (Test-Path -LiteralPath $ImuZip) { Write-Host "Unpacking $ImuZip into $repo" -ForegroundColor Cyan; Expand-Archive -LiteralPath $ImuZip -DestinationPath $repo -Force }
 $ErrorActionPreference = "Continue"
 git checkout audit-2026-10-03
 git status --short checkpoints logs CSET485_ROAD_SHIELD_Milestone2_Report_Audited_TrackedChanges.docx
