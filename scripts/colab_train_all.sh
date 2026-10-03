@@ -29,16 +29,20 @@ nproc; free -g | head -2
 step "1. data: DNIT cracks & potholes crops (regenerated, not in git)"
 python -m scripts.fetch_cracks_potholes_dataset --limit 2235 --workers 16 2>&1 | tail -15
 
-step "2. data: RDD2022 India (official CRDDC 2022 archive)"
-if [ ! -d datasets/_downloads/rdd2022/India ]; then
-  mkdir -p datasets/_downloads/rdd2022
-  wget -q -O datasets/_downloads/rdd2022/RDD2022_India.zip \
-    https://bigdatacup.s3.ap-northeast-1.amazonaws.com/2022/CRDDC2022/RDD2022/Country_Specific_Data_CRDDC2022/RDD2022_India.zip
-  (cd datasets/_downloads/rdd2022 && unzip -q RDD2022_India.zip && ls)
+step "2. data: RDD2022 India (official CRDDC 2022 release)"
+# The per-country S3 archive now returns 403; fetch_rdd2022_india.py falls back to
+# the official figshare release (13 GB, India part extracted) and verifies every
+# archive. Upload your own copy and set RDD_ZIP=/content/RDD2022_India.zip to skip
+# the download. SKIP_RDD=1 trains without Indian data (not recommended).
+if [ "${SKIP_RDD:-0}" != "1" ]; then
+  python -m scripts.fetch_rdd2022_india ${RDD_ZIP:+--local-zip "$RDD_ZIP"}
+  INDIA=$(python -c "from scripts.fetch_rdd2022_india import india_root; print(india_root() or '')")
+  if [ -z "$INDIA" ] || [ ! -d "$INDIA/train" ]; then
+    echo "STOP: RDD2022 India is not available (see the message above)."; exit 1
+  fi
+  python -m scripts.prepare_rdd2022_voc --src "$INDIA" --out datasets/rdd2022_india | tee logs/rdd_prepare.json
+  python -m scripts.ingest_rdd2022_india 2>&1 | tail -8
 fi
-INDIA=$(find datasets/_downloads/rdd2022 -maxdepth 3 -type d -name India | head -1)
-python -m scripts.prepare_rdd2022_voc --src "$INDIA" --out datasets/rdd2022_india | tee logs/rdd_prepare.json
-python -m scripts.ingest_rdd2022_india 2>&1 | tail -8
 
 step "3. corpus inventory"
 python - <<'EOF' | tee logs/corpus_inventory.json

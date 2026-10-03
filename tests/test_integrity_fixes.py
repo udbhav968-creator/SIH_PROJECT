@@ -294,5 +294,54 @@ class KinematicsClaimNoProbability(unittest.TestCase):
         self.assertIn("threshold_ratio", r)
 
 
+class RDDFetchNeverTrustsAnErrorPage(unittest.TestCase):
+    """The first Colab run saved an S3 403 page as RDD2022_India.zip."""
+
+    def test_extracts_india_from_both_release_layouts(self):
+        import zipfile
+        import scripts.fetch_rdd2022_india as f
+        tmp = tempfile.mkdtemp()
+        saved = f.OUT
+        try:
+            f.OUT = os.path.join(tmp, "a"); os.makedirs(f.OUT)
+            za = os.path.join(tmp, "a.zip")
+            with zipfile.ZipFile(za, "w") as z:
+                z.writestr("RDD2022/India/train/images/India_1.jpg", "x")
+                z.writestr("RDD2022/Japan/train/images/J_1.jpg", "x")
+            f.extract_india(za)
+            self.assertTrue(f.india_root().endswith(os.path.join("RDD2022", "India")))
+            self.assertFalse(os.path.exists(os.path.join(f.OUT, "RDD2022", "Japan")))
+
+            f.OUT = os.path.join(tmp, "b"); os.makedirs(f.OUT)
+            inner, zb = os.path.join(tmp, "inner.zip"), os.path.join(tmp, "b.zip")
+            with zipfile.ZipFile(inner, "w") as z:
+                z.writestr("India/train/images/India_1.jpg", "x")
+            with zipfile.ZipFile(zb, "w") as z:
+                z.write(inner, "all/RDD2022_India.zip")
+            f.extract_india(zb)
+            self.assertTrue(f.india_root().endswith("India"))
+        finally:
+            f.OUT = saved
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_an_html_error_page_is_rejected(self):
+        import scripts.fetch_rdd2022_india as f
+        import urllib.request
+        tmp = tempfile.mkdtemp()
+        page = os.path.join(tmp, "page.html")
+        open(page, "w").write("<Error><Code>AccessDenied</Code></Error>" * 50000)
+        saved = urllib.request.urlopen
+        try:
+            import io
+
+            class Resp(io.BytesIO):
+                headers = {"Content-Length": str(os.path.getsize(page))}
+            urllib.request.urlopen = lambda *a, **k: Resp(open(page, "rb").read())
+            self.assertIsNone(f.download("https://example.invalid/x.zip", os.path.join(tmp, "x.zip")))
+        finally:
+            urllib.request.urlopen = saved
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
