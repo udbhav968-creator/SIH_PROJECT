@@ -1,0 +1,26 @@
+# ROAD-SHIELD engine with a persistent ledger.
+#
+#   docker compose up --build        ->  http://localhost:8000
+#
+# checkpoints/ (trained models and reports) is mounted from the
+# repository; the SQLite ledger lives in a named volume so it survives rebuilds.
+# Set ROAD_SHIELD_API_KEY to require a key on write endpoints.
+services:
+  engine:
+    build: .
+    image: road-shield:latest
+    ports:
+      - "8000:8000"
+    environment:
+      ROAD_SHIELD_WRITABLE_DIR: /data
+      ROAD_SHIELD_ACCESS_LOG: "1"
+      ROAD_SHIELD_API_KEY: ${ROAD_SHIELD_API_KEY:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ledger:/data
+    restart: unless-stopped
+    # Healthcheck (models loaded, not just port open) comes from the Dockerfile.
+
+volumes:
+  ledger:

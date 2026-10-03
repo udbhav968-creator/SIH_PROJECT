@@ -116,6 +116,72 @@ def extract_pixel_features(image_rgb, work_size=(WORK_W, WORK_H)):
     return stack.reshape(-1, stack.shape[-1]).astype(np.float32), (h, w)
 
 
+def mask_from_proba(proba, work_shape, orig_shape, thresholds, min_blob_px=12):
+    """
+    (H*W, 3) class probabilities at working resolution -> the segment() dict.
+
+    Shared by every segmenter (the pixel classifier and the U-Net), so a mask,
+    its size floor and its confidence mean the same thing whichever model
+    produced the probabilities.
+    """
+    import cv2
+    h, w = work_shape
+    orig_h, orig_w = orig_shape
+    # Not argmax. See training/train_segmenter.py:apply_thresholds - with
+    # ~97% of pixels being sound road, argmax is the wrong operating point.
+    crack_p, pothole_p = proba[:, CLASS_CRACK], proba[:, CLASS_POTHOLE]
+    flat = np.full(proba.shape[0], CLASS_SOUND, dtype=np.uint8)
+    is_crack = crack_p >= thresholds.get("crack", 0.5)
+    is_pothole = pothole_p >= thresholds.get("pothole", 0.5)
+    flat[is_crack] = CLASS_CRACK
+    flat[is_pothole & (pothole_p >= crack_p)] = CLASS_POTHOLE
+    flat[is_pothole & ~is_crack] = CLASS_POTHOLE
+    labels = flat.reshape(h, w)
+    conf = np.where(flat == CLASS_CRACK, crack_p,
+                    np.where(flat == CLASS_POTHOLE, pothole_p,
+                             proba[:, CLASS_SOUND])).reshape(h, w)
+
+    # Drop specks: a defect smaller than min_blob_px at working resolution
+    # is below what the annotations themselves resolve.
+    cleaned = np.zeros_like(labels)
+    for cls in (CLASS_CRACK, CLASS_POTHOLE):
+        binary = (labels == cls).astype(np.uint8)
+        if binary.sum() == 0:
+            continue
+        n, comp, stats, _cent = cv2.connectedComponentsWithStats(binary, connectivity=8)
+        for i in range(1, n):
+            if stats[i, cv2.CC_STAT_AREA] >= min_blob_px:
+                cleaned[comp == i] = cls
+
+    mask_full = cv2.resize(cleaned, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+    out = {
+        "mask": mask_full,
+        # The mask before it was stretched to the photograph's resolution.
+        # Anything that reasons about blob SIZE must use this one: a
+        # threshold of "50 pixels" means something different on a 4K frame
+        # and a 320x200 one, and using the stretched mask silently makes a
+        # size threshold depend on the camera. That mistake put ten false
+        # potholes on a clean road in testing.
+        "mask_work": cleaned,
+        "work_shape": (h, w),
+        "scale_x": orig_w / float(w),
+        "scale_y": orig_h / float(h),
+        # Per-pixel probability for each defect class, at working
+        # resolution. A blob's MEAN probability separates "the model is sure
+        # about this patch" from "a scatter of pixels that each just cleared
+        # the threshold", and those two look identical in a binary mask.
+        "proba_crack": crack_p.reshape(h, w).astype(np.float32),
+        "proba_pothole": pothole_p.reshape(h, w).astype(np.float32),
+    }
+    for cls, name in ((CLASS_CRACK, "crack"), (CLASS_POTHOLE, "pothole")):
+        sel = cleaned == cls
+        out[f"{name}_px"] = int(sel.sum())
+        out[f"{name}_px_full"] = int((mask_full == cls).sum())
+        out[f"{name}_mean_confidence"] = float(conf[sel].mean()) if sel.any() else 0.0
+    out["defect_fraction"] = float((cleaned != CLASS_SOUND).mean())
+    return out
+
+
 class DefectSegmenter:
     """Loads the trained pixel classifier and produces defect masks."""
 
@@ -250,59 +316,7 @@ class DefectSegmenter:
         feats, (h, w) = extract_pixel_features(img)
 
         proba = self.clf.predict_proba(feats)
-        # Not argmax. See training/train_segmenter.py:apply_thresholds - with
-        # ~97% of pixels being sound road, argmax is the wrong operating point.
-        crack_p, pothole_p = proba[:, CLASS_CRACK], proba[:, CLASS_POTHOLE]
-        flat = np.full(proba.shape[0], CLASS_SOUND, dtype=np.uint8)
-        is_crack = crack_p >= self.thresholds.get("crack", 0.5)
-        is_pothole = pothole_p >= self.thresholds.get("pothole", 0.5)
-        flat[is_crack] = CLASS_CRACK
-        flat[is_pothole & (pothole_p >= crack_p)] = CLASS_POTHOLE
-        flat[is_pothole & ~is_crack] = CLASS_POTHOLE
-        labels = flat.reshape(h, w)
-        conf = np.where(flat == CLASS_CRACK, crack_p,
-                        np.where(flat == CLASS_POTHOLE, pothole_p,
-                                 proba[:, CLASS_SOUND])).reshape(h, w)
-
-        # Drop specks: a defect smaller than min_blob_px at working resolution
-        # is below what the annotations themselves resolve.
-        cleaned = np.zeros_like(labels)
-        for cls in (CLASS_CRACK, CLASS_POTHOLE):
-            binary = (labels == cls).astype(np.uint8)
-            if binary.sum() == 0:
-                continue
-            n, comp, stats, _cent = cv2.connectedComponentsWithStats(binary, connectivity=8)
-            for i in range(1, n):
-                if stats[i, cv2.CC_STAT_AREA] >= min_blob_px:
-                    cleaned[comp == i] = cls
-
-        mask_full = cv2.resize(cleaned, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
-        out = {
-            "mask": mask_full,
-            # The mask before it was stretched to the photograph's resolution.
-            # Anything that reasons about blob SIZE must use this one: a
-            # threshold of "50 pixels" means something different on a 4K frame
-            # and a 320x200 one, and using the stretched mask silently makes a
-            # size threshold depend on the camera. That mistake put ten false
-            # potholes on a clean road in testing.
-            "mask_work": cleaned,
-            "work_shape": (h, w),
-            "scale_x": orig_w / float(w),
-            "scale_y": orig_h / float(h),
-            # Per-pixel probability for each defect class, at working
-            # resolution. A blob's MEAN probability separates "the model is sure
-            # about this patch" from "a scatter of pixels that each just cleared
-            # the threshold", and those two look identical in a binary mask.
-            "proba_crack": crack_p.reshape(h, w).astype(np.float32),
-            "proba_pothole": pothole_p.reshape(h, w).astype(np.float32),
-        }
-        for cls, name in ((CLASS_CRACK, "crack"), (CLASS_POTHOLE, "pothole")):
-            sel = cleaned == cls
-            out[f"{name}_px"] = int(sel.sum())
-            out[f"{name}_px_full"] = int((mask_full == cls).sum())
-            out[f"{name}_mean_confidence"] = float(conf[sel].mean()) if sel.any() else 0.0
-        out["defect_fraction"] = float((cleaned != CLASS_SOUND).mean())
-        return out
+        return mask_from_proba(proba, (h, w), (orig_h, orig_w), self.thresholds, min_blob_px)
 
     def largest_component_box(self, mask, cls):
         """Bounding box of the biggest blob of `cls`, or None. (x, y, w, h)."""

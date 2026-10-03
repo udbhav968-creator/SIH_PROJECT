@@ -184,6 +184,7 @@ def main():
                                      "held_out": imu_sel.get("held_out_for_reporting")}
 
     _refresh_prose(claims, rep, imu_sel, imu_deep)
+    _deep_extras(claims, rep)
     claims["generated_unix"] = int(time.time())
     with open(TARGET, "w", encoding="utf-8") as fh:
         json.dump(claims, fh, indent=2)
@@ -290,6 +291,71 @@ def _refresh_prose(claims, rep, imu_sel, imu_deep):
     for claim, status, reason in AUDIT_CORRECTIONS:
         if claim not in have:
             claims["corrections"].append({"claim": claim, "status": status, "reason": reason})
+
+
+def _deep_extras(claims, rep):
+    """U-Net segmenter and YOLOv8 road-damage detector, from their own reports.
+    Nothing is written for a model that has not been trained."""
+    subs = {s["id"]: s for s in claims["subsystems"]}
+    sel = rep("segmenter_selection.json")
+    unet = rep("defect_segmenter_unet.json")
+    if sel and unet and not sel.get("smoke") and "M_SEG" in subs:
+        seg = subs["M_SEG"]
+        t = sel.get("test") or {}
+        tu, tp = t.get("unet") or {}, t.get("pixel_classifier") or {}
+
+        def io(d, c):
+            return (d.get(c) or {}).get("iou")
+        cmp_txt = (f"Held-out test (same 500 photographs): U-Net crack IoU {io(tu, 'crack')}, pothole IoU "
+                   f"{io(tu, 'pothole')}; pixel classifier crack {io(tp, 'crack')}, pothole {io(tp, 'pothole')}.")
+        if sel.get("served") == "unet" and os.path.exists(os.path.join(CKPT, "defect_segmenter_unet.onnx")):
+            fp = unet.get("false_positives_on_clean_roads") or {}
+            seg["architecture"] = ("U-Net with a ResNet-18 encoder (ImageNet-pretrained, all layers trained on the DNIT "
+                                   "polygons), flip TTA, ONNX Runtime; per-class thresholds tuned on the calibration split")
+            seg["why"] = "Chosen by a rule fixed before the test set was scored: " + sel.get("rule", "") + " " + sel.get("why", "")
+            seg["rejected_alternative"] = ("HistGradientBoosting pixel classifier on 11 hand-designed features (kept as "
+                                           "the fallback). " + cmp_txt)
+            seg["evidence"] = ("checkpoints/defect_segmenter_unet.json, checkpoints/segmenter_selection.json, "
+                               "training/train_unet_segmenter.py")
+            seg["reproduce"] = "python -m training.train_unet_segmenter"
+            seg["measured"] = {"crack_iou": io(tu, "crack"), "pothole_iou": io(tu, "pothole"),
+                               "crack_dice": (tu.get("crack") or {}).get("dice"),
+                               "pothole_dice": (tu.get("pothole") or {}).get("dice"),
+                               "clean_road_false_blob_rate": fp.get("photo_rate_any_blob"),
+                               "clean_photographs_scored": fp.get("clean_photographs_scored"),
+                               "test_photographs": (unet.get("trained_on") or {}).get("test_photographs"),
+                               "pixel_classifier_crack_iou": io(tp, "crack"),
+                               "pixel_classifier_pothole_iou": io(tp, "pothole")}
+            seg["not_claimed"] = (f"IoU of {io(tu, 'crack')} (crack) and {io(tu, 'pothole')} (pothole) on DNIT "
+                                  f"(Brazilian) photographs; not measured on Indian or bus-camera frames. "
+                                  f"On held-out clean roads it draws a false blob on "
+                                  f"{(fp.get('photo_rate_any_blob') or 0) * 100:.1f}% of "
+                                  f"{fp.get('clean_photographs_scored')} photographs.")
+        else:
+            seg["deep_alternative_tried"] = ("A U-Net (ResNet-18 encoder) was trained on the same polygons and did NOT "
+                                             "replace this model: " + sel.get("why", "") + " " + cmp_txt)
+    det = rep("road_damage_detector_report.json")
+    if det and os.path.exists(os.path.join(CKPT, "damage_rdd2022_india.onnx")):
+        t = det.get("test") or {}
+        entry = {
+            "id": "M_RDD", "name": "Road-damage detector (RDD2022 India)",
+            "architecture": det.get("model"),
+            "role": "Draw boxes around cracks (D00/D10/D20) and potholes (D40) in a road frame",
+            "why": ("A whole-image classifier cannot say where in a frame the damage is. Trained on the RDD2022 India "
+                    "boxes; weights and serving threshold chosen on the validation split, test scored once."),
+            "measured": {"test_map50": t.get("map50"), "test_map50_95": t.get("map50_95"),
+                         "test_precision": t.get("precision"), "test_recall": t.get("recall"),
+                         "per_class": t.get("per_class"),
+                         "test_photographs": ((det.get("data") or {}).get("photographs") or {}).get("test"),
+                         "serving_confidence": det.get("serving_confidence")},
+            "evidence": "checkpoints/road_damage_detector_report.json, training/train_rdd_detector.py",
+            "reproduce": "python -m training.train_rdd_detector",
+            "not_claimed": det.get("not_claimed"),
+        }
+        if "M_RDD" in subs:
+            subs["M_RDD"].update(entry)
+        else:
+            claims["subsystems"].append(entry)
 
 
 if __name__ == "__main__":
