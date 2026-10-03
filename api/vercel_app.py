@@ -73,6 +73,7 @@ PAGE_ROUTES = {
     "/": "index.html", "/inspect": "inspect.html", "/video": "video.html",
     "/corridor": "corridor.html", "/works": "works.html", "/models": "models.html",
     "/data": "data.html", "/system": "system.html", "/architecture": "architecture.html",
+    "/design": "design.html", "/api-docs": "api-docs.html",
 }
 
 # Endpoints that genuinely need the model stack. Listed explicitly so the
@@ -313,6 +314,20 @@ class handler(BaseHTTPRequestHandler):
                          "engine. A serverless function has no durable disk, so serving "
                          "a ledger here would mean inventing one."),
             })
+            return
+
+        if path == "/api/v1/models/served":
+            # Reports only: model binaries are not uploaded to Vercel, so no checksums here.
+            self._send(200, _served_report().model_registry(CKPT_DIR, hash_files=False))
+            return
+
+        if path == "/api/v1/openapi.json":
+            import importlib.util
+            spec_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openapi.py")
+            sp = importlib.util.spec_from_file_location("road_shield_openapi", spec_path)
+            mod = importlib.util.module_from_spec(sp)
+            sp.loader.exec_module(mod)
+            self._send(200, mod.spec())
             return
 
         if path == "/api/v1/claims":

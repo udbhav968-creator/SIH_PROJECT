@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API reference — ROAD-SHIELD</title>
+<link rel="stylesheet" href="/web/app.css">
+<style>
+  .ep { margin-bottom:12px; }
+  .ep-head { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .method { font-family:var(--mono); font-size:11px; font-weight:700; padding:3px 8px; border-radius:6px; }
+  .method.get { background:rgba(86,168,245,.16); color:var(--sky); }
+  .method.post { background:rgba(52,211,153,.16); color:var(--emerald); }
+  .ep-path { font-family:var(--mono); font-size:13px; color:var(--white); word-break:break-all; }
+  .lock { font-size:11px; color:var(--warn); }
+  .ep table { margin-top:8px; }
+  .ep td code { font-size:11.5px; }
+</style>
+</head>
+<body data-page="api-docs">
+<div class="wrap">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">API reference</h1>
+    <span class="muted small" id="apiSub">OpenAPI 3 · rendered from <code>/api/v1/openapi.json</code></span>
+  </div>
+  <div class="card accent">
+    <p class="small" style="margin:0" id="apiDesc">…</p>
+    <div class="kv" style="margin-top:10px"><span>Machine-readable spec</span>
+      <span><a href="/api/v1/openapi.json">/api/v1/openapi.json</a></span></div>
+    <div class="kv"><span>Write endpoints</span>
+      <span>need <code>X-API-Key</code> only when the server sets <code>ROAD_SHIELD_API_KEY</code></span></div>
+    <div class="kv"><span>Every response</span><span>carries an <code>X-Request-ID</code> header</span></div>
+  </div>
+  <div id="eps" style="margin-top:16px"></div>
+</div>
+<script src="/web/app.js"></script>
+<script>
+(async () => {
+  const r = await API.get("/api/v1/openapi.json");
+  if (!r.ok) { el("eps").innerHTML = errorCard("API description unavailable"); return; }
+  const s = r.data;
+  el("apiDesc").textContent = s.info.description;
+  el("apiSub").innerHTML = `OpenAPI ${s.openapi} · ${s.info.title} ${s.info.version} · rendered from <code>/api/v1/openapi.json</code>`;
+  const groups = {};
+  Object.entries(s.paths).forEach(([path, ops]) => Object.entries(ops).forEach(([m, op]) => {
+    const tag = (op.tags || ["other"])[0];
+    (groups[tag] = groups[tag] || []).push({ path, m, op });
+  }));
+  const fields = op => {
+    const sch = op.requestBody?.content?.["application/json"]?.schema;
+    if (!sch || !sch.properties) return "";
+    const req = new Set(sch.required || []);
+    return `<div class="table-wrap"><table><thead><tr><th>field</th><th>type</th><th>notes</th></tr></thead><tbody>
+      ${Object.entries(sch.properties).map(([k, v]) => `<tr><td><code>${k}</code>${req.has(k) ? ' <span class="badge warn">required</span>' : ""}</td>
+        <td class="small">${v.type || ""}</td><td class="small muted">${v.description || ""}</td></tr>`).join("")}
+      </tbody></table></div>`;
+  };
+  el("eps").innerHTML = Object.entries(groups).map(([tag, list]) => `
+    <div class="section-head"><h2 style="text-transform:capitalize">${tag}</h2></div>
+    ${list.map(({ path, m, op }) => `<div class="card ep">
+      <div class="ep-head"><span class="method ${m}">${m.toUpperCase()}</span>
+        <span class="ep-path">${path}</span>${op.security ? '<span class="lock">🔒 API key when enabled</span>' : ""}</div>
+      <p class="small" style="margin:6px 0 0">${op.summary}</p>
+      ${fields(op)}
+      <p class="small muted" style="margin:8px 0 0">${Object.entries(op.responses || {}).map(([c, v]) =>
+        `<code>${c}</code> ${v.description}`).join(" · ")}</p>
+    </div>`).join("")}`).join("");
+})();
+</script>
+</body>
+</html>

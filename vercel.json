@@ -93,6 +93,20 @@
       }
     },
     {
+      "src": "/design",
+      "dest": "/web/design.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/api-docs",
+      "dest": "/web/api-docs.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
       "src": "/dashboard",
       "dest": "/index.html",
       "headers": {
