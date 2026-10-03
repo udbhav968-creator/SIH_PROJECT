@@ -25,9 +25,17 @@
             <td class="small">crack, pothole, normal</td>
             <td class="num">1,667</td>
             <td class="small">primary source. Also the <strong>only</strong> source with polygons — the segmenter is trained on these</td></tr>
+        <tr><td><strong>RDD2022 India</strong><br><span class="small muted">CRDDC 2022 official release (smartphone, Indian roads)</span></td>
+            <td class="small">figshare release; VOC boxes cropped per defect (D00/D10/D20 &rarr; crack, D40 &rarr; pothole)</td>
+            <td class="small">crack, pothole, normal</td>
+            <td class="num">2,947</td>
+            <td class="small"><span class="badge measured">Indian</span> 2,173 training photographs. A separate
+              997-crop set from 778 photographs of the official <em>test</em> split is never written to a training folder</td></tr>
         <tr><td><code>arunrk7/surface-crack-detection</code></td><td class="small">Kaggle API</td>
-            <td class="small">crack, normal</td><td class="num">2,376</td>
-            <td class="small"><span class="badge warn">domain gap</span> concrete, close range — real crack texture, not road scenes</td></tr>
+            <td class="small">crack, normal</td><td class="num">0 <span class="muted">of 622</span></td>
+            <td class="small"><span class="badge bad">excluded</span> 227&times;227 close-ups of concrete and plaster walls &mdash;
+              no road, no horizon, no perspective. Kept on disk, excluded from road-scene training and measurement
+              (<code>pipeline/corpus_policy.py</code>)</td></tr>
         <tr><td><code>atulyakumar98/pothole-detection-dataset</code></td><td class="small">Kaggle API</td>
             <td class="small">pothole, normal</td><td class="num">676</td><td class="small">road photographs</td></tr>
         <tr><td><code>andrewmvd/pothole-detection</code></td><td class="small">Kaggle API</td>
@@ -37,8 +45,9 @@
             <td class="small">pothole, normal</td><td class="num">39</td>
             <td class="small"><span class="badge bad">700 of 739 rejected</span> ~94% a re-upload of the set above</td></tr>
         <tr><td>Wikimedia Commons / Geograph</td><td class="small">manual</td>
-            <td class="small">waterlogging, zebra, divider, sign</td><td class="num">67</td>
-            <td class="small">the four starved classes</td></tr>
+            <td class="small">waterlogging, zebra, divider, sign</td><td class="num">207</td>
+            <td class="small">the four rare classes: 67 field photographs plus 140 Wikimedia images (35 per class),
+              licences recorded per file. Still ~50 photographs per class</td></tr>
         <tr><td>IMU accelerometer windows</td><td class="small">in repository</td>
             <td class="small">4 shock classes</td><td class="num">852</td>
             <td class="small"><span class="badge measured">real</span> 10 drive logs on Indian roads,
@@ -48,7 +57,7 @@
             <td class="num">removed</td>
             <td class="small">a dataset of <em>road signs</em>, not <em>damaged</em> ones. The model had learned
               "a sign is present" under a label claiming "this sign is broken". Removing its 299
-              images <strong>raised</strong> accuracy 88.5% → 89.2%</td></tr>
+              images <strong>raised</strong> accuracy (88.5% &rarr; 89.2% on the corpus of that time)</td></tr>
       </tbody>
     </table></div>
   </div>
@@ -87,10 +96,11 @@
     <div class="card">
       <div class="label">what the data does not cover</div>
       <ul class="small" style="margin:0;padding-left:17px">
-        <li>No Indian road photographs. RDD2022 is the obvious next step.</li>
+        <li>Indian road photographs come from RDD2022 smartphone images &mdash; none were taken from a bus.</li>
         <li>No night, heavy rain or glare conditions in any quantity.</li>
-        <li>Four classes have 14–20 source photographs — no architecture fixes that.</li>
-        <li>No real accelerometer data from a moving vehicle.</li>
+        <li>The four rare classes have roughly 50 photographs each &mdash; no architecture fixes that.</li>
+        <li>IMU data are real drive logs from a car on Indian roads, not from a bus-mounted unit.</li>
+        <li>No pothole <em>depth</em> ground truth: depth comes from a model, not a measurement.</li>
       </ul>
     </div>
   </div>

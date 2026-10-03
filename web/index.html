@@ -58,6 +58,14 @@
       <div class="t-ico">🗃️</div><h3>Data lineage</h3>
       <p>Every dataset, how it was deduplicated, and what it does not cover.</p>
     </a>
+    <a class="tile" href="/inspect" style="--tile:var(--warn)">
+      <div class="t-ico">🛡️</div><h3>Privacy redaction</h3>
+      <p>People's heads and number plates blurred before an image is shared (DPDP Act 2023).</p>
+    </a>
+    <a class="tile" href="/architecture" style="--tile:#94a3b8">
+      <div class="t-ico">🧾</div><h3>Claims &amp; corrections</h3>
+      <p>Every claim with its evidence file, and every earlier claim we withdrew.</p>
+    </a>
   </div>
 
   <div class="rule"></div>
@@ -68,10 +76,9 @@
       <h2 style="margin-bottom:14px">How one photograph becomes a bill</h2>
       <ol style="padding-left:18px;margin:0">
         <li style="margin-bottom:11px"><strong style="color:var(--white)">Classify.</strong>
-          A MobileNetV2 trained on ImageNet's 1.28 million images, frozen, run through
-          ONNX Runtime on the photograph and its mirror image. A soft-voting ensemble
-          (SVC, logistic regression, neural net), chosen by cross-validation, maps the
-          embeddings to seven road conditions. <span class="badge measured">measured</span></li>
+          <span id="classifyText">An ImageNet-pretrained CNN, run through ONNX Runtime on the photograph
+          and its mirror image, sorts each region into seven road conditions.</span>
+          <span class="badge measured">measured</span></li>
         <li style="margin-bottom:11px"><strong style="color:var(--white)">Segment.</strong>
           A pixel classifier trained on 4,720 hand-drawn polygons produces a defect
           mask — the defect's own footprint, not a rectangle around it.
@@ -98,7 +105,8 @@
       <h3 style="margin-bottom:12px">The honest limits</h3>
       <div class="kv"><span>Depth</span><span>estimated, never measured</span></div>
       <div class="kv"><span>IMU data</span><span>real drive logs, not yet from a bus</span></div>
-      <div class="kv"><span>Road photographs</span><span>Brazilian + Kaggle, not Indian yet</span></div>
+      <div class="kv"><span>Road photographs</span><span>Brazil (DNIT), Kaggle, RDD2022 India — none from a bus</span></div>
+      <div class="kv"><span>Privacy blur</span><span>implemented, recall not measured</span></div>
       <div class="kv"><span>Four rare classes</span><span>7–8 test images each</span></div>
       <div class="kv"><span>Camera calibration</span><span id="calibKv">checking…</span></div>
       <p class="small muted" style="margin:14px 0 0">
@@ -123,7 +131,7 @@
   ]);
 
   // The serving classifier's own report - the one flagged active.
-  let acc = null, f1 = null, imgs = null;
+  let acc = null, f1 = null, imgs = null, served = null;
   if (metrics.ok) {
     // served_classifier follows checkpoints/vision_model_selection.json, so the
     // headline is always the model that is actually running.
@@ -132,9 +140,25 @@
              || heads.map(k => metrics.data[k]).find(r => r && r.active)
              || heads.map(k => metrics.data[k])[0];
     if (rep) { acc = rep.held_out_test_accuracy; f1 = rep.held_out_test_macro_f1; imgs = rep.held_out_test_photographs; }
+    served = metrics.data.served_classifier || null;
   }
+  const ct = el("classifyText");
+  if (ct && served) {
+    ct.textContent = served.kind === "fine_tuned_cnn"
+      ? `${served.label}: an ImageNet-pretrained network retrained on our road photographs (Brazilian, Kaggle and RDD2022 India), run through ONNX Runtime on the image and its mirror. It replaced the frozen-backbone model only after beating it on data the test set never touched.`
+      : `A MobileNetV2 trained on ImageNet's 1.28 million images, frozen, run through ONNX Runtime on the photograph and its mirror image. A class-balanced head (${served.label.split("-> ")[1] || "SVC"}), chosen by grouped cross-validation, maps the embeddings to seven road conditions.`;
+  }
+  // Indian roads: RDD2022 India test photographs no training run reads
+  const ie = metrics.ok ? (metrics.data.served_classifier?.indian_roads
+            || metrics.data.indian_roads_eval?.served || metrics.data.indian_roads_eval?.after
+            || metrics.data.indian_roads_eval?.frozen_head) : null;
 
-  const segIoU = seg.ok && seg.data.available ? (seg.data.iou?.crack?.iou) : null;
+  const segIoU = seg.ok ? (seg.data.available ? seg.data.iou?.crack?.iou : seg.data.measured_report?.crack?.iou) : null;
+  const segNote = !seg.ok ? "status unavailable"
+    : seg.data.available ? "500 unseen photographs · DNIT polygons"
+    : seg.data.model_on_disk ? "measured · model will not load here: " + ((seg.data.load_error || {}).sklearn_trained_with
+        ? "scikit-learn " + seg.data.load_error.sklearn_here + " vs " + seg.data.load_error.sklearn_trained_with : "see /system")
+    : "not trained — box area in use";
   const defects = fleet.ok ? fleet.data.unique_defects_registered : null;
 
   box.innerHTML = `
@@ -147,8 +171,7 @@
     <div class="card">
       <div class="label">segmentation · crack IoU</div>
       <div class="stat" style="color:var(--cyan)">${segIoU != null ? segIoU.toFixed(3) : "—"}</div>
-      <div class="stat-sub">${seg.ok && seg.data.available
-        ? "trained on 4,720 hand-drawn polygons" : "not trained — box area in use"}</div>
+      <div class="stat-sub">${segNote}</div>
     </div>
     <div class="card">
       <div class="label">ledger · unique defects</div>
@@ -156,11 +179,9 @@
       <div class="stat-sub">${fleet.ok ? (fleet.data.storage || "") : "unavailable"}</div>
     </div>
     <div class="card">
-      <div class="label">calibrated cameras</div>
-      <div class="stat" style="color:${calib.ok && calib.data.count ? "var(--emerald)" : "var(--warn)"}">
-        ${calib.ok ? calib.data.count : "—"}</div>
-      <div class="stat-sub">${calib.ok && calib.data.count === 0
-        ? "areas are estimates from an assumed mount" : "areas measured per device"}</div>
+      <div class="label">indian roads · RDD2022 test</div>
+      <div class="stat" style="color:var(--violet)">${ie ? (ie.accuracy * 100).toFixed(1) + "%" : "—"}</div>
+      <div class="stat-sub">${ie ? `${ie.images} crops never used in training · macro-F1 ${ie.macro_f1}` : "no Indian evaluation on disk"}</div>
     </div>`;
 
   const kv = el("calibKv");
