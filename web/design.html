@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System design — ROAD-SHIELD</title>
+<link rel="stylesheet" href="/web/app.css">
+<style>
+  .calc { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px 16px; }
+  .calc label { font-size:12px; color:var(--slate-300); display:block; }
+  .calc input { width:100%; margin-top:4px; }
+  .calc-out .stat { font-size:1.5rem; }
+  td.hash { font-family:var(--mono); font-size:10.5px; color:var(--slate-400); word-break:break-all; }
+</style>
+</head>
+<body data-page="design">
+<div class="wrap">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">System design</h1>
+    <span class="muted small">from one bus camera to a sealed repair order — what is built, and what it scales into</span>
+  </div>
+
+  <div class="card accent">
+    <div class="legend"><span>implemented in this repository</span><span class="plan">designed, not built yet</span></div>
+    <p class="small" style="margin:10px 0 0">The engine runs today as one process whose modules are already separated
+      along the lines below, so splitting it into services is deployment work, not a rewrite.
+      Full document: <code>docs/SYSTEM_DESIGN.md</code> · API contract: <a href="/api-docs">/api-docs</a>.</p>
+  </div>
+
+  <div class="section-head"><h2>Architecture</h2></div>
+  <div class="card">
+    <div class="tier-label">on the bus · edge</div>
+    <div class="flow">
+      <div class="node plan"><h4>Camera + IMU + GPS</h4><p>bus-mounted unit, 4G</p></div><span class="arrow">→</span>
+      <div class="node impl"><h4>Distance sampler</h4><p>one frame every 8 m of travel, pHash suppression</p></div><span class="arrow">→</span>
+      <div class="node impl"><h4>Edge classifier</h4><p>ONNX on CPU; drops normal road (~95% of frames)</p></div><span class="arrow">→</span>
+      <div class="node plan"><h4>On-device blur + queue</h4><p>faces/plates never leave the bus; store-and-forward, idempotent ids</p></div>
+    </div>
+    <div class="tier-label">cloud · ingest and inference</div>
+    <div class="flow">
+      <div class="node impl"><h4>API gateway</h4><p>request ids, JSON access log, API key on writes, OpenAPI</p></div><span class="arrow">→</span>
+      <div class="node plan"><h4>Queue</h4><p>Redis Streams; absorbs peaks, partitioned by geohash</p></div><span class="arrow">→</span>
+      <div class="node impl"><h4>Inference worker</h4><p>classify ▸ segment ▸ ground area ▸ depth interval ▸ MoRTH cost ▸ PCI</p></div><span class="arrow">→</span>
+      <div class="node impl"><h4>Fleet dedup</h4><p>same class within 8 m → one defect; every sighting kept</p></div>
+    </div>
+    <div class="tier-label">cloud · records and people</div>
+    <div class="flow">
+      <div class="node impl"><h4>Ledger</h4><p>defects, sightings, work orders — SQLite today, Postgres + PostGIS designed</p></div><span class="arrow">→</span>
+      <div class="node impl"><h4>Work orders</h4><p>SHA-256 seal; HELD_NO_GPS without a location</p></div><span class="arrow">→</span>
+      <div class="node impl"><h4>Repair verification</h4><p>SSIM, sharpness, perceptual hash vs the original</p></div><span class="arrow">→</span>
+      <div class="node plan"><h4>Authority & contractor portals</h4><p>approval workflow on top of today's dashboard</p></div>
+    </div>
+    <div class="tier-label">ML platform</div>
+    <div class="flow">
+      <div class="node impl"><h4>Data</h4><p>dedup by pHash, label audit, non-road data excluded, split by photograph</p></div><span class="arrow">→</span>
+      <div class="node impl"><h4>GPU training</h4><p>Colab/Kaggle T4: fine-tuned CNNs, U-Net, YOLOv8, IMU CNN</p></div><span class="arrow">→</span>
+      <div class="node impl"><h4>Selection + registry</h4><p>rule fixed before the test set; sha256 per artefact</p></div><span class="arrow">→</span>
+      <div class="node plan"><h4>Canary + OTA + drift</h4><p>roll out by checksum; watch vision-vs-IMU disagreement</p></div>
+    </div>
+  </div>
+
+  <div class="section-head"><h2>Capacity</h2>
+    <span class="muted small">change the assumptions — the estimate recalculates</span></div>
+  <div class="card">
+    <div class="calc">
+      <label>Buses <input type="number" id="cBus" value="5000" min="1"></label>
+      <label>km per bus per day <input type="number" id="cKm" value="170" min="1"></label>
+      <label>metres between frames <input type="number" id="cM" value="8" min="1"></label>
+      <label>% of frames uploaded (edge filter) <input type="number" id="cUp" value="5" min="0" max="100" step="0.5"></label>
+      <label>% uploads that are repeat sightings <input type="number" id="cRep" value="90" min="0" max="100"></label>
+      <label>server seconds per new defect (1 core) <input type="number" id="cS" value="2" min="0.1" step="0.1"></label>
+      <label>operating hours per day <input type="number" id="cH" value="14" min="1" max="24"></label>
+      <label>KB per frame <input type="number" id="cKB" value="120" min="1"></label>
+    </div>
+    <div class="grid c4 calc-out" style="margin-top:14px" id="cOut"></div>
+    <p class="small muted" style="margin:10px 0 0">Planning estimate, not a measurement. Measured inputs: 8 m is the
+      implemented sampling default; ~2 s per frame is the measured single-core pipeline time. The two filters — the edge
+      classifier and the repeat-sighting check — are what keep the server small.</p>
+  </div>
+
+  <div class="section-head"><h2>Model registry</h2>
+    <span class="muted small">live from <code>/api/v1/models/served</code></span></div>
+  <div id="reg"></div>
+
+  <div class="section-head"><h2>Data model</h2></div>
+  <div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>table</th><th>key columns</th><th>why</th></tr></thead><tbody>
+      <tr><td><code>defects</code></td><td class="small">defect_id, lat, lon, defect_class, severity_pci, area_m2, confirmation_count, reporting_buses, first/last_seen</td><td class="small">one row per physical defect</td></tr>
+      <tr><td><code>reports</code></td><td class="small">report_id, defect_id →, bus_id, lat, lon, class, reported_at, merged, distance_m</td><td class="small">every raw sighting — the evidence a contractor disputes</td></tr>
+      <tr><td><code>work_orders</code></td><td class="small">order_id, defect_id →, payload, seal_sha256, issued_at, status</td><td class="small">sealed payload stored verbatim</td></tr>
+    </tbody></table></div>
+    <p class="small muted" style="margin:10px 0 0">Implemented in SQLite (<code>pipeline/defect_store.py</code>). Production: Postgres +
+      PostGIS geography column with a GiST index, monthly partitions of <code>reports</code>, frames in object storage.</p>
+  </div>
+
+  <div class="section-head"><h2>Reliability, security, privacy</h2></div>
+  <div class="grid c2">
+    <div class="card"><div class="label">graceful degradation · implemented</div>
+      <ul class="small" style="margin:0;padding-left:17px">
+        <li>no segmenter → box area, labelled as such</li>
+        <li>no IMU window → fusion reports <em>unavailable</em></li>
+        <li>deep model fails to load → its classical fallback</li>
+        <li>no GPS → work order <code>HELD_NO_GPS</code></li>
+        <li>no map key → OpenStreetMap, or an explicit <code>UNAVAILABLE</code></li>
+      </ul></div>
+    <div class="card"><div class="label">controls</div>
+      <ul class="small" style="margin:0;padding-left:17px">
+        <li>SHA-256 work-order seal, re-verifiable by anyone · implemented</li>
+        <li>recycled repair photos rejected · implemented</li>
+        <li>API key on write endpoints, constant-time compare · implemented (opt-in)</li>
+        <li>people and plates blurred · implemented (recall not measured)</li>
+        <li>TLS, device certificates, 7-day raw-frame retention (DPDP Act) · designed</li>
+      </ul></div>
+  </div>
+</div>
+
+<script src="/web/app.js"></script>
+<script>
+function calc() {
+  const v = id => Math.max(0, parseFloat(el(id).value) || 0);
+  const frames = v("cKm") * 1000 / Math.max(1, v("cM"));
+  const up = frames * v("cUp") / 100;
+  const fleetUp = up * v("cBus");
+  const secs = v("cH") * 3600 || 1;
+  const fps = fleetUp / secs;
+  const fresh = fps * (1 - v("cRep") / 100);
+  const cores = fresh * v("cS");
+  const mbBus = up * v("cKB") / 1000;
+  const tbDay = fleetUp * v("cKB") / 1e9;
+  const n = x => x >= 100 ? Math.round(x).toLocaleString() : x.toFixed(1);
+  el("cOut").innerHTML = `
+    <div class="card"><div class="label">frames per bus / day</div><div class="stat">${n(frames)}</div>
+      <div class="stat-sub">${n(up)} uploaded</div></div>
+    <div class="card"><div class="label">fleet uploads</div><div class="stat" style="color:var(--sky)">${n(fps)}/s</div>
+      <div class="stat-sub">~${n(fps * 2)}/s at a 2× peak</div></div>
+    <div class="card"><div class="label">server CPU cores</div><div class="stat" style="color:var(--emerald)">${n(cores)}</div>
+      <div class="stat-sub">${n(cores * 2)} at peak · ${n(fresh)} new defects/s</div></div>
+    <div class="card"><div class="label">data</div><div class="stat" style="color:var(--violet)">${n(mbBus)} MB</div>
+      <div class="stat-sub">per bus per day · ${tbDay.toFixed(2)} TB/day fleet</div></div>`;
+}
+document.querySelectorAll(".calc input").forEach(i => i.addEventListener("input", calc));
+calc();
+
+(async () => {
+  const r = await API.get("/api/v1/models/served");
+  if (!r.ok) { el("reg").innerHTML = errorCard("model registry unavailable"); return; }
+  const fmt3 = x => typeof x === "number" ? (x <= 1 ? x.toFixed(3) : x.toString()) : x;
+  el("reg").innerHTML = `<div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>model</th><th>task</th><th>held-out metrics</th><th>artefact · sha256</th><th>status</th></tr></thead>
+    <tbody>${r.data.models.map(m => `<tr>
+      <td><strong>${m.name}</strong><div class="small muted">${m.kind}</div></td>
+      <td class="small">${m.task}</td>
+      <td class="small">${Object.entries(m.metrics).map(([k, x]) => `${k.replace(/_/g, " ")} <code>${fmt3(x)}</code>`).join("<br>") || "—"}</td>
+      <td class="hash">${(m.artefacts || []).map(a => `${a.file}${a.size_mb != null ? ` · ${a.size_mb} MB` : ""}${a.sha256 ? `<br>${a.sha256.slice(0, 16)}…` : ""}`).join("<br>") || "—"}</td>
+      <td>${m.serving ? '<span class="badge measured">serving</span>' : '<span class="badge warn">not serving</span>'}</td></tr>`).join("")}
+    </tbody></table></div>
+    <p class="small muted" style="margin:10px 0 0">${r.data.note}. Checksums are computed by the engine; the static
+      deployment ships reports, not model files, so it shows none.</p></div>`;
+})();
+</script>
+</body>
+</html>
