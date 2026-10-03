@@ -73,7 +73,7 @@ the same points, so it still works — but screenshots are safer.
 
 > "Here is what we measured: 87% on 625 images from 589 photographs the model
 > never saw, split by source photograph so no copy leaks across. On Indian
-> roads — the official RDD2022 India test split, never used in training — 80%.
+> roads — RDD2022 India photographs held out from training — 80%.
 > Before we added Indian data it was 33%. The four rare classes have seven or
 > eight test images each, so their scores swing — we show that rather than
 > average it away."
@@ -84,7 +84,7 @@ the same points, so it still works — but screenshots are safer.
 
 **"What's your accuracy?"**
 87.0%, macro-F1 0.70, on 625 held-out images from 589 photographs. On Indian
-roads, 80.4%, macro-F1 0.78, on 997 crops from the RDD2022 India test split.
+roads, 80.4%, macro-F1 0.78, on 997 crops from held-out RDD2022 India photographs.
 Normal road, crack and pothole are each around 0.87–0.89 F1 and carry 595 of the
 625 test images. (If the fine-tuned CNN is served, quote the Models page.)
 
@@ -107,14 +107,15 @@ split — that's the baseline we beat.
 The split is by source photograph, not by file, so augmented copies stay with
 their original. Every image is perceptually hashed and near-duplicates are
 rejected — one Kaggle set was 94% a re-upload of another and 700 of its 739
-images were dropped. The Indian test crops come from RDD2022's own test split
-and are never written to a training folder.
+images were dropped. The Indian test crops come from RDD2022 India photographs held out by photograph
+(RDD2022's official test split has no public labels) and are never written to a
+training folder.
 
 **"Where did the data come from?"**
 DNIT, the Brazilian highway department (2,235 photographs, 4,720 hand-drawn
-polygons — the segmenter trains on those); RDD2022 India, 2,173 training
+polygons — the segmenter trains on those); RDD2022 India, about 1,800 training
 photographs; three Kaggle pothole sets; and 207 Wikimedia and field photographs
-for the rare classes. We *excluded* 622 concrete-wall crack close-ups: correctly
+for the rare classes. We *excluded* 2,376 concrete-wall crack close-ups: correctly
 labelled, but not road scenes, and they were teaching the model that a linear
 feature on grey is "clean road".
 

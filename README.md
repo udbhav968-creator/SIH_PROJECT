@@ -15,7 +15,7 @@ code in this repository, and the code that measures it is included.
 |---|---|---|
 | Road distress classification, 7 classes | Frozen MobileNetV2 ImageNet embeddings (ONNX Runtime), flip test-time augmentation → RBF SVM head, chosen by grouped 5-fold cross-validation | **87.0%**, macro-F1 0.700, on 625 held-out images from 589 unseen photographs, scored once |
 | — same task, end-to-end fine-tuned CNN | EfficientNet-B0/B2, MobileNetV3-L, ResNet-50 fine-tuned on a Colab GPU (`training/train_finetune_cnn.py`), exported to ONNX | Served **only** if it beats the head on validation accuracy *and* macro-F1 (`scripts/select_vision_model.py`); the site shows whichever is served |
-| — on Indian roads | Same classifier on crops from the official RDD2022 India **test** split, never used in training | **80.4%**, macro-F1 0.781, on 997 crops from 778 photographs (normal / crack / pothole) — 33.4% before Indian data was added |
+| — on Indian roads | Same classifier on crops from held-out RDD2022 India photographs (15%, split by photograph; the official test split has no public labels), never used in training | **80.4%**, macro-F1 0.781, on 997 crops from 778 photographs (normal / crack / pothole) — 33.4% before Indian data was added |
 | — fallback path | HOG + LBP + colour features → PCA → class-balanced RBF SVM | 79.0%, macro-F1 0.522, on the same split; serves when no CNN backbone is on disk |
 | Object detection, 80 classes | YOLOv8n trained on COCO, served through ONNX Runtime | Pretrained; people, vehicles, traffic lights, signs. Not re-trained or re-measured here |
 | IMU shock classification | 100 Hz tri-axial accelerometer windows → RandomForest; a 1-D CNN is compared by 5-fold CV and served only if better | **87.2%** on 164 held-out windows of real Indian-road drive logs, time-block split |
@@ -63,7 +63,7 @@ why every response carries the provenance of the numbers in it.
 | Test | Result |
 |---|---|
 | Held-out accuracy | **87.0%**, macro-F1 0.700, on 625 images from 589 unseen photographs (random guess 14.3%) |
-| Indian roads (RDD2022 test split) | **80.4%**, macro-F1 0.781, 997 crops / 778 photographs, 3 classes |
+| Indian roads (RDD2022 India, held-out photographs) | **80.4%**, macro-F1 0.781, 997 crops / 778 photographs, 3 classes |
 | Same split, hand-crafted features | 79.0%, macro-F1 0.522 |
 | Model selection | 5-fold cross-validation on the training split only, grouped by source photograph; the test set is scored once, by the selected model |
 | Leakage audit | 0 cross-class duplicates, 0 photograph groups spanning splits (`checkpoints/validation_report.json`) |
@@ -120,9 +120,9 @@ more than 0.1. That is a data-volume problem and it is shown, not averaged away.
 | Source | Classes | Kept | Note |
 |---|---|---|---|
 | DNIT *Cracks and Potholes in Road Images* (Brazil) | crack, pothole, normal | 1,667 crops | 2,235 photographs, 4,720 polygons; the only source with polygons, so the segmenter trains on it |
-| RDD2022 India (CRDDC 2022, smartphone) | crack, pothole, normal | 2,947 crops | 2,173 training photographs; a separate 997-crop set from the official test split is never trained on |
+| RDD2022 India (CRDDC 2022, smartphone) | crack, pothole, normal | ~3,000 crops | labelled photographs split 70/15/15 by photograph; the held-out 15% is the Indian test set and is never trained on |
 | Kaggle pothole sets (3) | pothole, normal | 1,287 | `virenbr11/...` was 94% a re-upload: 700 of 739 rejected as perceptual duplicates |
-| Kaggle surface cracks (concrete walls) | — | 0 of 622 | **Excluded**: close-ups of concrete and plaster, no road, no horizon (`pipeline/corpus_policy.py`); kept on disk, reproducible with `ROAD_SHIELD_NO_CORPUS_FILTER=1` |
+| Kaggle surface cracks (concrete walls) | — | 0 of 2,376 | **Excluded**: close-ups of concrete and plaster, no road, no horizon (`pipeline/corpus_policy.py`); kept on disk, reproducible with `ROAD_SHIELD_NO_CORPUS_FILTER=1` |
 | Wikimedia Commons / Geograph + field photographs | waterlogging, zebra, divider, sign | 207 | 67 field + 140 Wikimedia (35 per class); still ~50 photographs per class |
 | IMU drive logs (`VishalSingh25/Pothole-Project`) | 4 shock classes | 852 windows | 10 real drives on Indian roads, 205,491 samples at 100 Hz, from a car — not a bus |
 

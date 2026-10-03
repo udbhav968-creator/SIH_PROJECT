@@ -4,7 +4,7 @@ Which photographs belong to the road-scene corpus, and which do not.
 The problem
 -----------
 `datasets/03_crack500_fatigue` and `datasets/05_morth_civil_hard_negatives`
-contain 622 files from a concrete surface-crack dataset: 227x227 close-ups of
+contain the concrete surface-crack dataset (2,376 files when fully fetched): 227x227 close-ups of
 cracked plaster and concrete walls. They are correctly labelled - a crack is a
 crack - and they are the wrong domain.
 
@@ -17,7 +17,7 @@ neither detected nor detectable, and counting it as a missed road defect
 measures the wrong thing.
 
 Leaving it in the negatives is the more harmful half. A pixel classifier
-trained to call cracked plaster "clean road" is being taught, with 622
+trained to call cracked plaster "clean road" is being taught, with thousands of
 examples, that a high-contrast linear feature on a grey surface is not a
 defect - which is precisely the feature a road crack presents.
 
