@@ -82,3 +82,15 @@ yolo11n.pt
 # RDD2022 India crops (scripts/ingest_rdd2022_india.py) - regenerated from the local dataset
 datasets/*/real_images/rddin_*.jpg
 datasets/_eval_rdd2022_india/
+
+# Local helper files and tooling that are not part of the project
+node_modules/
+docs/report/
+docs/RUN_push_audit.bat
+push_audit.bat
+push_audit.ps1
+push_update.ps1
+audit_commit_msg.txt
+runs/
+road_shield_*outputs.zip
+road_shield_imu_fix.zip

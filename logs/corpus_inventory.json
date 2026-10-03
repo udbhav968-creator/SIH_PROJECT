@@ -1,0 +1,73 @@
+{
+ "Normal Road / Sound Pavement": {
+  "files": 2407,
+  "road_scene_files": 1214,
+  "by_source_prefix": {
+   "rddin": 600,
+   "kag_surface-crack_0": 1193,
+   "kag_pothole-mix_0": 349,
+   "aug": 240,
+   "kag_pothole-plain_0": 23,
+   "cpr": 2
+  }
+ },
+ "Crack (Longitudinal / Transverse / Alligator)": {
+  "files": 3613,
+  "road_scene_files": 2430,
+  "by_source_prefix": {
+   "cpr": 1200,
+   "rddin": 1200,
+   "kag_surface-crack_1": 1183,
+   "dnit_raw": 30
+  }
+ },
+ "Pothole Cavity": {
+  "files": 2604,
+  "road_scene_files": 2604,
+  "by_source_prefix": {
+   "cpr": 465,
+   "rddin": 1200,
+   "kag_pothole-mix_2": 327,
+   "kag_pothole-annotated_2": 572,
+   "kag_pothole-plain_2": 16,
+   "dnit_raw": 24
+  }
+ },
+ "Waterlogging / Flooding Hazard": {
+  "files": 49,
+  "road_scene_files": 49,
+  "by_source_prefix": {
+   "real": 14,
+   "WM": 35
+  }
+ },
+ "Missing Zebra Crossing": {
+  "files": 54,
+  "road_scene_files": 54,
+  "by_source_prefix": {
+   "real": 19,
+   "WM": 35
+  }
+ },
+ "Missing Road Divider": {
+  "files": 55,
+  "road_scene_files": 55,
+  "by_source_prefix": {
+   "real": 20,
+   "WM": 35
+  }
+ },
+ "Damaged Traffic Sign": {
+  "files": 49,
+  "road_scene_files": 49,
+  "by_source_prefix": {
+   "WM": 35,
+   "real": 14
+  }
+ },
+ "_indian_eval": {
+  "normal": 400,
+  "crack": 400,
+  "pothole": 400
+ }
+}

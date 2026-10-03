@@ -5,6 +5,7 @@
 #   !bash scripts/colab_train_extra.sh 2>&1 | tee -a logs/colab_extra.txt
 #
 #   E1  U-Net deep segmenter on the DNIT polygons      (~20-35 min on a T4)
+#   E1b IMU 1-D CNN vs RandomForest, re-run with time-blocked CV folds (~5 min)
 #   E2  YOLOv8 road-damage detector on RDD2022 India   (~45-70 min on a T4)
 #
 # Each model is trained, scored once on held-out photographs, exported to ONNX,
@@ -55,6 +56,12 @@ if ! skip E1; then
   else
     echo "U-Net smoke run FAILED - skipping the full run; the pixel classifier stays in service"
   fi
+fi
+
+step "E1b. IMU CNN vs RandomForest again, with time-blocked CV folds (~5 min)"
+if ! skip E1b; then
+  python -m training.train_imu_deep 2>&1 | tail -12
+  [ -f checkpoints/imu_model_selection.json ] && done_ E1b
 fi
 
 step "E2. YOLOv8 road-damage detector (RDD2022 India boxes)"

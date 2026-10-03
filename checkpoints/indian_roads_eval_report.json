@@ -83,31 +83,31 @@
   "measured_unix": 1790966208
  },
  "dataset": {
-  "source": "C:\\Users\\Dell\\SIH_PROJECT\\datasets\\rdd2022_india",
+  "source": "/content/SIH_PROJECT/datasets/rdd2022_india",
   "class_names": [
-   "longitudinal_crack",
-   "transverse_crack",
-   "alligator_crack",
-   "pothole"
+   "D00",
+   "D10",
+   "D20",
+   "D40"
   ],
   "mapping": {
-   "longitudinal_crack": "Crack (Longitudinal / Transverse / Alligator)",
-   "transverse_crack": "Crack (Longitudinal / Transverse / Alligator)",
-   "alligator_crack": "Crack (Longitudinal / Transverse / Alligator)",
-   "pothole": "Pothole Cavity"
+   "D00": "Crack (Longitudinal / Transverse / Alligator)",
+   "D10": "Crack (Longitudinal / Transverse / Alligator)",
+   "D20": "Crack (Longitudinal / Transverse / Alligator)",
+   "D40": "Pothole Cavity"
   },
   "training_crops": {
    "crack": 1200,
-   "pothole": 1147,
+   "pothole": 1200,
    "normal": 600
   },
-  "training_photographs": 2173,
+  "training_photographs": 1785,
   "eval_crops": {
    "crack": 400,
-   "pothole": 197,
+   "pothole": 400,
    "normal": 400
   },
-  "eval_photographs": 778,
+  "eval_photographs": 781,
   "eval_split": "RDD2022 India 'test' - never written to a training folder"
  },
  "after": {
@@ -192,5 +192,171 @@
   "backend": "cnn_embeddings",
   "seconds": 48.3,
   "measured_unix": 1790967979
+ },
+ "frozen_head": {
+  "images": 1200,
+  "accuracy": 0.88,
+  "macro_f1": 0.8803,
+  "per_class_f1": {
+   "normal": 0.9235,
+   "crack": 0.8399,
+   "pothole": 0.8776
+  },
+  "per_class_images": {
+   "normal": 400,
+   "crack": 400,
+   "pothole": 400
+  },
+  "confusion_rows_true_cols_pred": [
+   [
+    374,
+    14,
+    9,
+    0,
+    2,
+    1,
+    0
+   ],
+   [
+    26,
+    320,
+    54,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    10,
+    28,
+    362,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  ],
+  "backend": "cnn_embeddings",
+  "seconds": 106.2,
+  "measured_unix": 1791034599
+ },
+ "served": {
+  "images": 1200,
+  "accuracy": 0.9208,
+  "macro_f1": 0.9207,
+  "per_class_f1": {
+   "normal": 0.985,
+   "crack": 0.8782,
+   "pothole": 0.8988
+  },
+  "per_class_images": {
+   "normal": 400,
+   "crack": 400,
+   "pothole": 400
+  },
+  "confusion_rows_true_cols_pred": [
+   [
+    393,
+    6,
+    1,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    5,
+    339,
+    56,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    27,
+    373,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  ],
+  "backend": "deep_cnn",
+  "seconds": 32.1,
+  "measured_unix": 1791036856
  }
 }

@@ -193,6 +193,11 @@ def main():
 
 
 AUDIT_CORRECTIONS = [
+    ("The IMU 1-D CNN beats the RandomForest (5-fold CV)", "CORRECTED (protocol fixed)",
+     "The first comparison shuffled individual 1-second windows into CV folds, so neighbouring windows from the "
+     "same drive sat on both sides of a fold. CV favoured the CNN (accuracy 0.869 vs 0.849); the time-separated "
+     "held-out logs then scored the CNN below the RandomForest (0.787 vs 0.872). CV now uses contiguous time "
+     "blocks (training/train_imu_deep.py), and the comparison is re-run with that protocol."),
     ("Faces and number plates are blurred on the bus before transmission", "FIXED (implemented)",
      "No such code existed. models/privacy_redactor.py now blurs the head region of detected people and "
      "plates found inside detected vehicles (/api/v1/privacy/redact). Its recall is not measured - there is "
