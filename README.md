@@ -13,12 +13,12 @@ A road photograph goes in. A classified, outlined, measured and costed repair or
 
 | What | Result | Measured on |
 |---|---|---|
-| Road-condition classifier, 7 classes | **87.0%** accuracy, macro-F1 **0.700** | 625 held-out images from 589 photographs never seen in training, scored once |
-| Same classifier on **Indian roads** | **80.4%** accuracy, macro-F1 **0.781** (was 33.4% before Indian data was added) | 997 crops from held-out RDD2022 India photographs (normal / crack / pothole), never trained on |
-| Hand-crafted baseline (HOG + LBP + colour → SVM) | 79.0%, macro-F1 0.522 | the identical split — the number the deep model has to beat |
+| Road-condition classifier, 7 classes | **93.3%** accuracy, macro-F1 **0.828** | 630 held-out images from 567 photographs never seen in training, scored once |
+| Same classifier on **Indian roads** | **92.2%** accuracy, macro-F1 **0.922** (was 33.4% before Indian data was added) | 1,200 crops from held-out RDD2022 India photographs (normal / crack / pothole), never trained on |
+| Hand-crafted baseline (HOG + LBP + colour → SVM) | 84.9%, macro-F1 0.558 | the identical split — the number the deep model has to beat |
 | Defect segmentation (pixel classifier) | crack IoU **0.231**, pothole IoU **0.144** | 500 held-out DNIT photographs |
 | CNN semantic gate on the segmenter | pothole IoU 0.102 → 0.271; clean roads with a false blob 8/50 → 2/50 | photographs the classifier never saw |
-| IMU shock classifier (RandomForest) | **87.2%** accuracy | 164 held-out windows of real Indian-road drive logs, split by time block |
+| IMU shock classifier (RandomForest) | **87.2%** accuracy, macro-F1 0.729 | 164 held-out windows of real Indian-road drive logs, split by time block |
 
 ## What it does
 
@@ -33,7 +33,7 @@ photo ─► classify ─► segment ─► project to ground ─► depth inter
 
 | Stage | How | Status |
 |---|---|---|
-| Classification | Frozen MobileNetV2 (ImageNet) embeddings of the image and its mirror -> scikit-learn head (svc_C3) chosen by grouped 5-fold cross-validation, ONNX Runtime on CPU | **measured**, 87.0% |
+| Classification | mobilenet_v3_large (ImageNet-pretrained), fine-tuned end to end on a Colab T4 GPU, ONNX Runtime on CPU, flip test-time augmentation | **measured**, 93.3% |
 | Segmentation | Pixel classifier (gradient boosting on 11 per-pixel features), trained on the DNIT hand-drawn polygons; per-class thresholds tuned on a calibration split | **measured**, IoU above |
 | Area | each mask pixel's own ground footprint, summed (inverse perspective mapping) | **measured** *if* the camera is calibrated — 30 cm of mount height moves area ~46% |
 | Depth | IRC band placed by measured extent / cavity contrast | **estimate**, always an interval |
@@ -52,10 +52,15 @@ Measured on one photograph through the API: with an assumed camera mount the def
 
 | Model | Kind | Trained here? | Result | Serving |
 |---|---|---|---|---|
-| MobileNetV2 + svc_C3 | frozen CNN features + trained head | head only | 87.0%, F1 0.700 | **yes** |
-| HOG/LBP + PCA + SVM | classical features | yes | 79.0% | fallback |
+| efficientnet_b0 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 91.3%, F1 0.832; India 90.9% | no (lost on validation) |
+| efficientnet_b2 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 91.4%, F1 0.828; India 91.7% | no (lost on validation) |
+| mobilenet_v3_large | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 91.4%, F1 0.840; India 90.8% | **yes** |
+| resnet50 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 89.5%, F1 0.857; India 91.9% | no (lost on validation) |
+| MobileNetV2 + ensemble_soft | frozen CNN features + trained head | head only | 87.9%, F1 0.745 | fallback |
+| HOG/LBP + PCA + SVM | classical features | yes | 84.9% | fallback |
 | Pixel segmenter | gradient boosting on 11 features | yes | crack 0.231, pothole 0.144 | **yes** |
 | YOLOv8n (COCO) | pretrained object detector | **no** — used as published | people, vehicles, signs | yes |
+| IMU 1-D CNN | deep, from scratch | yes (GPU) | 78.0% | no (lost in cross-validation) |
 | IMU RandomForest | classical, from scratch | yes | 87.2% | **yes** |
 
 **How a model gets served.** Each deep model replaces its classical counterpart only by a rule written before its test set is scored: the fine-tuned CNN must beat the frozen head on validation accuracy *and* macro-F1; the U-Net must beat the pixel classifier on crack *and* pothole IoU on calibration photographs without more false blobs on clean roads; the IMU CNN must win 5-fold cross-validation on accuracy *and* macro-F1. Losers are reported, not hidden. Pretrained ImageNet/COCO weights are the starting point (transfer learning); training then updates every layer on this project's data, except the frozen-head baseline.
@@ -64,13 +69,13 @@ Measured on one photograph through the API: with an assumed camera mount the def
 
 | Class | Precision | Recall | F1 | Test images |
 |---|---|---|---|---|
-| Normal Road / Sound Pavement | 0.85 | 0.94 | 0.89 | 148 |
-| Crack (Longitudinal / Transverse / Alligator) | 0.84 | 0.92 | 0.88 | 225 |
-| Pothole Cavity | 0.92 | 0.82 | 0.87 | 222 |
-| Waterlogging / Flooding Hazard | 1.00 | 0.14 | 0.25 | 7 |
-| Missing Zebra Crossing | 0.71 | 0.62 | 0.67 | 8 |
-| Missing Road Divider | 0.75 | 0.38 | 0.50 | 8 |
-| Damaged Traffic Sign | 1.00 | 0.71 | 0.83 | 7 |
+| Normal Road / Sound Pavement | 0.97 | 0.97 | 0.97 | 148 |
+| Crack (Longitudinal / Transverse / Alligator) | 0.92 | 0.94 | 0.93 | 218 |
+| Pothole Cavity | 0.94 | 0.94 | 0.94 | 234 |
+| Waterlogging / Flooding Hazard | 0.80 | 0.57 | 0.67 | 7 |
+| Missing Zebra Crossing | 0.67 | 0.75 | 0.71 | 8 |
+| Missing Road Divider | 0.71 | 0.62 | 0.67 | 8 |
+| Damaged Traffic Sign | 1.00 | 0.86 | 0.92 | 7 |
 
 Normal road, crack and pothole carry almost all test images. The four rare classes have seven or eight test images each, so one photograph moves their F1 by more than 0.1. That is a data-volume problem and it is shown, not averaged away.
 
@@ -79,7 +84,7 @@ Normal road, crack and pothole carry almost all test images. The four rare class
 | Source | Classes | Kept | Note |
 |---|---|---|---|
 | DNIT *Cracks and Potholes in Road Images* (Brazil) | crack, pothole, normal | 1,667 crops | 2,235 photographs, 4,720 hand-drawn polygons — the only source with outlines, so the segmenter trains on it |
-| RDD2022 India (CRDDC 2022, smartphone) | crack, pothole, normal | 2,947 crops | from 2,173 training photographs; the Indian test set is 997 crops from 778 held-out photographs (split by photograph — the official test split has no public labels) |
+| RDD2022 India (CRDDC 2022, smartphone) | crack, pothole, normal | 3,000 crops | from 1,785 training photographs; the Indian test set is 1,200 crops from 781 held-out photographs (split by photograph — the official test split has no public labels) |
 | Kaggle pothole sets (3) | pothole, normal | 1,287 | one set was 94% a re-upload: 700 of 739 rejected as perceptual duplicates |
 | Kaggle surface cracks (concrete walls) | — | 0 of 2,376 | **excluded**: close-ups of plaster with no road and no horizon (`pipeline/corpus_policy.py`); kept on disk, reproducible with `ROAD_SHIELD_NO_CORPUS_FILTER=1` |
 | Wikimedia Commons / Geograph + field photographs | waterlogging, zebra, divider, sign | 207 | ~50 photographs per rare class — still the binding constraint |
@@ -92,7 +97,7 @@ Normal road, crack and pothole carry almost all test images. The four rare class
 - **Near-duplicate rejection**: every image is perceptually hashed; within 8 bits of an existing image is a re-upload (threshold measured over 60 photographs, not guessed).
 - **Label-conflict audit**: 20 photographs were filed under three contradictory labels at once — the bug that held accuracy at 36.6%.
 - **Domain policy**: data that is not a road scene is excluded from road-scene training and measurement, and the exclusion travels with every number it changes.
-- **Claims registry**: `checkpoints/claims.json` lists 19 subsystems with their evidence files and 14 earlier claims that were withdrawn or corrected; the site's Architecture page shows both.
+- **Claims registry**: `checkpoints/claims.json` lists 19 subsystems with their evidence files and 15 earlier claims that were withdrawn or corrected; the site's Architecture page shows both.
 - **Nothing invented at runtime**: no default GPS, no default PCI, no confidence where there is no probability; missing inputs produce a 400 or an explicit `unavailable`.
 
 ## System design and platform
@@ -193,7 +198,7 @@ Main API endpoints (full reference at `/api-docs`): `POST /api/v1/pipeline/deep-
 | ImageNet CNN embeddings | 88.5% | a pretrained CNN replaced hand-written features |
 | Kaggle ingest + a labelling fix | 89.2% | removing 299 mislabelled sign images *raised* accuracy |
 | …but on Indian roads | 33.4% | the same model on RDD2022 India crops |
-| Concrete patches excluded, RDD2022 India added | **87.0%** (India **80.4%**) | larger, harder test set with Indian photographs in it |
+| Concrete patches excluded, RDD2022 India added, fine-tuned CNN | **93.3%** (India **92.2%**) | larger, harder test set with Indian photographs in it |
 
 An earlier README described models this code did not contain ("90.36% validation accuracy", "R² = 0.9908", a "10/10 PASS guaranteed" harness, simulated IMU data presented as real). It was removed in the October 2026 audit; see `CHANGES.md` and the corrections on the Architecture page.
 
