@@ -1,110 +1,54 @@
-# ROAD-SHIELD AI: Master Benchmark & Real GitHub Datasets Vault
+# ROAD-SHIELD datasets — what is actually here
 
-**Authority & Compliance:** Ministry of Road Transport & Highways (MoRTH Section 500) | National Highways Authority of India (NHAI) | SIH2026-MORTH-TRANS-018
+This file used to describe "7 canonical benchmarks, 73,060+ samples" with
+tensors such as `rdd2022_train.npz` (16,000 x 64), `kaggle_potholes.npz`
+(10,000), 15,000 IMU sequences and "NHAI Monsoon Degradation Logs". None of
+those files exist and none of those counts were ever true. It has been
+rewritten from the folders on disk (October 2026 audit).
 
----
+## Folder names are historical — read the source column
 
-## 1. Executive Summary & Inventory Matrix
+The class folders keep their original names so existing paths keep working,
+but several names do not describe their contents:
 
-This directory (`road_shield_ai_engine/datasets/`) consolidates all **7 canonical multi-modal benchmark datasets** plus **real raw road photographs directly downloaded from GitHub repositories and Kaggle mirrors**:
-- **Vision Distress Net (Model M1)**
-- **100 Hz IMU Shock Net (Model M4)**
-- **ASTM D6433 Continuous PCI Regressor (Model M_PCI)**
-- **180-Day Monsoon Degradation Forecaster (Model M_DEGRADE)**
-- **Dual-Sensor Bayesian Fusion Gate (Model M5)**
+| Folder | Class it trains | What is really inside (tracked in git) | Regenerated locally (not in git) |
+|---|---|---|---|
+| `05_morth_civil_hard_negatives/` | 0 Normal road | 349 + 23 Kaggle pothole-dataset "plain road" images, 240 `aug_mega_*` augmented copies, 1,193 Kaggle concrete-wall patches (excluded, see below) | `cpr_*` DNIT lane-only crops, `rddin_*` RDD2022 India clean-road crops |
+| `03_crack500_fatigue/` | 1 Crack | 30 DNIT road photographs, 1,183 Kaggle concrete-crack patches (excluded) — **no CRACK500 images** | `cpr_*` DNIT crack crops (1,200), `rddin_*` RDD2022 India crack crops |
+| `02_kaggle_pothole_600/` | 2 Pothole | 572 + 327 + 16 Kaggle pothole images (annotated crops, mixed, plain), 24 DNIT photographs | `cpr_*` DNIT pothole crops, `rddin_*` RDD2022 India pothole crops |
+| `09_waterlogging_hazard/` | 3 Waterlogging | 14 field photographs (`real_*`) + 35 Wikimedia Commons photographs (`WM_*`) | — |
+| `10_missing_zebra_crossing/` | 4 | 19 field + 35 Wikimedia | — |
+| `11_missing_road_divider/` | 5 | 20 field + 35 Wikimedia | — |
+| `12_damaged_traffic_signs/` | 6 | 14 field + 35 Wikimedia (299 intact-sign images removed as mislabelled) | — |
+| `01_rdd2022_india/` | none (hold-out folder) | 15 DNIT (Brazilian) photographs + 240 `aug_*` augmented copies. **Not RDD2022 data** - real RDD2022 India crops are the `rddin_*` files in the class folders. | — |
+| `06_astm_d6433_pci_benchmark/`, `07_monsoon_pavement_deterioration/` | none | 240 `aug_*` augmented road photographs each. **No ASTM or monsoon data.** The PCI and deterioration models are fitted to engineering formulas in `training/train_civil_models.py`, not to these folders. | — |
+| `08_dashcam_video_streams/` | none | 10 dashcam frames, used by the video tests | — |
+| `13_urban_traffic_vehicles/`, `14_pedestrian_safety/` | none | 4 and 2 photographs, used by detector smoke tests | — |
+| `04_mobile_imu_telemetry_100hz/` | IMU model | 10 real drive logs (205,501 rows at 100 Hz) from [VishalSingh25/Pothole-Project](https://github.com/VishalSingh25/Pothole-Project) cut into 688 train + 164 held-out 1-second windows, time-block split | — |
 
-| Sub-Directory | Benchmark Origin & Real Source | Total Samples | Primary Formats | Target Classes / Prediction Outputs |
-| :--- | :--- | :--- | :--- | :--- |
-| **`01_rdd2022_india/`** | IEEE BigData Crowdsensing 2022 + Real Photos | 20,000 + JPEGs | `.npz`, `.json`, `.csv`, `.jpg` | `D00` (Longitudinal), `D10` (Transverse), `D20` (Alligator), `D40` (Pothole) |
-| **`02_kaggle_pothole_600/`** | Kaggle Pothole Open Benchmark + Real JPEGs | 10,000 + JPEGs | `.npz`, `.json`, `.csv`, `.jpg` | High-contrast cavity discrimination (`Normal` vs `Pothole`) |
-| **`03_crack500_fatigue/`** | CRACK500 Pavement Fatigue Study + Real JPEGs | 8,000 + JPEGs | `.npz`, `.json`, `.csv`, `.jpg` | Structural fatigue cracking (`D00`, `D10`, `D20`) |
-| **`04_mobile_imu_telemetry_100hz/`** | MoRTH Patrol Vehicle Telemetry | 15,000 | `.npz`, `.json`, `.csv` | 100 Hz tri-axial accelerometer ($a_x, a_y, a_z$) dynamic shock waves |
-| **`05_morth_civil_hard_negatives/`** | ROAD-SHIELD Civil Hard Negatives | 5,000 | `.npz`, `.json`, `.csv` | Utility Manholes, Tar Snakes, Expansion Joints, Tree Shadows |
-| **`06_astm_d6433_pci_benchmark/`** | ASTM D6433 Standard Practice | 10,000 | `.npz`, `.json`, `.csv` | 20 standard deduct metrics $\to$ Continuous PCI Score ($0 - 100$) |
-| **`07_monsoon_pavement_deterioration/`**| NHAI Monsoon Degradation Logs | 5,000 | `.npz`, `.json`, `.csv` | 180-day degradation vectors under heavy monsoon axle loading |
-| **`real_images/` Folders** | GitHub Raw (`andrijdavid/Cracks-and-Potholes`) | Real Photos | `.jpg` JPEGs | Real 1024x640 highway photos with COCO bounding boxes |
-| **TOTAL REPOSITORY** | **7 Benchmarks + Real GitHub Data** | **73,060+** | **Mixed Raw & Tensors** | **Full Multi-Modal Deep Pipeline Ready** |
+**Excluded from road-scene training:** the 2,376 `kag_surface-crack_*` files are
+227x227 close-ups of concrete and plaster from a wall-crack dataset.
+`pipeline/corpus_policy.py` excludes them because they have no road, horizon or
+camera geometry. Set `ROAD_SHIELD_NO_CORPUS_FILTER=1` to reproduce unfiltered numbers.
 
----
+## The real external sources
 
-## 2. Directory Hierarchy
+| Source | Script | What it produces |
+|---|---|---|
+| DNIT "Cracks and Potholes in Road Images" (Brazil, 2,235 photographs, COCO polygons) — [GitHub mirror](https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset) | `python -m scripts.fetch_cracks_potholes_dataset --limit 2235` | `cpr_*` crack / pothole / clean-lane crops, max 1,200 per class, perceptual-hash de-duplicated |
+| RDD2022 India (CRDDC 2022, official archive, Pascal VOC) — [sekilab/RoadDamageDetector](https://github.com/sekilab/RoadDamageDetector) | `python -m scripts.prepare_rdd2022_voc --src <unzipped>/India` then `python -m scripts.ingest_rdd2022_india` | `rddin_*` training crops from the train+valid photographs; the test photographs go only to `datasets/_eval_rdd2022_india/`, which no training run reads |
+| Kaggle pothole / plain-road collections | `python -m scripts.fetch_kaggle_datasets` | `kag_pothole-*` files (pHash de-duplicated, Hamming <= 8) |
+| Wikimedia Commons / field photographs | `python -m scripts.fetch_urban_hazard_photos` | `WM_*` files for the four municipal classes |
+| IMU drive logs | `python -m scripts.fetch_real_imu_dataset` | the two `.npz` window files |
 
-```text
-road_shield_ai_engine/datasets/
-├── README.md                                    # This master documentation file
-├── dataset_manifest.json                        # Master machine-readable JSON inventory
-├── real_github_images_manifest.json             # GitHub repo citation & COCO metadata
-├── real_github_images_features.npz              # 64-dim neural feature vectors extracted from real pixels
-├── master_pipeline.py                           # Single unified loader & training pipeline
-│
-├── 01_rdd2022_india/                            # IEEE RDD2022 India Highway Subset
-│   ├── real_images/                             # Real raw verified road photos from GitHub (.jpg)
-│   │   ├── index.json                           # SHA-256 hashes and file sizes
-│   │   └── *.jpg
-│   ├── rdd2022_train.npz                        # Training tensors (X: 16000x64, y_cls, y_geo)
-│   ├── rdd2022_val.npz                          # Validation tensors (X: 4000x64, y_cls, y_geo)
-│   ├── rdd2022_metadata.json                    # Highway names, weather profiles, bounding formats
-│   └── rdd2022_sample_annotations.csv           # 500 tabular records with GPS, highway, and defect codes
-│
-├── 02_kaggle_pothole_600/                       # Kaggle Pothole-600 Optical Benchmark
-│   ├── real_images/                             # Real raw pothole photos from GitHub (.jpg)
-│   │   ├── index.json                           # Dimensions, bounding boxes, file sizes
-│   │   └── *.jpg
-│   ├── kaggle_potholes.npz                      # 10,000 cavity optical tensors (64-dim)
-│   ├── kaggle_pothole_metadata.json             # Camera perspectives & optical parameters
-│   └── kaggle_annotations.csv                   # Depths, estimated area (m²), and MoRTH repair costs
-│
-├── 03_crack500_fatigue/                         # CRACK500 Structural Fatigue Cracking
-│   ├── real_images/                             # Real raw cracking photos from GitHub (.jpg)
-│   │   ├── index.json                           # Bounding boxes, crack types
-│   │   └── *.jpg
-│   ├── crack500_train.npz                       # 8,000 high-res cracking representations
-│   ├── crack500_metadata.json                   # Crack classification schema (D00, D10, D20)
-│   └── crack500_measurements.csv                # Crack widths (mm), lengths (m), severity ratings
-│
-├── 04_mobile_imu_telemetry_100hz/               # Mobile IMU 100 Hz Accelerometer Telemetry
-│   ├── imu_shock_100hz_train.npz                # 12,000 sequences (100 timesteps × 3 axes)
-│   ├── imu_shock_100hz_val.npz                  # 3,000 validation sequences
-│   ├── imu_metadata.json                        # 100 Hz sampling spec, peak shock criteria
-│   └── imu_telemetry_sample.csv                 # Raw 10ms-step tri-axial vibration readings
-│
-├── 05_morth_civil_hard_negatives/               # False-Alarm Suppression & OHEM Mining
-│   ├── hard_negatives.npz                       # 5,000 hard negative feature vectors
-│   ├── hard_negatives_metadata.json             # Manhole, tar sealant, and tree shadow signatures
-│   └── rejection_rules.csv                      # Optical appearance vs IMU sensor response rules
-│
-├── 06_astm_d6433_pci_benchmark/                 # ASTM D6433 Pavement Condition Index
-│   ├── pci_dataset.npz                          # 10,000 road sections with 20 distress deducts & true PCI
-│   ├── pci_metadata.json                        # Standard ASTM condition bands (Good -> Failed)
-│   └── pci_survey_records.csv                   # Sample highway survey sections & treatment codes
-│
-└── 07_monsoon_pavement_deterioration/           # Monsoon 180-Day Lifecycle Trajectories
-    ├── deterioration_trajectories.npz           # Initial states (5-dim) & 4-quarter decay projections
-    ├── deterioration_metadata.json              # Physical governing differential equations
-    └── 180day_forecast_sample.csv               # 250 sample trajectory records with urgent patch flags
-```
+`scripts/colab_train_all.sh` runs all of the regeneration steps, prints an
+inventory (`logs/corpus_inventory.json`) and retrains every model on the result.
 
----
+## What this data cannot support
 
-## 3. Real GitHub & Kaggle Dataset Sources
-
-1. **`andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset`**:
-   - Repository: `https://github.com/andrijdavid/Cracks-and-Potholes-in-Road-Images-Dataset`
-   - Real JPEGs downloaded directly into `02_kaggle_pothole_600/real_images/` and `03_crack500_fatigue/real_images/`.
-   - Resolution: $1024 \times 640$ high-resolution road photography with COCO bounding boxes.
-2. **Kaggle Pothole-600 Benchmark**:
-   - Open source dataset mapping optical cavity depth and edge spalling across diverse daylight and moisture conditions.
-3. **IEEE RDD2022**:
-   - Sekimoto Lab / Crowdsensing Road Damage Detection benchmark capturing highway conditions in India.
-
----
-
-## 4. How to Execute the Master Pipeline
-
-```bash
-# 1. Verify all 7 benchmark datasets + Real GitHub images:
-python datasets/master_pipeline.py
-
-# 2. Run deep training on Model M1 across the unified vision corpus (34,448 samples):
-python datasets/master_pipeline.py --train
-```
+- No image here was taken from a bus. Indian-road evidence comes from RDD2022
+  India (smartphone, car-mounted) only.
+- The four municipal classes have about 50 photographs each, so their test
+  scores rest on 7–8 images and move a lot with a single mistake.
+- There are no pixel-level masks for water-filled potholes, no depth ground
+  truth and no field PCI surveys.

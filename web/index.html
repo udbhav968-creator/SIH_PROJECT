@@ -125,8 +125,11 @@
   // The serving classifier's own report - the one flagged active.
   let acc = null, f1 = null, imgs = null;
   if (metrics.ok) {
+    // served_classifier follows checkpoints/vision_model_selection.json, so the
+    // headline is always the model that is actually running.
     const heads = Object.keys(metrics.data).filter(k => k.startsWith("cnn_head_"));
-    const rep = heads.map(k => metrics.data[k]).find(r => r && r.active)
+    const rep = metrics.data.served_classifier
+             || heads.map(k => metrics.data[k]).find(r => r && r.active)
              || heads.map(k => metrics.data[k])[0];
     if (rep) { acc = rep.held_out_test_accuracy; f1 = rep.held_out_test_macro_f1; imgs = rep.held_out_test_photographs; }
   }

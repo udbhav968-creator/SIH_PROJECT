@@ -712,8 +712,11 @@ document.getElementById('woBtn').addEventListener('click', async () => {
     distress_class: p ? p.class_name : 'Pothole Cavity',
     area_sqm: p && p.physical_dimensions ? p.physical_dimensions.surface_area_m2 : Number(document.getElementById('ipmArea').value),
     depth_cm: Number(document.getElementById('ipmDepth').value),
-    pci_score: (state.last && state.last.astm_d6433_pci && state.last.astm_d6433_pci.pci_score != null) ? Math.round(state.last.astm_d6433_pci.pci_score) : 42,
-    lat: 12.9716, lon: 77.5946,
+    // No invented PCI or GPS: PCI comes from the last analysis (the server
+    // refuses the order without one) and GPS only if that photo carried it.
+    pci_score: (state.last && state.last.astm_d6433_pci && state.last.astm_d6433_pci.pci_score != null) ? Math.round(state.last.astm_d6433_pci.pci_score) : null,
+    lat: state.last && state.last.location ? state.last.location.lat : null,
+    lon: state.last && state.last.location ? state.last.location.lng : null,
   });
   if (!res.ok) { toast('Work order failed', res.data.error || '', 'err'); return; }
   state.workOrder = res.data;

@@ -62,7 +62,21 @@ class DeepVisionNet(VisionDistressNet):
 
     def _load(self):
         onnx_path = self._find("deep_vision_*.onnx")
+        self.tta_flip = False
+        self.resize_ratio = 1.15
+        self.sidecar = None
         if onnx_path:
+            # training/train_finetune_cnn.py writes a sidecar with the exact
+            # preprocessing the network was validated with (size, flip TTA).
+            side = os.path.splitext(onnx_path)[0] + ".json"
+            if os.path.exists(side):
+                import json
+                with open(side) as fh:
+                    self.sidecar = json.load(fh)
+                self.tta_flip = bool(self.sidecar.get("tta_flip"))
+                self.resize_ratio = float(self.sidecar.get("resize_ratio", 1.15))
+                if self.sidecar.get("class_names"):
+                    self.class_names = list(self.sidecar["class_names"])
             try:
                 import sklearn  # noqa: F401
                 import onnxruntime as ort
@@ -108,7 +122,7 @@ class DeepVisionNet(VisionDistressNet):
         if not isinstance(img, Image.Image):
             img = Image.fromarray(np.asarray(img, dtype=np.uint8))
         img = img.convert("RGB")
-        target = int(self.img_size * 1.15)
+        target = int(self.img_size * self.resize_ratio)
         w, h = img.size
         scale = target / min(w, h)
         img = img.resize((max(1, int(round(w * scale))), max(1, int(round(h * scale)))), Image.BILINEAR)
@@ -123,12 +137,16 @@ class DeepVisionNet(VisionDistressNet):
         if not self.is_ready:
             raise RuntimeError("No fine-tuned CNN available. Train one with training/train_deep_vision.py")
         batch = self._preprocess(image_rgb)
+        if self.tta_flip:
+            # same test-time augmentation the validation numbers were measured with
+            batch = np.concatenate([batch, batch[:, :, :, ::-1].copy()], axis=0)
         if self._session is not None:
             logits = self._session.run(None, {self._input_name: batch})[0]
         else:
             import torch
             with torch.no_grad():
                 logits = self._torch_model(torch.from_numpy(batch)).numpy()
+        logits = logits.mean(axis=0, keepdims=True)
         return _softmax(logits)[0]
 
     def predict_image(self, image_rgb):
@@ -146,7 +164,9 @@ class DeepVisionNet(VisionDistressNet):
             "backend": self.backend,
             "weights_path": self.weights_path,
             "img_size": self.img_size,
+            "tta_flip": self.tta_flip,
             "classes": self.class_names,
+            "report": (self.sidecar or {}).get("report"),
         }
 
 
@@ -284,17 +304,46 @@ class CNNHeadClassifier(VisionDistressNet):
                 "embedder": self.embedder.describe() if self.embedder else None}
 
 
+SELECTION_FILE = "vision_model_selection.json"
+
+
+def read_selection(checkpoints_dir=None):
+    """The recorded decision about which classifier to serve, or None."""
+    import json
+    path = os.path.join(checkpoints_dir or CKPT_DIR, SELECTION_FILE)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+
+
 def load_best_vision_model(checkpoints_dir=None, verbose=True):
     """
-    Returns the strongest classifier actually available on disk: the
-    fine-tuned CNN when its weights and a runtime are present, otherwise the
-    scikit-learn baseline. The second return value names which one it is.
+    Returns the classifier to serve and a backend tag.
+
+    Order:
+      1. whatever checkpoints/vision_model_selection.json names, if that model
+         is on disk and loads (written by scripts/select_vision_model.py from a
+         rule fixed before the test set is looked at);
+      2. otherwise the frozen ImageNet embeddings + trained head;
+      3. otherwise a fine-tuned CNN, if one is on disk;
+      4. otherwise the hand-crafted HOG/LBP + SVM baseline.
     """
     ckpt = checkpoints_dir or CKPT_DIR
+    sel = read_selection(ckpt) or {}
 
-    # 1. fine-tuned CNN (PyTorch/ONNX), if one was trained
-    # 2. ImageNet CNN embeddings + trained head  <- usually available
-    # 3. hand-crafted features + SVM baseline
+    if sel.get("served") == "deep_cnn":
+        deep = DeepVisionNet(checkpoints_dir=ckpt)
+        if deep.is_ready:
+            if verbose:
+                print(f"  ✓ Vision classifier: fine-tuned CNN ({deep.backend})")
+            return deep, "deep_cnn"
+        if verbose:
+            print("  ! selection names the fine-tuned CNN but it is not on disk - falling back")
+
     cnn_head = CNNHeadClassifier(checkpoints_dir=ckpt)
     if cnn_head.is_ready:
         if verbose:

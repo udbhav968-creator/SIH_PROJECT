@@ -14,6 +14,13 @@ import numpy as np
 
 
 class IPMHomographyEngine:
+    # Compaction / wastage margin applied to the compacted-volume mass.
+    COMPACTION_FACTOR = 1.15
+    # The per-tonne rates below are indicative planning figures, not a quoted
+    # Schedule of Rates. Every costed output carries this string so nobody
+    # mistakes them for a state PWD/CPWD SOR line item.
+    RATE_BASIS = ("indicative planning rate per tonne laid; replace with the "
+                  "applicable state PWD / CPWD Schedule of Rates before tendering")
     MATERIAL_PROPERTIES = {
         "DBM_SECTION_500": {
             "name": "Dense Bituminous Macadam (MoRTH Sec 500)",
@@ -121,8 +128,10 @@ class IPMHomographyEngine:
             "method": "per-pixel ground footprint summed over the segmentation mask",
         }
 
-    def compute_asphalt_procurement(self, area_sqm, depth_cm=6.5, mix_type="DBM_SECTION_500", compaction_margin=1.15):
+    def compute_asphalt_procurement(self, area_sqm, depth_cm=6.5, mix_type="DBM_SECTION_500", compaction_margin=None):
         """M = Area (m^2) * Depth (m) * Density (T/m^3) * compaction margin."""
+        if compaction_margin is None:
+            compaction_margin = self.COMPACTION_FACTOR
         props = self.MATERIAL_PROPERTIES.get(mix_type, self.MATERIAL_PROPERTIES["DBM_SECTION_500"])
         volume_m3 = area_sqm * (depth_cm / 100.0)
         mass_tonnes = volume_m3 * props["density_t_per_m3"] * compaction_margin
@@ -136,9 +145,12 @@ class IPMHomographyEngine:
             "compaction_factor": compaction_margin,
             "required_mass_tonnes": round(mass_tonnes, 4),
             "estimated_cost_inr": round(cost_inr, 2),
+            "rate_basis": self.RATE_BASIS,
         }
 
-    def estimate_repair_materials(self, surface_area_sqm, depth_cm=6.5, mix_rate_per_tonne_inr=7500.0):
+    def estimate_repair_materials(self, surface_area_sqm, depth_cm=6.5, mix_rate_per_tonne_inr=None):
+        if mix_rate_per_tonne_inr is None:
+            mix_rate_per_tonne_inr = self.MATERIAL_PROPERTIES["DBM_SECTION_500"]["cost_per_tonne_inr"]
         res = self.compute_asphalt_procurement(surface_area_sqm, depth_cm)
         res["total_mix_mass_tonnes"] = res["required_mass_tonnes"]
         res["total_cost_inr"] = res["required_mass_tonnes"] * mix_rate_per_tonne_inr

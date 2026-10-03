@@ -53,11 +53,38 @@
   if (!m.ok) { el("cards").innerHTML = errorCard("training metrics unavailable"); return; }
   const d = m.data;
   const heads = Object.keys(d).filter(k => k.startsWith("cnn_head_")).map(k => d[k]);
-  const active = heads.find(r => r && r.active) || heads[0];
+  const served = d.served_classifier;
+  const deepServes = served && served.kind === "fine_tuned_cnn";
+  const active = deepServes ? served : (heads.find(r => r && r.active) || heads[0]);
   const cards = [];
 
+  if (deepServes) {
+    const ind = served.indian_roads;
+    cards.push(`<div class="card accent">
+      <div class="label" style="color:var(--accent)">${served.label} · serving</div>
+      <div class="stat">${(served.held_out_test_accuracy * 100).toFixed(1)}%</div>
+      <div class="stat-sub">macro-F1 ${served.held_out_test_macro_f1} ·
+        ${served.held_out_test_images} images from ${served.held_out_test_photographs} unseen photographs</div>
+      ${ind ? `<div class="kv" style="margin-top:10px"><span>Indian roads (RDD2022 test)</span>
+        <span>${(ind.accuracy * 100).toFixed(1)}% · F1 ${ind.macro_f1}</span></div>` : ""}
+      ${served.onnx ? `<div class="kv"><span>CPU latency (ONNX)</span><span>${served.onnx.onnx_cpu_ms_per_image} ms</span></div>` : ""}
+      <p class="small muted" style="margin:8px 0 0">${(served.selection || {}).evidence || ""}</p>
+    </div>`);
+  }
+  const fts = d.finetune_summary;
+  if (fts && fts.archs) {
+    cards.push(`<div class="card"><div class="label">fine-tuned architectures · identical split</div>
+      <div class="table-wrap"><table><thead><tr><th>network</th><th class="num">val F1</th>
+      <th class="num">test acc</th><th class="num">test F1</th><th class="num">ms/img</th></tr></thead><tbody>
+      ${Object.entries(fts.archs).map(([k, r]) => `<tr><td>${k}${k === fts.chosen_arch ? " ✓" : ""}</td>
+        <td class="num">${r.val.macro_f1}</td><td class="num">${(r.test.accuracy * 100).toFixed(1)}%</td>
+        <td class="num">${r.test.macro_f1}</td><td class="num">${r.onnx_cpu_ms_per_image}</td></tr>`).join("")}
+      </tbody></table></div>
+      <p class="small muted" style="margin:8px 0 0">${fts.selection_rule}</p></div>`);
+  }
+
   heads.forEach(r => {
-    const live = r === active;
+    const live = !deepServes && r === active;
     cards.push(`<div class="card ${live ? "accent" : ""}">
       <div class="label" style="${live ? "color:var(--accent)" : ""}">
         ${r.backbone} embeddings → ${r.head}${live ? " · serving" : ""}</div>
@@ -78,7 +105,16 @@
     <div class="stat-sub">serves when no CNN backbone is on disk</div></div>`);
 
   const i = d.imu || d.imu_report;
-  if (i) cards.push(`<div class="card">
+  const isel = d.imu_model_selection;
+  if (isel && isel.held_out_for_reporting) {
+    const h = isel.held_out_for_reporting;
+    cards.push(`<div class="card">
+      <div class="label">IMU shock · ${isel.served === "cnn" ? "1-D CNN" : "RandomForest"} serving</div>
+      <div class="stat" style="color:var(--warn)">${(h[isel.served].accuracy * 100).toFixed(1)}%</div>
+      <div class="stat-sub">macro-F1 ${h[isel.served].macro_f1} on 164 held-out windows ·
+        other model: ${isel.served === "cnn" ? "forest" : "CNN"} ${(h[isel.served === "cnn" ? "random_forest" : "cnn"].accuracy * 100).toFixed(1)}%</div>
+      <p class="small muted" style="margin:8px 0 0">${isel.rule}</p></div>`);
+  } else if (i) cards.push(`<div class="card">
     <div class="label">IMU shock · RandomForest</div>
     <div class="stat" style="color:var(--warn)">${i.held_out_validation_accuracy != null
       ? (i.held_out_validation_accuracy * 100).toFixed(1) + "%" : "—"}</div>

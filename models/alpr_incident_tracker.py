@@ -50,7 +50,7 @@ class ALPRIncidentTracker:
         {'timestamp': float, 'bbox': [x, y, w, h]}.
         """
         if len(track_history) < 3:
-            return {"is_rash_driving": False, "anomaly_type": "INSUFFICIENT_TELEMETRY", "confidence": 0.0}
+            return {"is_rash_driving": False, "anomaly_type": "INSUFFICIENT_TELEMETRY", "confidence": None}
 
         areas = [t["bbox"][2] * t["bbox"][3] for t in track_history]
         times = [t["timestamp"] for t in track_history]
@@ -73,12 +73,18 @@ class ALPRIncidentTracker:
         elif lateral_jerk > 60.0:
             anomaly_type = "RECKLESS_LANE_CUTTING"
 
-        confidence = min(0.994, 0.75 + (max_growth / 10000.0) * 0.15 + (lateral_jerk / 200.0) * 0.1)
+        # There is no labelled driving data behind these thresholds, so no
+        # probability is claimed. The old "confidence" was a made-up formula
+        # with a 0.75 floor; what is reported instead is how far past its
+        # threshold the strongest signal went (>= 1.0 means it fired).
+        threshold_ratio = max(max_growth / 3500.0, lateral_jerk / 60.0)
 
         return {
             "is_rash_driving": is_rash,
             "anomaly_type": anomaly_type,
-            "confidence": round(confidence, 3),
+            "confidence": None,
+            "threshold_ratio": round(float(threshold_ratio), 3),
+            "basis": "rule thresholds (approach rate 3500 px^2/s, lateral jitter 60 px), not a trained model",
             "lateral_jerk_px": round(lateral_jerk, 2),
             "max_approach_rate": round(max_growth, 2),
         }
@@ -216,7 +222,7 @@ class ALPRIncidentTracker:
                 "ocr_confidence": plate_info["ocr_confidence"],
                 "plate_detected": plate_info["detected"],
                 "jurisdiction": plate_info["state_jurisdiction"],
-                "kinematic_confidence": kinematics["confidence"],
+                "kinematic_threshold_ratio": kinematics.get("threshold_ratio"),
             },
         }
         seal_data = f"{alert_payload['incident_id']}|{bus_id}|{kinematics['anomaly_type']}|{plate_info['license_plate_number']}"
