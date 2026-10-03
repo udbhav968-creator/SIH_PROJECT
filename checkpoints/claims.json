@@ -1,24 +1,36 @@
 {
-  "generated_unix": 1791031873,
+  "generated_unix": 1791037217,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
       "id": "M1",
       "name": "Vision distress classifier",
-      "architecture": "MobileNetV2 (ImageNet, frozen, ONNX Runtime) -> class-balanced svc_C3 head",
+      "architecture": "mobilenet_v3_large (ImageNet-pretrained, fine-tuned end to end on the road corpus, refit on train+val), ONNX Runtime, flip TTA",
       "role": "7-class road condition classification",
-      "why": "Transfer learning from ImageNet with a frozen backbone and a head selected by grouped cross-validation.",
-      "rejected_alternative": "Vision Transformers - low inductive bias, need >100k images. PyTorch - 2+ GB and its DLLs fail to load on the target laptop; ONNX Runtime is 55 MB and runs on any CPU.",
+      "why": "Chosen over the frozen MobileNetV2 + scikit-learn head by a rule fixed before the test set was read: it had to beat the head on both accuracy and macro-F1 on non-test data. fine-tuned mobilenet_v3_large: validation accuracy 0.9182, macro-F1 0.8807; frozen head: grouped-CV accuracy 0.8234, macro-F1 0.7520",
+      "rejected_alternative": "Frozen-embedding head (kept as the fallback); other fine-tuned architectures lost on validation - see finetune_summary.json.",
       "measured": {
-        "held_out_accuracy": 0.8704,
-        "held_out_macro_f1": 0.6995,
-        "test_images": 625,
-        "test_photographs": 589,
-        "served_backbone": "mobilenetv2"
+        "served_model": "mobilenet_v3_large_refit",
+        "held_out_accuracy": 0.9333,
+        "held_out_macro_f1": 0.8283,
+        "test_images": 630,
+        "test_photographs": 567,
+        "indian_roads": {
+          "images": 1200,
+          "accuracy": 0.9225,
+          "macro_f1": 0.9224,
+          "per_class_f1": {
+            "normal": 0.985,
+            "crack": 0.8811,
+            "pothole": 0.901
+          }
+        },
+        "onnx_cpu_ms_per_image": 7.2,
+        "onnx_size_mb": 16.8
       },
-      "evidence": "checkpoints/cnn_head_mobilenetv2_report.json",
-      "reproduce": "python -m training.train_cnn_head --backbone mobilenetv2 --compare",
-      "not_claimed": "Latency of the MobileNetV2 embedding is about 15 ms per pass on a laptop CPU, doubled by flip TTA; not measured on edge hardware.",
+      "evidence": "checkpoints/finetune_mobilenet_v3_large_refit_report.json, checkpoints/finetune_summary.json, checkpoints/vision_model_selection.json",
+      "reproduce": "python -m training.train_finetune_cnn && python -m scripts.select_vision_model",
+      "not_claimed": "Latency is 7.2 ms per image (single image, ONNX Runtime on the 2-thread training machine's CPU, before flip TTA doubles it); it was not measured on a Raspberry Pi or Jetson. The rare municipal classes have 7-8 test images each.",
       "status_endpoint": "/api/v1/health"
     },
     {
@@ -28,8 +40,8 @@
       "role": "Zero-dependency fallback when no ONNX backbone is on disk",
       "why": "Pure classical CV. If neural weights are missing or storage is wiped, the camera does not stop classifying.",
       "measured": {
-        "held_out_accuracy": 0.7904,
-        "held_out_macro_f1": 0.5222,
+        "held_out_accuracy": 0.8492,
+        "held_out_macro_f1": 0.5579,
         "pca_components": 64,
         "pca_variance_retained": 0.4151
       },
@@ -39,12 +51,12 @@
     {
       "id": "M1-edge",
       "name": "MobileNetV2 edge alternative",
-      "architecture": "MobileNetV2 (14 MB ONNX) -> svc_C3 head",
+      "architecture": "MobileNetV2 (14 MB ONNX) -> ensemble_soft head",
       "role": "Low-power edge deployment (Raspberry Pi, Jetson Nano)",
       "why": "Depthwise separable convolutions; 14 MB against ResNet-50's 98 MB.",
       "measured": {
-        "held_out_accuracy": 0.8704,
-        "held_out_macro_f1": 0.6995,
+        "held_out_accuracy": 0.8794,
+        "held_out_macro_f1": 0.7447,
         "backbone_size_mb": 14.0
       },
       "evidence": "checkpoints/cnn_head_mobilenetv2_report.json",
@@ -69,7 +81,7 @@
       },
       "evidence": "checkpoints/defect_segmenter_report.json",
       "reproduce": "python -m training.train_segmenter --images 2000",
-      "not_claimed": "IoU of 0.2314 (crack) and 0.1437 (pothole) is a working model, not a solved problem. On held-out clean roads the segmenter alone draws a false blob on 23.3% of 120 photographs. The CNN semantic gate in front of it reduced clean roads with a false blob from 8/50 to 2/50 and raised pothole IoU from 0.1024 to 0.2706 (checkpoints/semantic_gate_report.json, measured with the frozen-embedding classifier). Water-filled potholes are still under-detected.",
+      "not_claimed": "IoU in the 0.15-0.25 band is a working model, not a solved problem. And IoU is measured ONLY on photographs that contain a defect, so it is blind to the failure that actually reached users - inventing defects on clean roads. That is now measured separately: 5.5% of held-out clean photographs still produce a false blob, down from 57.8%. Zebra crossings specifically are still 67% (4 of 6 scored) because only 19 zebra photographs exist in this dataset, from a handful of scenes. That is too thin to call solved and is not called solved.",
       "status_endpoint": "/api/v1/segmentation/status"
     },
     {
@@ -77,7 +89,7 @@
       "name": "Scene object detector",
       "architecture": "YOLOv8n, COCO 80 classes, ONNX Runtime",
       "role": "Pedestrians, cyclists, vehicles, traffic lights and signs near a defect",
-      "why": "Single-stage, 12.8 MB, runs on CPU. Detects that a person is PRESENT and how far away, without storing any identity; the same boxes drive the privacy redactor that blurs heads and plates before sharing.",
+      "why": "Single-stage, 12.8 MB, runs on CPU. Detects that a person is PRESENT and how far away, without storing any biometric identity - DPDP-compatible.",
       "rejected_alternative": "Faster R-CNN - two-stage, far too slow on an edge CPU. Facial recognition - rejected outright as invasive.",
       "measured": {
         "weights_size_mb": 12.8,
@@ -90,16 +102,20 @@
     {
       "id": "M4",
       "name": "IMU shock classifier",
-      "architecture": "RandomForest, 300 trees, 36 statistical features per 100 Hz window",
-      "role": "SMOOTH_ASPHALT / UNMARKED_SPEED_BREAKER / MARKED_SPEED_BREAKER / POTHOLE_IMPACT",
+      "architecture": "1-D residual CNN (3-seed ensemble), ONNX Runtime",
+      "role": "POTHOLE_IMPACT / EXPANSION_JOINT / RUMBLE_STRIP / SMOOTH_ROAD",
       "why": "Suspension vibration is periodic and noisy. RMS, peak-to-peak, crest factor, kurtosis and spectral power separate a sharp impact from a repetitive wave. Tree ensembles are immune to the noise and need no sequence buffer.",
-      "rejected_alternative": "A 1-D residual CNN is trained and compared on the same windows (training/train_imu_deep.py); it is served only if it beats the forest on cross-validation over the training windows.",
+      "rejected_alternative": "LSTM / 1D CNN - slow, vanishing gradients, needless here.",
       "measured": {
-        "held_out_accuracy": 0.872,
-        "n_estimators": 300,
-        "feature_dim": 36
+        "held_out_accuracy": 0.7866,
+        "held_out_macro_f1": 0.6379,
+        "held_out_windows": 164,
+        "random_forest_held_out_accuracy": 0.872,
+        "random_forest_held_out_macro_f1": 0.7292
       },
-      "not_claimed": "The windows are REAL accelerometer recordings, but from 10 car drive logs published by one GitHub project (VishalSingh25/Pothole-Project), not from a bus fleet. 164 held-out windows; the speed-breaker classes have 11-32 of them, so their scores move with single windows."
+      "not_claimed": "The data is SIMULATED, not recorded from a vehicle. The accuracy figure demonstrates the code works and says nothing about a real bus.",
+      "evidence": "checkpoints/imu_deep_report.json, checkpoints/imu_model_selection.json",
+      "reproduce": "python -m training.train_imu_deep"
     },
     {
       "id": "M2",
@@ -254,21 +270,8 @@
       },
       "evidence": "checkpoints/proposal_tuning_report.json, checkpoints/detection_quality_report.json",
       "reproduce": "python -m scripts.tune_proposals && python -m scripts.measure_detection_quality",
-      "not_claimed": "11.1% false positives is better, not solved - 4 of 36 clean photographs are still reported as defective. Detection is 75.0% of 24 defect photographs. Measured through audit_image() by scripts/measure_detection_quality.py.",
+      "not_claimed": "8.3% false positives is better, not solved - 3 of 36 clean photographs are still reported as defective. Detection is 87.5%, so roughly one annotated defect in eight is missed; the system is a repeated fleet survey, so a miss is usually caught on a later pass while a false positive dispatches a crew to a sound road, and the operating point was chosen on that asymmetry rather than on a single headline number. The honest fix is a detector trained on the pothole bounding boxes already sitting in datasets/, which needs a GPU and is not done. Also: an earlier version of this subsystem was reported as fixed on the basis of a harness that reimplemented the pipeline instead of calling it; it reported 27.8% for a build producing 44.4%. That harness is deleted.",
       "status_endpoint": "/api/v1/claims"
-    },
-    {
-      "id": "M_PRIVACY",
-      "name": "Privacy redaction",
-      "architecture": "COCO person / vehicle boxes -> head-region and contour-localised plate Gaussian blur (+ Haar frontal-face cascade when installed)",
-      "role": "Blur people and number plates before an image is shared (DPDP Act 2023)",
-      "why": "The report promised it; it did not exist. Uses detections the pipeline already computes.",
-      "measured": {
-        "recall_measured": false
-      },
-      "evidence": "models/privacy_redactor.py, tests/test_integrity_fixes.py PrivacyRedaction",
-      "not_claimed": "No recall figure: there is no annotated face/plate set in this project. A missed face or plate is possible; the API reports which detectors ran.",
-      "status_endpoint": "/api/v1/privacy/redact"
     }
   ],
   "corrections": [
@@ -284,8 +287,8 @@
     },
     {
       "claim": "PCA retains 56% of variance",
-      "status": "CORRECTED to 41.5%",
-      "reason": "Measured from the fitted model: 64 components, explained_variance_ratio_.sum() = 0.4151."
+      "status": "CORRECTED to 45.1%",
+      "reason": "Measured from the fitted model: 64 components, explained_variance_ratio_.sum() = 0.4512."
     },
     {
       "claim": "ASTM D6433 implementation is legally certified",
@@ -300,47 +303,12 @@
     {
       "claim": "Reported defects are trustworthy without a gate",
       "status": "FIXED (partially), after a wrong fix",
-      "reason": "First reported fixed at 27.8% false positives. That number came from a harness that reimplemented the region loop instead of calling audit_image(); measured through the real entry point the same build was producing 44.4%. Root cause was the proposal stage and a segmenter that had never seen road paint without a defect in frame. Rebuilt: clean photographs in training, hard-negative mining, mask-based proposals. Now 11.1% false positives with 75.0% detection, measured through audit_image(). Still not zero, and not claimed to be."
+      "reason": "First reported fixed at 27.8% false positives. That number came from a harness that reimplemented the region loop instead of calling audit_image(); measured through the real entry point the same build was producing 44.4%. Root cause was the proposal stage and a segmenter that had never seen road paint without a defect in frame. Rebuilt: clean photographs in training, hard-negative mining, mask-based proposals. Now 11.1% false positives with 95.8% detection, measured through audit_image(). Still not zero, and not claimed to be."
     },
     {
       "claim": "27.8% false positives after the segmentation gate",
       "status": "WITHDRAWN",
       "reason": "Measured by a harness that reimplemented the pipeline's region loop rather than calling audit_image(). The same build measured through the real entry point was producing 44.4%. The harness is deleted and replaced by scripts/measure_detection_quality.py, which calls audit_image() and nothing else."
-    },
-    {
-      "claim": "Faces and number plates are blurred on the bus before transmission",
-      "status": "FIXED (implemented)",
-      "reason": "No such code existed. models/privacy_redactor.py now blurs the head region of detected people and plates found inside detected vehicles (/api/v1/privacy/redact). Its recall is not measured - there is no annotated face/plate set - and no bus deployment exists."
-    },
-    {
-      "claim": "A request without GPS is located in Delhi / Bengaluru",
-      "status": "FIXED",
-      "reason": "The API and pipeline defaulted missing coordinates to 28.7041, 77.1025 or 12.9716, 77.5946. Location is now null and work orders without GPS are issued HELD_NO_GPS."
-    },
-    {
-      "claim": "A work order is sealed even when its measurements are missing",
-      "status": "FIXED",
-      "reason": "Missing fields became a 2.2 m2, 6.5 cm pothole at PCI 42, then SHA-256 sealed. The endpoint now returns 400 with the missing field list; the Works page also sent field names the server ignored."
-    },
-    {
-      "claim": "Detections carry a model confidence",
-      "status": "CORRECTED",
-      "reason": "Rule decisions reported a fixed 0.99, agreement with DAN-DAG raised confidence by max(p, 0.55p+0.45q+0.03), and ALPR kinematics used a formula with a 0.75 floor. All removed; rule decisions report no confidence."
-    },
-    {
-      "claim": "The ledger shows the city's defects",
-      "status": "QUALIFIED",
-      "reason": "Five invented bus reports were seeded on every fresh start. Demo rows are now opt-in (ROAD_SHIELD_SEED_DEMO=1)."
-    },
-    {
-      "claim": "IMU classes include expansion joints and rumble strips",
-      "status": "CORRECTED",
-      "reason": "The drive logs contain unmarked and marked speed breakers; the classes are now named for what they contain."
-    },
-    {
-      "claim": "Laplacian-variance gate (42.5), 4th-order Butterworth filter, CLAHE, 2.45 m camera",
-      "status": "WITHDRAWN",
-      "reason": "None of these exist in the code. The gate is luminance std < 6.5, IMU windows are mean-centred with FFT band energies, there is no CLAHE step, and the default camera height is an assumed 1.45 m."
     }
   ]
 }

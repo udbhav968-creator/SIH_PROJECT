@@ -1,0 +1,20 @@
+{
+ "axis_scale": [
+  0.8783048391342163,
+  1.1471244096755981,
+  2.852684497833252
+ ],
+ "input": "(N, 3, 100): per-window mean removed, divided by axis_scale",
+ "class_names": [
+  "Smooth Asphalt",
+  "Unmarked Speed Breaker / Bump",
+  "Marked Speed Breaker",
+  "Pothole Impact"
+ ],
+ "ensemble_seeds": [
+  0,
+  1,
+  2
+ ],
+ "width": 48
+}

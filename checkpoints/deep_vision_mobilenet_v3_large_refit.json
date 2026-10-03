@@ -1,0 +1,26 @@
+{
+ "arch": "mobilenet_v3_large",
+ "img_size": 224,
+ "tta_flip": true,
+ "mean": [
+  0.485,
+  0.456,
+  0.406
+ ],
+ "std": [
+  0.229,
+  0.224,
+  0.225
+ ],
+ "resize_ratio": 1.15,
+ "class_names": [
+  "Normal Road / Sound Pavement",
+  "Crack (Longitudinal / Transverse / Alligator)",
+  "Pothole Cavity",
+  "Waterlogging / Flooding Hazard",
+  "Missing Zebra Crossing",
+  "Missing Road Divider",
+  "Damaged Traffic Sign"
+ ],
+ "report": "checkpoints/finetune_mobilenet_v3_large_refit_report.json"
+}

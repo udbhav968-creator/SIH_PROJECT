@@ -1,0 +1,40 @@
+[CNN head] backbone mobilenetv2 | 4421 images (3788 distinct photographs)
+  fit on 3791 images, held-out test 630 images from 567 unseen photographs
+  embedded 4988 training images with mobilenetv2 in 319.8s (32 ms/embedding)
+  embedded 630 held-out images with mobilenetv2 in 42.0s (33 ms/embedding)
+
+  cross-validating 7 heads x 2 feature sets, 5 folds grouped by photograph (3221 groups)
+    logistic_C0.3  plain     acc  78.0% ± 2.2  macro-F1 0.703 ±0.023  (106s)
+    logistic_C1    plain     acc  77.7% ± 2.0  macro-F1 0.698 ±0.015  (96s)
+    svc_C3         plain     acc  81.4% ± 0.6  macro-F1 0.736 ±0.022  (35s)
+    svc_C10        plain     acc  81.4% ± 1.4  macro-F1 0.736 ±0.026  (34s)
+    svc_C30        plain     acc  80.6% ± 1.6  macro-F1 0.733 ±0.019  (33s)
+    mlp_512_256    plain     acc  79.9% ± 1.0  macro-F1 0.723 ±0.021  (44s)
+    logistic_C0.3  flip_tta  acc  79.1% ± 1.7  macro-F1 0.715 ±0.021  (105s)
+    logistic_C1    flip_tta  acc  78.5% ± 2.0  macro-F1 0.708 ±0.017  (88s)
+    svc_C3         flip_tta  acc  81.8% ± 0.4  macro-F1 0.740 ±0.016  (33s)
+    svc_C10        flip_tta  acc  81.5% ± 1.5  macro-F1 0.737 ±0.013  (33s)
+    svc_C30        flip_tta  acc  80.5% ± 1.9  macro-F1 0.732 ±0.013  (35s)
+    mlp_512_256    flip_tta  acc  80.8% ± 1.8  macro-F1 0.726 ±0.020  (43s)
+    ensemble_soft  flip_tta  acc  82.3% ± 1.3  macro-F1 0.752 ±0.020  (301s)
+
+  selected by cross-validation: ensemble_soft on flip_tta features (CV accuracy 82.3%, macro-F1 0.752)
+  refit on the full fit split in 76s; scoring the test set once
+
+  scoring the hand-crafted baseline on the identical split ...
+  baseline    accuracy  84.9%   macro-F1 0.558
+  CNN head    accuracy  87.9%   macro-F1 0.745   (+3.0 points)
+
+======================================================================
+HELD-OUT TEST accuracy : 87.9%   (random guess 14.3%)
+HELD-OUT TEST macro-F1 : 0.745
+  Normal Road / Sound Pavement                   P 0.84  R 0.94  F1 0.89  n=148
+  Crack (Longitudinal / Transverse / Alligator   P 0.90  R 0.87  F1 0.88  n=218
+  Pothole Cavity                                 P 0.93  R 0.88  F1 0.91  n=234
+  Waterlogging / Flooding Hazard                 P 0.80  R 0.57  F1 0.67  n=7
+  Missing Zebra Crossing                         P 0.46  R 0.75  F1 0.57  n=8
+  Missing Road Divider                           P 0.38  R 0.38  F1 0.38  n=8
+  Damaged Traffic Sign                           P 1.00  R 0.86  F1 0.92  n=7
+
+model  -> /content/SIH_PROJECT/checkpoints/cnn_head_mobilenetv2.joblib
+report -> /content/SIH_PROJECT/checkpoints/cnn_head_mobilenetv2_report.json
