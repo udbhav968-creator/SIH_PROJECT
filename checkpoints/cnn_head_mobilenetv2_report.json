@@ -1,7 +1,7 @@
 {
-  "model": "CNNHead (mobilenetv2 ImageNet embeddings -> svc_C3)",
+  "model": "CNNHead (mobilenetv2 ImageNet embeddings -> ensemble_soft)",
   "backbone": "mobilenetv2",
-  "head": "svc_C3",
+  "head": "ensemble_soft",
   "embedding_dim": 1000,
   "class_names": [
     "Normal Road / Sound Pavement",
@@ -12,120 +12,120 @@
     "Missing Road Divider",
     "Damaged Traffic Sign"
   ],
-  "fit_images": 3796,
-  "held_out_test_images": 625,
-  "held_out_test_photographs": 589,
-  "held_out_test_accuracy": 0.8704,
-  "held_out_test_macro_f1": 0.6995,
+  "fit_images": 3791,
+  "held_out_test_images": 630,
+  "held_out_test_photographs": 567,
+  "held_out_test_accuracy": 0.8794,
+  "held_out_test_macro_f1": 0.7447,
   "random_guess_baseline": 0.1429,
   "heads_compared": {
     "logistic_C0.3|plain": {
       "features": "plain",
-      "cv_accuracy": 0.7618,
-      "cv_accuracy_std": 0.0121,
-      "cv_macro_f1": 0.6818,
-      "cv_macro_f1_std": 0.0204,
-      "seconds": 32.9,
-      "score": 0.7218
+      "cv_accuracy": 0.7795,
+      "cv_accuracy_std": 0.0217,
+      "cv_macro_f1": 0.7031,
+      "cv_macro_f1_std": 0.023,
+      "seconds": 106.0,
+      "score": 0.7413
     },
     "logistic_C1|plain": {
       "features": "plain",
-      "cv_accuracy": 0.7542,
-      "cv_accuracy_std": 0.0146,
-      "cv_macro_f1": 0.6765,
-      "cv_macro_f1_std": 0.0222,
-      "seconds": 31.4,
-      "score": 0.7153
+      "cv_accuracy": 0.7767,
+      "cv_accuracy_std": 0.02,
+      "cv_macro_f1": 0.6982,
+      "cv_macro_f1_std": 0.0155,
+      "seconds": 95.6,
+      "score": 0.7374
     },
     "svc_C3|plain": {
       "features": "plain",
-      "cv_accuracy": 0.8006,
-      "cv_accuracy_std": 0.0132,
-      "cv_macro_f1": 0.7432,
-      "cv_macro_f1_std": 0.0283,
-      "seconds": 60.1,
-      "score": 0.7719
+      "cv_accuracy": 0.814,
+      "cv_accuracy_std": 0.0059,
+      "cv_macro_f1": 0.7355,
+      "cv_macro_f1_std": 0.0217,
+      "seconds": 35.3,
+      "score": 0.7748
     },
     "svc_C10|plain": {
       "features": "plain",
-      "cv_accuracy": 0.797,
-      "cv_accuracy_std": 0.018,
-      "cv_macro_f1": 0.7408,
-      "cv_macro_f1_std": 0.0334,
-      "seconds": 53.2,
-      "score": 0.7689
+      "cv_accuracy": 0.8142,
+      "cv_accuracy_std": 0.0135,
+      "cv_macro_f1": 0.736,
+      "cv_macro_f1_std": 0.0264,
+      "seconds": 33.8,
+      "score": 0.7751
     },
     "svc_C30|plain": {
       "features": "plain",
-      "cv_accuracy": 0.7904,
-      "cv_accuracy_std": 0.0178,
-      "cv_macro_f1": 0.7379,
-      "cv_macro_f1_std": 0.0343,
-      "seconds": 56.0,
-      "score": 0.7641
+      "cv_accuracy": 0.8064,
+      "cv_accuracy_std": 0.0155,
+      "cv_macro_f1": 0.7334,
+      "cv_macro_f1_std": 0.0193,
+      "seconds": 32.7,
+      "score": 0.7699
     },
     "mlp_512_256|plain": {
       "features": "plain",
-      "cv_accuracy": 0.7896,
-      "cv_accuracy_std": 0.0246,
-      "cv_macro_f1": 0.7244,
-      "cv_macro_f1_std": 0.0359,
-      "seconds": 86.9,
-      "score": 0.757
+      "cv_accuracy": 0.7994,
+      "cv_accuracy_std": 0.0104,
+      "cv_macro_f1": 0.7225,
+      "cv_macro_f1_std": 0.0212,
+      "seconds": 43.7,
+      "score": 0.761
     },
     "logistic_C0.3|flip_tta": {
       "features": "flip_tta",
-      "cv_accuracy": 0.7718,
-      "cv_accuracy_std": 0.0127,
-      "cv_macro_f1": 0.7027,
-      "cv_macro_f1_std": 0.0205,
-      "seconds": 33.4,
-      "score": 0.7372
+      "cv_accuracy": 0.7909,
+      "cv_accuracy_std": 0.0171,
+      "cv_macro_f1": 0.7145,
+      "cv_macro_f1_std": 0.0209,
+      "seconds": 105.2,
+      "score": 0.7527
     },
     "logistic_C1|flip_tta": {
       "features": "flip_tta",
-      "cv_accuracy": 0.7688,
-      "cv_accuracy_std": 0.0135,
-      "cv_macro_f1": 0.697,
-      "cv_macro_f1_std": 0.0218,
-      "seconds": 33.8,
-      "score": 0.7329
+      "cv_accuracy": 0.7851,
+      "cv_accuracy_std": 0.02,
+      "cv_macro_f1": 0.7076,
+      "cv_macro_f1_std": 0.0173,
+      "seconds": 88.5,
+      "score": 0.7464
     },
     "svc_C3|flip_tta": {
       "features": "flip_tta",
-      "cv_accuracy": 0.804,
-      "cv_accuracy_std": 0.0139,
-      "cv_macro_f1": 0.7512,
-      "cv_macro_f1_std": 0.0309,
-      "seconds": 55.4,
-      "score": 0.7776
+      "cv_accuracy": 0.8182,
+      "cv_accuracy_std": 0.0039,
+      "cv_macro_f1": 0.7401,
+      "cv_macro_f1_std": 0.0162,
+      "seconds": 33.4,
+      "score": 0.7792
     },
     "svc_C10|flip_tta": {
       "features": "flip_tta",
-      "cv_accuracy": 0.8046,
-      "cv_accuracy_std": 0.0166,
-      "cv_macro_f1": 0.75,
-      "cv_macro_f1_std": 0.0285,
-      "seconds": 54.4,
-      "score": 0.7773
+      "cv_accuracy": 0.8154,
+      "cv_accuracy_std": 0.0146,
+      "cv_macro_f1": 0.7366,
+      "cv_macro_f1_std": 0.0134,
+      "seconds": 33.4,
+      "score": 0.776
     },
     "svc_C30|flip_tta": {
       "features": "flip_tta",
-      "cv_accuracy": 0.803,
-      "cv_accuracy_std": 0.0167,
-      "cv_macro_f1": 0.7503,
-      "cv_macro_f1_std": 0.029,
-      "seconds": 52.0,
-      "score": 0.7767
+      "cv_accuracy": 0.8052,
+      "cv_accuracy_std": 0.0191,
+      "cv_macro_f1": 0.7316,
+      "cv_macro_f1_std": 0.0133,
+      "seconds": 35.0,
+      "score": 0.7684
     },
     "mlp_512_256|flip_tta": {
       "features": "flip_tta",
-      "cv_accuracy": 0.7862,
-      "cv_accuracy_std": 0.0195,
-      "cv_macro_f1": 0.7277,
-      "cv_macro_f1_std": 0.0334,
-      "seconds": 101.0,
-      "score": 0.757
+      "cv_accuracy": 0.8082,
+      "cv_accuracy_std": 0.0176,
+      "cv_macro_f1": 0.7261,
+      "cv_macro_f1_std": 0.02,
+      "seconds": 43.3,
+      "score": 0.7671
     },
     "ensemble_soft|flip_tta": {
       "features": "flip_tta",
@@ -134,12 +134,12 @@
         "logistic_C": 0.3,
         "mlp": "512-256"
       },
-      "cv_accuracy": 0.8036,
-      "cv_accuracy_std": 0.0184,
-      "cv_macro_f1": 0.7465,
-      "cv_macro_f1_std": 0.038,
-      "seconds": 393.6,
-      "score": 0.7751
+      "cv_accuracy": 0.8234,
+      "cv_accuracy_std": 0.0129,
+      "cv_macro_f1": 0.752,
+      "cv_macro_f1_std": 0.0196,
+      "seconds": 301.2,
+      "score": 0.7877
     }
   },
   "selection": "5-fold StratifiedGroupKFold on the fit split, grouped by source photograph; score = mean(accuracy, macro-F1); test set scored once",
@@ -148,37 +148,46 @@
   "confusion_matrix": [
     [
       139,
-      7,
+      1,
       1,
       0,
-      0,
-      1,
-      0
-    ],
-    [
-      3,
-      208,
-      14,
-      0,
-      0,
-      0,
-      0
-    ],
-    [
-      7,
-      32,
-      183,
-      0,
-      0,
-      0,
-      0
-    ],
-    [
       4,
-      0,
-      0,
+      3,
+      0
+    ],
+    [
+      14,
+      189,
+      14,
       1,
+      0,
+      0,
+      0
+    ],
+    [
+      5,
+      20,
+      207,
+      0,
+      0,
       2,
+      0
+    ],
+    [
+      2,
+      0,
+      0,
+      4,
+      1,
+      0,
+      0
+    ],
+    [
+      2,
+      0,
+      0,
+      0,
+      6,
       0,
       0
     ],
@@ -187,91 +196,82 @@
       0,
       0,
       0,
-      5,
-      0,
-      0
-    ],
-    [
-      5,
-      0,
-      0,
-      0,
-      0,
+      2,
       3,
       0
     ],
     [
-      2,
+      1,
       0,
       0,
       0,
       0,
       0,
-      5
+      6
     ]
   ],
   "per_class_report": {
     "Normal Road / Sound Pavement": {
-      "precision": 0.852760736196319,
+      "precision": 0.8373493975903614,
       "recall": 0.9391891891891891,
-      "f1-score": 0.8938906752411575,
+      "f1-score": 0.8853503184713376,
       "support": 148.0
     },
     "Crack (Longitudinal / Transverse / Alligator)": {
-      "precision": 0.8421052631578947,
-      "recall": 0.9244444444444444,
-      "f1-score": 0.8813559322033898,
-      "support": 225.0
+      "precision": 0.9,
+      "recall": 0.8669724770642202,
+      "f1-score": 0.883177570093458,
+      "support": 218.0
     },
     "Pothole Cavity": {
-      "precision": 0.9242424242424242,
-      "recall": 0.8243243243243243,
-      "f1-score": 0.8714285714285714,
-      "support": 222.0
+      "precision": 0.9324324324324325,
+      "recall": 0.8846153846153846,
+      "f1-score": 0.9078947368421053,
+      "support": 234.0
     },
     "Waterlogging / Flooding Hazard": {
-      "precision": 1.0,
-      "recall": 0.14285714285714285,
-      "f1-score": 0.25,
+      "precision": 0.8,
+      "recall": 0.5714285714285714,
+      "f1-score": 0.6666666666666666,
       "support": 7.0
     },
     "Missing Zebra Crossing": {
-      "precision": 0.7142857142857143,
-      "recall": 0.625,
-      "f1-score": 0.6666666666666666,
+      "precision": 0.46153846153846156,
+      "recall": 0.75,
+      "f1-score": 0.5714285714285714,
       "support": 8.0
     },
     "Missing Road Divider": {
-      "precision": 0.75,
+      "precision": 0.375,
       "recall": 0.375,
-      "f1-score": 0.5,
+      "f1-score": 0.375,
       "support": 8.0
     },
     "Damaged Traffic Sign": {
       "precision": 1.0,
-      "recall": 0.7142857142857143,
-      "f1-score": 0.8333333333333334,
+      "recall": 0.8571428571428571,
+      "f1-score": 0.9230769230769231,
       "support": 7.0
     },
-    "accuracy": 0.8704,
+    "accuracy": 0.8793650793650793,
     "macro avg": {
-      "precision": 0.8690563054117646,
-      "recall": 0.6493001164429736,
-      "f1-score": 0.6995250255533026,
-      "support": 625.0
+      "precision": 0.7580457559373223,
+      "recall": 0.7491926399200317,
+      "f1-score": 0.7446563980827232,
+      "support": 630.0
     },
     "weighted avg": {
-      "precision": 0.8745254033018965,
-      "recall": 0.8704,
-      "f1-score": 0.8655595427284217,
-      "support": 625.0
+      "precision": 0.8850939805156673,
+      "recall": 0.8793650793650793,
+      "f1-score": 0.8804945389441557,
+      "support": 630.0
     }
   },
   "split_strategy": "grouped by source photograph; test set scored once",
-  "trained_at_unix": 1790967799,
+  "trained_at_unix": 1791034407,
   "handcrafted_baseline": {
-    "accuracy": 0.7904,
-    "macro_f1": 0.5222,
+    "accuracy": 0.8492,
+    "macro_f1": 0.5579,
     "features": "HOG + LBP + colour histogram, 4419 dims"
   }
 }

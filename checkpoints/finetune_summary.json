@@ -1,0 +1,132 @@
+{
+ "selection_rule": "architecture with the highest validation score = mean(accuracy, macro-F1), among those whose ONNX file is <= 95 MB; test scored once per arch and never used to choose; the served model is the chosen arch refit on train+val for its best epoch count (declared before training)",
+ "chosen_arch": "mobilenet_v3_large",
+ "served": "mobilenet_v3_large_refit",
+ "served_test": {
+  "accuracy": 0.9333,
+  "macro_f1": 0.8283,
+  "images": 630
+ },
+ "served_indian_roads": {
+  "images": 1200,
+  "accuracy": 0.9225,
+  "macro_f1": 0.9224,
+  "per_class_f1": {
+   "normal": 0.985,
+   "crack": 0.8811,
+   "pothole": 0.901
+  }
+ },
+ "served_onnx": {
+  "onnx_max_abs_logit_diff": 5e-06,
+  "onnx_argmax_agreement": 1.0,
+  "onnx_cpu_ms_per_image": 7.2,
+  "onnx_size_mb": 16.8,
+  "cpu_threads": 2
+ },
+ "archs": {
+  "efficientnet_b0": {
+   "val_score": 0.8903,
+   "val": {
+    "accuracy": 0.9254,
+    "macro_f1": 0.8553
+   },
+   "test": {
+    "accuracy": 0.9127,
+    "macro_f1": 0.8316
+   },
+   "indian_roads": {
+    "images": 1200,
+    "accuracy": 0.9092,
+    "macro_f1": 0.9095,
+    "per_class_f1": {
+     "normal": 0.9752,
+     "crack": 0.8652,
+     "pothole": 0.8881
+    }
+   },
+   "onnx_cpu_ms_per_image": 16.5,
+   "onnx_size_mb": 16.1,
+   "best_epoch": 8
+  },
+  "efficientnet_b2": {
+   "val_score": 0.8841,
+   "val": {
+    "accuracy": 0.9283,
+    "macro_f1": 0.8399
+   },
+   "test": {
+    "accuracy": 0.9143,
+    "macro_f1": 0.8282
+   },
+   "indian_roads": {
+    "images": 1200,
+    "accuracy": 0.9167,
+    "macro_f1": 0.9164,
+    "per_class_f1": {
+     "normal": 0.9813,
+     "crack": 0.8737,
+     "pothole": 0.8943
+    }
+   },
+   "onnx_cpu_ms_per_image": 37.4,
+   "onnx_size_mb": 30.8,
+   "best_epoch": 5
+  },
+  "mobilenet_v3_large": {
+   "val_score": 0.8995,
+   "val": {
+    "accuracy": 0.9182,
+    "macro_f1": 0.8807
+   },
+   "test": {
+    "accuracy": 0.9143,
+    "macro_f1": 0.8397
+   },
+   "indian_roads": {
+    "images": 1200,
+    "accuracy": 0.9075,
+    "macro_f1": 0.907,
+    "per_class_f1": {
+     "normal": 0.9823,
+     "crack": 0.8533,
+     "pothole": 0.8853
+    }
+   },
+   "onnx_cpu_ms_per_image": 11.7,
+   "onnx_size_mb": 16.8,
+   "best_epoch": 17
+  },
+  "resnet50": {
+   "val_score": 0.8822,
+   "val": {
+    "accuracy": 0.9053,
+    "macro_f1": 0.8591
+   },
+   "test": {
+    "accuracy": 0.8952,
+    "macro_f1": 0.8574
+   },
+   "indian_roads": {
+    "images": 1200,
+    "accuracy": 0.9192,
+    "macro_f1": 0.919,
+    "per_class_f1": {
+     "normal": 0.9789,
+     "crack": 0.8787,
+     "pothole": 0.8994
+    }
+   },
+   "onnx_cpu_ms_per_image": 79.9,
+   "onnx_size_mb": 94.0,
+   "best_epoch": 8
+  }
+ },
+ "frozen_head_same_split": {
+  "model": "CNNHead (mobilenetv2 ImageNet embeddings -> ensemble_soft)",
+  "test_accuracy": 0.8794,
+  "test_macro_f1": 0.7447,
+  "test_images": 630
+ },
+ "generated_unix": 1791036810
+}

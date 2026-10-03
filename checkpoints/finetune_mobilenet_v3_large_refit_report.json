@@ -1,0 +1,259 @@
+{
+ "model": "mobilenet_v3_large (ImageNet-pretrained, fine-tuned end to end, refit on train+val)",
+ "refit_on_train_plus_val": true,
+ "arch": "mobilenet_v3_large",
+ "img_size": 224,
+ "tta_flip": true,
+ "class_names": [
+  "Normal Road / Sound Pavement",
+  "Crack (Longitudinal / Transverse / Alligator)",
+  "Pothole Cavity",
+  "Waterlogging / Flooding Hazard",
+  "Missing Zebra Crossing",
+  "Missing Road Divider",
+  "Damaged Traffic Sign"
+ ],
+ "split": {
+  "rule": "training.train_cnn_head.capped_grouped_split - identical to the frozen head",
+  "train_images": 3791,
+  "val_images": 697,
+  "test_images": 630,
+  "test_photographs": 567
+ },
+ "training": {
+  "epochs_run": 17,
+  "best_epoch": 17,
+  "batch": 48,
+  "lr_backbone": 0.0002,
+  "lr_head": 0.002,
+  "optimizer": "AdamW wd 0.05, warmup + cosine",
+  "loss": "CE, label smoothing 0.1",
+  "sampler": "sqrt inverse-frequency",
+  "augmentation": "RandomResizedCrop, flip, TrivialAugmentWide, RandomErasing",
+  "device": "cuda",
+  "seconds": 327.8,
+  "history": [
+   {
+    "epoch": 1,
+    "train_loss": 1.1203,
+    "seconds": 22.3
+   },
+   {
+    "epoch": 2,
+    "train_loss": 0.7365,
+    "seconds": 17.8
+   },
+   {
+    "epoch": 3,
+    "train_loss": 0.6684,
+    "seconds": 17.9
+   },
+   {
+    "epoch": 4,
+    "train_loss": 0.6238,
+    "seconds": 17.9
+   },
+   {
+    "epoch": 5,
+    "train_loss": 0.6118,
+    "seconds": 18.6
+   },
+   {
+    "epoch": 6,
+    "train_loss": 0.5921,
+    "seconds": 19.1
+   },
+   {
+    "epoch": 7,
+    "train_loss": 0.5769,
+    "seconds": 17.7
+   },
+   {
+    "epoch": 8,
+    "train_loss": 0.5612,
+    "seconds": 17.7
+   },
+   {
+    "epoch": 9,
+    "train_loss": 0.5606,
+    "seconds": 18.1
+   },
+   {
+    "epoch": 10,
+    "train_loss": 0.5526,
+    "seconds": 19.5
+   },
+   {
+    "epoch": 11,
+    "train_loss": 0.5406,
+    "seconds": 18.5
+   },
+   {
+    "epoch": 12,
+    "train_loss": 0.5422,
+    "seconds": 17.9
+   },
+   {
+    "epoch": 13,
+    "train_loss": 0.5303,
+    "seconds": 17.9
+   },
+   {
+    "epoch": 14,
+    "train_loss": 0.5256,
+    "seconds": 17.5
+   },
+   {
+    "epoch": 15,
+    "train_loss": 0.5251,
+    "seconds": 18.9
+   },
+   {
+    "epoch": 16,
+    "train_loss": 0.5197,
+    "seconds": 18.3
+   },
+   {
+    "epoch": 17,
+    "train_loss": 0.5157,
+    "seconds": 17.6
+   }
+  ]
+ },
+ "selection_score_val": null,
+ "validation": {
+  "note": "validation photographs were part of this refit's training data"
+ },
+ "test": {
+  "images": 630,
+  "accuracy": 0.9333,
+  "macro_f1": 0.8283,
+  "per_class": {
+   "Normal Road / Sound Pavement": {
+    "precision": 0.9662,
+    "recall": 0.9662,
+    "f1": 0.9662,
+    "support": 148
+   },
+   "Crack (Longitudinal / Transverse / Alligator)": {
+    "precision": 0.9231,
+    "recall": 0.9358,
+    "f1": 0.9294,
+    "support": 218
+   },
+   "Pothole Cavity": {
+    "precision": 0.9402,
+    "recall": 0.9402,
+    "f1": 0.9402,
+    "support": 234
+   },
+   "Waterlogging / Flooding Hazard": {
+    "precision": 0.8,
+    "recall": 0.5714,
+    "f1": 0.6667,
+    "support": 7
+   },
+   "Missing Zebra Crossing": {
+    "precision": 0.6667,
+    "recall": 0.75,
+    "f1": 0.7059,
+    "support": 8
+   },
+   "Missing Road Divider": {
+    "precision": 0.7143,
+    "recall": 0.625,
+    "f1": 0.6667,
+    "support": 8
+   },
+   "Damaged Traffic Sign": {
+    "precision": 1.0,
+    "recall": 0.8571,
+    "f1": 0.9231,
+    "support": 7
+   }
+  },
+  "confusion_matrix": [
+   [
+    143,
+    3,
+    0,
+    0,
+    1,
+    1,
+    0
+   ],
+   [
+    1,
+    204,
+    13,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    14,
+    220,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    2,
+    0,
+    1,
+    4,
+    0,
+    0,
+    0
+   ],
+   [
+    1,
+    0,
+    0,
+    0,
+    6,
+    1,
+    0
+   ],
+   [
+    1,
+    0,
+    0,
+    1,
+    1,
+    5,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    6
+   ]
+  ]
+ },
+ "indian_roads_rdd2022_test": {
+  "images": 1200,
+  "accuracy": 0.9225,
+  "macro_f1": 0.9224,
+  "per_class_f1": {
+   "normal": 0.985,
+   "crack": 0.8811,
+   "pothole": 0.901
+  }
+ },
+ "onnx": {
+  "onnx_max_abs_logit_diff": 5e-06,
+  "onnx_argmax_agreement": 1.0,
+  "onnx_cpu_ms_per_image": 7.2,
+  "onnx_size_mb": 16.8,
+  "cpu_threads": 2
+ },
+ "trained_at_unix": 1791036810
+}

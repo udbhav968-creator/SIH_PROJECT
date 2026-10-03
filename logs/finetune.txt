@@ -1,0 +1,263 @@
+[finetune] train 3094 | val 697 | test 630 images (567 test photographs)
+Downloading: "https://download.pytorch.org/models/efficientnet_b0_rwightman-7f5810bc.pth" to /root/.cache/torch/hub/checkpoints/efficientnet_b0_rwightman-7f5810bc.pth
+  0%|          | 0.00/20.5M [00:00<?, ?B/s] 78%|███████▊  | 15.9M/20.5M [00:00<00:00, 166MB/s]100%|██████████| 20.5M/20.5M [00:00<00:00, 171MB/s]
+  [efficientnet_b0] epoch  1/40 loss 1.354 | val acc 0.869 macro-F1 0.748 | 28.4s
+  [efficientnet_b0] epoch  2/40 loss 0.830 | val acc 0.898 macro-F1 0.808 | 18.9s
+  [efficientnet_b0] epoch  3/40 loss 0.720 | val acc 0.911 macro-F1 0.812 | 18.9s
+  [efficientnet_b0] epoch  4/40 loss 0.673 | val acc 0.871 macro-F1 0.801 | 20.5s
+  [efficientnet_b0] epoch  5/40 loss 0.653 | val acc 0.902 macro-F1 0.820 | 18.7s
+  [efficientnet_b0] epoch  6/40 loss 0.631 | val acc 0.881 macro-F1 0.826 | 18.6s
+  [efficientnet_b0] epoch  7/40 loss 0.619 | val acc 0.892 macro-F1 0.823 | 19.0s
+  [efficientnet_b0] epoch  8/40 loss 0.604 | val acc 0.925 macro-F1 0.855 | 20.3s
+  [efficientnet_b0] epoch  9/40 loss 0.590 | val acc 0.875 macro-F1 0.803 | 18.5s
+  [efficientnet_b0] epoch 10/40 loss 0.584 | val acc 0.921 macro-F1 0.852 | 18.4s
+  [efficientnet_b0] epoch 11/40 loss 0.573 | val acc 0.891 macro-F1 0.836 | 18.4s
+  [efficientnet_b0] epoch 12/40 loss 0.574 | val acc 0.892 macro-F1 0.841 | 19.3s
+  [efficientnet_b0] epoch 13/40 loss 0.567 | val acc 0.891 macro-F1 0.826 | 19.1s
+  [efficientnet_b0] epoch 14/40 loss 0.564 | val acc 0.892 macro-F1 0.841 | 18.4s
+  [efficientnet_b0] epoch 15/40 loss 0.548 | val acc 0.889 macro-F1 0.840 | 18.2s
+  [efficientnet_b0] epoch 16/40 loss 0.563 | val acc 0.891 macro-F1 0.844 | 18.4s
+  [efficientnet_b0] epoch 17/40 loss 0.536 | val acc 0.892 macro-F1 0.850 | 20.1s
+  [efficientnet_b0] epoch 18/40 loss 0.542 | val acc 0.902 macro-F1 0.846 | 18.2s
+  [efficientnet_b0] early stop at epoch 18 (best 8)
+/content/SIH_PROJECT/training/train_finetune_cnn.py:239: DeprecationWarning: You are using the legacy TorchScript-based ONNX export. Starting in PyTorch 2.9, the new torch.export-based ONNX exporter has become the default. Learn more about the new export logic: https://docs.pytorch.org/docs/stable/onnx_export.html. For exporting control flow: https://pytorch.org/tutorials/beginner/onnx/export_control_flow_model_to_onnx_tutorial.html
+  torch.onnx.export(model, dummy, path, dynamo=False, **kw)
+  [efficientnet_b0] VAL acc 0.9254 F1 0.8553 | TEST acc 0.913 F1 0.832 | India 0.9095 | ONNX 16.5 ms/img
+[finetune] train 3094 | val 697 | test 630 images (567 test photographs)
+Downloading: "https://download.pytorch.org/models/efficientnet_b2_rwightman-c35c1473.pth" to /root/.cache/torch/hub/checkpoints/efficientnet_b2_rwightman-c35c1473.pth
+  0%|          | 0.00/35.2M [00:00<?, ?B/s] 38%|███▊      | 13.4M/35.2M [00:00<00:00, 140MB/s] 79%|███████▉  | 27.9M/35.2M [00:00<00:00, 147MB/s]100%|██████████| 35.2M/35.2M [00:00<00:00, 145MB/s]
+  [efficientnet_b2] epoch  1/40 loss 1.357 | val acc 0.877 macro-F1 0.768 | 27.9s
+  [efficientnet_b2] epoch  2/40 loss 0.800 | val acc 0.885 macro-F1 0.746 | 26.1s
+  [efficientnet_b2] epoch  3/40 loss 0.677 | val acc 0.884 macro-F1 0.851 | 25.3s
+  [efficientnet_b2] epoch  4/40 loss 0.646 | val acc 0.864 macro-F1 0.824 | 23.0s
+  [efficientnet_b2] epoch  5/40 loss 0.627 | val acc 0.928 macro-F1 0.840 | 24.5s
+  [efficientnet_b2] epoch  6/40 loss 0.600 | val acc 0.887 macro-F1 0.831 | 23.1s
+  [efficientnet_b2] epoch  7/40 loss 0.588 | val acc 0.892 macro-F1 0.826 | 24.9s
+  [efficientnet_b2] epoch  8/40 loss 0.573 | val acc 0.912 macro-F1 0.856 | 22.9s
+  [efficientnet_b2] epoch  9/40 loss 0.565 | val acc 0.887 macro-F1 0.813 | 24.8s
+  [efficientnet_b2] epoch 10/40 loss 0.556 | val acc 0.891 macro-F1 0.815 | 23.7s
+  [efficientnet_b2] epoch 11/40 loss 0.546 | val acc 0.885 macro-F1 0.825 | 24.3s
+  [efficientnet_b2] epoch 12/40 loss 0.562 | val acc 0.879 macro-F1 0.816 | 24.3s
+  [efficientnet_b2] epoch 13/40 loss 0.542 | val acc 0.881 macro-F1 0.817 | 23.3s
+  [efficientnet_b2] epoch 14/40 loss 0.538 | val acc 0.867 macro-F1 0.821 | 24.7s
+  [efficientnet_b2] epoch 15/40 loss 0.535 | val acc 0.895 macro-F1 0.842 | 22.8s
+  [efficientnet_b2] early stop at epoch 15 (best 5)
+/content/SIH_PROJECT/training/train_finetune_cnn.py:239: DeprecationWarning: You are using the legacy TorchScript-based ONNX export. Starting in PyTorch 2.9, the new torch.export-based ONNX exporter has become the default. Learn more about the new export logic: https://docs.pytorch.org/docs/stable/onnx_export.html. For exporting control flow: https://pytorch.org/tutorials/beginner/onnx/export_control_flow_model_to_onnx_tutorial.html
+  torch.onnx.export(model, dummy, path, dynamo=False, **kw)
+  [efficientnet_b2] VAL acc 0.9283 F1 0.8399 | TEST acc 0.914 F1 0.828 | India 0.9164 | ONNX 37.4 ms/img
+[finetune] train 3094 | val 697 | test 630 images (567 test photographs)
+Downloading: "https://download.pytorch.org/models/mobilenet_v3_large-5c1a4163.pth" to /root/.cache/torch/hub/checkpoints/mobilenet_v3_large-5c1a4163.pth
+  0%|          | 0.00/21.1M [00:00<?, ?B/s] 94%|█████████▎| 19.8M/21.1M [00:00<00:00, 207MB/s]100%|██████████| 21.1M/21.1M [00:00<00:00, 208MB/s]
+  [mobilenet_v3_large] epoch  1/40 loss 1.159 | val acc 0.859 macro-F1 0.774 | 22.3s
+  [mobilenet_v3_large] epoch  2/40 loss 0.752 | val acc 0.871 macro-F1 0.760 | 17.5s
+  [mobilenet_v3_large] epoch  3/40 loss 0.675 | val acc 0.838 macro-F1 0.803 | 17.5s
+  [mobilenet_v3_large] epoch  4/40 loss 0.653 | val acc 0.868 macro-F1 0.818 | 17.4s
+  [mobilenet_v3_large] epoch  5/40 loss 0.618 | val acc 0.891 macro-F1 0.826 | 17.4s
+  [mobilenet_v3_large] epoch  6/40 loss 0.593 | val acc 0.907 macro-F1 0.854 | 18.5s
+  [mobilenet_v3_large] epoch  7/40 loss 0.584 | val acc 0.865 macro-F1 0.831 | 18.4s
+  [mobilenet_v3_large] epoch  8/40 loss 0.563 | val acc 0.905 macro-F1 0.849 | 17.2s
+  [mobilenet_v3_large] epoch  9/40 loss 0.574 | val acc 0.908 macro-F1 0.862 | 17.5s
+  [mobilenet_v3_large] epoch 10/40 loss 0.549 | val acc 0.901 macro-F1 0.828 | 17.5s
+  [mobilenet_v3_large] epoch 11/40 loss 0.551 | val acc 0.908 macro-F1 0.838 | 17.6s
+  [mobilenet_v3_large] epoch 12/40 loss 0.559 | val acc 0.914 macro-F1 0.868 | 17.5s
+  [mobilenet_v3_large] epoch 13/40 loss 0.548 | val acc 0.881 macro-F1 0.838 | 19.0s
+  [mobilenet_v3_large] epoch 14/40 loss 0.541 | val acc 0.901 macro-F1 0.842 | 17.8s
+  [mobilenet_v3_large] epoch 15/40 loss 0.531 | val acc 0.889 macro-F1 0.867 | 17.4s
+  [mobilenet_v3_large] epoch 16/40 loss 0.553 | val acc 0.888 macro-F1 0.839 | 17.5s
+  [mobilenet_v3_large] epoch 17/40 loss 0.519 | val acc 0.918 macro-F1 0.881 | 17.4s
+  [mobilenet_v3_large] epoch 18/40 loss 0.526 | val acc 0.894 macro-F1 0.879 | 17.4s
+  [mobilenet_v3_large] epoch 19/40 loss 0.523 | val acc 0.887 macro-F1 0.841 | 17.4s
+  [mobilenet_v3_large] epoch 20/40 loss 0.521 | val acc 0.888 macro-F1 0.847 | 18.3s
+  [mobilenet_v3_large] epoch 21/40 loss 0.506 | val acc 0.888 macro-F1 0.862 | 18.2s
+  [mobilenet_v3_large] epoch 22/40 loss 0.505 | val acc 0.897 macro-F1 0.849 | 17.4s
+  [mobilenet_v3_large] epoch 23/40 loss 0.503 | val acc 0.895 macro-F1 0.872 | 17.5s
+  [mobilenet_v3_large] epoch 24/40 loss 0.503 | val acc 0.892 macro-F1 0.850 | 17.5s
+  [mobilenet_v3_large] epoch 25/40 loss 0.500 | val acc 0.894 macro-F1 0.835 | 17.6s
+  [mobilenet_v3_large] epoch 26/40 loss 0.497 | val acc 0.888 macro-F1 0.825 | 18.0s
+  [mobilenet_v3_large] epoch 27/40 loss 0.498 | val acc 0.894 macro-F1 0.854 | 18.9s
+  [mobilenet_v3_large] early stop at epoch 27 (best 17)
+/content/SIH_PROJECT/training/train_finetune_cnn.py:239: DeprecationWarning: You are using the legacy TorchScript-based ONNX export. Starting in PyTorch 2.9, the new torch.export-based ONNX exporter has become the default. Learn more about the new export logic: https://docs.pytorch.org/docs/stable/onnx_export.html. For exporting control flow: https://pytorch.org/tutorials/beginner/onnx/export_control_flow_model_to_onnx_tutorial.html
+  torch.onnx.export(model, dummy, path, dynamo=False, **kw)
+  [mobilenet_v3_large] VAL acc 0.9182 F1 0.8807 | TEST acc 0.914 F1 0.840 | India 0.907 | ONNX 11.7 ms/img
+[finetune] train 3094 | val 697 | test 630 images (567 test photographs)
+Downloading: "https://download.pytorch.org/models/resnet50-11ad3fa6.pth" to /root/.cache/torch/hub/checkpoints/resnet50-11ad3fa6.pth
+  0%|          | 0.00/97.8M [00:00<?, ?B/s] 21%|██▏       | 21.0M/97.8M [00:00<00:00, 220MB/s] 43%|████▎     | 42.0M/97.8M [00:00<00:00, 195MB/s] 62%|██████▏   | 60.9M/97.8M [00:00<00:00, 187MB/s] 81%|████████  | 78.9M/97.8M [00:00<00:00, 179MB/s] 98%|█████████▊| 96.1M/97.8M [00:00<00:00, 178MB/s]100%|██████████| 97.8M/97.8M [00:00<00:00, 184MB/s]
+  [resnet50] epoch  1/40 loss 1.269 | val acc 0.865 macro-F1 0.757 | 22.0s
+  [resnet50] epoch  2/40 loss 0.740 | val acc 0.864 macro-F1 0.797 | 19.0s
+  [resnet50] epoch  3/40 loss 0.661 | val acc 0.888 macro-F1 0.814 | 18.9s
+  [resnet50] epoch  4/40 loss 0.642 | val acc 0.891 macro-F1 0.828 | 18.7s
+  [resnet50] epoch  5/40 loss 0.627 | val acc 0.887 macro-F1 0.810 | 20.3s
+  [resnet50] epoch  6/40 loss 0.586 | val acc 0.862 macro-F1 0.815 | 19.1s
+  [resnet50] epoch  7/40 loss 0.589 | val acc 0.895 macro-F1 0.818 | 18.6s
+  [resnet50] epoch  8/40 loss 0.559 | val acc 0.905 macro-F1 0.859 | 18.8s
+  [resnet50] epoch  9/40 loss 0.564 | val acc 0.865 macro-F1 0.776 | 19.8s
+  [resnet50] epoch 10/40 loss 0.560 | val acc 0.889 macro-F1 0.841 | 19.0s
+  [resnet50] epoch 11/40 loss 0.552 | val acc 0.892 macro-F1 0.805 | 18.3s
+  [resnet50] epoch 12/40 loss 0.542 | val acc 0.879 macro-F1 0.842 | 18.3s
+  [resnet50] epoch 13/40 loss 0.543 | val acc 0.878 macro-F1 0.804 | 18.1s
+  [resnet50] epoch 14/40 loss 0.538 | val acc 0.875 macro-F1 0.817 | 19.8s
+  [resnet50] epoch 15/40 loss 0.540 | val acc 0.889 macro-F1 0.799 | 18.5s
+  [resnet50] epoch 16/40 loss 0.533 | val acc 0.871 macro-F1 0.799 | 18.1s
+  [resnet50] epoch 17/40 loss 0.514 | val acc 0.874 macro-F1 0.837 | 18.3s
+  [resnet50] epoch 18/40 loss 0.520 | val acc 0.900 macro-F1 0.826 | 18.2s
+  [resnet50] early stop at epoch 18 (best 8)
+/content/SIH_PROJECT/training/train_finetune_cnn.py:239: DeprecationWarning: You are using the legacy TorchScript-based ONNX export. Starting in PyTorch 2.9, the new torch.export-based ONNX exporter has become the default. Learn more about the new export logic: https://docs.pytorch.org/docs/stable/onnx_export.html. For exporting control flow: https://pytorch.org/tutorials/beginner/onnx/export_control_flow_model_to_onnx_tutorial.html
+  torch.onnx.export(model, dummy, path, dynamo=False, **kw)
+  [resnet50] VAL acc 0.9053 F1 0.8591 | TEST acc 0.895 F1 0.857 | India 0.919 | ONNX 79.9 ms/img
+[finetune] train 3094 | val 697 | test 630 images (567 test photographs)
+  [efficientnet_b0] already trained - reusing finetune_efficientnet_b0_report.json
+  [efficientnet_b2] already trained - reusing finetune_efficientnet_b2_report.json
+  [mobilenet_v3_large] already trained - reusing finetune_mobilenet_v3_large_report.json
+  [resnet50] already trained - reusing finetune_resnet50_report.json
+  [mobilenet_v3_large refit] epoch  1/17 loss 1.120 | 22.3s
+  [mobilenet_v3_large refit] epoch  2/17 loss 0.737 | 17.8s
+  [mobilenet_v3_large refit] epoch  3/17 loss 0.668 | 17.9s
+  [mobilenet_v3_large refit] epoch  4/17 loss 0.624 | 17.9s
+  [mobilenet_v3_large refit] epoch  5/17 loss 0.612 | 18.6s
+  [mobilenet_v3_large refit] epoch  6/17 loss 0.592 | 19.1s
+  [mobilenet_v3_large refit] epoch  7/17 loss 0.577 | 17.7s
+  [mobilenet_v3_large refit] epoch  8/17 loss 0.561 | 17.7s
+  [mobilenet_v3_large refit] epoch  9/17 loss 0.561 | 18.1s
+  [mobilenet_v3_large refit] epoch 10/17 loss 0.553 | 19.5s
+  [mobilenet_v3_large refit] epoch 11/17 loss 0.541 | 18.5s
+  [mobilenet_v3_large refit] epoch 12/17 loss 0.542 | 17.9s
+  [mobilenet_v3_large refit] epoch 13/17 loss 0.530 | 17.9s
+  [mobilenet_v3_large refit] epoch 14/17 loss 0.526 | 17.5s
+  [mobilenet_v3_large refit] epoch 15/17 loss 0.525 | 18.9s
+  [mobilenet_v3_large refit] epoch 16/17 loss 0.520 | 18.3s
+  [mobilenet_v3_large refit] epoch 17/17 loss 0.516 | 17.6s
+/content/SIH_PROJECT/training/train_finetune_cnn.py:239: DeprecationWarning: You are using the legacy TorchScript-based ONNX export. Starting in PyTorch 2.9, the new torch.export-based ONNX exporter has become the default. Learn more about the new export logic: https://docs.pytorch.org/docs/stable/onnx_export.html. For exporting control flow: https://pytorch.org/tutorials/beginner/onnx/export_control_flow_model_to_onnx_tutorial.html
+  torch.onnx.export(model, dummy, path, dynamo=False, **kw)
+  [mobilenet_v3_large_refit] VAL acc None F1 None | TEST acc 0.933 F1 0.828 | India 0.9224 | ONNX 7.2 ms/img
+{
+ "selection_rule": "architecture with the highest validation score = mean(accuracy, macro-F1), among those whose ONNX file is <= 95 MB; test scored once per arch and never used to choose; the served model is the chosen arch refit on train+val for its best epoch count (declared before training)",
+ "chosen_arch": "mobilenet_v3_large",
+ "served": "mobilenet_v3_large_refit",
+ "served_test": {
+  "accuracy": 0.9333,
+  "macro_f1": 0.8283,
+  "images": 630
+ },
+ "served_indian_roads": {
+  "images": 1200,
+  "accuracy": 0.9225,
+  "macro_f1": 0.9224,
+  "per_class_f1": {
+   "normal": 0.985,
+   "crack": 0.8811,
+   "pothole": 0.901
+  }
+ },
+ "served_onnx": {
+  "onnx_max_abs_logit_diff": 5e-06,
+  "onnx_argmax_agreement": 1.0,
+  "onnx_cpu_ms_per_image": 7.2,
+  "onnx_size_mb": 16.8,
+  "cpu_threads": 2
+ },
+ "archs": {
+  "efficientnet_b0": {
+   "val_score": 0.8903,
+   "val": {
+    "accuracy": 0.9254,
+    "macro_f1": 0.8553
+   },
+   "test": {
+    "accuracy": 0.9127,
+    "macro_f1": 0.8316
+   },
+   "indian_roads": {
+    "images": 1200,
+    "accuracy": 0.9092,
+    "macro_f1": 0.9095,
+    "per_class_f1": {
+     "normal": 0.9752,
+     "crack": 0.8652,
+     "pothole": 0.8881
+    }
+   },
+   "onnx_cpu_ms_per_image": 16.5,
+   "onnx_size_mb": 16.1,
+   "best_epoch": 8
+  },
+  "efficientnet_b2": {
+   "val_score": 0.8841,
+   "val": {
+    "accuracy": 0.9283,
+    "macro_f1": 0.8399
+   },
+   "test": {
+    "accuracy": 0.9143,
+    "macro_f1": 0.8282
+   },
+   "indian_roads": {
+    "images": 1200,
+    "accuracy": 0.9167,
+    "macro_f1": 0.9164,
+    "per_class_f1": {
+     "normal": 0.9813,
+     "crack": 0.8737,
+     "pothole": 0.8943
+    }
+   },
+   "onnx_cpu_ms_per_image": 37.4,
+   "onnx_size_mb": 30.8,
+   "best_epoch": 5
+  },
+  "mobilenet_v3_large": {
+   "val_score": 0.8995,
+   "val": {
+    "accuracy": 0.9182,
+    "macro_f1": 0.8807
+   },
+   "test": {
+    "accuracy": 0.9143,
+    "macro_f1": 0.8397
+   },
+   "indian_roads": {
+    "images": 1200,
+    "accuracy": 0.9075,
+    "macro_f1": 0.907,
+    "per_class_f1": {
+     "normal": 0.9823,
+     "crack": 0.8533,
+     "pothole": 0.8853
+    }
+   },
+   "onnx_cpu_ms_per_image": 11.7,
+   "onnx_size_mb": 16.8,
+   "best_epoch": 17
+  },
+  "resnet50": {
+   "val_score": 0.8822,
+   "val": {
+    "accuracy": 0.9053,
+    "macro_f1": 0.8591
+   },
+   "test": {
+    "accuracy": 0.8952,
+    "macro_f1": 0.8574
+   },
+   "indian_roads": {
+    "images": 1200,
+    "accuracy": 0.9192,
+    "macro_f1": 0.919,
+    "per_class_f1": {
+     "normal": 0.9789,
+     "crack": 0.8787,
+     "pothole": 0.8994
+    }
+   },
+   "onnx_cpu_ms_per_image": 79.9,
+   "onnx_size_mb": 94.0,
+   "best_epoch": 8
+  }
+ },
+ "frozen_head_same_split": {
+  "model": "CNNHead (mobilenetv2 ImageNet embeddings -> ensemble_soft)",
+  "test_accuracy": 0.8794,
+  "test_macro_f1": 0.7447,
+  "test_images": 630
+ },
+ "generated_unix": 1791036810
+}

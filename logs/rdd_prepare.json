@@ -1,0 +1,32 @@
+{
+  "source": "/content/SIH_PROJECT/datasets/_downloads/rdd2022/India/train",
+  "photos_with_xml": 7706,
+  "skipped_other_classes_only": 562,
+  "splits": {
+    "test": {
+      "D00": 209,
+      "D10": 9,
+      "D20": 322,
+      "D40": 518,
+      "empty_photos": 591,
+      "photos": 1072
+    },
+    "valid": {
+      "D00": 242,
+      "D10": 14,
+      "D20": 298,
+      "D40": 507,
+      "empty_photos": 586,
+      "photos": 1072
+    },
+    "train": {
+      "D00": 1104,
+      "D10": 45,
+      "D20": 1401,
+      "D40": 2162,
+      "empty_photos": 2744,
+      "photos": 5000
+    }
+  },
+  "split_rule": "by photograph, seed 42, 70%/15%/15%"
+}
