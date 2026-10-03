@@ -64,7 +64,7 @@ python -m training.train_cnn_head --backbone mobilenetv2 --compare 2>&1 | grep -
 python -m scripts.eval_indian_roads --tag frozen_head
 
 step "6. end-to-end fine-tuning (GPU)"
-python -m training.train_finetune_cnn --archs "${ARCHS:-efficientnet_b0,efficientnet_b2,resnet50,convnext_tiny}" \
+python -m training.train_finetune_cnn --archs "${ARCHS:-efficientnet_b0,efficientnet_b2,mobilenet_v3_large,resnet50}" \
     --epochs "${EPOCHS:-40}" --batch 48 --workers 2 2>&1 | grep -v "^  cached" | tee logs/finetune.txt | grep -E "VAL|early|chosen|served|epoch +(1|10|20|30|40)/"
 
 step "7. choose the served image classifier (rule fixed in advance)"
@@ -83,9 +83,12 @@ python -m scripts.build_claims 2>&1 | tail -5
 step "11. test suite AFTER retraining"
 python -m unittest discover -s tests -t . > logs/tests_after.txt 2>&1; tail -4 logs/tests_after.txt
 
-step "12. package outputs"
-find checkpoints logs datasets/_eval_rdd2022_india/manifest.json -type f -newer logs/.start_marker \
-    ! -name "*.db*" ! -path "*/detectors/*" > logs/changed_files.txt
+step "12. report rebuilt from the new checkpoints (tracked changes)"
+python scripts/report_audit/build_report.py --tests-log logs/tests_after.txt
+
+step "13. package outputs"
+find checkpoints logs datasets/_eval_rdd2022_india/manifest.json CSET485_ROAD_SHIELD_Milestone2_Report_Audited_TrackedChanges.docx \
+    -type f -newer logs/.start_marker ! -name "*.db*" ! -path "*/detectors/*" > logs/changed_files.txt
 zip -q -r road_shield_colab_outputs.zip -@ < logs/changed_files.txt
 ls -la road_shield_colab_outputs.zip; wc -l logs/changed_files.txt
 echo "ALL_STEPS_DONE"
