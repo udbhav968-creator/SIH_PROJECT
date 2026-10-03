@@ -72,7 +72,7 @@ STATIC_TYPES = {
 PAGE_ROUTES = {
     "/": "index.html", "/inspect": "inspect.html", "/video": "video.html",
     "/corridor": "corridor.html", "/works": "works.html", "/models": "models.html",
-    "/data": "data.html", "/system": "system.html",
+    "/data": "data.html", "/system": "system.html", "/architecture": "architecture.html",
 }
 
 # Endpoints that genuinely need the model stack. Listed explicitly so the
@@ -88,6 +88,7 @@ NEEDS_ENGINE = {
     "/api/v1/telemetry/imu": "run the IMU classifier",
     "/api/v1/fusion/gate": "run the Bayesian fusion gate",
     "/api/v1/training/launch": "train models",
+    "/api/v1/privacy/redact": "blur people and number plates (needs the detector)",
 }
 
 
