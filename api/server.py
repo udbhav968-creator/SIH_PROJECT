@@ -178,7 +178,34 @@ PAGE_ROUTES = {
     "/system": "system.html",
     "/video": "video.html",
     "/architecture": "architecture.html",
+    "/design": "design.html",
+    "/api-docs": "api-docs.html",
 }
+
+# Write endpoints that change shared state. When ROAD_SHIELD_API_KEY is set they
+# require it (X-API-Key header, or Authorization: Bearer <key>); when it is not
+# set - the default, and the demo - behaviour is unchanged. Analysis endpoints
+# stay open: they read an image and return a result, and change nothing stored.
+PROTECTED_POST = {
+    "/api/v1/fleet/report-defect",
+    "/api/v1/dispatch/work-order",
+    "/api/v1/training/launch",
+    "/api/v1/training/active-feedback",
+    "/api/v1/incidents/alpr",
+    "/api/v1/maps/config",
+}
+
+
+def _api_key_ok(headers):
+    key = os.environ.get("ROAD_SHIELD_API_KEY", "")
+    if not key:
+        return True
+    import hmac
+    given = headers.get("X-API-Key") or ""
+    auth = headers.get("Authorization") or ""
+    if auth.lower().startswith("bearer "):
+        given = given or auth[7:].strip()
+    return bool(given) and hmac.compare_digest(given.encode(), key.encode())
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
     ".js": "application/javascript; charset=utf-8", ".json": "application/json",
@@ -250,7 +277,28 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
     def _send_cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
+        self.send_header("Access-Control-Expose-Headers", "X-Request-ID")
+        if getattr(self, "_rid", None):
+            self.send_header("X-Request-ID", self._rid)
+
+    def send_response(self, code, message=None):
+        BaseHTTPRequestHandler.send_response(self, code, message)
+        self._status = code
+
+    def log_request(self, code="-", size="-"):
+        # Structured access log, one JSON line per request, when
+        # ROAD_SHIELD_ACCESS_LOG=1. Off by default so a demo console stays quiet.
+        if os.environ.get("ROAD_SHIELD_ACCESS_LOG") != "1":
+            return
+        try:
+            print(json.dumps({"ts": round(time.time(), 3), "rid": getattr(self, "_rid", None),
+                              "method": self.command, "path": self.path.split("?")[0],
+                              "status": int(code) if str(code).isdigit() else code,
+                              "ms": round((time.time() - getattr(self, "_t_req", time.time())) * 1000, 1)}),
+                  flush=True)
+        except Exception:
+            pass
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -277,6 +325,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Cache-Control", "no-cache")
+        if getattr(self, "_rid", None):
+            self.send_header("X-Request-ID", self._rid)
         self.end_headers()
         self.wfile.write(content)
         return True
@@ -315,6 +365,11 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
 
     def handle_one_request(self):
         """Swallow client-side disconnects; let everything else behave normally."""
+        import uuid
+        # One id per request, returned as X-Request-ID and written to the access
+        # log, so a client report can be matched to the server line that served it.
+        self._rid = uuid.uuid4().hex[:16]
+        self._t_req = time.time()
         try:
             return BaseHTTPRequestHandler.handle_one_request(self)
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
@@ -549,6 +604,16 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if path == "/api/v1/models/served":
+            from models.served_report import model_registry
+            self._send_json(200, model_registry(CKPT_DIR))
+            return
+
+        if path == "/api/v1/openapi.json":
+            from api.openapi import spec
+            self._send_json(200, spec())
+            return
+
         if path == "/api/v1/claims":
             # The claims registry, served live so every statement this project
             # makes can be checked against the engine that is actually running -
@@ -605,12 +670,20 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     rp = os.path.splitext(seg.model_path)[0] + "_report.json"
                     try:
                         with open(rp, "r", encoding="utf-8") as fh:
-                            out["measured_report"] = json.load(fh).get("iou")
+                            _rep = json.load(fh)
+                        out["measured_report"] = _rep.get("iou")
+                        out["trained_on"] = _rep.get("trained_on")
+                        out["thresholds"] = _rep.get("thresholds")
                     except Exception:
                         pass
                 self._send_json(200, out)
                 return
-            self._send_json(200, {"available": True, **seg.describe()})
+            from models.unet_segmenter import read_selection
+            sel = read_selection(CKPT_DIR) or {}
+            self._send_json(200, {"available": True, **seg.describe(),
+                                  "model": seg.describe().get("model") or
+                                  "HistGradientBoosting pixel classifier on 11 features",
+                                  "selection": {k: sel.get(k) for k in ("served", "rule", "why")} if sel else None})
             return
 
         if path == "/api/v1/datasets/benchmarks":
@@ -778,6 +851,11 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         body = self._read_json_body()
         t0 = time.time()
+
+        if path in PROTECTED_POST and not _api_key_ok(self.headers):
+            self._send_json(401, {"error": "this endpoint requires an API key (X-API-Key header or "
+                                           "Authorization: Bearer <key>)"})
+            return
 
         # ---------------- Google Maps (POST) ----------------
         if path == "/api/v1/maps/config":

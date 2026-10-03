@@ -57,6 +57,9 @@
           <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:12.5px">
             <input type="checkbox" id="showScene" checked style="width:auto"> people &amp; vehicles
           </label>
+          <label id="dmgToggle" style="display:none;gap:6px;align-items:center;margin:0;font-size:12.5px">
+            <input type="checkbox" id="showDamage" checked style="width:auto"> damage boxes (YOLOv8 · RDD2022)
+          </label>
           <span class="small muted" id="canvasNote"></span>
         </div>
       </div>
@@ -173,6 +176,7 @@ el("redact").addEventListener("click", async () => {
 el("showMask").addEventListener("change", draw);
 el("showBox").addEventListener("change", draw);
 el("showScene").addEventListener("change", draw);
+el("showDamage").addEventListener("change", draw);
 
 function draw() {
   if (!currentImage) return;
@@ -211,6 +215,27 @@ function draw() {
       ctx.fillText(label, x + 5, Math.max(13, y - 5));
     });
   }
+  // Road-damage boxes from the YOLOv8 model trained on RDD2022 India. Solid
+  // thin outline and a "▣" tag, so they read differently from the mask boxes.
+  const dmg = lastResult.road_damage_boxes || [];
+  el("dmgToggle").style.display = (lastResult.road_damage_summary || {}).available ? "flex" : "none";
+  if (el("showDamage").checked && dmg.length) {
+    dmg.forEach(o => {
+      const bn = o.bbox_normalized;
+      if (!bn) return;
+      const x = bn[0] * cv.width, y = bn[1] * cv.height, w = bn[2] * cv.width, h = bn[3] * cv.height;
+      const color = o.colour_hex || "#f0a92b";
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([]);
+      ctx.strokeRect(x, y, w, h);
+      const label = `▣ ${o.class_name} ${(o.confidence * 100).toFixed(0)}%`;
+      ctx.font = "600 11.5px ui-monospace, monospace";
+      const tw = ctx.measureText(label).width + 8;
+      const ly = Math.min(cv.height - 17, y + h + 1);
+      ctx.fillStyle = color; ctx.fillRect(x, ly, tw, 17);
+      ctx.fillStyle = "#0a0f17"; ctx.fillText(label, x + 4, ly + 12);
+    });
+  }
+
   // Scene objects from the COCO detector: people, vehicles, traffic control.
   const scene = lastResult.scene_objects || [];
   if (el("showScene").checked && scene.length) {
@@ -412,6 +437,17 @@ function render(d, ms) {
           </tr>`),
         ].join("")}</tbody>
       </table></div>
+    </div>` : ""}
+
+    ${(d.road_damage_summary || {}).available ? `<div class="card" style="margin-top:14px;border-color:rgba(240,169,43,.35)">
+      <div class="label" style="color:var(--warn)">road-damage boxes · yolov8 fine-tuned on rdd2022 india</div>
+      <div class="kv"><span>Boxes found</span><span>${d.road_damage_summary.boxes}</span></div>
+      ${Object.entries(d.road_damage_summary.counts_by_class || {}).map(([k, v]) =>
+        `<div class="kv"><span>${k}</span><span>${v}</span></div>`).join("")}
+      <div class="kv"><span>Held-out mAP@0.5</span><span>${d.road_damage_summary.test_map50 ?? "—"}
+        <span class="badge measured">measured</span></span></div>
+      <p class="small muted" style="margin:8px 0 0">Locates damage in the frame. Area and cost still come
+        from the segmentation mask, because a box around a diagonal crack is mostly sound road.</p>
     </div>` : ""}
 
     <div class="card" style="margin-top:14px">
