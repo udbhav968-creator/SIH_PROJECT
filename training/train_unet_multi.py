@@ -177,6 +177,9 @@ def score_pairs(seg, pairs, limit=None):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--epochs", type=int, default=30)
+    ap.add_argument("--encoder", default="resnet18", choices=["resnet18", "resnet34"])
+    ap.add_argument("--min-crop-scale", type=float, default=0.75,
+                    help="smallest random zoom-in crop as a share of the frame (0.35 teaches close-ups)")
     ap.add_argument("--samples-per-epoch", type=int, default=4000)
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--lr", type=float, default=3e-4)
@@ -243,10 +246,13 @@ def main(argv=None):
     norm = sum(present.values())
     w = np.concatenate([np.full(len(v), present[k] / norm / len(v)) for k, v in parts.items() if len(v)])
     sampler = torch.utils.data.WeightedRandomSampler(w, num_samples=a.samples_per_epoch, replacement=True)
-    loader = torch.utils.data.DataLoader(make_dataset(all_pairs, True), batch_size=a.batch, sampler=sampler,
+    train_set = make_dataset(all_pairs, True)
+    train_set.min_scale = a.min_crop_scale
+    loader = torch.utils.data.DataLoader(train_set, batch_size=a.batch, sampler=sampler,
                                          num_workers=a.workers, drop_last=True, pin_memory=device.type == "cuda")
 
-    model = build_unet(pretrained=not a.smoke).to(device)
+    model = build_unet(pretrained=not a.smoke, encoder=a.encoder).to(device)
+    print(f"  encoder {a.encoder} | random zoom-in crops down to {a.min_crop_scale:.2f} of the frame")
     enc = [p for n, p in model.named_parameters() if n.split(".")[0] in ("stem", "l1", "l2", "l3", "l4")]
     dec = [p for n, p in model.named_parameters() if n.split(".")[0] not in ("stem", "l1", "l2", "l3", "l4")]
     opt = torch.optim.AdamW([{"params": enc, "lr": a.lr}, {"params": dec, "lr": a.lr * 3}], weight_decay=1e-4)
@@ -395,7 +401,8 @@ def main(argv=None):
     for src, d in extra.items():
         sources[src] = {k: len(v) for k, v in d.items()}
     meta = {
-        "model": "U-Net, ResNet-18 encoder pretrained on ImageNet, all layers trained on several datasets",
+        "model": f"U-Net, {a.encoder} encoder pretrained on ImageNet, all layers trained on several datasets",
+        "encoder": a.encoder, "min_crop_scale": a.min_crop_scale,
         "input_size": [IN_W, IN_H], "normalisation": "ImageNet mean/std", "tta_flip": True,
         "thresholds": unet.thresholds, "threshold_sources": thr_sources,
         "decision_rule": "per-class threshold tuned for IoU on the calibration photographs of " + ", ".join(thr_sources),

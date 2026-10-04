@@ -11,8 +11,11 @@ POTHOLE_MIX_LINK = ""     # optional: Mendeley link to pothole-mix-v1.0-20220526
 POTHOLE_MIX_DRIVE = ""    # or: path of that zip in Google Drive, e.g. "/content/drive/MyDrive/pothole-mix-v1.0-20220526.zip"
 TRAIN_UNET = True         # multi-dataset U-Net segmenter
 TRAIN_YOLO = True         # YOLOv8 road-damage boxes
-UNET_EPOCHS = 25
-YOLO_EPOCHS = 40
+UNET_EPOCHS = 30
+UNET_ENCODER = "resnet34"   # deeper encoder; "resnet18" is the faster original
+UNET_MIN_CROP = 0.35        # random zoom-in down to 35% of the frame, so close-ups are learned
+UNET_SAMPLES = 5000         # training images drawn per epoch
+YOLO_EPOCHS = 30
 SAVE_TO_DRIVE = False     # True: also copy the results zip to Google Drive (Colab only)
 
 import glob, os, subprocess, sys, time
@@ -95,8 +98,9 @@ if TRAIN_UNET:
     if run("python -m training.train_unet_multi --smoke --workers 0 --out /tmp/unet_multi_smoke",
            keep=["unet-multi", "TEST", "wrote", "Error", "error"]):
         step("1c. U-Net full training")
-        STATUS["unet"] = run(f"python -m training.train_unet_multi --epochs {UNET_EPOCHS}",
-                             keep=["unet-multi", "shares", "epoch", "early", "thresholds", "SELECTION", "TEST",
+        STATUS["unet"] = run(f"python -m training.train_unet_multi --epochs {UNET_EPOCHS} --encoder {UNET_ENCODER} "
+                             f"--min-crop-scale {UNET_MIN_CROP} --samples-per-epoch {UNET_SAMPLES}",
+                             keep=["unet-multi", "encoder", "shares", "epoch", "early", "thresholds", "SELECTION", "TEST",
                                    "exported", "wrote", "Error", "error", "[!]"])
     else:
         STATUS["unet"] = False

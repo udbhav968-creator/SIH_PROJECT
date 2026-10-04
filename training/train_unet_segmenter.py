@@ -91,7 +91,7 @@ def split_like_pixel_classifier(images=2000, seed=42, test_fraction=0.25):
 # ---------------------------------------------------------------------------
 # network
 # ---------------------------------------------------------------------------
-def build_unet(n_classes=3, pretrained=True):
+def build_unet(n_classes=3, pretrained=True, encoder="resnet18"):
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
@@ -106,8 +106,11 @@ def build_unet(n_classes=3, pretrained=True):
     class UNetR18(nn.Module):
         def __init__(self):
             super().__init__()
-            w = torchvision.models.ResNet18_Weights.DEFAULT if pretrained else None
-            r = torchvision.models.resnet18(weights=w)
+            # resnet18 and resnet34 share stage widths (64/128/256/512), so the decoder is unchanged.
+            if encoder == "resnet34":
+                r = torchvision.models.resnet34(weights=torchvision.models.ResNet34_Weights.DEFAULT if pretrained else None)
+            else:
+                r = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT if pretrained else None)
             self.stem = nn.Sequential(r.conv1, r.bn1, r.relu)        # /2, 64
             self.pool = r.maxpool                                    # /4
             self.l1, self.l2, self.l3, self.l4 = r.layer1, r.layer2, r.layer3, r.layer4
@@ -169,7 +172,9 @@ class SegData:
             rng = np.random.default_rng()
             if rng.random() < 0.5:
                 img, lab = img[:, ::-1], lab[:, ::-1]
-            s = rng.uniform(0.75, 1.0)
+            # Random zoom-in. 0.75 by default; train_unet_multi can go down to close-ups (e.g. 0.35),
+            # because a defect photographed up close fills the frame and a full-scene model misses it.
+            s = rng.uniform(getattr(self, "min_scale", 0.75), 1.0)
             if s < 0.999:
                 ch, cw = int(IN_H * s), int(IN_W * s)
                 y0 = int(rng.integers(0, IN_H - ch + 1))
