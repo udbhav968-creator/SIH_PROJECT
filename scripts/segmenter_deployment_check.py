@@ -111,6 +111,10 @@ def main(argv=None):
         sel["served"] = "unet" if passed else "pixel_classifier"
         sel["why"] = sel["why_iou"] + ("; confirmed by the end-to-end check: " if passed
                                        else "; NOT served after the end-to-end check: ") + why
+    else:
+        # The U-Net already lost the IoU selection; the check is recorded, it does not overturn the rule.
+        sel["served"] = "pixel_classifier"
+        sel["why"] = sel["why_iou"] + "; end-to-end check recorded for information (it cannot overturn the IoU rule): " + why
     with open(SEL, "w", encoding="utf-8") as fh:
         json.dump(sel, fh, indent=2, default=float)
     print(f"\n  {'PASSED' if passed else 'FAILED'}: {why}")

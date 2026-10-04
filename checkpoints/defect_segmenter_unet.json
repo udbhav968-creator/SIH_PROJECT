@@ -1,5 +1,5 @@
 {
-  "model": "U-Net, ResNet-18 encoder pretrained on ImageNet, all layers trained",
+  "model": "U-Net, ResNet-18 encoder pretrained on ImageNet, all layers trained on several datasets",
   "input_size": [
     512,
     320
@@ -7,272 +7,280 @@
   "normalisation": "ImageNet mean/std",
   "tta_flip": true,
   "thresholds": {
-    "crack": 0.6,
-    "pothole": 0.9
+    "crack": 0.85,
+    "pothole": 0.8
   },
-  "decision_rule": "per-class probability threshold tuned for IoU on the calibration split",
-  "loss": "cross-entropy (sqrt-inverse class weights, ignore outside lane) + 0.5 x soft Dice",
-  "optimizer": "AdamW, warmup + cosine, AMP",
-  "epochs_run": 35,
-  "best_val_mean_iou_at_0.5": 0.5185,
-  "history": [
-    {
-      "epoch": 1,
-      "loss": 1.4069,
-      "val_iou_crack": 0.2627,
-      "val_iou_pothole": 0.1554
-    },
-    {
-      "epoch": 2,
-      "loss": 1.0441,
-      "val_iou_crack": 0.3124,
-      "val_iou_pothole": 0.399
-    },
-    {
-      "epoch": 3,
-      "loss": 0.9345,
-      "val_iou_crack": 0.3077,
-      "val_iou_pothole": 0.3821
-    },
-    {
-      "epoch": 4,
-      "loss": 0.8937,
-      "val_iou_crack": 0.3244,
-      "val_iou_pothole": 0.4464
-    },
-    {
-      "epoch": 5,
-      "loss": 0.8362,
-      "val_iou_crack": 0.2607,
-      "val_iou_pothole": 0.3969
-    },
-    {
-      "epoch": 6,
-      "loss": 0.8267,
-      "val_iou_crack": 0.337,
-      "val_iou_pothole": 0.4131
-    },
-    {
-      "epoch": 7,
-      "loss": 0.8132,
-      "val_iou_crack": 0.3268,
-      "val_iou_pothole": 0.4536
-    },
-    {
-      "epoch": 8,
-      "loss": 0.787,
-      "val_iou_crack": 0.3029,
-      "val_iou_pothole": 0.499
-    },
-    {
-      "epoch": 9,
-      "loss": 0.748,
-      "val_iou_crack": 0.3451,
-      "val_iou_pothole": 0.3752
-    },
-    {
-      "epoch": 10,
-      "loss": 0.7863,
-      "val_iou_crack": 0.3427,
-      "val_iou_pothole": 0.4594
-    },
-    {
-      "epoch": 11,
-      "loss": 0.7167,
-      "val_iou_crack": 0.3598,
-      "val_iou_pothole": 0.5547
-    },
-    {
-      "epoch": 12,
-      "loss": 0.7492,
-      "val_iou_crack": 0.3143,
-      "val_iou_pothole": 0.5748
-    },
-    {
-      "epoch": 13,
-      "loss": 0.7275,
-      "val_iou_crack": 0.3511,
-      "val_iou_pothole": 0.5658
-    },
-    {
-      "epoch": 14,
-      "loss": 0.7213,
-      "val_iou_crack": 0.3257,
-      "val_iou_pothole": 0.5652
-    },
-    {
-      "epoch": 15,
-      "loss": 0.7037,
-      "val_iou_crack": 0.3457,
-      "val_iou_pothole": 0.5679
-    },
-    {
-      "epoch": 16,
-      "loss": 0.6537,
-      "val_iou_crack": 0.343,
-      "val_iou_pothole": 0.5685
-    },
-    {
-      "epoch": 17,
-      "loss": 0.6556,
-      "val_iou_crack": 0.3594,
-      "val_iou_pothole": 0.5187
-    },
-    {
-      "epoch": 18,
-      "loss": 0.636,
-      "val_iou_crack": 0.325,
-      "val_iou_pothole": 0.5498
-    },
-    {
-      "epoch": 19,
-      "loss": 0.6132,
-      "val_iou_crack": 0.3547,
-      "val_iou_pothole": 0.5899
-    },
-    {
-      "epoch": 20,
-      "loss": 0.6408,
-      "val_iou_crack": 0.3658,
-      "val_iou_pothole": 0.636
-    },
-    {
-      "epoch": 21,
-      "loss": 0.6048,
-      "val_iou_crack": 0.3231,
-      "val_iou_pothole": 0.6035
-    },
-    {
-      "epoch": 22,
-      "loss": 0.5959,
-      "val_iou_crack": 0.3513,
-      "val_iou_pothole": 0.6831
-    },
-    {
-      "epoch": 23,
-      "loss": 0.5985,
-      "val_iou_crack": 0.3778,
-      "val_iou_pothole": 0.6458
-    },
-    {
-      "epoch": 24,
-      "loss": 0.5902,
-      "val_iou_crack": 0.3171,
-      "val_iou_pothole": 0.571
-    },
-    {
-      "epoch": 25,
-      "loss": 0.5874,
-      "val_iou_crack": 0.372,
-      "val_iou_pothole": 0.6482
-    },
-    {
-      "epoch": 26,
-      "loss": 0.5441,
-      "val_iou_crack": 0.3609,
-      "val_iou_pothole": 0.6493
-    },
-    {
-      "epoch": 27,
-      "loss": 0.5534,
-      "val_iou_crack": 0.3709,
-      "val_iou_pothole": 0.6463
-    },
-    {
-      "epoch": 28,
-      "loss": 0.5381,
-      "val_iou_crack": 0.3715,
-      "val_iou_pothole": 0.6522
-    },
-    {
-      "epoch": 29,
-      "loss": 0.5352,
-      "val_iou_crack": 0.3652,
-      "val_iou_pothole": 0.6461
-    },
-    {
-      "epoch": 30,
-      "loss": 0.5193,
-      "val_iou_crack": 0.3676,
-      "val_iou_pothole": 0.6604
-    },
-    {
-      "epoch": 31,
-      "loss": 0.529,
-      "val_iou_crack": 0.3721,
-      "val_iou_pothole": 0.6642
-    },
-    {
-      "epoch": 32,
-      "loss": 0.5273,
-      "val_iou_crack": 0.3653,
-      "val_iou_pothole": 0.6595
-    },
-    {
-      "epoch": 33,
-      "loss": 0.5063,
-      "val_iou_crack": 0.3659,
-      "val_iou_pothole": 0.6581
-    },
-    {
-      "epoch": 34,
-      "loss": 0.505,
-      "val_iou_crack": 0.3695,
-      "val_iou_pothole": 0.661
-    },
-    {
-      "epoch": 35,
-      "loss": 0.5139,
-      "val_iou_crack": 0.3737,
-      "val_iou_pothole": 0.6633
-    }
-  ],
+  "decision_rule": "per-class threshold tuned for IoU on the combined calibration split",
   "trained_on": {
-    "train_photographs": 1260,
-    "clean_train_photographs": 422,
-    "calibration_photographs": 240,
+    "sources": {
+      "dnit": {
+        "train": 1260,
+        "clean_train": 422,
+        "test": 500
+      },
+      "crackseg9k": {
+        "train": 3968,
+        "cal": 502,
+        "test": 794
+      },
+      "kaggle_pothole": {
+        "train": 411,
+        "cal": 48,
+        "test": 95
+      }
+    },
+    "epoch_shares": {
+      "dnit": 0.35,
+      "dnit_clean": 0.1,
+      "crackseg9k": 0.25,
+      "kaggle_pothole": 0.1
+    },
     "test_photographs": 500,
-    "clean_test_photographs": 146,
-    "split": "identical to training/train_segmenter.py (seed 42, by photograph; clean photographs by source scene)",
-    "source": "DNIT Cracks and Potholes in Road Images - hand-drawn polygons"
+    "split": "DNIT identical to training/train_segmenter.py; extra sources 75/10/15 by image id",
+    "leak_guard": "extra images near-duplicate to any measurement photograph were dropped (scripts/fetch_seg_datasets.py)"
   },
   "iou": {
     "crack": {
-      "iou": 0.294,
-      "dice": 0.4544,
-      "pixel_precision": 0.526,
-      "pixel_recall": 0.4,
+      "iou": 0.1984,
+      "dice": 0.3311,
+      "pixel_precision": 0.6143,
+      "pixel_recall": 0.2267,
       "true_pixels": 610039,
-      "predicted_pixels": 463889
+      "predicted_pixels": 225119
     },
     "pothole": {
-      "iou": 0.6411,
-      "dice": 0.7813,
-      "pixel_precision": 0.883,
-      "pixel_recall": 0.7006,
+      "iou": 0.6543,
+      "dice": 0.791,
+      "pixel_precision": 0.8501,
+      "pixel_recall": 0.7396,
       "true_pixels": 147007,
-      "predicted_pixels": 116630
+      "predicted_pixels": 127908
+    }
+  },
+  "iou_per_source": {
+    "dnit": {
+      "crack": {
+        "iou": 0.1984,
+        "dice": 0.3311,
+        "pixel_precision": 0.6143,
+        "pixel_recall": 0.2267,
+        "true_pixels": 610039,
+        "predicted_pixels": 225119
+      },
+      "pothole": {
+        "iou": 0.6543,
+        "dice": 0.791,
+        "pixel_precision": 0.8501,
+        "pixel_recall": 0.7396,
+        "true_pixels": 147007,
+        "predicted_pixels": 127908
+      }
+    },
+    "crackseg9k": {
+      "crack": {
+        "iou": 0.4061,
+        "dice": 0.5776,
+        "pixel_precision": 0.7596,
+        "pixel_recall": 0.466,
+        "true_pixels": 3038212,
+        "predicted_pixels": 1863902
+      },
+      "pothole": {
+        "iou": 0.0,
+        "dice": 0.0,
+        "pixel_precision": 0.0,
+        "pixel_recall": null,
+        "true_pixels": 0,
+        "predicted_pixels": 5837
+      }
+    },
+    "kaggle_pothole": {
+      "crack": {
+        "iou": null,
+        "dice": null,
+        "pixel_precision": null,
+        "pixel_recall": null,
+        "true_pixels": 0,
+        "predicted_pixels": 0
+      },
+      "pothole": {
+        "iou": 0.6786,
+        "dice": 0.8085,
+        "pixel_precision": 0.867,
+        "pixel_recall": 0.7575,
+        "true_pixels": 936399,
+        "predicted_pixels": 818142
+      }
     }
   },
   "false_positives_on_clean_roads": {
     "clean_photographs_scored": 120,
     "min_blob_px": 250,
-    "pixel_rate_crack": 0.00114,
-    "pixel_rate_pothole": 8e-05,
-    "photo_rate_any_blob": 0.0167,
+    "pixel_rate_crack": 0.00077,
+    "pixel_rate_pothole": 0.00051,
+    "photo_rate_any_blob": 0.0083,
     "per_folder": {
       "05_morth_civil_hard_negatives": {
         "photos": 120,
-        "flagged": 2,
-        "rate": 0.017
+        "flagged": 1,
+        "rate": 0.008
       }
     }
   },
-  "onnx_size_mb": 57.6,
-  "onnx_parity_max_abs": 0.9998155236244202,
-  "inference_ms_per_image_gpu": 40.6,
-  "smoke": false,
-  "trained_at_unix": 1791083214,
   "onnx_verified_on_test": true,
-  "inference_ms_per_image_cpu_onnx": 800.0
+  "epochs_run": 25,
+  "history": [
+    {
+      "epoch": 1,
+      "loss": 1.4395,
+      "val_iou_crack": 0.1585,
+      "val_iou_pothole": 0.1015
+    },
+    {
+      "epoch": 2,
+      "loss": 1.1158,
+      "val_iou_crack": 0.1801,
+      "val_iou_pothole": 0.268
+    },
+    {
+      "epoch": 3,
+      "loss": 1.001,
+      "val_iou_crack": 0.269,
+      "val_iou_pothole": 0.4216
+    },
+    {
+      "epoch": 4,
+      "loss": 0.9513,
+      "val_iou_crack": 0.3538,
+      "val_iou_pothole": 0.4093
+    },
+    {
+      "epoch": 5,
+      "loss": 0.9062,
+      "val_iou_crack": 0.3337,
+      "val_iou_pothole": 0.3982
+    },
+    {
+      "epoch": 6,
+      "loss": 0.8735,
+      "val_iou_crack": 0.2973,
+      "val_iou_pothole": 0.3526
+    },
+    {
+      "epoch": 7,
+      "loss": 0.8343,
+      "val_iou_crack": 0.3621,
+      "val_iou_pothole": 0.4736
+    },
+    {
+      "epoch": 8,
+      "loss": 0.844,
+      "val_iou_crack": 0.351,
+      "val_iou_pothole": 0.4336
+    },
+    {
+      "epoch": 9,
+      "loss": 0.7663,
+      "val_iou_crack": 0.3595,
+      "val_iou_pothole": 0.4831
+    },
+    {
+      "epoch": 10,
+      "loss": 0.7079,
+      "val_iou_crack": 0.3813,
+      "val_iou_pothole": 0.5811
+    },
+    {
+      "epoch": 11,
+      "loss": 0.7111,
+      "val_iou_crack": 0.3786,
+      "val_iou_pothole": 0.5845
+    },
+    {
+      "epoch": 12,
+      "loss": 0.6865,
+      "val_iou_crack": 0.373,
+      "val_iou_pothole": 0.588
+    },
+    {
+      "epoch": 13,
+      "loss": 0.6753,
+      "val_iou_crack": 0.3826,
+      "val_iou_pothole": 0.5595
+    },
+    {
+      "epoch": 14,
+      "loss": 0.6409,
+      "val_iou_crack": 0.4096,
+      "val_iou_pothole": 0.6605
+    },
+    {
+      "epoch": 15,
+      "loss": 0.5936,
+      "val_iou_crack": 0.4122,
+      "val_iou_pothole": 0.631
+    },
+    {
+      "epoch": 16,
+      "loss": 0.6014,
+      "val_iou_crack": 0.421,
+      "val_iou_pothole": 0.6748
+    },
+    {
+      "epoch": 17,
+      "loss": 0.5794,
+      "val_iou_crack": 0.4071,
+      "val_iou_pothole": 0.6403
+    },
+    {
+      "epoch": 18,
+      "loss": 0.5713,
+      "val_iou_crack": 0.3972,
+      "val_iou_pothole": 0.6582
+    },
+    {
+      "epoch": 19,
+      "loss": 0.5538,
+      "val_iou_crack": 0.4139,
+      "val_iou_pothole": 0.6669
+    },
+    {
+      "epoch": 20,
+      "loss": 0.5482,
+      "val_iou_crack": 0.403,
+      "val_iou_pothole": 0.6632
+    },
+    {
+      "epoch": 21,
+      "loss": 0.5465,
+      "val_iou_crack": 0.4244,
+      "val_iou_pothole": 0.6837
+    },
+    {
+      "epoch": 22,
+      "loss": 0.5189,
+      "val_iou_crack": 0.422,
+      "val_iou_pothole": 0.6819
+    },
+    {
+      "epoch": 23,
+      "loss": 0.5145,
+      "val_iou_crack": 0.4196,
+      "val_iou_pothole": 0.6869
+    },
+    {
+      "epoch": 24,
+      "loss": 0.5205,
+      "val_iou_crack": 0.424,
+      "val_iou_pothole": 0.692
+    },
+    {
+      "epoch": 25,
+      "loss": 0.5221,
+      "val_iou_crack": 0.4378,
+      "val_iou_pothole": 0.6932
+    }
+  ],
+  "smoke": false,
+  "trained_at_unix": 1791094536
 }

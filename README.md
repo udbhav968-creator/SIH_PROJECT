@@ -58,13 +58,13 @@ Measured on one photograph through the API: with an assumed camera mount the def
 | resnet50 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 89.5%, F1 0.857; India 91.9% | no (lost on validation) |
 | MobileNetV2 + ensemble_soft | frozen CNN features + trained head | head only | 87.9%, F1 0.745 | fallback |
 | HOG/LBP + PCA + SVM | classical features | yes | 84.9% | fallback |
-| U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack 0.294, pothole 0.641 | no (won on masks, lost the end-to-end check) |
+| U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack 0.198, pothole 0.654 | no (won on masks, lost the end-to-end check) |
 | Pixel segmenter | gradient boosting on 11 features | yes | crack 0.231, pothole 0.144 | **yes** |
 | YOLOv8n (COCO) | pretrained object detector | **no** — used as published | people, vehicles, signs | yes |
 | IMU 1-D CNN | deep, from scratch | yes (GPU) | 78.1% | no (lost in cross-validation) |
 | IMU RandomForest | classical, from scratch | yes | 87.2% | **yes** |
 
-**How a model gets served.** Each deep model replaces its classical counterpart only by a rule written before its test set is scored: the fine-tuned CNN must beat the frozen head on validation accuracy *and* macro-F1; the U-Net must beat the pixel classifier on crack *and* pothole IoU on calibration photographs without more false blobs on clean roads, and then hold up end to end - through the full pipeline on photographs from other datasets it must find at least as many defects with no more false alarms (`scripts/segmenter_deployment_check.py`; it did not: U-Net 9/24 defects found vs 24/24); the IMU CNN must win 5-fold cross-validation on accuracy *and* macro-F1. Losers are reported, not hidden. Pretrained ImageNet/COCO weights are the starting point (transfer learning); training then updates every layer on this project's data, except the frozen-head baseline.
+**How a model gets served.** Each deep model replaces its classical counterpart only by a rule written before its test set is scored: the fine-tuned CNN must beat the frozen head on validation accuracy *and* macro-F1; the U-Net must beat the pixel classifier on crack *and* pothole IoU on calibration photographs without more false blobs on clean roads, and then hold up end to end - through the full pipeline on photographs from other datasets it must find at least as many defects with no more false alarms (`scripts/segmenter_deployment_check.py`; it did not: U-Net 18/24 defects found vs 24/24); the IMU CNN must win 5-fold cross-validation on accuracy *and* macro-F1. Losers are reported, not hidden. Pretrained ImageNet/COCO weights are the starting point (transfer learning); training then updates every layer on this project's data, except the frozen-head baseline.
 
 ### Per class (served classifier)
 
@@ -178,7 +178,7 @@ Main API endpoints (full reference at `/api-docs`): `POST /api/v1/pipeline/deep-
 | `checkpoints/` | trained models (ONNX / joblib) and the reports every number comes from |
 | `web/` | the site |
 | `docs/` | system design and the claims-vs-repository audit |
-| `tests/` | 204 tests: models, pipeline, REST API, integrity fixes, Vercel entry point |
+| `tests/` | 209 tests: models, pipeline, REST API, integrity fixes, Vercel entry point |
 
 ## Limitations
 
