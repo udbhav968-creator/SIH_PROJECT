@@ -58,7 +58,7 @@ Measured on one photograph through the API: with an assumed camera mount the def
 | resnet50 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 89.5%, F1 0.857; India 91.9% | no (lost on validation) |
 | MobileNetV2 + ensemble_soft | frozen CNN features + trained head | head only | 87.9%, F1 0.745 | fallback |
 | HOG/LBP + PCA + SVM | classical features | yes | 84.9% | fallback |
-| U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack 0.198, pothole 0.654 | no (lost the IoU rule on DNIT calibration cracks; 18/24 end to end) |
+| U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack 0.271, pothole 0.632 | no (won on masks, lost the end-to-end check; 18/24 end to end) |
 | Pixel segmenter | gradient boosting on 11 features | yes | crack 0.231, pothole 0.144 | **yes** |
 | YOLOv8n (COCO) | pretrained object detector | **no** — used as published | people, vehicles, signs | yes |
 | IMU 1-D CNN | deep, from scratch | yes (GPU) | 78.1% | no (lost in cross-validation) |
@@ -98,7 +98,7 @@ Normal road, crack and pothole carry almost all test images. The four rare class
 - **Near-duplicate rejection**: every image is perceptually hashed; within 8 bits of an existing image is a re-upload (threshold measured over 60 photographs, not guessed).
 - **Label-conflict audit**: 20 photographs were filed under three contradictory labels at once — the bug that held accuracy at 36.6%.
 - **Domain policy**: data that is not a road scene is excluded from road-scene training and measurement, and the exclusion travels with every number it changes.
-- **Claims registry**: `checkpoints/claims.json` lists 19 subsystems with their evidence files and 16 earlier claims that were withdrawn or corrected; the site's Architecture page shows both.
+- **Claims registry**: `checkpoints/claims.json` lists 19 subsystems with their evidence files and 17 earlier claims that were withdrawn or corrected; the site's Architecture page shows both.
 - **Nothing invented at runtime**: no default GPS, no default PCI, no confidence where there is no probability; missing inputs produce a 400 or an explicit `unavailable`.
 
 ## System design and platform

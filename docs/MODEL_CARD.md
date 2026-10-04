@@ -63,7 +63,7 @@ Generated 2026-10-04 from `checkpoints/claims.json` by `scripts/build_model_card
 
 **Limits - do not rely on it for this.** IoU of 0.2314 (crack) and 0.1437 (pothole) is a working model, not a solved problem. On held-out clean roads the segmenter alone draws a false blob on 23.3% of 120 photographs. The CNN semantic gate in front of it reduced clean roads with a false blob from 8/50 to 2/50 and raised pothole IoU from 0.1024 to 0.2706 (checkpoints/semantic_gate_report.json, measured with the frozen-embedding classifier). Water-filled potholes are still under-detected.
 
-**Alternatives tried.** A U-Net (ResNet-18 encoder) was trained on DNIT plus public outline datasets (crackseg9k, kaggle_pothole) and did NOT replace this model: calibration IoU crack 0.184 vs 0.214, pothole 0.647 vs 0.119; clean false-blob rate 0.0 vs 0.1807; end-to-end check recorded for information (it cannot overturn the IoU rule): end to end, U-Net found 18/24 defects with 4/36 false positives; the pixel classifier found 24/24 with 3/36 Held-out test (same 500 photographs): U-Net crack IoU 0.1984, pothole IoU 0.6543; pixel classifier crack 0.2314, pothole 0.1437.
+**Alternatives tried.** A U-Net (ResNet-18 encoder) was trained on DNIT plus public outline datasets (crackseg9k, kaggle_pothole, pothole_mix) and did NOT replace this model: calibration IoU crack 0.255 vs 0.214, pothole 0.640 vs 0.119; clean false-blob rate 0.0241 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 18/24 defects with 3/36 false positives; the pixel classifier found 24/24 with 3/36 Held-out test (same 500 photographs): U-Net crack IoU 0.2712, pothole IoU 0.6317; pixel classifier crack 0.2314, pothole 0.1437.
 
 **Evidence.** `checkpoints/defect_segmenter_report.json, checkpoints/segmenter_selection.json` · reproduce: `python -m training.train_segmenter --images 2000`
 
@@ -172,7 +172,7 @@ Every deep model replaces its simpler counterpart only by a rule written before 
 - **Fairness is geographic.** Roads without bus routes are not inspected, and a model trained in one country degrades in another (33% on Indian roads before Indian data was added). Coverage and per-city accuracy must be reported before any allocation of repair budgets relies on the system.
 - **Money.** Costs are ranges from an estimated depth. A work order is a recommendation for a human authority, sealed so it cannot be altered after issue.
 
-## Corrections on record (16)
+## Corrections on record (17)
 
 Claims this project made and later withdrew or corrected, kept visible on the Architecture page:
 
@@ -192,3 +192,4 @@ Claims this project made and later withdrew or corrected, kept visible on the Ar
 - **CORRECTED** - IMU classes include expansion joints and rumble strips
 - **WITHDRAWN** - Laplacian-variance gate (42.5), 4th-order Butterworth filter, CLAHE, 2.45 m camera
 - **REVERSED** - The U-Net segmenter serves (pothole IoU 0.641 vs 0.144)
+- **REVERSED** - The U-Net segmenter serves (pothole IoU 0.632 vs 0.144) - multi-dataset run
