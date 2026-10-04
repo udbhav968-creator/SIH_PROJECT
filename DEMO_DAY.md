@@ -23,8 +23,8 @@ but no defect area or cost can be measured.
 Open `http://127.0.0.1:8000/` and check:
 
 1. The server printed `✓ Vision classifier: fine-tuned CNN (…mobilenet_v3_large_refit.onnx)`
-   **and** `✓ Defect segmenter: U-Net masks`. (If it says `pixel classifier`, the U-Net
-   files are missing from `checkpoints/`; the demo still works with the older segmenter.)
+   **and** `✓ Defect segmenter: pixel classifier masks`. (The pixel classifier serves: it
+   beat the U-Net in the end-to-end check, see `checkpoints/segmenter_selection.json`.)
 2. Overview shows **93.3%** and **92.3%** (Indian roads) — not dashes.
 3. Inspection → "Use a dataset photograph" draws a mask and gives an area and a cost range.
 4. Models, Data, Architecture and Design pages load.
@@ -65,9 +65,7 @@ Click **Blur people & plates**:
 > photographs — and before we added Indian data, the same pipeline scored 33% there. We
 > compared four deep networks and picked the winner on validation data only; the test set
 > was scored once. It runs in 7 milliseconds per image on an ordinary CPU, so it can run
-> on the bus itself. The outline comes from a U-Net that won the same way: it traces
-> potholes more than four times as accurately as our first segmenter, and false alarms on
-> clean roads fell from one in four to one in sixty."
+> on the bus itself."
 
 **2:30 — Honesty and scale.** Architecture page, then Design page.
 > "Every claim has its evidence file, and these are the claims we withdrew when we audited
@@ -105,6 +103,15 @@ near-duplicates rejected (one Kaggle set was 94% a re-upload; 700 of 739 dropped
 Indian test photographs are held out by photograph and never written to a training
 folder. Model choice uses validation data only.
 
+**"Why not a deep segmenter?"** (the best answer you have — use it)
+We trained one: a U-Net with a ResNet-18 encoder. On its own dataset's 500 test photos it
+outlines potholes four times better than the pixel classifier (IoU 0.641 vs 0.144) and
+falsely marks 1.7% of clean roads instead of 23.3%. We served it — then a test failed, so
+we ran both through the whole pipeline on photographs from other datasets. The U-Net found
+9 of 24 defects with 6 false alarms out of 36 clean roads; the pixel classifier found 24 of
+24 with 3. The rule kept the pixel classifier. A better mask on its training data was not a
+better product; the U-Net needs more varied training photos, and that is next.
+
 **"Did anything go wrong?"** (a strong answer — use it)
 Yes, and we fixed it in the open. Our first IMU comparison shuffled 1-second windows into
 cross-validation folds, so neighbouring windows leaked across folds and it picked a CNN.
@@ -124,15 +131,14 @@ billed twice.
 **"How accurate are area and cost?"**
 Area is measured *if* the camera is calibrated: on one photograph the assumed mount gave
 0.007 m² and the calibrated one 0.049 m² — seven times. Each vehicle gets a calibration
-profile. Depth is an interval, so cost is a range. The outline comes from a U-Net
-(ResNet-18 encoder, every layer trained): pothole IoU 0.641 and crack IoU 0.294 on 500
-held-out photographs, against 0.144 and 0.231 for the pixel classifier it replaced; it
-falsely marks 1.7% of clean roads instead of 23.3%. Thin cracks are still the weakest
-link, and stated as such.
+profile. Depth is an interval, so cost is a range. The outline comes from the pixel
+classifier: crack IoU 0.231 and pothole IoU 0.144 on 500 held-out photographs. Outlines
+are the weakest link, and stated as such - which is why we trained a U-Net (next answer).
 
 **"How fast is it?"**
-7.2 ms per image for the classifier on a CPU. The U-Net segmenter takes 0.8 s per photo
-on a 2-core cloud CPU, including a mirrored second pass that steadies the outline.
+7.2 ms per image for the classifier on a CPU. The full pipeline (classify, segment,
+geometry, cost, seal) takes about 2.6 s per frame on a 2-core cloud machine, mostly the
+pixel segmenter.
 
 **"How does it scale?"**
 The bus classifies frames itself and uploads only the ~5% that are not normal road; the

@@ -173,12 +173,15 @@
         <th class="num">pothole IoU</th><th>status</th></tr></thead><tbody>
         <tr><td>U-Net (ResNet-18 encoder)</td><td class="num">${iouOf(sel.test.unet, "crack")}</td>
           <td class="num">${iouOf(sel.test.unet, "pothole")}</td>
-          <td>${sel.served === "unet" ? '<span class="badge measured">serving</span>' : '<span class="badge warn">lost on validation</span>'}</td></tr>
+          <td>${sel.served === "unet" ? '<span class="badge measured">serving</span>'
+               : (sel.deployment_check && !sel.deployment_check.passed) ? '<span class="badge warn">won on masks, lost end to end</span>'
+               : '<span class="badge warn">lost on validation</span>'}</td></tr>
         <tr><td>pixel classifier (11 features)</td><td class="num">${iouOf(sel.test.pixel_classifier, "crack")}</td>
           <td class="num">${iouOf(sel.test.pixel_classifier, "pothole")}</td>
           <td>${sel.served === "unet" ? "fallback" : '<span class="badge measured">serving</span>'}</td></tr>
       </tbody></table></div>
-      <p class="small muted" style="margin:8px 0 0">${sel.rule || ""}<br>${sel.why || ""}</p>` : "";
+      <p class="small muted" style="margin:8px 0 0">${sel.rule || ""}<br>${sel.why || ""}</p>
+      ${sel.deployment_check ? `<p class="small muted" style="margin:8px 0 0"><strong>End-to-end check:</strong> ${sel.deployment_check.rule}</p>` : ""}` : "";
   if (segIo) {
     const io = segIo;
     el("segbox").innerHTML = `<div class="card">

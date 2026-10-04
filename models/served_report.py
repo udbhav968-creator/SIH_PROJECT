@@ -108,7 +108,9 @@ def served_segmenter_summary(ckpt, require_files=True):
         "test_photographs": (src.get("trained_on") or {}).get("test_photographs"),
         "clean_false_blob_rate": fp.get("photo_rate_any_blob"),
         "selection": ({"served": sel.get("served"), "rule": sel.get("rule"), "why": sel.get("why"),
-                       "test": sel.get("test")} if sel else None),
+                       "test": sel.get("test"),
+                       "iou_selection_served": sel.get("iou_selection_served", sel.get("served")),
+                       "deployment_check": sel.get("deployment_check")} if sel else None),
     }
 
 

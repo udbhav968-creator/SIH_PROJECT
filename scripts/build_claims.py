@@ -339,6 +339,15 @@ def _deep_extras(claims, rep):
         else:
             seg["deep_alternative_tried"] = ("A U-Net (ResNet-18 encoder) was trained on the same polygons and did NOT "
                                              "replace this model: " + sel.get("why", "") + " " + cmp_txt)
+        dc = sel.get("deployment_check") or {}
+        if dc and dc.get("passed") is False and sel.get("iou_selection_served") == "unet":
+            claim = "The U-Net segmenter serves (pothole IoU 0.641 vs 0.144)"
+            reason = ("It won mask IoU on the DNIT test photographs and was briefly served on that basis. A pipeline "
+                      "test then failed on Kaggle pothole photographs, and the end-to-end check through audit_image() "
+                      "on other datasets reversed it: " + dc.get("why", "") + ". The pixel classifier serves; the "
+                      "U-Net stays on disk, measured. A better mask on its training dataset was not a better product.")
+            if claim not in {c.get("claim") for c in claims["corrections"]}:
+                claims["corrections"].append({"claim": claim, "status": "REVERSED", "reason": reason})
     det = rep("road_damage_detector_report.json")
     if det and os.path.exists(os.path.join(CKPT, "damage_rdd2022_india.onnx")):
         t = det.get("test") or {}
