@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model card — ROAD-SHIELD</title>
+<meta name="description" content="Measured accuracy, per-class scores and segmentation IoU of every ROAD-SHIELD model.">
+<meta name="theme-color" content="#0a0f17">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 4 5.5v6c0 4.8 3.3 8.9 8 10 4.7-1.1 8-5.2 8-10v-6z' fill='%23f0a92b'/%3E%3Cpath d='M10.2 17.5 11.2 7h1.6l1 10.5' fill='none' stroke='%230a0f17' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta property="og:site_name" content="ROAD-SHIELD">
+<meta property="og:title" content="ROAD-SHIELD · AI road quality assessment">
+<meta property="og:description" content="A road photograph in, a measured, costed and sealed repair order out.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="/web/app.css">
 </head>
 <body data-page="models">
@@ -53,6 +62,7 @@
   </div>
 </div>
 
+<script src="/web/config.js"></script>
 <script src="/web/app.js"></script>
 <script>
 (async () => {
@@ -241,9 +251,16 @@
   const cm = active?.confusion_matrix, names = active?.class_names;
   if (cm && names) {
     const max = Math.max(...cm.flat(), 1);
-    el("confusion").innerHTML = `<table style="border-collapse:collapse">
-      <tr><th></th>${names.map(n => `<th style="padding:4px;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);height:92px">${n.split(" ")[0]}</th>`).join("")}</tr>
-      ${cm.map((row, r) => `<tr><td style="padding-right:8px;font-size:10.5px;color:var(--slate-400);white-space:nowrap;text-align:right;border:0">${names[r].split(" ")[0]}</td>
+    // distinct short labels: "Missing Zebra Crossing" and "Missing Road Divider" must not both read "Missing"
+    const short = (n) => {
+      const base = n.replace(/\s*\(.*\)/, "").split(" / ")[0];
+      if (/^Missing /.test(base)) return "No " + (/zebra/i.test(base) ? "zebra" : base.split(" ").pop().toLowerCase());
+      if (/^Damaged /.test(base)) return "Damaged sign";
+      return base.split(" ")[0];
+    };
+    el("confusion").innerHTML = `<table style="border-collapse:collapse;width:auto;margin:0 auto">
+      <tr><th style="background:none"></th>${names.map(n => `<th title="${n}" style="padding:4px;font-size:10px;writing-mode:vertical-rl;transform:rotate(180deg);height:96px;background:none">${short(n)}</th>`).join("")}</tr>
+      ${cm.map((row, r) => `<tr><td title="${names[r]}" style="padding-right:10px;font-size:11px;color:var(--slate-300);white-space:nowrap;text-align:right;border:0">${short(names[r])}</td>
         ${row.map((val, c) => {
           const a = val / max;
           const bg = r === c ? `rgba(52,211,153,${0.12 + a * .8})` : `rgba(251,113,133,${0.08 + a * .7})`;
