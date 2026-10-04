@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1791084210,
+  "generated_unix": 1791087023,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
@@ -70,20 +70,22 @@
       "why": "Chosen by a rule fixed before the test set was scored: U-Net served only if, on the calibration photographs, its crack IoU AND pothole IoU both exceed the pixel classifier's, and its clean-road false-blob rate is no more than 5 points worse. Decided before the test set was scored. calibration IoU crack 0.278 vs 0.214, pothole 0.650 vs 0.119; clean false-blob rate 0.0 vs 0.1807",
       "rejected_alternative": "HistGradientBoosting pixel classifier on 11 hand-designed features (kept as the fallback). Held-out test (same 500 photographs): U-Net crack IoU 0.294, pothole IoU 0.6411; pixel classifier crack 0.2314, pothole 0.1437.",
       "measured": {
-        "crack_iou": 0.294,
-        "pothole_iou": 0.6411,
-        "crack_dice": 0.4544,
-        "pothole_dice": 0.7813,
-        "clean_road_false_blob_rate": 0.0167,
+        "crack_iou": 0.2314,
+        "pothole_iou": 0.1437,
+        "crack_dice": 0.3758,
+        "pothole_dice": 0.2513,
+        "clean_road_false_blob_rate": 0.2333,
         "clean_photographs_scored": 120,
         "test_photographs": 500,
         "pixel_classifier_crack_iou": 0.2314,
-        "pixel_classifier_pothole_iou": 0.1437
+        "pixel_classifier_pothole_iou": 0.1437,
+        "training_pixels": 3692729
       },
       "evidence": "checkpoints/defect_segmenter_unet.json, checkpoints/segmenter_selection.json, training/train_unet_segmenter.py",
       "reproduce": "python -m training.train_unet_segmenter",
-      "not_claimed": "IoU of 0.294 (crack) and 0.6411 (pothole) on DNIT (Brazilian) photographs; not measured on Indian or bus-camera frames. On held-out clean roads it draws a false blob on 1.7% of 120 photographs.",
-      "status_endpoint": "/api/v1/segmentation/status"
+      "not_claimed": "IoU of 0.2314 (crack) and 0.1437 (pothole) is a working model, not a solved problem. On held-out clean roads the segmenter alone draws a false blob on 23.3% of 120 photographs. The CNN semantic gate in front of it reduced clean roads with a false blob from 8/50 to 2/50 and raised pothole IoU from 0.1024 to 0.2706 (checkpoints/semantic_gate_report.json, measured with the frozen-embedding classifier). Water-filled potholes are still under-detected.",
+      "status_endpoint": "/api/v1/segmentation/status",
+      "deep_alternative_tried": "A U-Net (ResNet-18 encoder) was trained on the same polygons and did NOT replace this model: calibration IoU crack 0.278 vs 0.214, pothole 0.650 vs 0.119; clean false-blob rate 0.0 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 9/24 defects with 6/36 false positives; the pixel classifier found 24/24 with 3/36 Held-out test (same 500 photographs): U-Net crack IoU 0.294, pothole IoU 0.6411; pixel classifier crack 0.2314, pothole 0.1437."
     },
     {
       "id": "M_DET",
@@ -390,6 +392,11 @@
       "claim": "Laplacian-variance gate (42.5), 4th-order Butterworth filter, CLAHE, 2.45 m camera",
       "status": "WITHDRAWN",
       "reason": "None of these exist in the code. The gate is luminance std < 6.5, IMU windows are mean-centred with FFT band energies, there is no CLAHE step, and the default camera height is an assumed 1.45 m."
+    },
+    {
+      "claim": "The U-Net segmenter serves (pothole IoU 0.641 vs 0.144)",
+      "status": "REVERSED",
+      "reason": "It won mask IoU on the DNIT test photographs and was briefly served on that basis. A pipeline test then failed on Kaggle pothole photographs, and the end-to-end check through audit_image() on other datasets reversed it: end to end, U-Net found 9/24 defects with 6/36 false positives; the pixel classifier found 24/24 with 3/36. The pixel classifier serves; the U-Net stays on disk, measured. A better mask on its training dataset was not a better product."
     }
   ]
 }

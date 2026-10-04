@@ -204,7 +204,7 @@ def build():
         u = sel_test["unet"]
         w(f"| U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack "
           f"{f3((u.get('crack') or {}).get('iou'))}, pothole {f3((u.get('pothole') or {}).get('iou'))} | "
-          f"{'**yes**' if seg_unet else 'no (lost on validation)'} |")
+          f"{'**yes**' if seg_unet else ('no (won on masks, lost the end-to-end check)' if (seg_sel.get('deployment_check') or {}).get('passed') is False else 'no (lost on validation)')} |")
     px = rep("defect_segmenter_report.json").get("iou") or {}
     w(f"| Pixel segmenter | gradient boosting on 11 features | yes | crack {f3((px.get('crack') or {}).get('iou'))}, "
       f"pothole {f3((px.get('pothole') or {}).get('iou'))} | {'fallback' if seg_unet else '**yes**'} |")

@@ -1,7 +1,7 @@
 {
-  "served": "unet",
+  "served": "pixel_classifier",
   "rule": "U-Net served only if, on the calibration photographs, its crack IoU AND pothole IoU both exceed the pixel classifier's, and its clean-road false-blob rate is no more than 5 points worse. Decided before the test set was scored.",
-  "why": "calibration IoU crack 0.278 vs 0.214, pothole 0.650 vs 0.119; clean false-blob rate 0.0 vs 0.1807",
+  "why": "calibration IoU crack 0.278 vs 0.214, pothole 0.650 vs 0.119; clean false-blob rate 0.0 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 9/24 defects with 6/36 false positives; the pixel classifier found 24/24 with 3/36",
   "validation": {
     "unet": {
       "crack": {
@@ -144,5 +144,51 @@
   },
   "decided_before_test": true,
   "smoke": false,
-  "decided_unix": 1791083214
+  "decided_unix": 1791083214,
+  "iou_selection_served": "unet",
+  "why_iou": "calibration IoU crack 0.278 vs 0.214, pothole 0.650 vs 0.119; clean false-blob rate 0.0 vs 0.1807",
+  "deployment_check": {
+    "rule": "U-Net served only if, through audit_image() on the detection-quality photographs (clean roads and annotated defects from other datasets, never the DNIT test split), it finds at least as many defects and reports no more false positives than the pixel classifier. Fixed before the pixel classifier's current end-to-end numbers were measured.",
+    "passed": false,
+    "why": "end to end, U-Net found 9/24 defects with 6/36 false positives; the pixel classifier found 24/24 with 3/36",
+    "results": {
+      "unet": {
+        "false_positive_photos": 6,
+        "clean_photographs": 36,
+        "detected_photos": 9,
+        "defect_photographs": 24,
+        "false_positive_rate": 0.1667,
+        "detection_rate": 0.375,
+        "missed": [
+          "kag_pothole-annotated_2_00233_potholes351.jpg",
+          "kag_pothole-annotated_2_00461_potholes580.jpg",
+          "cpr_2166_4570.jpg",
+          "kag_pothole-annotated_2_00122_potholes238.jpg",
+          "cpr_356_747.jpg",
+          "kag_pothole-annotated_2_00502_potholes623.jpg",
+          "cpr_217_457.jpg",
+          "kag_pothole-annotated_2_00300_potholes416.jpg",
+          "cpr_325_683.jpg",
+          "cpr_351_736.jpg",
+          "kag_pothole-annotated_2_00470_potholes59.jpg",
+          "cpr_1228_2588.jpg",
+          "cpr_1214_2557.jpg",
+          "cpr_256_539.jpg",
+          "cpr_208_437.jpg"
+        ],
+        "seconds": 152.5
+      },
+      "pixel_classifier": {
+        "false_positive_photos": 3,
+        "clean_photographs": 36,
+        "detected_photos": 24,
+        "defect_photographs": 24,
+        "false_positive_rate": 0.0833,
+        "detection_rate": 1.0,
+        "missed": [],
+        "seconds": 420.4
+      }
+    },
+    "checked_unix": 1791086743
+  }
 }
