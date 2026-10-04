@@ -224,7 +224,7 @@ def model_registry(ckpt, hash_files=True):
             ["imu_shock_cnn.onnx"], {"held_out_accuracy": hfr["cnn"].get("accuracy"), "held_out_macro_f1": hfr["cnn"].get("macro_f1")},
             imu_sel.get("served") == "cnn", None, imu_sel.get("rule"), "checkpoints/imu_deep_report.json")
     if imu:
-        add("IMU RandomForest", "vibration shock classification, 4 classes", "RandomForest on 36 features",
+        add("IMU RandomForest", "vibration shock classification, 4 classes", "RandomForest, 300 trees, on 62 features",
             ["imu_shock_model.joblib"], {"held_out_accuracy": imu.get("held_out_validation_accuracy")},
             imu_sel.get("served") != "cnn", imu.get("trained_at_unix"), imu_sel.get("rule"),
             "checkpoints/imu_shock_report.json")

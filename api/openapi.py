@@ -35,7 +35,9 @@ def spec():
             "description": ("Road-defect assessment from bus-fleet imagery: classification, segmentation, metric "
                             "area, depth interval, MoRTH cost, sealed work orders, fleet deduplication. Every "
                             "response labels which numbers are measurements and which are estimates. Missing "
-                            "inputs are a 400, never a silent default."),
+                            "inputs are a 400, never a silent default. Bodies over ROAD_SHIELD_MAX_BODY_MB (default 25) "
+                            "are a 413; model endpoints answer 429 with Retry-After when the server sets "
+                            "ROAD_SHIELD_RATE_LIMIT (requests per minute per client)."),
         },
         "servers": [{"url": "/"}],
         "components": {
@@ -46,6 +48,14 @@ def spec():
         "paths": {
             "/api/v1/health": {"get": {"summary": "Liveness and which models loaded", "tags": ["system"],
                                        "responses": {"200": _json(OBJ)}}},
+            "/api/v1/ready": {"get": {"summary": "Readiness: 200 only when the classifier and segmenter are loaded",
+                                      "tags": ["system"],
+                                      "responses": {"200": _json(OBJ, "ready"),
+                                                    "503": _json(OBJ, "not ready; `missing` names the model")}}},
+            "/metrics": {"get": {"summary": "Prometheus metrics: requests, latency histogram, model readiness",
+                                 "tags": ["system"],
+                                 "responses": {"200": {"description": "Prometheus text format",
+                                                       "content": {"text/plain": {"schema": STR}}}}}},
             "/api/v1/pipeline/deep-audit": {"post": {
                 "summary": "Full analysis of one road photograph", "tags": ["inference"],
                 "requestBody": _body({
