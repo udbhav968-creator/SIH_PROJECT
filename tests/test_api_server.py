@@ -183,11 +183,15 @@ class APIServerTest(unittest.TestCase):
         old = srv.PUBLIC
         srv.PUBLIC = True
         try:
+            # files and folders that exist on every OS, all outside datasets/
             server_file = os.path.join(srv.ENGINE_ROOT, "api", "server.py")
+            reqs = os.path.join(srv.ENGINE_ROOT, "requirements.txt")
+            api_dir = os.path.join(srv.ENGINE_ROOT, "api")
             for path, body in (("/api/v1/detect/vision", {"image_base64": server_file}),
-                               ("/api/v1/detect/vision", {"image_path": "/etc/hostname"}),
-                               ("/api/v1/video/probe", {"video_path": "/etc/hostname"}),
-                               ("/api/v1/pipeline/deep-audit-batch", {"directory_path": "/etc"})):
+                               ("/api/v1/detect/vision", {"image_path": reqs}),
+                               ("/api/v1/detect/vision", {"image_path": "requirements.txt"}),
+                               ("/api/v1/video/probe", {"video_path": reqs}),
+                               ("/api/v1/pipeline/deep-audit-batch", {"directory_path": api_dir})):
                 code, r = self.post_json(path, body)
                 self.assertEqual(code, 403, f"{path} {body}: {r}")
             # the bundled photographs stay usable, and base64 is never mistaken for a path
@@ -195,7 +199,7 @@ class APIServerTest(unittest.TestCase):
             self.assertIsNone(srv._server_path_refused({"image_base64": "aGVsbG8="}))
         finally:
             srv.PUBLIC = old
-        self.assertIsNone(srv._server_path_refused({"image_path": "/etc/hostname"}),
+        self.assertIsNone(srv._server_path_refused({"image_path": os.path.join(srv.ENGINE_ROOT, "requirements.txt")}),
                           "outside public mode the local convenience paths are unchanged")
 
     def test_health_says_whether_this_is_the_public_demo(self):
