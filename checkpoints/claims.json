@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1791125896,
+  "generated_unix": 1791138969,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
@@ -83,7 +83,7 @@
       "reproduce": "python -m training.train_segmenter --images 2000",
       "not_claimed": "IoU of 0.2314 (crack) and 0.1437 (pothole) is a working model, not a solved problem. On held-out clean roads the segmenter alone draws a false blob on 23.3% of 120 photographs. The CNN semantic gate in front of it reduced clean roads with a false blob from 8/50 to 2/50 and raised pothole IoU from 0.1024 to 0.2706 (checkpoints/semantic_gate_report.json, measured with the frozen-embedding classifier). Water-filled potholes are still under-detected.",
       "status_endpoint": "/api/v1/segmentation/status",
-      "deep_alternative_tried": "A U-Net (ResNet-18 encoder) was trained on DNIT plus public outline datasets (crackseg9k, kaggle_pothole) and did NOT replace this model: calibration IoU crack 0.184 vs 0.214, pothole 0.647 vs 0.119; clean false-blob rate 0.0 vs 0.1807; end-to-end check recorded for information (it cannot overturn the IoU rule): end to end, U-Net found 18/24 defects with 4/36 false positives; the pixel classifier found 24/24 with 3/36 Held-out test (same 500 photographs): U-Net crack IoU 0.1984, pothole IoU 0.6543; pixel classifier crack 0.2314, pothole 0.1437."
+      "deep_alternative_tried": "A U-Net (ResNet-18 encoder) was trained on DNIT plus public outline datasets (crackseg9k, kaggle_pothole, pothole_mix) and did NOT replace this model: calibration IoU crack 0.255 vs 0.214, pothole 0.640 vs 0.119; clean false-blob rate 0.0241 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 18/24 defects with 3/36 false positives; the pixel classifier found 24/24 with 3/36 Held-out test (same 500 photographs): U-Net crack IoU 0.2712, pothole IoU 0.6317; pixel classifier crack 0.2314, pothole 0.1437."
     },
     {
       "id": "M_DET",
@@ -393,6 +393,11 @@
       "claim": "The U-Net segmenter serves (pothole IoU 0.641 vs 0.144)",
       "status": "REVERSED",
       "reason": "It won mask IoU on the DNIT test photographs and was briefly served on that basis. A pipeline test then failed on Kaggle pothole photographs, and the end-to-end check through audit_image() on other datasets reversed it: end to end, U-Net found 9/24 defects with 6/36 false positives; the pixel classifier found 24/24 with 3/36. The pixel classifier serves; the U-Net stays on disk, measured. A better mask on its training dataset was not a better product."
+    },
+    {
+      "claim": "The U-Net segmenter serves (pothole IoU 0.632 vs 0.144) - multi-dataset run",
+      "status": "NOT SERVED",
+      "reason": "Retrained on several pixel-labelled datasets, it won the IoU selection on DNIT calibration photographs, but the end-to-end check through audit_image() on other datasets kept the pixel classifier: end to end, U-Net found 18/24 defects with 3/36 false positives; the pixel classifier found 24/24 with 3/36."
     }
   ]
 }

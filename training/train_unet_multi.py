@@ -111,27 +111,43 @@ def load_manifest():
 
 
 def drop_dnit_eval_copies(extra, sp, threshold=6):
-    """Remove (in place) extra TRAINING ids that near-duplicate a DNIT calibration/test photograph."""
+    """
+    Pothole Mix republishes DNIT photographs, so it can leak in both directions. Removed in place:
+      * extra TRAINING images that copy a DNIT calibration/test photograph (would inflate the DNIT scores);
+      * extra CALIBRATION/TEST images that copy ANY DNIT photograph (a DNIT test copy would steer the
+        thresholds; a DNIT training copy would inflate that source's own test score).
+    Returns {source: {split: removed}}.
+    """
     import cv2
     from scripts.fetch_seg_datasets import dhash
-    ref = []
-    for r in sp["cal"] + sp["test"] + sp.get("neg_cal", []) + sp.get("neg_test", []):
-        im = cv2.imread(r["path"])
-        if im is not None:
-            ref.append(dhash(cv2.cvtColor(im, cv2.COLOR_BGR2RGB)))
-    ref = np.array(ref, dtype=np.uint64)
+
+    def hashes(recs):
+        out = []
+        for r in recs:
+            im = cv2.imread(r["path"])
+            if im is not None:
+                out.append(dhash(cv2.cvtColor(im, cv2.COLOR_BGR2RGB)))
+        return out
+
+    ev = hashes(sp["cal"] + sp["test"] + sp.get("neg_cal", []) + sp.get("neg_test", []))
+    ref_eval = np.array(ev, dtype=np.uint64)
+    ref_all = np.array(ev + hashes(sp["train"] + sp.get("neg_train", [])), dtype=np.uint64)
+
+    def near(ref, img_path):
+        im = cv2.imread(img_path)
+        if im is None or not len(ref):
+            return False
+        x = np.bitwise_xor(ref, np.uint64(dhash(cv2.cvtColor(im, cv2.COLOR_BGR2RGB))))
+        return bool(np.unpackbits(x.view(np.uint8).reshape(-1, 8), axis=1).sum(1).min() <= threshold)
+
     removed = {}
     for src, d in extra.items():
-        keep = []
-        for i in d["train"]:
-            im = cv2.imread(os.path.join(MULTI, src, "img", i + ".jpg"))
-            if im is not None and len(ref):
-                x = np.bitwise_xor(ref, np.uint64(dhash(cv2.cvtColor(im, cv2.COLOR_BGR2RGB))))
-                if np.unpackbits(x.view(np.uint8).reshape(-1, 8), axis=1).sum(1).min() <= threshold:
-                    continue
-            keep.append(i)
-        removed[src] = len(d["train"]) - len(keep)
-        d["train"] = keep
+        removed[src] = {}
+        for split in ("train", "cal", "test"):
+            ref = ref_eval if split == "train" else ref_all
+            keep = [i for i in d.get(split, []) if not near(ref, os.path.join(MULTI, src, "img", i + ".jpg"))]
+            removed[src][split] = len(d.get(split, [])) - len(keep)
+            d[split] = keep
     return removed
 
 
@@ -198,8 +214,9 @@ def main(argv=None):
     # calibration or test photograph is dropped here, so the IoU rule and the DNIT test stay unseen.
     overlap = drop_dnit_eval_copies(extra, sp)
     for src, n in overlap.items():
-        if n:
-            print(f"  removed {n} {src} training images that are near-copies of DNIT calibration/test photographs")
+        if any(n.values()):
+            print(f"  [unet-multi] removed DNIT near-copies from {src}: train {n['train']} (copies of DNIT "
+                  f"calibration/test), calibration {n['cal']}, test {n['test']} (copies of any DNIT photograph)")
     parts = {"dnit": dnit_train, "dnit_clean": dnit_clean}
     for src, d in extra.items():
         parts[src] = DiskPairs(src, d["train"])

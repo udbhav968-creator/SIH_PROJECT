@@ -119,6 +119,13 @@ the whole pipeline it found 18 of 24 defects instead of 9. It still did not ship
 calibration photos its crack IoU was 0.184 against 0.214, and the rule needs a win on both.
 More varied data doubled real-world detection; we report it and keep the rule.
 
+Then we added Pothole Mix (4,340 more outlines). Our leakage check found that 905 of its
+images were copies of our own DNIT check and test photos - the dataset republishes DNIT - so
+we removed them and retrained. The clean model, trained on 7,967 images from five sources,
+passed the IoU rule (DNIT crack 0.255 vs 0.214, pothole 0.640 vs 0.119) and cut its false
+alarms to 3 of 36 clean roads - the same as the pixel classifier - but still found 18 of 24
+defects end to end, not 24. So the pixel classifier stays. Next: our own Indian road photos.
+
 **"Did anything go wrong?"** (a strong answer — use it)
 Yes, and we fixed it in the open. Our first IMU comparison shuffled 1-second windows into
 cross-validation folds, so neighbouring windows leaked across folds and it picked a CNN.
