@@ -102,7 +102,8 @@ def served_segmenter_summary(ckpt, require_files=True):
                    (not require_files or os.path.exists(os.path.join(ckpt, "defect_segmenter_unet.onnx"))))
     if unet_ok:
         src = unet_meta
-        kind, label = "unet", "U-Net (ResNet-18 encoder, ImageNet-pretrained), ONNX Runtime"
+        enc = (unet_meta.get("encoder") or "resnet18").replace("resnet", "ResNet-")
+        kind, label = "unet", f"U-Net ({enc} encoder, ImageNet-pretrained), ONNX Runtime"
     else:
         src = pixel or {}
         kind, label = "pixel_classifier", "HistGradientBoosting pixel classifier on 11 features"

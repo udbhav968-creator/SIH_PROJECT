@@ -28,9 +28,10 @@ an opaque error, which is worse than not deploying. So the split is explicit:
                     Dockerfile in this repository. This is what analyses a
                     photograph, segments it, and costs the repair.
 
-The site can be pointed at a running engine (see `web/app.js` and the
-`ROAD_SHIELD_API` setting), so the public deployment is a real front end for a
-real backend rather than a mock of one.
+The site sends photograph analysis to a live engine when one is configured
+(`web/config.js`, normally the Hugging Face Space built from
+deploy/huggingface/), so the public deployment is a real front end for a real
+backend rather than a mock of one.
 
 What IS served here, for real
 -----------------------------
@@ -127,9 +128,13 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _static(self, name):
-        safe = os.path.basename(name)
-        full = os.path.realpath(os.path.join(WEB_DIR, safe))
-        if not full.startswith(os.path.realpath(WEB_DIR)) or not os.path.isfile(full):
+        # a route's filename, or a path relative to web/ (web/samples/...); ".." is refused
+        parts = [p for p in str(name).replace("\\", "/").split("/") if p not in ("", ".")]
+        if not parts or any(p == ".." for p in parts):
+            return False
+        root = os.path.realpath(WEB_DIR)
+        full = os.path.realpath(os.path.join(root, *parts))
+        if not full.startswith(root + os.sep) or not os.path.isfile(full):
             return False
         with open(full, "rb") as fh:
             body = fh.read()
@@ -155,7 +160,7 @@ class handler(BaseHTTPRequestHandler):
 
         page = PAGE_ROUTES.get(path)
         if page is None and path.startswith("/web/"):
-            page = os.path.basename(path)
+            page = path[len("/web/"):]
         if page and self._static(page):
             return
 

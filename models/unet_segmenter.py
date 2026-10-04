@@ -136,7 +136,7 @@ class UNetSegmenter(_UNetBase):
         r = self.report or {}
         return {
             "ready": self.is_ready,
-            "model": "U-Net, ResNet-18 encoder (ImageNet), ONNX Runtime",
+            "model": f"U-Net, {(r.get('encoder') or 'resnet18').replace('resnet', 'ResNet-')} encoder (ImageNet), ONNX Runtime",
             "model_path": self.model_path if self.is_ready else None,
             "classes": CLASS_LABELS,
             "input_size": [IN_W, IN_H],

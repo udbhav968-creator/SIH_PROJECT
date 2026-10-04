@@ -6,6 +6,11 @@ held-out photographs, and export it to ONNX for CPU serving.
     python -m training.train_rdd_detector                    # T4: ~45-70 min
     python -m training.train_rdd_detector --epochs 2 --fraction 0.05 --model yolov8n.pt   # smoke
 
+Long runs: Ultralytics saves runs/rdd_india/weights/last.pt after every epoch.
+If a session ends mid-training, running the same command again resumes from it
+(link runs/rdd_india to Google Drive so it survives the session). --fresh
+ignores an unfinished run and starts again.
+
 Data
 ----
 datasets/rdd2022_india, written by scripts/prepare_rdd2022_voc.py from the
@@ -79,6 +84,20 @@ def _best_conf_on_valid(m):
     return 0.25
 
 
+def run_state(last_pt):
+    """'unfinished', 'finished' (Ultralytics stores epoch -1 once a run ends) or 'unreadable'."""
+    try:
+        import torch
+        ck = torch.load(last_pt, map_location="cpu", weights_only=False)
+        return "unfinished" if int(ck.get("epoch", -1)) >= 0 else "finished"
+    except Exception:
+        return "unreadable"
+
+
+def unfinished(last_pt):
+    return run_state(last_pt) == "unfinished"
+
+
 def count_split(split):
     d = os.path.join(DATA_DIR, "images", split)
     return len([f for f in os.listdir(d) if f.lower().endswith(".jpg")]) if os.path.isdir(d) else 0
@@ -94,6 +113,9 @@ def main(argv=None):
     ap.add_argument("--fraction", type=float, default=1.0, help="share of the training set (smoke runs)")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--out", default=CKPT_DIR)
+    ap.add_argument("--fresh", action="store_true", help="start again even if an unfinished run can be resumed")
+    ap.add_argument("--run-name", default="rdd_india",
+                    help="folder under runs/ (smoke runs use their own, so they never touch the real run)")
     a = ap.parse_args(argv)
 
     if not os.path.isdir(os.path.join(DATA_DIR, "images", "train")):
@@ -111,14 +133,35 @@ def main(argv=None):
           f"(split by photograph; test scored once)")
 
     t0 = time.time()
-    model = YOLO(a.model)
-    run_dir = os.path.join(ENGINE_ROOT, "runs", "rdd_india")
-    model.train(data=yaml_path, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch, patience=a.patience,
-                seed=42, deterministic=False, workers=a.workers, cos_lr=True, close_mosaic=5,
-                fraction=a.fraction, project=os.path.dirname(run_dir), name=os.path.basename(run_dir),
-                exist_ok=True, plots=False, verbose=False)
-    train_min = round((time.time() - t0) / 60, 1)
+    run_dir = os.path.join(ENGINE_ROOT, "runs", a.run_name)
+    last_pt = os.path.join(run_dir, "weights", "last.pt")
     best_pt = os.path.join(run_dir, "weights", "best.pt")
+    resumed = False
+    state = run_state(last_pt) if os.path.exists(last_pt) and not a.fresh else None
+    if state == "unreadable":
+        sys.exit(f"[rdd-detector] {last_pt} cannot be read (interrupted copy, or a different Ultralytics version). "
+                 f"Nothing was overwritten. Fix it, or pass --fresh to train again from the start.")
+    if state == "unfinished":
+        print(f"  RESUMING the unfinished run from {last_pt}")
+        try:
+            YOLO(last_pt).train(resume=True)
+        except Exception:
+            if unfinished(last_pt):
+                raise                           # a real failure mid-training: never evaluate a half-trained model
+            print("  the run had already finished; evaluating its best.pt")
+        resumed = True
+    elif state == "finished" and os.path.exists(best_pt):
+        print(f"  training already finished in {run_dir}; evaluating and exporting its best.pt (no retraining)")
+        resumed = True
+    if not resumed:
+        model = YOLO(a.model)
+        model.train(data=yaml_path, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch, patience=a.patience,
+                    seed=42, deterministic=False, workers=a.workers, cos_lr=True, close_mosaic=10,
+                    fraction=a.fraction, project=os.path.dirname(run_dir), name=os.path.basename(run_dir),
+                    exist_ok=True, plots=False, verbose=False)
+    train_min = round((time.time() - t0) / 60, 1)
+    if not os.path.exists(best_pt):
+        sys.exit(f"[rdd-detector] no best.pt in {run_dir}: training did not finish an epoch")
     best = YOLO(best_pt)
 
     val = best.val(data=yaml_path, split="val", imgsz=a.imgsz, batch=a.batch, plots=False, verbose=False)
@@ -142,7 +185,7 @@ def main(argv=None):
                  "split": "labelled photographs 70/15/15 by photograph, seed 42 (official test split has "
                           "no public labels)", "photographs": n, "fraction_of_train_used": a.fraction},
         "training": {"epochs_requested": a.epochs, "imgsz": a.imgsz, "batch": a.batch,
-                     "patience": a.patience, "minutes": train_min,
+                     "patience": a.patience, "minutes_this_session": train_min, "resumed": resumed,
                      "selection": "best.pt by validation fitness; test scored once"},
         "serving_confidence": conf, "serving_confidence_chosen_on": "validation split (max mean F1)",
         "validation": val_m, "test": test_m,

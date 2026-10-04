@@ -5,6 +5,18 @@ cameras instead of one.
 
     python -m training.train_unet_multi                    # T4: ~45-60 min
     python -m training.train_unet_multi --smoke            # 1 epoch, a few hundred images
+    python -m training.train_unet_multi --epochs 80 --ckpt-dir /content/drive/MyDrive/rs/unet \
+        --time-budget-hours 3.5                             # long run across several Colab sessions
+
+Long runs
+---------
+--ckpt-dir saves the network, optimiser, schedule and best weights after every
+epoch (atomically, so a disconnect mid-write cannot corrupt it); running the same
+command again resumes from the last finished epoch. --time-budget-hours stops
+cleanly before the budget runs out, saves, and exits with status 3 ("paused,
+run again to continue"), leaving time for nothing to be lost when Colab ends
+the session. Resuming never changes the split, the selection rule or the test:
+those are fixed before any epoch runs.
 
 Why
 ---
@@ -65,7 +77,49 @@ PROTOCOL_V2 = {
                   "(previous_run). Read v2's test numbers with that in mind.",
 }
 # share of each epoch drawn from each source (renormalised over the sources present)
-SHARES = {"dnit": 0.35, "dnit_clean": 0.10, "crackseg9k": 0.25, "pothole_mix": 0.20, "kaggle_pothole": 0.10}
+SHARES = {"dnit": 0.35, "dnit_clean": 0.10, "crackseg9k": 0.25, "pothole_mix": 0.20, "kaggle_pothole": 0.10,
+          "own_india": 0.25}
+RESUME_NAME, BEST_NAME, SPLIT_NAME = "unet_resume.pt", "unet_best_weights.pt", "dnit_split.json"
+PAUSED_EXIT = 3
+
+
+def _atomic_save(obj, path):
+    import torch
+    tmp = path + ".tmp"
+    torch.save(obj, tmp)
+    os.replace(tmp, path)
+
+
+def resume_config(a):
+    """The settings a resumed run must share with the run it continues."""
+    return {"encoder": a.encoder, "min_crop_scale": a.min_crop_scale, "samples_per_epoch": a.samples_per_epoch,
+            "batch": a.batch, "lr": a.lr, "epochs": a.epochs, "seed": a.seed}
+
+
+def check_resume_config(saved, now):
+    """None if the run can continue, else the reason it cannot (any of these changes the schedule or the experiment)."""
+    for k in ("encoder", "batch", "samples_per_epoch", "epochs", "lr", "min_crop_scale"):
+        if k in saved and saved[k] != now[k]:
+            return f"{k} was {saved[k]} in the saved run and is {now[k]} now"
+    return None
+
+
+def out_of_time(elapsed_s, epoch_s, budget_h, reserve_min, may_finish=True):
+    """
+    True if one more epoch (30% margin, plus 2 minutes to save) would not fit in the budget. The finishing
+    reserve (thresholds, test, export) is only needed when that epoch could be the last one.
+    """
+    if not budget_h:
+        return False
+    need = 1.3 * epoch_s + 120 + (reserve_min * 60 if may_finish else 0)
+    return elapsed_s + need > budget_h * 3600
+
+
+def keep_existing(ids, source):
+    """Manifest ids whose image and label are on disk (a stale manifest must not crash a long run)."""
+    d = os.path.join(MULTI, source)
+    return [i for i in ids if os.path.exists(os.path.join(d, "lab", i + ".png"))
+            and os.path.exists(os.path.join(d, "img", i + ".jpg"))]
 
 
 class DiskPairs:
@@ -106,7 +160,12 @@ def load_manifest():
         man = json.load(fh)
     out = {}
     for src, items in (man.get("items") or {}).items():
-        out[src] = {s: [it["id"] for it in items if it["split"] == s] for s in ("train", "cal", "test")}
+        d = {s: keep_existing([it["id"] for it in items if it["split"] == s], src) for s in ("train", "cal", "test")}
+        missing = sum(1 for it in items) - sum(len(v) for v in d.values())
+        if missing:
+            print(f"  [unet-multi] {src}: {missing} manifest entries have no files on disk and are skipped")
+        if any(d.values()):
+            out[src] = d
     return out
 
 
@@ -177,6 +236,9 @@ def score_pairs(seg, pairs, limit=None):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--epochs", type=int, default=30)
+    ap.add_argument("--encoder", default="resnet18", choices=["resnet18", "resnet34"])
+    ap.add_argument("--min-crop-scale", type=float, default=0.75,
+                    help="smallest random zoom-in crop as a share of the frame (0.35 teaches close-ups)")
     ap.add_argument("--samples-per-epoch", type=int, default=4000)
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--lr", type=float, default=3e-4)
@@ -189,16 +251,47 @@ def main(argv=None):
                          "of road scenes (DNIT, Kaggle pothole, Pothole Mix), not on CrackSeg9k's close-up texture "
                          "patches; 'all' (protocol v1): every source")
     ap.add_argument("--out", default=CKPT_DIR)
+    ap.add_argument("--seed", type=int, default=42, help="network initialisation and sampling (the split is always seed 42)")
+    ap.add_argument("--ckpt-dir", default=None,
+                    help="save a resumable checkpoint here after every epoch, and resume from it if present "
+                         "(put it on Google Drive for runs longer than one Colab session)")
+    ap.add_argument("--time-budget-hours", type=float, default=0.0,
+                    help="pause cleanly (exit status 3) before this many hours have passed in this session; 0 = no limit")
+    ap.add_argument("--finish-reserve-min", type=float, default=25.0,
+                    help="minutes kept in the budget for thresholds, test scoring and ONNX export")
+    ap.add_argument("--ckpt-every-min", type=float, default=0.0,
+                    help="write the checkpoint at most this often (and always on pause, early stop and the last "
+                         "epoch); 0 = every epoch. On Google Drive, 30 keeps overwritten copies from filling the quota")
     ap.add_argument("--smoke", action="store_true")
     a = ap.parse_args(argv)
+    t_session = time.time()
 
     import cv2
     import torch
     import torch.nn.functional as F
 
-    torch.manual_seed(42)
+    torch.manual_seed(a.seed)
+    np.random.seed(a.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     sp = split_like_pixel_classifier(2000, 42)
+    # A resumed run must use the DNIT split it started with: the split shuffles the photographs that are on
+    # disk, so one more (or one fewer) downloaded photograph would otherwise put trained-on photographs in test.
+    if a.ckpt_dir:
+        split_path = os.path.join(a.ckpt_dir, SPLIT_NAME)
+        if os.path.exists(split_path):
+            with open(split_path, "r", encoding="utf-8") as fh:
+                saved_sp = json.load(fh)
+            gone = [r["path"] for k in saved_sp for r in saved_sp[k] if not os.path.exists(r["path"])]
+            if gone:
+                sys.exit(f"[unet-multi] {len(gone)} DNIT photographs of this run's split are missing (e.g. {gone[0]}); "
+                         f"restore them, or start a new run with a new --ckpt-dir")
+            sp = saved_sp
+            print(f"  DNIT split restored from {split_path} (identical to this run's first session)")
+        else:
+            os.makedirs(a.ckpt_dir, exist_ok=True)
+            with open(split_path + ".tmp", "w", encoding="utf-8") as fh:
+                json.dump(sp, fh)
+            os.replace(split_path + ".tmp", split_path)
     extra = load_manifest()
     if a.smoke:
         for k in sp:
@@ -243,10 +336,13 @@ def main(argv=None):
     norm = sum(present.values())
     w = np.concatenate([np.full(len(v), present[k] / norm / len(v)) for k, v in parts.items() if len(v)])
     sampler = torch.utils.data.WeightedRandomSampler(w, num_samples=a.samples_per_epoch, replacement=True)
-    loader = torch.utils.data.DataLoader(make_dataset(all_pairs, True), batch_size=a.batch, sampler=sampler,
+    train_set = make_dataset(all_pairs, True)
+    train_set.min_scale = a.min_crop_scale
+    loader = torch.utils.data.DataLoader(train_set, batch_size=a.batch, sampler=sampler,
                                          num_workers=a.workers, drop_last=True, pin_memory=device.type == "cuda")
 
-    model = build_unet(pretrained=not a.smoke).to(device)
+    model = build_unet(pretrained=not a.smoke, encoder=a.encoder).to(device)
+    print(f"  encoder {a.encoder} | random zoom-in crops down to {a.min_crop_scale:.2f} of the frame")
     enc = [p for n, p in model.named_parameters() if n.split(".")[0] in ("stem", "l1", "l2", "l3", "l4")]
     dec = [p for n, p in model.named_parameters() if n.split(".")[0] not in ("stem", "l1", "l2", "l3", "l4")]
     opt = torch.optim.AdamW([{"params": enc, "lr": a.lr}, {"params": dec, "lr": a.lr * 3}], weight_decay=1e-4)
@@ -275,8 +371,48 @@ def main(argv=None):
         dp = DiskPairs(src, d["cal"])
         val_pairs += [dp[i] for i in range(min(150, len(dp)))]
 
-    best, best_state, bad, history = -1.0, None, 0, []
-    for ep in range(1, a.epochs + 1):
+    best, best_state, bad, history, start_ep, done_training = -1.0, None, 0, [], 1, False
+    resume_path = best_path = None
+    if a.ckpt_dir:
+        os.makedirs(a.ckpt_dir, exist_ok=True)
+        resume_path, best_path = os.path.join(a.ckpt_dir, RESUME_NAME), os.path.join(a.ckpt_dir, BEST_NAME)
+        if os.path.exists(resume_path):
+            ck = torch.load(resume_path, map_location="cpu", weights_only=False)
+            why_not = check_resume_config(ck.get("config", {}), resume_config(a))
+            if why_not:
+                sys.exit(f"[unet-multi] cannot resume from {resume_path}: {why_not}. "
+                         f"Use a new --ckpt-dir for a different setup.")
+            model.load_state_dict(ck["model"])
+            opt.load_state_dict(ck["opt"])
+            sched.load_state_dict(ck["sched"])
+            scaler.load_state_dict(ck["scaler"])
+            best, bad, history = ck["best"], ck["bad"], ck["history"]
+            start_ep, done_training = ck["epoch"] + 1, bool(ck.get("done_training"))
+            if os.path.exists(best_path):
+                best_state = torch.load(best_path, map_location="cpu", weights_only=False)
+            print(f"  RESUMED from {resume_path}: {ck['epoch']} epochs done, best VAL {best:.4f}"
+                  + (" (training finished; going straight to thresholds and test)" if done_training else ""))
+            torch.manual_seed(a.seed + start_ep)       # fresh sampling and augmentation, not a replay of session 1
+            np.random.seed(a.seed + start_ep)
+
+    last_save, best_dirty = [time.time()], [False]
+
+    def save_resume(ep, finished=False, force=False):
+        if not resume_path:
+            return
+        if not (force or finished) and (time.time() - last_save[0]) < a.ckpt_every_min * 60:
+            return
+        if best_dirty[0] and best_state is not None:
+            _atomic_save(best_state, best_path)
+            best_dirty[0] = False
+        last_save[0] = time.time()
+        _atomic_save({"model": model.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(),
+                      "scaler": scaler.state_dict(), "epoch": ep, "best": best, "bad": bad, "history": history,
+                      "done_training": finished, "config": resume_config(a)}, resume_path)
+
+    for ep in range(start_ep, a.epochs + 1):
+        if done_training:
+            break
         model.train()
         t_ep, run = time.time(), 0.0
         for x, y in loader:
@@ -297,13 +433,27 @@ def main(argv=None):
         if val > best:
             best, bad, flag = val, 0, " *"
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            best_dirty[0] = True
         else:
             bad += 1
+        epoch_s = time.time() - t_ep
         print(f"  epoch {ep:3d}/{a.epochs}  loss {run / max(1, len(loader)):.4f}  VAL IoU crack {vc:.3f} "
-              f"pothole {vp:.3f}  ({time.time() - t_ep:.0f}s){flag}", flush=True)
-        if bad >= a.patience:
+              f"pothole {vp:.3f}  ({epoch_s:.0f}s){flag}", flush=True)
+        stop = bad >= a.patience
+        save_resume(ep, finished=stop or ep == a.epochs)
+        if stop:
             print(f"  early stop at epoch {ep}")
             break
+        may_finish = ep + 1 >= a.epochs or bad + 1 >= a.patience
+        if ep < a.epochs and out_of_time(time.time() - t_session, epoch_s, a.time_budget_hours, a.finish_reserve_min,
+                                         may_finish):
+            save_resume(ep, force=True)
+            print(f"  PAUSED after epoch {ep}/{a.epochs}: the next epoch would not fit in this session's "
+                  f"{a.time_budget_hours} h budget. Checkpoint saved in {a.ckpt_dir}; run the same command again "
+                  f"(a new session is fine) to continue.", flush=True)
+            return {"paused": True, "epoch": ep}
+    if best_state is None:
+        sys.exit("[unet-multi] no trained weights: nothing was trained and no checkpoint was found")
     model.load_state_dict(best_state)
     model.eval()
 
@@ -395,7 +545,8 @@ def main(argv=None):
     for src, d in extra.items():
         sources[src] = {k: len(v) for k, v in d.items()}
     meta = {
-        "model": "U-Net, ResNet-18 encoder pretrained on ImageNet, all layers trained on several datasets",
+        "model": f"U-Net, {a.encoder} encoder pretrained on ImageNet, all layers trained on several datasets",
+        "encoder": a.encoder, "min_crop_scale": a.min_crop_scale,
         "input_size": [IN_W, IN_H], "normalisation": "ImageNet mean/std", "tta_flip": True,
         "thresholds": unet.thresholds, "threshold_sources": thr_sources,
         "decision_rule": "per-class threshold tuned for IoU on the calibration photographs of " + ", ".join(thr_sources),
@@ -410,6 +561,7 @@ def main(argv=None):
                            for s, t in test.items()},
         "false_positives_on_clean_roads": test["dnit"]["unet"].get("clean"),
         "onnx_verified_on_test": onnx_ok, "epochs_run": len(history), "history": history,
+        "seed": a.seed, "samples_per_epoch": a.samples_per_epoch,
         "smoke": a.smoke, "trained_at_unix": int(time.time()),
     }
     with open(os.path.join(a.out, META_NAME), "w", encoding="utf-8") as fh:
@@ -443,4 +595,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    result = main()
+    if isinstance(result, dict) and result.get("paused"):
+        sys.exit(PAUSED_EXIT)
