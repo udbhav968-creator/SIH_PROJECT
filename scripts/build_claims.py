@@ -379,8 +379,13 @@ def _deep_extras(claims, rep):
                           "test then failed on Kaggle pothole photographs, and the end-to-end check through audit_image() "
                           "on other datasets reversed it: " + dc.get("why", "") + ". The pixel classifier serves; the "
                           "U-Net stays on disk, measured. A better mask on its training dataset was not a better product.")
-            if claim not in {c.get("claim") for c in claims["corrections"]}:
-                claims["corrections"].append({"claim": claim, "status": "REVERSED", "reason": reason})
+            # Served then withdrawn (first run) is REVERSED; won the IoU rule but never served is NOT SERVED.
+            status = "NOT SERVED" if sel.get("trained_with") else "REVERSED"
+            existing = next((c for c in claims["corrections"] if c.get("claim") == claim), None)
+            if existing:
+                existing.update(status=status, reason=reason)
+            else:
+                claims["corrections"].append({"claim": claim, "status": status, "reason": reason})
     det = rep("road_damage_detector_report.json")
     if det and os.path.exists(os.path.join(CKPT, "damage_rdd2022_india.onnx")):
         from models.road_damage_detector import detector_blocked_by

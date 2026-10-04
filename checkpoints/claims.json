@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1791137109,
+  "generated_unix": 1791138969,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
@@ -396,7 +396,7 @@
     },
     {
       "claim": "The U-Net segmenter serves (pothole IoU 0.632 vs 0.144) - multi-dataset run",
-      "status": "REVERSED",
+      "status": "NOT SERVED",
       "reason": "Retrained on several pixel-labelled datasets, it won the IoU selection on DNIT calibration photographs, but the end-to-end check through audit_image() on other datasets kept the pixel classifier: end to end, U-Net found 18/24 defects with 3/36 false positives; the pixel classifier found 24/24 with 3/36."
     }
   ]
