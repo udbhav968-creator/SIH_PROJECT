@@ -128,9 +128,53 @@ el("clear").addEventListener("click", () => {
     <p class="small muted" style="margin:0">Drop another photograph.</p></div>`;
 });
 
+/* The public site cannot run the models (~440 MB against a 250 MB serverless
+   cap). Where the engine is absent, "Use a dataset photograph" shows a result
+   the engine RECORDED (scripts/record_samples.py), labelled as such with its
+   date and models - never an analysis this page pretends to compute. */
+function engineAbsent(r) {
+  return !r.ok && r.status === 503 && /inference engine/i.test((r.data && r.data.error) || "");
+}
+function engineCard(what) {
+  return `<div class="card" style="border-color:rgba(56,189,248,.35)">
+    <div class="label" style="color:var(--sky)">runs on the engine, not on this site</div>
+    <p class="small" style="margin:0">${what} needs the model stack (~440 MB), and a serverless function here is
+      capped at 250 MB, so this public site serves the pages and every measured result but does not run the models.
+      It will not invent an analysis it cannot compute.</p>
+    <p class="small muted" style="margin:.5rem 0 0">See it here: <strong>Use a dataset photograph</strong> shows results
+      the engine recorded. Run it live: <code>python -m api.server</code>, then open <code>http://127.0.0.1:8000</code>.</p>
+  </div>`;
+}
+let recorded = null, recordedNext = 0;
+async function showRecorded() {
+  try {
+    if (!recorded) {
+      const res = await fetch("/web/samples/recorded_results.json", { cache: "no-store" });
+      if (!res.ok) throw new Error("no recorded results");
+      recorded = await res.json();
+      recordedNext = Math.floor(Math.random() * recorded.samples.length);
+    }
+  } catch (e) {
+    el("out").innerHTML = engineCard("Analysing a photograph");
+    return;
+  }
+  const s = recorded.samples[recordedNext++ % recorded.samples.length];
+  setImage(s.result.image_data_url);
+  lastResult = s.result;
+  render(s.result, null);
+  el("out").insertAdjacentHTML("afterbegin", `<div class="card" style="border-color:rgba(56,189,248,.35);margin-bottom:12px">
+    <div class="label" style="color:var(--sky)">recorded result · not computed on this site</div>
+    <p class="small" style="margin:0">Computed by the engine on ${recorded.recorded_on} (${recorded.engine.segmenter} segmenter,
+      ${recorded.engine.vision_backend || "CNN"}) in ${s.engine_ms} ms on a laptop CPU. Photograph: <code>${s.file}</code>
+      (${s.expected === "clean" ? "a clean road" : "an annotated defect"}).</p>
+    <p class="small muted" style="margin:.4rem 0 0">Examples are ${recorded.selection}. Click again for the next one.</p></div>`);
+  setTimeout(draw, 60);
+}
+
 el("sample").addEventListener("click", async () => {
   setLoading(el("out"), true, "fetching a dataset photograph…");
   const r = await API.post("/api/v1/vision/analyze-photo", { corridor_id: el("corridor").value });
+  if (engineAbsent(r)) { await showRecorded(); return; }
   if (!r.ok) { el("out").innerHTML = errorCard(r.data.error || "could not fetch", null); return; }
   if (r.data.image_data_url) setImage(r.data.image_data_url);
   lastResult = r.data;
@@ -149,6 +193,7 @@ el("run").addEventListener("click", async () => {
   const dev = el("device").value;
   if (dev) payload.device_id = dev;
   const r = await API.post("/api/v1/pipeline/deep-audit", payload);
+  if (engineAbsent(r)) { el("out").innerHTML = engineCard("Analysing an uploaded photograph"); return; }
   if (!r.ok) { el("out").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`, null); return; }
   lastResult = r.data;
   render(r.data, r.ms);
@@ -161,6 +206,7 @@ el("redact").addEventListener("click", async () => {
   const btn = el("redact"); btn.disabled = true; btn.textContent = "blurring…";
   const r = await API.post("/api/v1/privacy/redact", { image_base64: currentImage.dataUrl.split(",")[1] });
   btn.textContent = "Blur people & plates"; btn.disabled = false;
+  if (engineAbsent(r)) { el("out").innerHTML = engineCard("Blurring people and number plates"); return; }
   if (!r.ok) { el("canvasNote").textContent = "redaction failed: " + (r.data.error || r.status); return; }
   const rep = r.data.report || {};
   lastResult = null;   // overlays belonged to the unredacted image
@@ -318,7 +364,7 @@ function render(d, ms) {
 
   el("out").innerHTML = `
     <div class="card accent">
-      <div class="label">primary finding · ${ms} ms round trip</div>
+      <div class="label">primary finding · ${ms != null ? ms + " ms round trip" : "recorded"}</div>
       <h2 style="margin:2px 0 2px">${top.class_name || d.status || "no distress detected"}</h2>
       <p class="small muted" style="margin:0 0 12px">
         confidence ${top.confidence != null ? (top.confidence * 100).toFixed(1) + "%" : "—"} ·
