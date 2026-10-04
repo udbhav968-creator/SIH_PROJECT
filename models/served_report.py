@@ -88,6 +88,11 @@ def training_extras(ckpt, require_files=True):
     }
 
 
+def _detector_checks_passed(det):
+    from models.road_damage_detector import detector_blocked_by
+    return detector_blocked_by(det) is None
+
+
 def served_segmenter_summary(ckpt, require_files=True):
     """Which segmenter serves, with its held-out numbers and the comparison that chose it."""
     sel = _read(ckpt, "segmenter_selection.json")
@@ -204,7 +209,8 @@ def model_registry(ckpt, hash_files=True):
         t = det.get("test") or {}
         add("YOLOv8 road-damage detector", "road-damage boxes (D00/D10/D20/D40)", "COCO-pretrained detector fine-tuned on RDD2022 India",
             ["damage_rdd2022_india.onnx"], {"test_map50": t.get("map50"), "test_map50_95": t.get("map50_95")},
-            os.path.exists(os.path.join(ckpt, "damage_rdd2022_india.onnx")) or not hash_files,
+            (os.path.exists(os.path.join(ckpt, "damage_rdd2022_india.onnx")) or not hash_files)
+            and _detector_checks_passed(det),
             det.get("trained_at_unix"), det.get("serving_confidence_chosen_on"),
             "checkpoints/road_damage_detector_report.json")
     add("YOLOv8n (COCO)", "people, vehicles, signs", "pretrained detector, not retrained here",

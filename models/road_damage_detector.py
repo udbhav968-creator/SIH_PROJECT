@@ -30,6 +30,20 @@ DEFAULT_LABELS = {"D00": "Longitudinal crack", "D10": "Transverse crack",
 COLOURS = {"D00": "#f0a92b", "D10": "#facc15", "D20": "#fb923c", "D40": "#fb7185"}
 
 
+def detector_blocked_by(meta_or_report):
+    """
+    Boxes are shown only after both checks in scripts/verify_rdd_detector.py
+    passed: the exported file reproduces the trained network, and it does not
+    draw damage on more clean roads than the pipeline already flags. Returns the
+    first check that is missing or failed, else None.
+    """
+    m = meta_or_report or {}
+    for k in ("artefact_check", "deployment_check"):
+        if (m.get(k) or {}).get("passed") is not True:
+            return k
+    return None
+
+
 class RoadDamageDetector(ONNXObjectDetector):
     def __init__(self, checkpoints_dir=None):
         ckpt = checkpoints_dir or CKPT_DIR
@@ -48,6 +62,18 @@ class RoadDamageDetector(ONNXObjectDetector):
                          iou_threshold=float(meta.get("iou_threshold", 0.45)),
                          class_names=meta.get("class_names") or DEFAULT_CLASSES,
                          weights_path=path if os.path.exists(path) else "__missing__")
+
+    @property
+    def blocked_by(self):
+        """The first check (scripts/verify_rdd_detector.py) not recorded as passed, or None.
+        `verifying` is set only by that script, which has to run the model to check it."""
+        if getattr(self, "verifying", False):
+            return None
+        return detector_blocked_by(self.meta)
+
+    @property
+    def is_ready(self):
+        return self.blocked_by is None and super().is_ready
 
     def _load(self):
         if not self.weights_path or not os.path.exists(self.weights_path):
@@ -71,5 +97,7 @@ class RoadDamageDetector(ONNXObjectDetector):
     def describe(self):
         base = super().describe()
         base.update({"model": "YOLOv8 fine-tuned on RDD2022 India", "classes": self.labels,
-                     "test_metrics": self.meta.get("test")})
+                     "test_metrics": self.meta.get("test"), "blocked_by": self.blocked_by,
+                     "artefact_check": self.meta.get("artefact_check"),
+                     "deployment_check": self.meta.get("deployment_check")})
         return base
