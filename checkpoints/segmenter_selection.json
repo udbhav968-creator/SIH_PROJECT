@@ -1,24 +1,26 @@
 {
   "served": "pixel_classifier",
+  "iou_selection_served": "pixel_classifier",
   "rule": "U-Net served only if, on the calibration photographs, its crack IoU AND pothole IoU both exceed the pixel classifier's, and its clean-road false-blob rate is no more than 5 points worse. Decided before the test set was scored.",
-  "why": "calibration IoU crack 0.278 vs 0.214, pothole 0.650 vs 0.119; clean false-blob rate 0.0 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 9/24 defects with 6/36 false positives; the pixel classifier found 24/24 with 3/36",
+  "why_iou": "calibration IoU crack 0.184 vs 0.214, pothole 0.647 vs 0.119; clean false-blob rate 0.0 vs 0.1807",
+  "why": "calibration IoU crack 0.184 vs 0.214, pothole 0.647 vs 0.119; clean false-blob rate 0.0 vs 0.1807; end-to-end check recorded for information (it cannot overturn the IoU rule): end to end, U-Net found 18/24 defects with 4/36 false positives; the pixel classifier found 24/24 with 3/36",
   "validation": {
     "unet": {
       "crack": {
-        "iou": 0.2777,
-        "dice": 0.4346,
-        "pixel_precision": 0.514,
-        "pixel_recall": 0.3765,
+        "iou": 0.1841,
+        "dice": 0.311,
+        "pixel_precision": 0.6009,
+        "pixel_recall": 0.2097,
         "true_pixels": 276185,
-        "predicted_pixels": 202322
+        "predicted_pixels": 96407
       },
       "pothole": {
-        "iou": 0.6496,
-        "dice": 0.7876,
-        "pixel_precision": 0.8673,
-        "pixel_recall": 0.7213,
+        "iou": 0.6472,
+        "dice": 0.7858,
+        "pixel_precision": 0.815,
+        "pixel_recall": 0.7587,
         "true_pixels": 54971,
-        "predicted_pixels": 45720
+        "predicted_pixels": 51171
       },
       "clean_false_blob_rate": 0.0
     },
@@ -45,32 +47,32 @@
   "test": {
     "unet": {
       "crack": {
-        "iou": 0.294,
-        "dice": 0.4544,
-        "pixel_precision": 0.526,
-        "pixel_recall": 0.4,
+        "iou": 0.1984,
+        "dice": 0.3311,
+        "pixel_precision": 0.6143,
+        "pixel_recall": 0.2267,
         "true_pixels": 610039,
-        "predicted_pixels": 463889
+        "predicted_pixels": 225119
       },
       "pothole": {
-        "iou": 0.6411,
-        "dice": 0.7813,
-        "pixel_precision": 0.883,
-        "pixel_recall": 0.7006,
+        "iou": 0.6543,
+        "dice": 0.791,
+        "pixel_precision": 0.8501,
+        "pixel_recall": 0.7396,
         "true_pixels": 147007,
-        "predicted_pixels": 116630
+        "predicted_pixels": 127908
       },
       "clean": {
         "clean_photographs_scored": 120,
         "min_blob_px": 250,
-        "pixel_rate_crack": 0.00114,
-        "pixel_rate_pothole": 8e-05,
-        "photo_rate_any_blob": 0.0167,
+        "pixel_rate_crack": 0.00077,
+        "pixel_rate_pothole": 0.00051,
+        "photo_rate_any_blob": 0.0083,
         "per_folder": {
           "05_morth_civil_hard_negatives": {
             "photos": 120,
-            "flagged": 2,
-            "rate": 0.017
+            "flagged": 1,
+            "rate": 0.008
           }
         }
       },
@@ -93,90 +95,202 @@
         "true_pixels": 147007,
         "predicted_pixels": 158857
       },
-      "clean": {
-        "clean_photographs_scored": 120,
-        "min_blob_px": 250,
-        "pixel_rate_crack": 0.00609,
-        "pixel_rate_pothole": 0.01641,
-        "photo_rate_any_blob": 0.2333,
-        "per_folder": {
-          "05_morth_civil_hard_negatives": {
-            "photos": 120,
-            "flagged": 28,
-            "rate": 0.233
+      "source": "defect_segmenter_report.json"
+    }
+  },
+  "test_per_source": {
+    "dnit": {
+      "unet": {
+        "crack": {
+          "iou": 0.1984,
+          "dice": 0.3311,
+          "pixel_precision": 0.6143,
+          "pixel_recall": 0.2267,
+          "true_pixels": 610039,
+          "predicted_pixels": 225119
+        },
+        "pothole": {
+          "iou": 0.6543,
+          "dice": 0.791,
+          "pixel_precision": 0.8501,
+          "pixel_recall": 0.7396,
+          "true_pixels": 147007,
+          "predicted_pixels": 127908
+        },
+        "clean": {
+          "clean_photographs_scored": 120,
+          "min_blob_px": 250,
+          "pixel_rate_crack": 0.00077,
+          "pixel_rate_pothole": 0.00051,
+          "photo_rate_any_blob": 0.0083,
+          "per_folder": {
+            "05_morth_civil_hard_negatives": {
+              "photos": 120,
+              "flagged": 1,
+              "rate": 0.008
+            }
           }
-        }
+        },
+        "source": "exported ONNX file on CPU (the served artefact)"
       },
-      "source": "defect_segmenter_report.json (same split, scored at training)"
-    },
-    "unet_torch_gpu": {
-      "crack": {
-        "iou": 0.294,
-        "dice": 0.4544,
-        "pixel_precision": 0.5259,
-        "pixel_recall": 0.4,
-        "true_pixels": 610039,
-        "predicted_pixels": 463937
+      "pixel_classifier": {
+        "crack": {
+          "iou": 0.2314,
+          "dice": 0.3758,
+          "pixel_precision": 0.3729,
+          "pixel_recall": 0.3787,
+          "true_pixels": 610039,
+          "predicted_pixels": 619523
+        },
+        "pothole": {
+          "iou": 0.1437,
+          "dice": 0.2513,
+          "pixel_precision": 0.242,
+          "pixel_recall": 0.2615,
+          "true_pixels": 147007,
+          "predicted_pixels": 158857
+        },
+        "source": "defect_segmenter_report.json"
       },
-      "pothole": {
-        "iou": 0.6411,
-        "dice": 0.7813,
-        "pixel_precision": 0.883,
-        "pixel_recall": 0.7006,
-        "true_pixels": 147007,
-        "predicted_pixels": 116642
-      },
-      "clean": {
-        "clean_photographs_scored": 120,
-        "min_blob_px": 250,
-        "pixel_rate_crack": 0.00114,
-        "pixel_rate_pothole": 8e-05,
-        "photo_rate_any_blob": 0.0167,
-        "per_folder": {
-          "05_morth_civil_hard_negatives": {
-            "photos": 120,
-            "flagged": 2,
-            "rate": 0.017
+      "unet_torch_gpu": {
+        "crack": {
+          "iou": 0.1986,
+          "dice": 0.3313,
+          "pixel_precision": 0.6142,
+          "pixel_recall": 0.2269,
+          "true_pixels": 610039,
+          "predicted_pixels": 225330
+        },
+        "pothole": {
+          "iou": 0.6543,
+          "dice": 0.791,
+          "pixel_precision": 0.8501,
+          "pixel_recall": 0.7397,
+          "true_pixels": 147007,
+          "predicted_pixels": 127918
+        },
+        "clean": {
+          "clean_photographs_scored": 120,
+          "min_blob_px": 250,
+          "pixel_rate_crack": 0.00077,
+          "pixel_rate_pothole": 0.00051,
+          "photo_rate_any_blob": 0.0083,
+          "per_folder": {
+            "05_morth_civil_hard_negatives": {
+              "photos": 120,
+              "flagged": 1,
+              "rate": 0.008
+            }
           }
         }
       }
+    },
+    "crackseg9k": {
+      "unet": {
+        "crack": {
+          "iou": 0.4061,
+          "dice": 0.5776,
+          "pixel_precision": 0.7596,
+          "pixel_recall": 0.466,
+          "true_pixels": 3038212,
+          "predicted_pixels": 1863902
+        },
+        "pothole": {
+          "iou": 0.0,
+          "dice": 0.0,
+          "pixel_precision": 0.0,
+          "pixel_recall": null,
+          "true_pixels": 0,
+          "predicted_pixels": 5837
+        }
+      },
+      "test_images": 794,
+      "pixel_classifier": {
+        "crack": {
+          "iou": 0.0025,
+          "dice": 0.0049,
+          "pixel_precision": 0.0108,
+          "pixel_recall": 0.0032,
+          "true_pixels": 389357,
+          "predicted_pixels": 113916
+        },
+        "pothole": {
+          "iou": 0.0,
+          "dice": 0.0,
+          "pixel_precision": 0.0,
+          "pixel_recall": null,
+          "true_pixels": 0,
+          "predicted_pixels": 612909
+        },
+        "scored_on_first_n": 100
+      }
+    },
+    "kaggle_pothole": {
+      "unet": {
+        "crack": {
+          "iou": null,
+          "dice": null,
+          "pixel_precision": null,
+          "pixel_recall": null,
+          "true_pixels": 0,
+          "predicted_pixels": 0
+        },
+        "pothole": {
+          "iou": 0.6786,
+          "dice": 0.8085,
+          "pixel_precision": 0.867,
+          "pixel_recall": 0.7575,
+          "true_pixels": 936399,
+          "predicted_pixels": 818142
+        }
+      },
+      "test_images": 95,
+      "pixel_classifier": {
+        "crack": {
+          "iou": 0.0,
+          "dice": 0.0,
+          "pixel_precision": 0.0,
+          "pixel_recall": null,
+          "true_pixels": 0,
+          "predicted_pixels": 94801
+        },
+        "pothole": {
+          "iou": 0.0348,
+          "dice": 0.0673,
+          "pixel_precision": 0.1514,
+          "pixel_recall": 0.0433,
+          "true_pixels": 936399,
+          "predicted_pixels": 267613
+        },
+        "scored_on_first_n": 95
+      }
     }
   },
+  "trained_with": "training/train_unet_multi.py",
   "decided_before_test": true,
   "smoke": false,
-  "decided_unix": 1791083214,
-  "iou_selection_served": "unet",
-  "why_iou": "calibration IoU crack 0.278 vs 0.214, pothole 0.650 vs 0.119; clean false-blob rate 0.0 vs 0.1807",
+  "decided_unix": 1791094536,
   "deployment_check": {
     "rule": "U-Net served only if, through audit_image() on the detection-quality photographs (clean roads and annotated defects from other datasets, never the DNIT test split), it finds at least as many defects and reports no more false positives than the pixel classifier. Fixed before the pixel classifier's current end-to-end numbers were measured.",
     "passed": false,
-    "why": "end to end, U-Net found 9/24 defects with 6/36 false positives; the pixel classifier found 24/24 with 3/36",
+    "why": "end to end, U-Net found 18/24 defects with 4/36 false positives; the pixel classifier found 24/24 with 3/36",
     "results": {
       "unet": {
-        "false_positive_photos": 6,
+        "false_positive_photos": 4,
         "clean_photographs": 36,
-        "detected_photos": 9,
+        "detected_photos": 18,
         "defect_photographs": 24,
-        "false_positive_rate": 0.1667,
-        "detection_rate": 0.375,
+        "false_positive_rate": 0.1111,
+        "detection_rate": 0.75,
         "missed": [
-          "kag_pothole-annotated_2_00233_potholes351.jpg",
-          "kag_pothole-annotated_2_00461_potholes580.jpg",
-          "cpr_2166_4570.jpg",
-          "kag_pothole-annotated_2_00122_potholes238.jpg",
-          "cpr_356_747.jpg",
-          "kag_pothole-annotated_2_00502_potholes623.jpg",
+          "1053954_DF_020_020BDF0070_06194_RAW.jpg",
           "cpr_217_457.jpg",
-          "kag_pothole-annotated_2_00300_potholes416.jpg",
           "cpr_325_683.jpg",
-          "cpr_351_736.jpg",
-          "kag_pothole-annotated_2_00470_potholes59.jpg",
           "cpr_1228_2588.jpg",
           "cpr_1214_2557.jpg",
-          "cpr_256_539.jpg",
-          "cpr_208_437.jpg"
+          "cpr_256_539.jpg"
         ],
-        "seconds": 152.5
+        "seconds": 147.2
       },
       "pixel_classifier": {
         "false_positive_photos": 3,
@@ -186,9 +300,9 @@
         "false_positive_rate": 0.0833,
         "detection_rate": 1.0,
         "missed": [],
-        "seconds": 420.4
+        "seconds": 402.6
       }
     },
-    "checked_unix": 1791086743
+    "checked_unix": 1791099519
   }
 }

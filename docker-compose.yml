@@ -4,7 +4,8 @@
 #
 # checkpoints/ (trained models and reports) is mounted from the
 # repository; the SQLite ledger lives in a named volume so it survives rebuilds.
-# Set ROAD_SHIELD_API_KEY to require a key on write endpoints.
+# Set ROAD_SHIELD_API_KEY to require a key on write endpoints. Prometheus can scrape
+# http://localhost:8000/metrics; /api/v1/ready is the readiness probe.
 services:
   engine:
     build: .
@@ -15,6 +16,8 @@ services:
       ROAD_SHIELD_WRITABLE_DIR: /data
       ROAD_SHIELD_ACCESS_LOG: "1"
       ROAD_SHIELD_API_KEY: ${ROAD_SHIELD_API_KEY:-}
+      ROAD_SHIELD_RATE_LIMIT: ${ROAD_SHIELD_RATE_LIMIT:-60}      # model requests per minute per client
+      ROAD_SHIELD_MAX_BODY_MB: ${ROAD_SHIELD_MAX_BODY_MB:-25}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
     volumes:
       - ./checkpoints:/app/checkpoints

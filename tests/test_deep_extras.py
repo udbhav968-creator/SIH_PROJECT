@@ -239,3 +239,57 @@ class ClaimsOnlyForTrainedModels(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MultiDatasetSegmentation(unittest.TestCase):
+    """The data plumbing behind training/train_unet_multi.py and scripts/fetch_seg_datasets.py."""
+
+    def test_concat_pairs_index_every_part_in_order(self):
+        from training.train_unet_multi import ConcatPairs
+        c = ConcatPairs([[("a", 0), ("b", 1)], [], [("c", 2)]])
+        self.assertEqual(len(c), 3)
+        self.assertEqual([c[i][0] for i in range(3)], ["a", "b", "c"])
+
+    def test_red_is_pothole_other_colours_crack(self):
+        from scripts.fetch_seg_datasets import colour_mask_to_label
+        m = np.zeros((4, 4, 3), np.uint8)
+        m[0, 0] = (255, 0, 0)
+        m[1, 1] = (0, 0, 255)
+        m[2, 2] = (0, 255, 0)
+        lab = colour_mask_to_label(m)
+        self.assertEqual((lab[0, 0], lab[1, 1], lab[2, 2], lab[3, 3]), (2, 1, 1, 0))
+        self.assertIsNone(colour_mask_to_label(np.zeros((4, 4), np.uint8)), "a binary mask has no class")
+
+    def test_split_is_stable_and_roughly_75_10_15(self):
+        from scripts.fetch_seg_datasets import split_of
+        s = [split_of("x", str(i)) for i in range(4000)]
+        self.assertEqual(s, [split_of("x", str(i)) for i in range(4000)])
+        self.assertAlmostEqual(s.count("train") / 4000, 0.75, delta=0.03)
+        self.assertAlmostEqual(s.count("test") / 4000, 0.15, delta=0.03)
+
+    def test_any_stored_image_form_decodes(self):
+        import base64
+        import io
+        from PIL import Image
+        from scripts.fetch_seg_datasets import to_array
+        im = Image.fromarray(np.full((5, 6, 3), 7, np.uint8))
+        buf = io.BytesIO()
+        im.save(buf, format="PNG")
+        raw = buf.getvalue()
+        for v in (im, raw, {"bytes": raw}, base64.b64encode(raw).decode()):
+            self.assertEqual(to_array(v).shape, (5, 6, 3))
+        self.assertIsNone(to_array(12345))
+
+    def test_measurement_photographs_are_caught_by_the_leak_guard(self):
+        import glob
+        import cv2
+        from scripts.fetch_seg_datasets import LeakGuard
+        g = LeakGuard()
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        paths = sorted(glob.glob(os.path.join(root, "datasets", "03_crack500_fatigue", "**", "*.jpg"),
+                               recursive=True))
+        if not paths:
+            self.skipTest("no measurement photographs on disk")
+        im = cv2.cvtColor(cv2.imread(paths[0]), cv2.COLOR_BGR2RGB)
+        self.assertTrue(g.is_leak(cv2.resize(im, (320, 200))), "a resized measurement photograph must be caught")
+        self.assertFalse(g.is_leak(np.random.default_rng(0).integers(0, 255, (200, 320, 3), dtype=np.uint8)))

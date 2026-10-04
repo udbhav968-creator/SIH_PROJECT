@@ -91,6 +91,53 @@ class APIServerTest(unittest.TestCase):
         return code, json.loads(payload)
 
     # -- isolation ---------------------------------------------------------
+    # -- operations (api/ops.py) -------------------------------------------
+    def test_metrics_endpoint_is_prometheus_text(self):
+        self.get_json("/api/v1/health")
+        code, headers, body = self._req("GET", "/metrics")
+        self.assertEqual(code, 200)
+        self.assertIn("text/plain", headers.get("Content-Type", ""))
+        text = body.decode()
+        self.assertIn('road_shield_requests_total{route="/api/v1/health",method="GET",status="200"}', text)
+        self.assertIn("road_shield_request_duration_seconds_bucket", text)
+        self.assertIn("road_shield_ready ", text)
+
+    def test_readiness_names_what_is_missing(self):
+        code, body = self.get_json("/api/v1/ready")
+        self.assertIn(code, (200, 503))
+        self.assertEqual(code == 200, body["ready"])
+        self.assertEqual(body["ready"], not body["missing"])
+        for k in ("vision_classifier", "defect_segmenter", "imu_classifier", "ledger"):
+            self.assertIn(k, body["models"])
+
+    def test_oversized_body_is_refused_before_it_is_read(self):
+        import http.client
+        host, port = self.base.replace("http://", "").split(":")
+        conn = http.client.HTTPConnection(host, int(port), timeout=30)
+        conn.putrequest("POST", "/api/v1/pipeline/deep-audit")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", str(srv.ops.MAX_BODY_BYTES + 1))
+        conn.endheaders()                                  # no body sent: the server must not wait for it
+        r = conn.getresponse()
+        self.assertEqual(r.status, 413)
+        self.assertIn(b"larger than", r.read())
+        conn.close()
+
+    def test_rate_limit_answers_429_with_retry_after(self):
+        old = srv.LIMITER.per_minute
+        srv.LIMITER.per_minute, srv.LIMITER._buckets = 1, {}
+        try:
+            first, _h, _b = self._req("POST", "/api/v1/telemetry/imu", {})
+            second, headers, body = self._req("POST", "/api/v1/telemetry/imu", {})
+            self.assertNotEqual(first, 429)
+            self.assertEqual(second, 429)
+            self.assertGreaterEqual(int(headers.get("Retry-After", "0")), 1)
+            self.assertIn(b"rate limit", body)
+            code, _h, _b = self._req("GET", "/api/v1/health")
+            self.assertEqual(code, 200, "reads are never rate limited")
+        finally:
+            srv.LIMITER.per_minute, srv.LIMITER._buckets = old, {}
+
     def test_ledger_is_isolated_from_checkpoints(self):
         self.assertTrue(srv.defect_store.db_path.startswith(_TMP))
         self.assertFalse(srv.defect_store.db_path.startswith(srv.CKPT_DIR))
@@ -462,6 +509,11 @@ class VercelHandlerTest(unittest.TestCase):
             code, body = self._req("GET", page)
             self.assertEqual(code, 200, page)
             self.assertIn(b"<", body[:200])
+
+    def test_static_deployment_is_never_ready(self):
+        code, body = self._req("GET", "/api/v1/ready")
+        self.assertEqual(code, 503)
+        self.assertFalse(json.loads(body)["ready"])
 
     def test_inference_endpoints_refuse_honestly(self):
         code, body = self._req("POST", "/api/v1/pipeline/deep-audit", {})

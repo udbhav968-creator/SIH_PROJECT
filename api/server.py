@@ -126,6 +126,22 @@ defect_store = DefectStore(os.path.join(WRITABLE_DIR, "road_shield.db"))
 fleet_dedup_engine = FleetDeduplicationEngine(proximity_threshold_meters=8.0,
                                               store=defect_store)
 
+# Operational guard rails: body limit, rate limit, Prometheus metrics, readiness (api/ops.py).
+from api import ops
+try:
+    from api.openapi import spec as _openapi_spec
+    _KNOWN_ROUTES = set(_openapi_spec()["paths"]) | {"/metrics", "/api/v1/ready"}
+except Exception:
+    _KNOWN_ROUTES = {"/metrics", "/api/v1/ready", "/api/v1/health"}
+METRICS = ops.Metrics(_KNOWN_ROUTES)
+LIMITER = ops.RateLimiter()
+
+
+def _readiness():
+    seg = getattr(deep_pipeline, "segmenter", None)
+    return ops.readiness(vision_model.is_ready, bool(seg is not None and seg.is_ready),
+                         imu_model.is_ready, defect_store is not None)
+
 # Demo defects are OFF by default: five invented bus reports in a ledger that
 # the dashboard presents as the city's repair backlog is fabricated data.
 # Set ROAD_SHIELD_SEED_DEMO=1 to seed them for a demo (only when the ledger is
@@ -371,10 +387,14 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # log, so a client report can be matched to the server line that served it.
         self._rid = uuid.uuid4().hex[:16]
         self._t_req = time.time()
+        self._status = None
         try:
             return BaseHTTPRequestHandler.handle_one_request(self)
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
             self.close_connection = True
+        finally:
+            if getattr(self, "command", None) and self._status is not None:
+                METRICS.observe(self.path.split("?")[0], self.command, self._status, time.time() - self._t_req)
 
     def log_error(self, fmt, *args):
         # BaseHTTPRequestHandler routes broken pipes through here too.
@@ -430,6 +450,21 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(content)
                     return
+
+        if path == "/metrics":
+            body = METRICS.render(_readiness()).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/v1/ready":
+            r = _readiness()
+            self._send_json(200 if r["ready"] else 503, r)
+            return
 
         if path in ["/", "/api/v1/health"]:
             self._send_json(200, {
@@ -850,6 +885,29 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
     def do_POST(self):
         path = self.path.split("?")[0]
+        try:
+            declared = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            declared = -1
+        if declared < 0 or declared > ops.MAX_BODY_BYTES:
+            self.close_connection = True              # the body is not read, so the connection cannot be reused
+            self._send_json(413, {"error": f"request body larger than {ops.MAX_BODY_BYTES // (1024 * 1024)} MB "
+                                           f"(set ROAD_SHIELD_MAX_BODY_MB to change)"})
+            return
+        if path in ops.RATE_LIMITED:
+            allowed, retry = LIMITER.check(self.client_address[0] if self.client_address else "-")
+            if not allowed:
+                self.close_connection = True
+                self.send_response(429)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Retry-After", str(retry))
+                self._send_cors_headers()
+                payload = json.dumps({"error": f"rate limit: {LIMITER.per_minute} model requests per minute per "
+                                               f"client; retry in {retry} s"}).encode()
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
         body = self._read_json_body()
         t0 = time.time()
 
