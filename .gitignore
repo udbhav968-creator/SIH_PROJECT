@@ -94,3 +94,4 @@ audit_commit_msg.txt
 runs/
 road_shield_*outputs.zip
 road_shield_imu_fix.zip
+checkpoints/defect_segmenter_unet.pt

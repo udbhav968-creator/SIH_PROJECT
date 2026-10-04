@@ -49,6 +49,8 @@ def served_classifier_summary(ckpt, require_files=True):
             "held_out_test_images": test.get("images"),
             "held_out_test_photographs": (rep.get("split") or {}).get("test_photographs"),
             "per_class_report": _sklearn_style(test.get("per_class")),
+            "confusion_matrix": test.get("confusion_matrix"),
+            "class_names": rep.get("class_names"),
             "indian_roads": rep.get("indian_roads_rdd2022_test"),
             "onnx": rep.get("onnx"),
             "selection": sel,
@@ -106,7 +108,9 @@ def served_segmenter_summary(ckpt, require_files=True):
         "test_photographs": (src.get("trained_on") or {}).get("test_photographs"),
         "clean_false_blob_rate": fp.get("photo_rate_any_blob"),
         "selection": ({"served": sel.get("served"), "rule": sel.get("rule"), "why": sel.get("why"),
-                       "test": sel.get("test")} if sel else None),
+                       "test": sel.get("test"),
+                       "iou_selection_served": sel.get("iou_selection_served", sel.get("served")),
+                       "deployment_check": sel.get("deployment_check")} if sel else None),
     }
 
 

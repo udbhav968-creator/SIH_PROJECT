@@ -50,7 +50,9 @@ import numpy as np
 
 from models.defect_segmenter import CLASS_CRACK, CLASS_POTHOLE, CLASS_SOUND, IGNORE
 from models.unet_segmenter import (IN_H, IN_W, MEAN, META_NAME, ONNX_NAME, SELECTION_NAME, STD,
-                                   _UNetBase, mask_from_proba, probs_to_work)
+                                   UNetSegmenter, _UNetBase, mask_from_proba, probs_to_work)
+
+PT_NAME = "defect_segmenter_unet.pt"
 from models.defect_segmenter import WORK_H, WORK_W
 
 CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
@@ -480,18 +482,50 @@ def main(argv=None):
         print(f"  [onnx] legacy export failed ({e}); trying the dynamo exporter")
         torch.onnx.export(cpu_model, (dummy,), onnx_path, input_names=["image"], output_names=["probs"],
                           opset_version=17, dynamo=True)
+    # the weights too, so the network can be re-exported without retraining
+    torch.save(model.state_dict(), os.path.join(a.out, PT_NAME))
+
+    # Parity on REAL calibration photographs, through the served preprocessing.
+    # (Random noise is a poor check: a segmentation net can saturate on it.)
     parity = None
     try:
-        import onnxruntime as ort
-        sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
-        x = np.random.default_rng(0).standard_normal((1, 3, IN_H, IN_W)).astype(np.float32)
-        with torch.no_grad():
-            ref = cpu_model(torch.from_numpy(x)).numpy()
-        parity = float(np.abs(sess.run(None, {"image": x})[0] - ref).max())
+        import cv2
+        onnx_seg = UNetSegmenter(a.out)              # loads the ONNX file just written
+        onnx_seg.thresholds, onnx_seg.tta_flip = dict(unet.thresholds), True
+        ref_seg = TorchUNet(cpu_model.m, torch.device("cpu"), unet.thresholds)
+        diffs = []
+        for rec in sp["cal"][:8]:
+            raw = cv2.imread(rec["path"])
+            if raw is not None:
+                rgb = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
+                diffs.append(float(np.abs(onnx_seg.predict_work(rgb) - ref_seg.predict_work(rgb)).max()))
+        parity = max(diffs) if diffs else None
     except Exception as e:
+        onnx_seg = None
         print(f"  [warn] ONNX parity check failed: {e}")
     size_mb = round(os.path.getsize(onnx_path) / 1e6, 1)
-    print(f"  exported {onnx_path} ({size_mb} MB, max |onnx - torch| = {parity})")
+    print(f"  exported {onnx_path} ({size_mb} MB, max |onnx - torch| on 8 real photographs = {parity})")
+
+    # Score the artefact that will actually be served (ONNX, CPU) on the test split.
+    onnx_test, cpu_ms = None, None
+    if onnx_seg is not None and onnx_seg.is_ready:
+        t_cpu = time.time()
+        onnx_test = score(onnx_seg, sp["test"])
+        cpu_ms = 1000 * (time.time() - t_cpu) / max(1, len(sp["test"]))
+        onnx_test["clean"] = clean_false_positive_rate(onnx_seg, sp["neg_test"]) if sp["neg_test"] else None
+        print(f"  TEST unet (ONNX, served) crack IoU {iou(onnx_test, 'crack'):.4f}  pothole IoU "
+              f"{iou(onnx_test, 'pothole'):.4f}  clean false blobs "
+              f"{(onnx_test.get('clean') or {}).get('photo_rate_any_blob')}  ({cpu_ms:.0f} ms/photo CPU)")
+    onnx_ok = (onnx_test is not None
+               and abs(iou(onnx_test, "crack") - iou(test["unet"], "crack")) <= 0.03
+               and abs(iou(onnx_test, "pothole") - iou(test["unet"], "pothole")) <= 0.03)
+    if served == "unet" and not onnx_ok:
+        served = "pixel_classifier"
+        why += "; NOT served: the exported ONNX file did not reproduce the network's test IoU"
+        print("  [!] ONNX file disagrees with the trained network - keeping the pixel classifier")
+    if onnx_ok:
+        test["unet_torch_gpu"] = test["unet"]
+        test["unet"] = {**onnx_test, "source": "exported ONNX file on CPU (the served artefact)"}
 
     trained_on = {"train_photographs": len(train_pairs), "clean_train_photographs": len(neg_pairs),
                   "calibration_photographs": len(sp["cal"]), "test_photographs": len(sp["test"]),
@@ -509,8 +543,10 @@ def main(argv=None):
         "best_val_mean_iou_at_0.5": round(best, 4), "history": history,
         "trained_on": trained_on, "iou": {k: v for k, v in test["unet"].items() if k in ("crack", "pothole")},
         "false_positives_on_clean_roads": test["unet"].get("clean"),
-        "onnx_size_mb": size_mb, "onnx_parity_max_abs": parity,
-        "inference_ms_per_image_gpu": round(ms, 1), "smoke": a.smoke,
+        "onnx_size_mb": size_mb, "onnx_parity_max_abs_real_photos": parity,
+        "onnx_verified_on_test": onnx_ok,
+        "inference_ms_per_image_gpu": round(ms, 1),
+        "inference_ms_per_image_cpu_onnx": round(cpu_ms, 1) if cpu_ms else None, "smoke": a.smoke,
         "trained_at_unix": int(time.time()),
     }
     with open(os.path.join(a.out, META_NAME), "w", encoding="utf-8") as fh:

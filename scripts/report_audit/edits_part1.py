@@ -1,4 +1,26 @@
 """Training-independent corrections (verified against code / sources)."""
+import json as _json
+import os as _os
+
+
+def _segmenter_sentence():
+    """Name the segmenter checkpoints/segmenter_selection.json says is served."""
+    path = _os.path.join(_os.path.dirname(__file__), "..", "..", "checkpoints", "segmenter_selection.json")
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            served = _json.load(fh).get("served")
+    except Exception:
+        served = None
+    if served == "unet":
+        return ("Finds candidate distress regions with a U-Net segmenter (ResNet-18 encoder, every layer "
+                "trained on hand-drawn defect outlines, chosen over the pixel classifier on calibration "
+                "photographs), whose pothole pixels are kept only where the CNN classifier also sees a "
+                "pothole (semantic gate); painted markings are masked out first.")
+    return ("Finds candidate distress regions with an 11-feature pixel segmenter (gradient-boosted trees), "
+            "whose pothole pixels are kept only where the CNN classifier also sees a pothole (semantic "
+            "gate); painted markings are masked out first.")
+
+
 E = [
     # --- abstract ---
     ("We mounted an ordinary dashcam and an inexpensive MPU-6050 accelerometer (100 Hz) on city transit buses.",
@@ -74,7 +96,7 @@ E = [
      "People's heads and number plates are blurred by the redaction step before an image is shared, in support of the DPDP Act 2023; detection recall has not yet been measured."),
     # --- methodology stages ---
     ("Finds candidate distress patches using spatial saliency and grid clustering.",
-     "Finds candidate distress regions with an 11-feature pixel segmenter (gradient-boosted trees), whose pothole pixels are kept only where the CNN classifier also sees a pothole (semantic gate); painted markings are masked out first."),
+     _segmenter_sentence()),
     ("Converts candidate pixel regions into real metric area (m^2) and cavity depth (cm).",
      "Converts candidate pixel regions into ground area (m^2) by ground-plane projection, and attaches a depth estimate with a low-high interval (not a measurement)."),
     ("Extracts the matching 1.0-second tri-axial accelerometer buffer from the MPU-6050.",

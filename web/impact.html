@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Impact — ROAD-SHIELD</title>
+<link rel="stylesheet" href="/web/app.css">
+<style>
+  .calc { display:grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap:10px 16px; }
+  .calc label { font-size:12px; color:var(--slate-300); display:block; }
+  .calc input { width:100%; margin-top:4px; }
+  .src { font-size:11.5px; color:var(--slate-400); }
+  .src a { color:var(--slate-300); }
+  .principle { font-weight:600; color:var(--white); white-space:nowrap; }
+  td.gap { color:var(--warn); }
+</style>
+</head>
+<body data-page="impact">
+<div class="wrap">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">Impact</h1>
+    <span class="muted small">why it matters, what it would cost, how it holds itself to account</span>
+  </div>
+
+  <div class="grid c4">
+    <div class="card accent"><div class="label">pothole deaths · India · 2022</div>
+      <div class="stat">1,856</div><div class="stat-sub">from 4,446 pothole accidents</div></div>
+    <div class="card"><div class="label">pothole deaths · average per year</div>
+      <div class="stat" style="color:var(--rose)">~2,342</div><div class="stat-sub">2013–2022</div></div>
+    <div class="card"><div class="label">all road deaths · India · 2022</div>
+      <div class="stat" style="color:var(--sky)">1,68,491</div><div class="stat-sub">4,61,312 accidents</div></div>
+    <div class="card"><div class="label">classifier on indian roads</div>
+      <div class="stat" style="color:var(--violet)" id="indStat">—</div><div class="stat-sub" id="indSub">held-out photographs</div></div>
+  </div>
+  <p class="src" style="margin:8px 0 0">Sources: MoRTH, <a href="https://www.pib.gov.in/PressReleaseIframePage.aspx?PRID=1973295" target="_blank" rel="noopener">Road Accidents in India 2022 (PIB)</a> ·
+    pothole figures from MoRTH data via <a href="https://factly.in/data-fatality-rate-in-accidents-on-potholed-roads-increased-from-0-27-in-2013-to-0-42-in-2022/" target="_blank" rel="noopener">FACTLY</a>.</p>
+
+  <div class="section-head"><h2>What changes</h2></div>
+  <div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>today</th><th>with ROAD-SHIELD</th><th>where it is</th></tr></thead><tbody>
+      <tr><td class="small">roads inspected by people, periodically</td><td class="small">every bus route inspected every day it runs</td><td class="small muted">designed (capacity on <a href="/design">/design</a>)</td></tr>
+      <tr><td class="small">a defect is a complaint</td><td class="small">a defect is a record: class, outline, m², depth interval, cost range, location</td><td class="small muted">implemented · <a href="/inspect">/inspect</a></td></tr>
+      <tr><td class="small">one pothole reported — and billed — twice</td><td class="small">same-class reports within 8 m merge; every sighting kept as evidence</td><td class="small muted">implemented · <a href="/corridor">/corridor</a></td></tr>
+      <tr><td class="small">a bill can be edited after issue</td><td class="small">SHA-256 seal; one changed rupee breaks it</td><td class="small muted">implemented · <a href="/works">/works</a></td></tr>
+      <tr><td class="small">"repaired" is a claim</td><td class="small">repair photo compared with the original; a recycled photo is rejected</td><td class="small muted">implemented · API</td></tr>
+    </tbody></table></div>
+    <p class="small muted" style="margin:10px 0 0">None of these outcomes has been measured on a real fleet. The pilot below is how they get measured.</p>
+  </div>
+
+  <div class="section-head"><h2>Cost per kilometre surveyed</h2>
+    <span class="muted small">placeholders — replace with real quotes</span></div>
+  <div class="card">
+    <div class="calc">
+      <label>Edge box per bus (₹, one-time) <input type="number" id="uBox" value="40000" min="0"></label>
+      <label>Box lifetime (months) <input type="number" id="uLife" value="36" min="1"></label>
+      <label>Mobile data per bus (GB / month) <input type="number" id="uGB" value="3.8" min="0" step="0.1"></label>
+      <label>Price per GB (₹) <input type="number" id="uGBp" value="10" min="0"></label>
+      <label>Cloud cost per bus (₹ / month) <input type="number" id="uCloud" value="60" min="0"></label>
+      <label>km per bus per day <input type="number" id="uKm" value="170" min="1"></label>
+      <label>Buses <input type="number" id="uBus" value="20" min="1"></label>
+    </div>
+    <div class="grid c4" style="margin-top:14px" id="uOut"></div>
+    <p class="small muted" style="margin:10px 0 0">Every input here is an assumption you can change; the defaults are
+      placeholders, not supplier quotes. Measured inputs behind the design: the classifier runs at 7.2 ms per image on a CPU
+      (no GPU on the bus), and ~5% of sampled frames are uploaded, which gives the ~3.8 GB per month.</p>
+  </div>
+
+  <div class="section-head"><h2>Responsible AI</h2>
+    <span class="muted small">mapped onto Microsoft's six principles — what exists, and what is missing</span></div>
+  <div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>principle</th><th>what the system does</th><th>gap</th></tr></thead><tbody>
+      <tr><td class="principle">Fairness</td><td class="small">No decision about any person; no demographic inference. The real risk is geographic: roads without buses go uninspected, and a model from one country fails in another — measured here as 33% on Indian roads before Indian data, <span id="indInline">92.3%</span> after.</td><td class="small gap">no per-city evaluation; non-bus roads need another source</td></tr>
+      <tr><td class="principle">Reliability &amp; safety</td><td class="small">Held-out splits by photograph; models chosen on validation before the test set; classical fallback for every deep model; missing inputs are a 400, never a default; 200+ automated tests.</td><td class="small gap">no field validation of depth, PCI, deterioration; no bus footage yet</td></tr>
+      <tr><td class="principle">Privacy &amp; security</td><td class="small">People and plates blurred before sharing; no identity stored; sealed work orders; optional API key on write endpoints; static files from an allow-list only.</td><td class="small gap">blur recall unmeasured; on-bus blur, TLS, device certificates designed</td></tr>
+      <tr><td class="principle">Inclusiveness</td><td class="small">Runs on an ordinary CPU; any camera via a calibration profile; the site works on a phone and without map tiles.</td><td class="small gap">English-only interface</td></tr>
+      <tr><td class="principle">Transparency</td><td class="small">Every number labelled measured / estimate / range; model cards with the weak classes; whole-frame classifier opinion shown beside the measured result; OpenAPI contract; withdrawn claims listed.</td><td class="small muted">—</td></tr>
+      <tr><td class="principle">Accountability</td><td class="small">Each served model identified by SHA-256 and the rule that chose it; each work order traceable to its sightings; a human authority issues repairs — the system recommends, it does not dispatch.</td><td class="small gap">no formal governance process with an authority yet</td></tr>
+    </tbody></table></div>
+    <p class="src" style="margin:10px 0 0">Principles: <a href="https://learn.microsoft.com/en-us/azure/machine-learning/concept-responsible-ai?view=azureml-api-2" target="_blank" rel="noopener">Microsoft Learn — What is Responsible AI</a></p>
+  </div>
+
+  <div class="section-head"><h2>90-day pilot</h2>
+    <span class="muted small">one route, ~20 buses, shadow mode: the system reports, people decide</span></div>
+  <div class="grid c2">
+    <div class="card"><div class="label">plan</div>
+      <div class="kv"><span>Weeks 0–2</span><span>install, calibrate each camera</span></div>
+      <div class="kv"><span>Weeks 3–6</span><span>collect; label ~1,000 bus frames; retrain</span></div>
+      <div class="kv"><span>Weeks 7–10</span><span>shadow mode vs an inspectors' survey</span></div>
+      <div class="kv"><span>Weeks 11–13</span><span>measure and report</span></div>
+    </div>
+    <div class="card"><div class="label">what it measures</div>
+      <ul class="small" style="margin:0;padding-left:17px">
+        <li>detection precision and recall vs the inspectors' survey</li>
+        <li>area vs tape measure; depth interval vs measured depth</li>
+        <li>time from first sighting to work order</li>
+        <li>duplicate reports merged; recycled repair photos rejected</li>
+        <li>cost per km surveyed, with real quotes</li>
+      </ul></div>
+  </div>
+
+  <div class="section-head"><h2>Azure deployment mapping</h2>
+    <span class="muted small">designed, not deployed — the engine runs anywhere Docker runs</span></div>
+  <div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>component</th><th>Azure service</th></tr></thead><tbody>
+      <tr><td class="small">on-bus inference, store-and-forward</td><td class="small">Azure IoT Edge running the ONNX models</td></tr>
+      <tr><td class="small">device identity and ingest</td><td class="small">Azure IoT Hub</td></tr>
+      <tr><td class="small">public API gateway</td><td class="small">Azure API Management</td></tr>
+      <tr><td class="small">queue</td><td class="small">Azure Event Hubs or Service Bus</td></tr>
+      <tr><td class="small">inference workers</td><td class="small">Azure Container Apps or AKS with KEDA, scaled on queue depth</td></tr>
+      <tr><td class="small">frames (7-day retention)</td><td class="small">Azure Blob Storage with lifecycle management</td></tr>
+      <tr><td class="small">ledger</td><td class="small">Azure Database for PostgreSQL – Flexible Server with PostGIS</td></tr>
+      <tr><td class="small">maps</td><td class="small">Azure Maps</td></tr>
+      <tr><td class="small">training, model registry, Responsible AI dashboard</td><td class="small">Azure Machine Learning</td></tr>
+      <tr><td class="small">monitoring · secrets · staff sign-in</td><td class="small">Azure Monitor + Application Insights · Key Vault · Microsoft Entra ID</td></tr>
+    </tbody></table></div></div>
+</div>
+
+<script src="/web/app.js"></script>
+<script>
+function ucalc() {
+  const v = id => Math.max(0, parseFloat(el(id).value) || 0);
+  const box = v("uBox") / Math.max(1, v("uLife"));
+  const data = v("uGB") * v("uGBp");
+  const perBus = box + data + v("uCloud");
+  const kmMonth = v("uKm") * 30;
+  const perKm = kmMonth ? perBus / kmMonth : 0;
+  const fleet = perBus * v("uBus");
+  const inr = x => "₹" + Math.round(x).toLocaleString("en-IN");
+  el("uOut").innerHTML = `
+    <div class="card"><div class="label">per bus per month</div><div class="stat">${inr(perBus)}</div>
+      <div class="stat-sub">box ${inr(box)} · data ${inr(data)} · cloud ${inr(v("uCloud"))}</div></div>
+    <div class="card"><div class="label">per km surveyed</div><div class="stat" style="color:var(--emerald)">₹${perKm.toFixed(2)}</div>
+      <div class="stat-sub">${Math.round(kmMonth).toLocaleString("en-IN")} km per bus per month</div></div>
+    <div class="card"><div class="label">fleet per month</div><div class="stat" style="color:var(--sky)">${inr(fleet)}</div>
+      <div class="stat-sub">${v("uBus")} buses</div></div>
+    <div class="card"><div class="label">km surveyed per month</div><div class="stat" style="color:var(--violet)">${Math.round(kmMonth * v("uBus")).toLocaleString("en-IN")}</div>
+      <div class="stat-sub">route km counted each time a bus drives it</div></div>`;
+}
+document.querySelectorAll(".calc input").forEach(i => i.addEventListener("input", ucalc));
+ucalc();
+(async () => {
+  const m = await API.get("/api/v1/training/metrics");
+  const ie = m.ok ? (m.data.served_classifier?.indian_roads || m.data.indian_roads_eval?.served) : null;
+  if (ie && ie.accuracy != null) {
+    el("indStat").textContent = (ie.accuracy * 100).toFixed(1) + "%";
+    const before = m.data.indian_roads_eval?.before?.accuracy;
+    el("indSub").textContent = `${ie.images} held-out crops` + (before != null ? ` · was ${(before * 100).toFixed(1)}% before Indian data` : "");
+    el("indInline").textContent = (ie.accuracy * 100).toFixed(1) + "%";
+  }
+})();
+</script>
+</body>
+</html>

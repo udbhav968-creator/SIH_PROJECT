@@ -14,7 +14,7 @@ A road photograph goes in. A classified, outlined, measured and costed repair or
 | What | Result | Measured on |
 |---|---|---|
 | Road-condition classifier, 7 classes | **93.3%** accuracy, macro-F1 **0.828** | 630 held-out images from 567 photographs never seen in training, scored once |
-| Same classifier on **Indian roads** | **92.2%** accuracy, macro-F1 **0.922** (was 33.4% before Indian data was added) | 1,200 crops from held-out RDD2022 India photographs (normal / crack / pothole), never trained on |
+| Same classifier on **Indian roads** | **92.3%** accuracy, macro-F1 **0.922** (was 33.4% before Indian data was added) | 1,200 crops from held-out RDD2022 India photographs (normal / crack / pothole), never trained on |
 | Hand-crafted baseline (HOG + LBP + colour → SVM) | 84.9%, macro-F1 0.558 | the identical split — the number the deep model has to beat |
 | Defect segmentation (pixel classifier) | crack IoU **0.231**, pothole IoU **0.144** | 500 held-out DNIT photographs |
 | CNN semantic gate on the segmenter | pothole IoU 0.102 → 0.271; clean roads with a false blob 8/50 → 2/50 | photographs the classifier never saw |
@@ -58,9 +58,10 @@ Measured on one photograph through the API: with an assumed camera mount the def
 | resnet50 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 89.5%, F1 0.857; India 91.9% | no (lost on validation) |
 | MobileNetV2 + ensemble_soft | frozen CNN features + trained head | head only | 87.9%, F1 0.745 | fallback |
 | HOG/LBP + PCA + SVM | classical features | yes | 84.9% | fallback |
+| U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack 0.294, pothole 0.641 | no (won on masks, lost the end-to-end check) |
 | Pixel segmenter | gradient boosting on 11 features | yes | crack 0.231, pothole 0.144 | **yes** |
 | YOLOv8n (COCO) | pretrained object detector | **no** — used as published | people, vehicles, signs | yes |
-| IMU 1-D CNN | deep, from scratch | yes (GPU) | 78.0% | no (lost in cross-validation) |
+| IMU 1-D CNN | deep, from scratch | yes (GPU) | 78.1% | no (lost in cross-validation) |
 | IMU RandomForest | classical, from scratch | yes | 87.2% | **yes** |
 
 **How a model gets served.** Each deep model replaces its classical counterpart only by a rule written before its test set is scored: the fine-tuned CNN must beat the frozen head on validation accuracy *and* macro-F1; the U-Net must beat the pixel classifier on crack *and* pothole IoU on calibration photographs without more false blobs on clean roads; the IMU CNN must win 5-fold cross-validation on accuracy *and* macro-F1. Losers are reported, not hidden. Pretrained ImageNet/COCO weights are the starting point (transfer learning); training then updates every layer on this project's data, except the frozen-head baseline.
@@ -97,12 +98,12 @@ Normal road, crack and pothole carry almost all test images. The four rare class
 - **Near-duplicate rejection**: every image is perceptually hashed; within 8 bits of an existing image is a re-upload (threshold measured over 60 photographs, not guessed).
 - **Label-conflict audit**: 20 photographs were filed under three contradictory labels at once — the bug that held accuracy at 36.6%.
 - **Domain policy**: data that is not a road scene is excluded from road-scene training and measurement, and the exclusion travels with every number it changes.
-- **Claims registry**: `checkpoints/claims.json` lists 19 subsystems with their evidence files and 15 earlier claims that were withdrawn or corrected; the site's Architecture page shows both.
+- **Claims registry**: `checkpoints/claims.json` lists 19 subsystems with their evidence files and 16 earlier claims that were withdrawn or corrected; the site's Architecture page shows both.
 - **Nothing invented at runtime**: no default GPS, no default PCI, no confidence where there is no probability; missing inputs produce a 400 or an explicit `unavailable`.
 
 ## System design and platform
 
-The full design — requirements, capacity maths for a 5,000-bus fleet, architecture from the bus edge to the ledger, data model, ML lifecycle, deployment, scaling, security and privacy — is in [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) and on the site's `/design` page, with an interactive capacity calculator. Every component there is marked *implemented* or *designed*.
+The full design — requirements, capacity maths for a 5,000-bus fleet, architecture from the bus edge to the ledger, data model, ML lifecycle, deployment, scaling, security and privacy — is in [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) and on the site's `/design` page, with an interactive capacity calculator. Every component there is marked *implemented* or *designed*. Impact, cost per km, the Responsible AI mapping (Microsoft's six principles), the 90-day pilot and the Azure mapping are in [`docs/IMPACT_AND_RESPONSIBLE_AI.md`](docs/IMPACT_AND_RESPONSIBLE_AI.md) and on `/impact`.
 
 | Platform feature | Where |
 |---|---|
@@ -161,6 +162,7 @@ Individual trainers: `training/train_cnn_head.py`, `training/train_finetune_cnn.
 | `/architecture` | the claims registry and every withdrawn claim |
 | `/design` | system design: architecture, capacity calculator, model registry, data model |
 | `/api-docs` | the API reference, rendered from the OpenAPI document |
+| `/impact` | sourced road-safety statistics, cost per km, Responsible AI mapping, pilot plan, Azure mapping |
 
 Main API endpoints (full reference at `/api-docs`): `POST /api/v1/pipeline/deep-audit` (full analysis of a photograph), `POST /api/v1/dispatch/work-order` and `/api/v1/dispatch/verify-seal`, `POST /api/v1/fleet/report-defect`, `POST /api/v1/privacy/redact`, `POST /api/v1/video/ingest`, `GET /api/v1/training/metrics`, `GET /api/v1/models/served`, `GET /api/v1/claims`, `GET /api/v1/health`.
 
@@ -198,7 +200,7 @@ Main API endpoints (full reference at `/api-docs`): `POST /api/v1/pipeline/deep-
 | ImageNet CNN embeddings | 88.5% | a pretrained CNN replaced hand-written features |
 | Kaggle ingest + a labelling fix | 89.2% | removing 299 mislabelled sign images *raised* accuracy |
 | …but on Indian roads | 33.4% | the same model on RDD2022 India crops |
-| Concrete patches excluded, RDD2022 India added, fine-tuned CNN | **93.3%** (India **92.2%**) | larger, harder test set with Indian photographs in it |
+| Concrete patches excluded, RDD2022 India added, fine-tuned CNN | **93.3%** (India **92.3%**) | larger, harder test set with Indian photographs in it |
 
 An earlier README described models this code did not contain ("90.36% validation accuracy", "R² = 0.9908", a "10/10 PASS guaranteed" harness, simulated IMU data presented as real). It was removed in the October 2026 audit; see `CHANGES.md` and the corrections on the Architecture page.
 

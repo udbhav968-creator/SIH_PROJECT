@@ -179,6 +179,7 @@ PAGE_ROUTES = {
     "/video": "video.html",
     "/architecture": "architecture.html",
     "/design": "design.html",
+    "/impact": "impact.html",
     "/api-docs": "api-docs.html",
 }
 

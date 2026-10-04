@@ -54,6 +54,7 @@ const PAGES = [
   { href: "/system",   id: "system",   label: "System" },
   { href: "/architecture", id: "architecture", label: "Architecture" },
   { href: "/design",   id: "design",   label: "Design" },
+  { href: "/impact",   id: "impact",   label: "Impact" },
 ];
 
 function buildNav() {
