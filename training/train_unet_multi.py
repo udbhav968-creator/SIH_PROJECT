@@ -50,6 +50,20 @@ from training.train_unet_segmenter import (SEL_RULE, TorchUNet, build_unet, deci
 CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
 MULTI = os.path.join(ENGINE_ROOT, "datasets", "seg_multi")
 PT_NAME = "defect_segmenter_unet.pt"
+# Close-up texture patches with no road scene, horizon or camera geometry. They teach what a crack looks
+# like, but the serving threshold is calibrated on what the bus camera sees (protocol v2).
+TEXTURE_PATCH_SOURCES = {"crackseg9k"}
+PROTOCOL_V2 = {
+    "version": 2,
+    "change": "per-class thresholds tuned only on calibration photographs of road scenes (DNIT, Kaggle pothole, "
+              "Pothole Mix); CrackSeg9k still trains the network but no longer sets the serving threshold",
+    "why": "in v1 the combined calibration was dominated by CrackSeg9k close-ups; the crack threshold it chose (0.85) "
+           "fitted texture patches, and on DNIT calibration the U-Net's crack IoU was 0.184 against the pixel "
+           "classifier's 0.214, so the IoU rule kept the pixel classifier",
+    "disclosure": "this change was decided AFTER seeing v1's results, including its test scores. The selection rule, "
+                  "the DNIT split and the end-to-end check are unchanged, and v1's result stays on record "
+                  "(previous_run). Read v2's test numbers with that in mind.",
+}
 # share of each epoch drawn from each source (renormalised over the sources present)
 SHARES = {"dnit": 0.35, "dnit_clean": 0.10, "crackseg9k": 0.25, "pothole_mix": 0.20, "kaggle_pothole": 0.10}
 
@@ -129,6 +143,10 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--pixel-sample", type=int, default=100,
                     help="test images per extra source to score the pixel classifier on (it is slow on CPU)")
+    ap.add_argument("--threshold-sources", default="road",
+                    help="'road' (protocol v2, default): tune the per-class thresholds only on calibration photographs "
+                         "of road scenes (DNIT, Kaggle pothole, Pothole Mix), not on CrackSeg9k's close-up texture "
+                         "patches; 'all' (protocol v1): every source")
     ap.add_argument("--out", default=CKPT_DIR)
     ap.add_argument("--smoke", action="store_true")
     a = ap.parse_args(argv)
@@ -243,11 +261,14 @@ def main(argv=None):
 
     # thresholds on DNIT calibration + extra calibration
     unet = TorchUNet(model, device)
+    thr_sources = ["dnit"] + [src for src in extra
+                              if a.threshold_sources == "all" or src not in TEXTURE_PATCH_SOURCES]
     cal_cached = cache_work_probs(unet, sp["cal"] + sp["neg_cal"][: max(1, len(sp["cal"]) // 2)])
     for src, d in extra.items():
-        cal_cached += work_pairs(unet, DiskPairs(src, d["cal"]), limit=300)
+        if src in thr_sources:
+            cal_cached += work_pairs(unet, DiskPairs(src, d["cal"]), limit=300)
     unet.thresholds = tune_thresholds(cal_cached)
-    print(f"  thresholds (combined calibration): {unet.thresholds}")
+    print(f"  thresholds (calibration photographs from {', '.join(thr_sources)}): {unet.thresholds}")
 
     # IoU selection on DNIT calibration, exactly as the first U-Net
     from models.defect_segmenter import DefectSegmenter
@@ -328,7 +349,8 @@ def main(argv=None):
     meta = {
         "model": "U-Net, ResNet-18 encoder pretrained on ImageNet, all layers trained on several datasets",
         "input_size": [IN_W, IN_H], "normalisation": "ImageNet mean/std", "tta_flip": True,
-        "thresholds": unet.thresholds, "decision_rule": "per-class threshold tuned for IoU on the combined calibration split",
+        "thresholds": unet.thresholds, "threshold_sources": thr_sources,
+        "decision_rule": "per-class threshold tuned for IoU on the calibration photographs of " + ", ".join(thr_sources),
         "trained_on": {"sources": sources, "epoch_shares": present,
                        "test_photographs": len(sp["test"]),
                        "split": "DNIT identical to training/train_segmenter.py; extra sources 75/10/15 by image id",
@@ -343,7 +365,20 @@ def main(argv=None):
     }
     with open(os.path.join(a.out, META_NAME), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2, default=float)
+    previous = None
+    prev_path = os.path.join(a.out, SELECTION_NAME)
+    if os.path.exists(prev_path):
+        try:
+            with open(prev_path, "r", encoding="utf-8") as fh:
+                old_sel = json.load(fh)
+            previous = {k: old_sel.get(k) for k in ("served", "iou_selection_served", "why", "test",
+                                                    "deployment_check", "trained_with", "protocol", "decided_unix")
+                        if k in old_sel}
+        except Exception:
+            previous = None
     selection = {
+        "protocol": PROTOCOL_V2 if a.threshold_sources == "road" else {"version": 1, "change": "thresholds on every source"},
+        "previous_run": previous,
         "served": "pixel_classifier",                         # until the end-to-end check says otherwise
         "iou_selection_served": served_by_iou, "rule": SEL_RULE, "why_iou": why,
         "why": why + "; awaiting the end-to-end check (python -m scripts.segmenter_deployment_check)",

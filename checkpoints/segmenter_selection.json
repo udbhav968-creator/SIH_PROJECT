@@ -290,7 +290,7 @@
           "cpr_1214_2557.jpg",
           "cpr_256_539.jpg"
         ],
-        "seconds": 154.2
+        "seconds": 147.2
       },
       "pixel_classifier": {
         "false_positive_photos": 3,
@@ -300,9 +300,9 @@
         "false_positive_rate": 0.0833,
         "detection_rate": 1.0,
         "missed": [],
-        "seconds": 408.0
+        "seconds": 402.6
       }
     },
-    "checked_unix": 1791095689
+    "checked_unix": 1791099519
   }
 }

@@ -8,6 +8,7 @@
 # Safe to run after another training cell in the same session: it refreshes code only, never deletes results.
 
 POTHOLE_MIX_LINK = ""     # optional: Mendeley link to pothole-mix-v1.0-20220526.zip (right-click the download arrow -> Copy link)
+POTHOLE_MIX_DRIVE = ""    # or: path of that zip in Google Drive, e.g. "/content/drive/MyDrive/pothole-mix-v1.0-20220526.zip"
 TRAIN_UNET = True         # multi-dataset U-Net segmenter
 TRAIN_YOLO = True         # YOLOv8 road-damage boxes
 UNET_EPOCHS = 25
@@ -62,19 +63,33 @@ run('python -c "import torch; print(\'GPU:\', torch.cuda.get_device_name(0) if t
 # ---------------------------------------------------------------- 1. U-Net on every outline dataset
 if TRAIN_UNET:
     step("1a. datasets with pixel outlines")
-    pm_arg = ""
+    pm_arg, z = "", ""
     if POTHOLE_MIX_LINK:
-        run(f'wget -q -O {OUT_DIR}/pothole_mix.zip "{POTHOLE_MIX_LINK}"')
         z = f"{OUT_DIR}/pothole_mix.zip"
-        if os.path.exists(z) and os.path.getsize(z) > 100_000_000:
-            pm_arg = f"--pothole-mix-zip {z}"
-            print(f"Pothole Mix: {os.path.getsize(z) / 1e9:.2f} GB")
-        else:
-            print("Pothole Mix: download did not give the zip (Mendeley may have sent a web page) - continuing without it")
+        if not (os.path.exists(z) and os.path.getsize(z) > 100_000_000):
+            run(f'wget -q -O {z} "{POTHOLE_MIX_LINK}"')
+    elif POTHOLE_MIX_DRIVE:
+        try:
+            from google.colab import drive
+            drive.mount("/content/drive")
+        except Exception as e:
+            print("Drive not mounted:", e)
+        z = POTHOLE_MIX_DRIVE
+    if z and os.path.exists(z) and os.path.getsize(z) > 100_000_000:
+        pm_arg = f"--pothole-mix-zip {z}"
+        print(f"Pothole Mix: {os.path.getsize(z) / 1e9:.2f} GB")
     else:
-        print("Pothole Mix: no link given - continuing without it")
+        print("Pothole Mix: " + ("the file is missing or not the zip (Mendeley may have sent a web page)" if z
+                                 else "no link or Drive path given") + " - continuing without it")
     run("python -m scripts.fetch_cracks_potholes_dataset --limit 2235 --workers 16", keep=["[", "Error", "error"])
-    run(f"python -m scripts.fetch_seg_datasets {pm_arg}")
+    if os.path.isdir("datasets/seg_multi/crackseg9k/lab"):
+        # an earlier cell in this session already prepared CrackSeg9k and Kaggle: add only what is new
+        if pm_arg:
+            run(f"python -m scripts.fetch_seg_datasets --only pothole_mix {pm_arg}")
+        else:
+            print("outline datasets already prepared in this session - reusing them")
+    else:
+        run(f"python -m scripts.fetch_seg_datasets {pm_arg}")
 
     step("1b. U-Net smoke run (1 minute)")
     if run("python -m training.train_unet_multi --smoke --workers 0 --out /tmp/unet_multi_smoke",
