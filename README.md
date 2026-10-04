@@ -58,7 +58,7 @@ Measured on one photograph through the API: with an assumed camera mount the def
 | resnet50 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 89.5%, F1 0.857; India 91.9% | no (lost on validation) |
 | MobileNetV2 + ensemble_soft | frozen CNN features + trained head | head only | 87.9%, F1 0.745 | fallback |
 | HOG/LBP + PCA + SVM | classical features | yes | 84.9% | fallback |
-| U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack 0.198, pothole 0.654 | no (won on masks, lost the end-to-end check) |
+| U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack 0.198, pothole 0.654 | no (lost the IoU rule on DNIT calibration cracks; 18/24 end to end) |
 | Pixel segmenter | gradient boosting on 11 features | yes | crack 0.231, pothole 0.144 | **yes** |
 | YOLOv8n (COCO) | pretrained object detector | **no** — used as published | people, vehicles, signs | yes |
 | IMU 1-D CNN | deep, from scratch | yes (GPU) | 78.1% | no (lost in cross-validation) |
@@ -141,9 +141,10 @@ from google.colab import drive; drive.mount('/content/drive')
 %cd SIH_PROJECT
 !mkdir -p logs && bash scripts/colab_train_all.sh 2>&1 | tee -a logs/colab_run.txt     # main run
 !bash scripts/colab_train_extra.sh 2>&1 | tee -a logs/colab_extra.txt                 # U-Net + YOLOv8
+# multi-dataset U-Net and YOLOv8 in one cell: paste scripts/colab_train_all_datasets.py
 ```
 
-The main run fetches DNIT and RDD2022 India, retrains the frozen head, fine-tunes EfficientNet-B0/B2, MobileNetV3-Large and ResNet-50, compares the IMU 1-D CNN with the RandomForest, runs the benchmark and the tests, and rebuilds the claims and the report. The extra run trains the U-Net segmenter and the YOLOv8 road-damage detector (it also runs on Kaggle). `scripts/apply_colab_outputs.ps1` copies the results back into the repository; `python -m scripts.build_readme` then refreshes this file.
+The main run fetches DNIT and RDD2022 India, retrains the frozen head, fine-tunes EfficientNet-B0/B2, MobileNetV3-Large and ResNet-50, compares the IMU 1-D CNN with the RandomForest, runs the benchmark and the tests, and rebuilds the claims and the report. The extra run trains the U-Net segmenter and the YOLOv8 road-damage detector (it also runs on Kaggle). `scripts/colab_train_all_datasets.py` trains the U-Net on DNIT plus public outline datasets (CrackSeg9k, Kaggle pothole segmentation, Pothole Mix) after dropping any image that is a near-copy of a measurement photograph (`scripts/fetch_seg_datasets.py`). `scripts/apply_colab_outputs.ps1` copies the results back into the repository; `python -m scripts.build_readme` then refreshes this file.
 
 Individual trainers: `training/train_cnn_head.py`, `training/train_finetune_cnn.py`, `training/train_unet_segmenter.py`, `training/train_rdd_detector.py`, `training/train_imu_deep.py`, `training/train_segmenter.py`.
 
