@@ -238,7 +238,14 @@ of the upload and compute before anything leaves the bus.
 
 ---
 
-## 13. Roadmap
+## 13. Azure mapping, impact and Responsible AI
+
+The Azure service mapping, the sourced problem statistics, the cost-per-km model, the
+Responsible AI mapping onto Microsoft's six principles and the 90-day pilot plan are in
+[`docs/IMPACT_AND_RESPONSIBLE_AI.md`](IMPACT_AND_RESPONSIBLE_AI.md) and on the site's
+`/impact` page.
+
+## 14. Roadmap
 
 1. Bus pilot: one route, edge box, real footage and IMU — the data the project is missing.
 2. Postgres/PostGIS ledger and a queue between ingest and inference.

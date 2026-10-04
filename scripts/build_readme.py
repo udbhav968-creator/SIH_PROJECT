@@ -31,7 +31,12 @@ def rep(name):
 
 
 def pct(x, d=1):
-    return f"{x * 100:.{d}f}%" if isinstance(x, (int, float)) else "—"
+    """Percent, rounded half-up like the site's toFixed, so 0.9225 reads 92.3% in both places."""
+    if not isinstance(x, (int, float)):
+        return "—"
+    from decimal import Decimal, ROUND_HALF_UP
+    q = Decimal(repr(round(x * 100, 6))).quantize(Decimal(1).scaleb(-d), rounding=ROUND_HALF_UP)
+    return f"{q}%"
 
 
 def f3(x):
@@ -282,7 +287,9 @@ def build():
     w("The full design — requirements, capacity maths for a 5,000-bus fleet, architecture from the bus edge to the "
       "ledger, data model, ML lifecycle, deployment, scaling, security and privacy — is in "
       "[`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) and on the site's `/design` page, with an interactive "
-      "capacity calculator. Every component there is marked *implemented* or *designed*.")
+      "capacity calculator. Every component there is marked *implemented* or *designed*. Impact, cost per km, "
+      "the Responsible AI mapping (Microsoft's six principles), the 90-day pilot and the Azure mapping are in "
+      "[`docs/IMPACT_AND_RESPONSIBLE_AI.md`](docs/IMPACT_AND_RESPONSIBLE_AI.md) and on `/impact`.")
     w("")
     w("| Platform feature | Where |")
     w("|---|---|")
@@ -353,7 +360,8 @@ def build():
                        ("/system", "components, calibration, storage, live endpoint self-test"),
                        ("/architecture", "the claims registry and every withdrawn claim"),
                        ("/design", "system design: architecture, capacity calculator, model registry, data model"),
-                       ("/api-docs", "the API reference, rendered from the OpenAPI document")):
+                       ("/api-docs", "the API reference, rendered from the OpenAPI document"),
+                       ("/impact", "sourced road-safety statistics, cost per km, Responsible AI mapping, pilot plan, Azure mapping")):
         w(f"| `{page}` | {what} |")
     w("")
     w("Main API endpoints (full reference at `/api-docs`): `POST /api/v1/pipeline/deep-audit` (full analysis of a "

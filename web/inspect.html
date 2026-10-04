@@ -409,6 +409,22 @@ function render(d, ms) {
       </table></div>
     </div>` : ""}
 
+    ${(d.frame_classification && d.frame_classification.class_name) ? (() => {
+      const fc = d.frame_classification;
+      const primary = (d.primary_detection && d.primary_detection.class_name) || "";
+      const disagree = /^Normal/.test(primary) && !/^Normal/.test(fc.class_name) && fc.confidence >= 0.6;
+      const top3 = Object.entries(fc.probabilities || {}).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      return `<div class="card" style="margin-top:14px;${disagree ? "border-color:rgba(240,169,43,.55)" : ""}">
+        <div class="label">whole-frame classifier · ${fc.model === "deep_cnn" ? "fine-tuned CNN" : "CNN head"}</div>
+        <div class="kv"><span>Top class</span><span>${fc.class_name} · ${(fc.confidence * 100).toFixed(1)}%</span></div>
+        ${top3.slice(1).map(([k, v]) => `<div class="kv"><span class="muted">${k}</span><span class="muted">${(v * 100).toFixed(1)}%</span></div>`).join("")}
+        ${disagree ? `<p class="small" style="margin:8px 0 0;color:var(--warn)">The classifier sees <strong>${fc.class_name.split(" (")[0]}</strong>
+          in this frame, but no region could be measured${(d.segmentation && d.segmentation.available === false) ? " (the segmenter is not loaded on this machine)" : ""}.
+          No area, depth or cost is issued from a whole-frame opinion.</p>` :
+          `<p class="small muted" style="margin:8px 0 0">${fc.role}</p>`}
+      </div>`;
+    })() : ""}
+
     ${((d.all_vehicles && d.all_vehicles.length) || (d.all_pedestrians && d.all_pedestrians.length) || (d.scene_objects && d.scene_objects.length)) ? `<div class="card" style="margin-top:14px;border-color:rgba(56,189,248,.35)">
       <div class="label" style="color:#38bdf8">vehicles &amp; pedestrians · yolov8 coco + irc:106-1990</div>
       ${d.multi_target_summary?.summary_message ? `<p class="small" style="margin:0 0 10px">${d.multi_target_summary.summary_message}</p>` : ""}

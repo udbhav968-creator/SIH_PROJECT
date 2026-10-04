@@ -21,6 +21,8 @@
   .measured-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 9px 0; }
   .measured-row div { font-family: var(--mono); font-size: 12px; }
   .measured-row span { color: var(--slate-400); }
+  /* Long evidence paths (checkpoints/finetune_..._report.json) must wrap on a phone. */
+  .small, .measured-row div { overflow-wrap: anywhere; }
   .ascii { font-family: var(--mono); font-size: 11.5px; line-height: 1.45; white-space: pre;
            overflow-x: auto; color: var(--slate-300); }
 </style>

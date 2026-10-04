@@ -9,14 +9,14 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 
 | Area | Status | Evidence |
 |---|---|---|
-| 7-class road-condition classifier (frozen MobileNetV2 + head) | Done, measured on a grouped held-out split | `checkpoints/cnn_head_mobilenetv2_report.json` |
-| End-to-end fine-tuned CNNs (EfficientNet-B0/B2, MobileNetV3-L, ResNet-50) | Done in this audit (Colab GPU), same split as the head | `training/train_finetune_cnn.py`, `checkpoints/finetune_summary.json` |
+| 7-class road-condition classifier — **served: fine-tuned MobileNetV3-Large, 93.3% test, 92.3% on held-out Indian roads, 7.2 ms/image on CPU** | Done; chosen on validation over the frozen head (87.9%) and three other fine-tuned networks | `checkpoints/finetune_summary.json`, `checkpoints/vision_model_selection.json` |
+| End-to-end fine-tuned CNNs (EfficientNet-B0 91.3%, B2 91.4%, MobileNetV3-L 91.4%, ResNet-50 89.5% before refit) | Done in this audit (Colab T4), same grouped split | `training/train_finetune_cnn.py`, `checkpoints/finetune_*_report.json` |
 | Served-model choice by a rule fixed before reading test scores | Done in this audit | `scripts/select_vision_model.py`, `checkpoints/vision_model_selection.json` |
 | RDD2022 India: training crops + Indian-roads test split | Done (official CRDDC archive converter added) | `scripts/prepare_rdd2022_voc.py`, `scripts/ingest_rdd2022_india.py`, `checkpoints/indian_roads_eval_report.json` |
 | Pixel defect segmenter (11 features, gradient boosting) + CNN semantic gate | Done | `checkpoints/defect_segmenter_report.json`, `checkpoints/semantic_gate_report.json` |
 | Ground-plane area (pinhole camera, per-vehicle calibration profiles) | Done | `models/ipm_homography_engine.py`, `models/camera_calibration.py` |
 | Depth as an interval estimate (never called a measurement) | Done | `models/depth_estimator.py` |
-| IMU shock classifier on real drive logs (RandomForest) + 1-D CNN comparison | Done; CNN added in this audit | `checkpoints/imu_deep_report.json`, `checkpoints/imu_model_selection.json` |
+| IMU shock classifier on real drive logs — **served: RandomForest, 87.2% held-out** | Done; the 1-D CNN lost a time-blocked CV comparison (the first, shuffled-window CV leaked and was corrected) | `checkpoints/imu_deep_report.json`, `checkpoints/imu_model_selection.json` |
 | Bayesian vision + IMU fusion gate | Done (only fires when a real IMU window is supplied) | `models/bayesian_fusion_gate.py` |
 | ASTM D6433 PCI engine | Done - reproduces the deduct curves (R² 0.941), not validated against field surveys | `checkpoints/pci_model_report.json` |
 | Deterioration forecast 30/60/90/180 days | Done - fitted to an HDM-4-style formula, not to field data | `checkpoints/deterioration_model_report.json` |
@@ -24,8 +24,10 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | SHA-256 sealed work orders + tamper check | Done | `/api/v1/dispatch/verify-seal` |
 | Haversine fleet deduplication, 8 m | Done; now merges only the same defect class (fixed) | `pipeline/fleet_deduplication_engine.py` |
 | Privacy redaction of people and number plates | Added in this audit (recall not measured) | `models/privacy_redactor.py`, `/api/v1/privacy/redact` |
-| REST API + eight-page site + Vercel static deployment | Done | `api/server.py`, `web/`, `api/vercel_app.py` |
-| Automated tests | 176 (167 verified here; 9 segmenter tests need scikit-learn 1.8 - see `logs/tests_after.txt` after the Colab run) | `tests/` |
+| REST API + site (11 pages incl. Design and API reference) + Vercel static deployment | Done | `api/server.py`, `web/`, `api/vercel_app.py` |
+| System design, OpenAPI contract, model registry, request IDs, opt-in API key, docker compose | Done in this audit | `docs/SYSTEM_DESIGN.md`, `api/openapi.py`, `/api/v1/models/served` |
+| U-Net segmenter and YOLOv8 RDD2022 detector | Trainers, ONNX serving and selection rules done; served only if trained and the rule picks them | `training/train_unet_segmenter.py`, `training/train_rdd_detector.py` |
+| Automated tests | 200+; pipeline suite OK on a fresh clone with scikit-learn 1.8 and the fine-tuned CNN served | `tests/`, `logs/tests_after.txt` |
 
 ## Left to do (not claimed as done)
 
@@ -71,3 +73,6 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | Dedup merged a sign and a pothole 5 m apart | Same-class only |
 | Work order and pipeline kept separate copies of densities / rates | One table, with a rate-basis note |
 | IMU classes named "Expansion Joint" / "Rumble Strip" | Renamed to what the logs contain: unmarked / marked speed breakers |
+| IMU CNN chosen by cross-validation over shuffled 1-second windows (neighbours leaked across folds) | Time-blocked folds; the fair comparison serves the RandomForest |
+| Semantic gate silently disabled when the fine-tuned CNN was served (zebra crossings reported as potholes) | Gate runs with either CNN classifier |
+| With the segmenter unloadable, pothole photos read as "Normal Road" with no explanation | Whole-frame classifier opinion shown beside the result; the note names the cause |
