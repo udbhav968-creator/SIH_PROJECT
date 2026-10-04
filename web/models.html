@@ -227,6 +227,12 @@
           <td class="num">${v.ap50_95}</td></tr>`).join("")}</tbody></table></div>
       <div class="kv" style="margin-top:10px"><span>Held-out photographs</span><span>${(det.data && det.data.photographs && det.data.photographs.test) || "—"}</span></div>
       <div class="kv"><span>Serving confidence</span><span>${det.serving_confidence} (chosen on validation)</span></div>
+      <div class="kv"><span>Exported file vs trained network</span><span>${det.artefact_check
+          ? (det.artefact_check.passed ? '<span class="badge measured">passed</span>' : '<span class="badge warn">failed</span>')
+            + ` ONNX test mAP@0.5 ${det.artefact_check.onnx_test_map50}` : "not checked"}</span></div>
+      <div class="kv"><span>Boxes on clean roads</span><span>${det.deployment_check
+          ? (det.deployment_check.passed ? '<span class="badge measured">passed</span>' : '<span class="badge warn">failed - boxes hidden</span>')
+            + ` ${det.deployment_check.photographs_with_a_box}/${det.deployment_check.clean_photographs} photographs` : "not checked - boxes hidden"}</span></div>
       <p class="small muted" style="margin:8px 0 0">${det.not_claimed || ""}</p></div>`;
   }
 

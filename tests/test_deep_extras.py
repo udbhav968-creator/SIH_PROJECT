@@ -167,6 +167,35 @@ class RoadDamageDetector(unittest.TestCase):
         self.assertEqual(int(cls[0]), 3)
         self.assertAlmostEqual(float(conf[0]), 0.9, places=5)
 
+    def test_boxes_need_both_checks_recorded_as_passed(self):
+        """An unverified detector is never shown: the U-Net lesson, applied before the fact."""
+        from models.road_damage_detector import detector_blocked_by
+        ok = {"passed": True}
+        self.assertEqual(detector_blocked_by({}), "artefact_check")
+        self.assertEqual(detector_blocked_by({"artefact_check": ok}), "deployment_check")
+        self.assertEqual(detector_blocked_by({"artefact_check": {"passed": False}, "deployment_check": ok}),
+                         "artefact_check")
+        self.assertEqual(detector_blocked_by({"artefact_check": ok, "deployment_check": {"passed": False}}),
+                         "deployment_check")
+        self.assertIsNone(detector_blocked_by({"artefact_check": ok, "deployment_check": ok}))
+
+    def test_a_loaded_but_unverified_model_is_not_ready(self):
+        from models.road_damage_detector import RoadDamageDetector as R
+        r = R(checkpoints_dir=self.d)
+        r._session = object()                      # pretend the ONNX file loaded
+        self.assertFalse(r.is_ready)
+        r.meta = {"artefact_check": {"passed": True}, "deployment_check": {"passed": True}}
+        self.assertTrue(r.is_ready)
+
+    def test_box_matching_is_one_to_one_and_class_aware(self):
+        from scripts.verify_rdd_detector import _match
+        ref = [("D40", [0, 0, 10, 10]), ("D00", [20, 20, 30, 30])]
+        self.assertEqual(_match(ref, [("D40", [1, 1, 10, 10]), ("D00", [20, 20, 30, 30])]), 2)
+        self.assertEqual(_match(ref, [("D10", [20, 20, 30, 30])]), 0, "a different class is not a match")
+        self.assertEqual(_match(ref, [("D40", [0, 0, 10, 10])] * 1 + [("D40", [0, 0, 10, 10])]), 1,
+                         "one predicted box cannot match two reference boxes")
+        self.assertEqual(_match(ref, [("D40", [6, 6, 16, 16])]), 0, "IoU below 0.5 is a miss")
+
     def test_pipeline_reports_damage_boxes_as_unavailable_without_a_model(self):
         from pipeline.deep_inference_pipeline import DeepInferencePipeline
         p = DeepInferencePipeline.__new__(DeepInferencePipeline)

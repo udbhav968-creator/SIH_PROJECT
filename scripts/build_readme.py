@@ -21,6 +21,18 @@ CKPT = os.path.join(ROOT, "checkpoints")
 LIVE_URL = "https://road-shield-ai-engine.vercel.app"
 
 
+
+def _dc_note(seg_sel):
+    """'; it did not: 9/24 vs 24/24' from the recorded end-to-end check, or nothing."""
+    dc = (seg_sel or {}).get("deployment_check") or {}
+    r = dc.get("results") or {}
+    u, p = r.get("unet") or {}, r.get("pixel_classifier") or {}
+    if not u or not p:
+        return ""
+    verdict = "it did" if dc.get("passed") else "it did not"
+    return (f"; {verdict}: U-Net {u.get('detected_photos')}/{u.get('defect_photographs')} defects found vs "
+            f"{p.get('detected_photos')}/{p.get('defect_photographs')}")
+
 def rep(name):
     p = os.path.join(CKPT, name)
     try:
@@ -76,7 +88,9 @@ def build():
     gate = (rep("semantic_gate_report.json").get("results") or {})
     g_a, g_c = gate.get("A_segmenter") or {}, gate.get("C_seg_gated_0.5") or {}
     det = rep("road_damage_detector_report.json")
-    det_on = bool(det) and os.path.exists(os.path.join(CKPT, "damage_rdd2022_india.onnx"))
+    from models.road_damage_detector import detector_blocked_by
+    det_on = (bool(det) and os.path.exists(os.path.join(CKPT, "damage_rdd2022_india.onnx"))
+              and detector_blocked_by(det) is None)
     imu_sel = rep("imu_model_selection.json")
     imu_rf = rep("imu_shock_report.json")
     imu_cnn = imu_sel.get("served") == "cnn"
@@ -223,7 +237,9 @@ def build():
     w("**How a model gets served.** Each deep model replaces its classical counterpart only by a rule written "
       "before its test set is scored: the fine-tuned CNN must beat the frozen head on validation accuracy *and* "
       "macro-F1; the U-Net must beat the pixel classifier on crack *and* pothole IoU on calibration photographs "
-      "without more false blobs on clean roads; the IMU CNN must win 5-fold cross-validation on accuracy *and* "
+      "without more false blobs on clean roads, and then hold up end to end - through the full pipeline on "
+      "photographs from other datasets it must find at least as many defects with no more false alarms "
+      f"(`scripts/segmenter_deployment_check.py`{_dc_note(seg_sel)}); the IMU CNN must win 5-fold cross-validation on accuracy *and* "
       "macro-F1. Losers are reported, not hidden. Pretrained ImageNet/COCO weights are the starting point (transfer "
       "learning); training then updates every layer on this project's data, except the frozen-head baseline.")
     w("")
