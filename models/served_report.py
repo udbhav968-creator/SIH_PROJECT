@@ -49,6 +49,8 @@ def served_classifier_summary(ckpt, require_files=True):
             "held_out_test_images": test.get("images"),
             "held_out_test_photographs": (rep.get("split") or {}).get("test_photographs"),
             "per_class_report": _sklearn_style(test.get("per_class")),
+            "confusion_matrix": test.get("confusion_matrix"),
+            "class_names": rep.get("class_names"),
             "indian_roads": rep.get("indian_roads_rdd2022_test"),
             "onnx": rep.get("onnx"),
             "selection": sel,

@@ -84,7 +84,7 @@
   }
   const fts = d.finetune_summary;
   if (fts && fts.archs) {
-    cards.push(`<div class="card"><div class="label">fine-tuned architectures · identical split</div>
+    cards.push(`<div class="card span2"><div class="label">fine-tuned architectures · identical split</div>
       <div class="table-wrap"><table><thead><tr><th>network</th><th class="num">val F1</th>
       <th class="num">test acc</th><th class="num">test F1</th><th class="num">ms/img</th></tr></thead><tbody>
       ${Object.entries(fts.archs).map(([k, r]) => `<tr><td>${k}${k === fts.chosen_arch ? " ✓" : ""}</td>

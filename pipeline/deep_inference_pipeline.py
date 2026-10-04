@@ -320,6 +320,13 @@ class DeepInferencePipeline:
                 damage_summary = {"available": False, "reason": f"damage detector error: {e}"}
         self._damage = (damage_boxes, damage_summary)
 
+        # STAGE 3a'': the classifier's opinion of the WHOLE frame. Reported beside
+        # the region result, never instead of it: area and cost come only from a
+        # measured region. Without it, a frame whose regions all fail the gates
+        # (or a machine whose segmenter will not load) reads as "Normal Road"
+        # even when the classifier is 90% sure it is looking at a pothole.
+        frame_cls = self._frame_classification(img_np)
+
         # STAGE 3b: region proposals (classical CV) + people + vehicles.
         person_boxes = [d for d in scene_objects if d["class_name"] == "person"]
         if person_boxes:
@@ -409,6 +416,8 @@ class DeepInferencePipeline:
             normal["scene_summary"] = scene_summary
             normal["road_damage_boxes"] = damage_boxes
             normal["road_damage_summary"] = damage_summary
+            normal["frame_classification"] = frame_cls
+            normal.setdefault("segmentation", {"available": seg_out is not None})
             normal["vehicles_count"] = len(vehicle_detections)
             normal["all_vehicles"] = vehicle_detections
             normal["primary_vehicle"] = primary_vehicle
@@ -579,6 +588,7 @@ class DeepInferencePipeline:
             "scene_summary": scene_summary,
             "road_damage_boxes": damage_boxes,
             "road_damage_summary": damage_summary,
+            "frame_classification": frame_cls,
             "markings": getattr(self, "_markings", {"found": False}),
             # Non-zero means at least one region could not be classified, so the
             # number of detections below is a floor, not a count.
@@ -600,9 +610,7 @@ class DeepInferencePipeline:
             } if seg_out else {
                 "available": False,
                 "area_method": "bounding-box corners projected to the ground plane",
-                "note": "No segmenter on disk. Train one with "
-                        "training/train_segmenter.py - a box around a diagonal "
-                        "crack overstates its area by roughly an order of magnitude.",
+                "note": self._segmenter_missing_note(),
             }),
             "latency_ms": elapsed_ms,
         }
@@ -816,6 +824,38 @@ class DeepInferencePipeline:
     # describe a dark high-contrast patch. A car body against bright tarmac is
     # exactly that. No threshold distinguishes them; their POSITION does.
     ROAD_ROI_TOP_FRACTION = 0.35
+
+    def _segmenter_missing_note(self):
+        """Say WHY there is no mask: never trained, or on disk but unloadable here."""
+        seg = getattr(self, "segmenter", None)
+        detail = getattr(seg, "load_error_detail", None) or {}
+        if seg is not None and getattr(seg, "file_exists", False):
+            here, trained = detail.get("sklearn_here"), detail.get("sklearn_trained_with")
+            why = (f"scikit-learn {here} here, model trained with {trained}" if here and trained
+                   else (detail.get("likely_cause") or "it failed to load"))
+            return (f"A segmenter is on disk but will not load on this machine ({why}). "
+                    f"Install the pinned version: pip install \"scikit-learn>=1.8,<1.9\". "
+                    "Until then areas are box estimates, which overstate a diagonal crack ~10x.")
+        return ("No segmenter on disk. Train one with training/train_segmenter.py - a box around a "
+                "diagonal crack overstates its area by roughly an order of magnitude.")
+
+    def _frame_classification(self, img_np):
+        """Whole-frame class probabilities from the served CNN, or None."""
+        if getattr(self, "vision_backend", "") not in ("cnn_embeddings", "deep_cnn"):
+            return None
+        try:
+            probs = [float(x) for x in np.asarray(self.vision_model.predict_probabilities(img_np)).ravel()]
+            names = list(getattr(self.vision_model, "class_names", None) or
+                         ["Normal Road / Sound Pavement", "Crack (Longitudinal / Transverse / Alligator)",
+                          "Pothole Cavity", "Waterlogging / Flooding Hazard", "Missing Zebra Crossing",
+                          "Missing Road Divider", "Damaged Traffic Sign"])[:len(probs)]
+            top = int(np.argmax(probs))
+            return {"class_name": names[top], "confidence": round(probs[top], 4),
+                    "probabilities": {n: round(p, 4) for n, p in zip(names, probs)},
+                    "model": self.vision_backend,
+                    "role": "whole-frame opinion of the classifier; does not set area, depth or cost"}
+        except Exception as e:
+            return {"error": f"frame classification failed: {e}"}
 
     def _segmentation_proposals(self, H, W):
         """

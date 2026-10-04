@@ -9,7 +9,9 @@ def load(ck, name):
 
 
 def pct(x):
-    return f"{100 * x:.1f}%"
+    """Half-up, like the site and the README, so 0.9225 reads 92.3% everywhere."""
+    from decimal import Decimal, ROUND_HALF_UP
+    return f"{Decimal(repr(round(100 * x, 6))).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}%"
 
 
 def f2(x):

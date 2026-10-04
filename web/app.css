@@ -56,6 +56,7 @@ body[data-page="data"]     { --accent: var(--lime);    --accent-soft: rgba(163,2
 body[data-page="system"]   { --accent: var(--rose);    --accent-soft: rgba(251,113,133,.13); }
 body[data-page="video"]    { --accent: #f472b6;        --accent-soft: rgba(244,114,182,.13); }
 body[data-page="design"]   { --accent: var(--sky);     --accent-soft: rgba(86,168,245,.14); }
+body[data-page="impact"]   { --accent: var(--emerald); --accent-soft: rgba(52,211,153,.13); }
 body[data-page="api-docs"] { --accent: var(--cyan);    --accent-soft: rgba(45,212,212,.13); }
 
 /* System-design diagrams: boxes in rows, arrows between, wrap on phones. */
@@ -153,6 +154,8 @@ p  { margin: 0 0 1rem; }
 .grid.c2 { grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); }
 .grid.c3 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
 .grid.c4 { grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); }
+.grid > .span2 { grid-column: span 2; }
+@media (max-width: 640px) { .grid > .span2 { grid-column: auto; } }
 .split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
 @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
 

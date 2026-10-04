@@ -73,7 +73,7 @@ PAGE_ROUTES = {
     "/": "index.html", "/inspect": "inspect.html", "/video": "video.html",
     "/corridor": "corridor.html", "/works": "works.html", "/models": "models.html",
     "/data": "data.html", "/system": "system.html", "/architecture": "architecture.html",
-    "/design": "design.html", "/api-docs": "api-docs.html",
+    "/design": "design.html", "/api-docs": "api-docs.html", "/impact": "impact.html",
 }
 
 # Endpoints that genuinely need the model stack. Listed explicitly so the
