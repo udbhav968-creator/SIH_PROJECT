@@ -1,6 +1,6 @@
 # ROAD-SHIELD model card
 
-Generated 2026-10-04 from `checkpoints/claims.json` by `scripts/build_model_card.py`. Regenerate after any retraining; do not edit by hand.
+Generated 2026-10-05 from `checkpoints/claims.json` by `scripts/build_model_card.py`. Regenerate after any retraining; do not edit by hand.
 
 ## System at a glance
 
@@ -192,4 +192,4 @@ Claims this project made and later withdrew or corrected, kept visible on the Ar
 - **CORRECTED** - IMU classes include expansion joints and rumble strips
 - **WITHDRAWN** - Laplacian-variance gate (42.5), 4th-order Butterworth filter, CLAHE, 2.45 m camera
 - **REVERSED** - The U-Net segmenter serves (pothole IoU 0.641 vs 0.144)
-- **REVERSED** - The U-Net segmenter serves (pothole IoU 0.632 vs 0.144) - multi-dataset run
+- **NOT SERVED** - The U-Net segmenter serves (pothole IoU 0.632 vs 0.144) - multi-dataset run
