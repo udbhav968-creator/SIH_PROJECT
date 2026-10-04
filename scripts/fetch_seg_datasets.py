@@ -126,7 +126,10 @@ class Writer:
         if not ((lab == 1) | (lab == 2)).any():
             self.dropped_empty += 1          # a mask with no defect teaches nothing about outlines
             return
-        safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(ident))[:80]
+        safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(ident))[-120:]
+        base, n = safe, 1
+        while os.path.exists(os.path.join(self.dir_lab, safe + ".png")):   # never overwrite another pair
+            safe, n = f"{base}_{n}", n + 1
         cv2.imwrite(os.path.join(self.dir_img, safe + ".jpg"), cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
                     [cv2.IMWRITE_JPEG_QUALITY, 92])
         cv2.imwrite(os.path.join(self.dir_lab, safe + ".png"), lab)
@@ -255,20 +258,39 @@ def fetch_pothole_mix(guard, zip_path):
                 z.extractall(os.path.dirname(inner))
     files = [p for p in glob.glob(os.path.join(root, "**", "*.*"), recursive=True)
              if p.lower().endswith((".jpg", ".jpeg", ".png"))]
-    is_mask = lambda p: any(k in p.lower() for k in ("mask", "label", "annot", "gt"))
+    mask_words = ("mask", "label", "annot", "gt", "ground")
+    image_words = ("image", "img", "rgb", "photo")
+
+    def parts_of(p):
+        return [c.lower() for c in os.path.relpath(os.path.dirname(p), root).split(os.sep)]
+
+    def is_mask(p):
+        return any(any(wd in c for wd in mask_words) for c in parts_of(p))
+
+    def key_of(p):
+        # the folder path with the images/masks level removed, plus the file stem: unique per pair
+        keep = [c for c in parts_of(p) if not any(wd in c for wd in mask_words + image_words)]
+        return tuple(keep), os.path.splitext(os.path.basename(p))[0]
+
     masks = {}
     for p in files:
         if is_mask(p):
-            masks.setdefault(os.path.splitext(os.path.basename(p))[0], p)
+            masks[key_of(p)] = p
+    out_dir = os.path.join(OUT, "pothole_mix")
+    if os.path.isdir(out_dir):
+        import shutil
+        shutil.rmtree(out_dir)                       # rebuilt from scratch: no stale or overwritten pairs
     w = Writer("pothole_mix", guard)
-    colours = {}
+    colours, unpaired = {}, 0
     for p in files:
         if is_mask(p):
             continue
-        stem = os.path.splitext(os.path.basename(p))[0]
-        mp = masks.get(stem)
+        k = key_of(p)
+        mp = masks.get(k)
         if not mp:
+            unpaired += 1
             continue
+        ident = "_".join(list(k[0]) + [k[1]])
         im, m = cv2.imread(p), cv2.imread(mp)
         if im is None or m is None:
             w.dropped_bad += 1
@@ -278,8 +300,9 @@ def fetch_pothole_mix(guard, zip_path):
         if lab is not None and len(colours) < 4000:
             for c in np.unique(m.reshape(-1, 3)[::50], axis=0)[:6]:
                 colours[tuple(int(x) for x in c)] = colours.get(tuple(int(x) for x in c), 0) + 1
-        w.add(stem, cv2.cvtColor(im, cv2.COLOR_BGR2RGB), lab)
+        w.add(ident, cv2.cvtColor(im, cv2.COLOR_BGR2RGB), lab)
     s = w.summary()
+    s["images_without_a_matching_mask"] = unpaired
     s["mask_colours_seen"] = {str(k): v for k, v in sorted(colours.items(), key=lambda kv: -kv[1])[:8]}
     s["colour_rule"] = "red-dominant pixels -> pothole, other coloured pixels -> crack"
     return s

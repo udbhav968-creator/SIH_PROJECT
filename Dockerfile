@@ -34,10 +34,10 @@ ENV OPENBLAS_NUM_THREADS=2 \
 
 EXPOSE 8000
 
-# Fails the healthcheck if the models did not load, not merely if the port is open.
+# Fails the healthcheck if the models did not load, not merely if the port is open:
+# /api/v1/ready answers 503 (urlopen raises) until the classifier and segmenter are loaded.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request,json,sys; \
-d=json.loads(urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health',timeout=8).read()); \
-sys.exit(0 if d.get('status')=='ONLINE' else 1)"
+    CMD python -c "import urllib.request,sys; \
+sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready',timeout=8).status==200 else 1)"
 
 CMD ["python", "-m", "api.server"]

@@ -110,6 +110,31 @@ def load_manifest():
     return out
 
 
+def drop_dnit_eval_copies(extra, sp, threshold=6):
+    """Remove (in place) extra TRAINING ids that near-duplicate a DNIT calibration/test photograph."""
+    import cv2
+    from scripts.fetch_seg_datasets import dhash
+    ref = []
+    for r in sp["cal"] + sp["test"] + sp.get("neg_cal", []) + sp.get("neg_test", []):
+        im = cv2.imread(r["path"])
+        if im is not None:
+            ref.append(dhash(cv2.cvtColor(im, cv2.COLOR_BGR2RGB)))
+    ref = np.array(ref, dtype=np.uint64)
+    removed = {}
+    for src, d in extra.items():
+        keep = []
+        for i in d["train"]:
+            im = cv2.imread(os.path.join(MULTI, src, "img", i + ".jpg"))
+            if im is not None and len(ref):
+                x = np.bitwise_xor(ref, np.uint64(dhash(cv2.cvtColor(im, cv2.COLOR_BGR2RGB))))
+                if np.unpackbits(x.view(np.uint8).reshape(-1, 8), axis=1).sum(1).min() <= threshold:
+                    continue
+            keep.append(i)
+        removed[src] = len(d["train"]) - len(keep)
+        d["train"] = keep
+    return removed
+
+
 def work_pairs(seg, pairs, limit=None):
     """[(proba on the 320x200 grid, truth on the same grid)] for threshold tuning."""
     import cv2
@@ -169,6 +194,12 @@ def main(argv=None):
     dnit_train = [p for p in (load_pair(r) for r in sp["train"]) if p is not None]
     dnit_clean = [p for p in (load_pair(r) for r in sp["neg_train"]) if p is not None]
     dnit_cal = [p for p in (load_pair(r) for r in sp["cal"]) if p is not None]
+    # Pothole Mix republishes DNIT photographs. Any extra training image that is a near-copy of a DNIT
+    # calibration or test photograph is dropped here, so the IoU rule and the DNIT test stay unseen.
+    overlap = drop_dnit_eval_copies(extra, sp)
+    for src, n in overlap.items():
+        if n:
+            print(f"  removed {n} {src} training images that are near-copies of DNIT calibration/test photographs")
     parts = {"dnit": dnit_train, "dnit_clean": dnit_clean}
     for src, d in extra.items():
         parts[src] = DiskPairs(src, d["train"])
@@ -352,6 +383,7 @@ def main(argv=None):
         "thresholds": unet.thresholds, "threshold_sources": thr_sources,
         "decision_rule": "per-class threshold tuned for IoU on the calibration photographs of " + ", ".join(thr_sources),
         "trained_on": {"sources": sources, "epoch_shares": present,
+                       "removed_near_copies_of_dnit_eval": overlap,
                        "test_photographs": len(sp["test"]),
                        "split": "DNIT identical to training/train_segmenter.py; extra sources 75/10/15 by image id",
                        "leak_guard": "extra images near-duplicate to any measurement photograph were dropped "

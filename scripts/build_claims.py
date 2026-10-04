@@ -177,7 +177,18 @@ def main():
                      random_forest_held_out_accuracy=imu_deep["held_out"]["random_forest"]["accuracy"],
                      random_forest_held_out_macro_f1=imu_deep["held_out"]["random_forest"]["macro_f1"])
         elif sub["id"] == "M4" and imu:
+            # The forest is served: describe the forest and quote ITS scores. A CNN description left
+            # over from when the CNN was served (before the time-blocked CV fix) is replaced here.
+            sub["architecture"] = "RandomForest, 300 trees, on 62 statistical and FFT band-energy features per 1-second 100 Hz window"
+            sub["evidence"] = "checkpoints/imu_shock_report.json, checkpoints/imu_model_selection.json"
+            sub["reproduce"] = "python -m training.train_imu_deep"
+            rf = ((imu_sel or {}).get("held_out_for_reporting") or {}).get("random_forest") or {}
+            for k in ("random_forest_held_out_accuracy", "random_forest_held_out_macro_f1"):
+                m.pop(k, None)
             m["held_out_accuracy"] = imu.get("held_out_validation_accuracy")
+            m["held_out_windows"] = imu.get("held_out_validation_windows")
+            if rf.get("macro_f1") is not None:
+                m["held_out_macro_f1"] = rf["macro_f1"]
             if imu_deep:
                 m["cnn_compared"] = {"served": imu_sel.get("served"),
                                      "cv": imu_sel.get("cv"),
@@ -337,6 +348,19 @@ def _deep_extras(claims, rep):
                                   f"{(fp.get('photo_rate_any_blob') or 0) * 100:.1f}% of "
                                   f"{fp.get('clean_photographs_scored')} photographs.")
         else:
+            # The pixel classifier serves: describe IT, not the U-Net text from when the U-Net was served.
+            seg["architecture"] = ("HistGradientBoosting pixel classifier on 11 vectorised features, trained on defect "
+                                   "polygons AND clean-road photographs, with hard-negative mining")
+            seg["why"] = ("A bounding box around a diagonal crack overstates its area by about 13x, and area drives "
+                          "tonnage which drives cost. A per-pixel mask gives the defect's own footprint. It also "
+                          "decides where a defect IS, which is the proposal stage for the whole pipeline.")
+            seg["rejected_alternative"] = ("argmax over the three classes. With ~97% of pixels sound road that floods "
+                                           "the mask; per-class thresholds are tuned for IoU on a split the test set "
+                                           "never sees.")
+            seg["evidence"] = "checkpoints/defect_segmenter_report.json, checkpoints/segmenter_selection.json"
+            seg["reproduce"] = "python -m training.train_segmenter --images 2000"
+            for k in ("pixel_classifier_crack_iou", "pixel_classifier_pothole_iou"):
+                (seg.get("measured") or {}).pop(k, None)
             trained_on = ("on DNIT plus public outline datasets (" +
                           ", ".join(k for k in (sel.get("test_per_source") or {}) if k != "dnit") + ")"
                           if sel.get("trained_with") else "on the same polygons")

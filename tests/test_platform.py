@@ -76,3 +76,40 @@ class OpenApiContract(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OperationalGuardRails(unittest.TestCase):
+    def test_token_bucket_allows_the_rate_and_refills(self):
+        from api.ops import RateLimiter
+        r = RateLimiter(per_minute=2)
+        self.assertEqual(r.check("a", now=0.0), (True, 0))
+        self.assertEqual(r.check("a", now=0.0), (True, 0))
+        allowed, retry = r.check("a", now=0.0)
+        self.assertFalse(allowed)
+        self.assertEqual(retry, 30)                      # one token every 30 s at 2 per minute
+        self.assertTrue(r.check("b", now=0.0)[0], "clients are limited separately")
+        self.assertTrue(r.check("a", now=31.0)[0], "the bucket refills over time")
+
+    def test_zero_means_off(self):
+        from api.ops import RateLimiter
+        r = RateLimiter(per_minute=0)
+        self.assertTrue(all(r.check("a", now=0.0)[0] for _ in range(1000)))
+
+    def test_unknown_paths_share_one_metric_label(self):
+        from api.ops import Metrics
+        m = Metrics({"/api/v1/health"})
+        for p in ("/api/v1/health", "/api/v1/nope-1", "/api/v1/nope-2", "/wp-admin", "/inspect"):
+            m.observe(p, "GET", 200, 0.02)
+        text = m.render()
+        self.assertIn('route="/api/v1/health"', text)
+        self.assertIn('route="/api/v1/other"', text)
+        self.assertIn('route="other"', text)
+        self.assertIn('route="site"', text)
+        self.assertNotIn("nope-1", text)
+
+    def test_readiness_requires_classifier_and_segmenter_only(self):
+        from api.ops import readiness
+        self.assertTrue(readiness(True, True, False, False)["ready"])
+        r = readiness(True, False, True, True)
+        self.assertFalse(r["ready"])
+        self.assertEqual(r["missing"], ["defect_segmenter"])

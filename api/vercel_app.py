@@ -321,6 +321,14 @@ class handler(BaseHTTPRequestHandler):
             self._send(200, _served_report().model_registry(CKPT_DIR, hash_files=False))
             return
 
+        if path == "/api/v1/ready":
+            # This deployment serves the site and the measured results; it never loads the models.
+            self._send(503, {"ready": False, "missing": ["vision_classifier", "defect_segmenter"],
+                             "models": {"vision_classifier": False, "defect_segmenter": False,
+                                        "imu_classifier": False, "ledger": False},
+                             "note": "static deployment: the models run on the engine (python -m api.server)"})
+            return
+
         if path == "/api/v1/openapi.json":
             import importlib.util
             spec_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openapi.py")
