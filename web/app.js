@@ -25,7 +25,22 @@ const API = {
   // session) points every request at one engine, for local testing.
   base: (new URLSearchParams(location.search).get("api")
          || sessionStorage.getItem("roadShieldApiBase") || ""),
-  engineUrl: ((window.ROAD_SHIELD_ENGINE_URL || "") + "").replace(/\/+$/, ""),
+  // The live engine for photograph analysis: ?engine=https://... (e.g. a laptop tunnel for a demo, remembered
+  // for the session), else web/config.js. Reports keep coming from this site, so the pages still work - with
+  // recorded results - when that engine is off.
+  // Only engines of the kinds this project deploys are accepted from a link, so a shared link cannot send
+  // a visitor's photographs to an arbitrary server.
+  engineUrl: (() => {
+    const allowed = (u) => /^https:\/\/[a-z0-9-]+\.(trycloudflare\.com|hf\.space)\/?$/i.test(u)
+                        || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/i.test(u);
+    let q = new URLSearchParams(location.search).get("engine");
+    if (q && !allowed(q)) q = null;
+    if (q) { try { sessionStorage.setItem("roadShieldEngine", q); } catch {} }
+    let saved = "";
+    try { saved = sessionStorage.getItem("roadShieldEngine") || ""; } catch {}
+    if (saved && !allowed(saved)) saved = "";
+    return ((q || saved || window.ROAD_SHIELD_ENGINE_URL || "") + "").replace(/\/+$/, "");
+  })(),
   siteIsStatic: null,          // true once /api/v1/health says this origin cannot run the models
   engineState: "unknown",      // unknown | online | starting | waking | offline | none
   _healthOnce: null,

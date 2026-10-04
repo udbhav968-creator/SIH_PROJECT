@@ -1,16 +1,49 @@
 # Making the public website analyse photographs live
 
-The Vercel site cannot run the models: they are about 440 MB, and a Vercel function is capped at 250 MB. So
-the engine runs on a **Hugging Face Space** (free CPU hardware), and the website sends photograph analysis
-there. Everything else, including every measured result, is still served by Vercel, so the pages keep
-working even while the engine is asleep.
+The Vercel site cannot run the models: they are about 440 MB, and a Vercel function is capped at 250 MB.
+Photograph analysis therefore goes to an engine running somewhere else. Everything else, including every
+measured result, is still served by Vercel, so the pages keep working when no engine is reachable; they
+show recorded results instead.
 
 ```
 browser ──pages, measured reports──▶ Vercel (road-shield-ai-engine.vercel.app)
-   └─────photograph analysis────────▶ Hugging Face Space (the engine, public-demo mode)
+   └─────photograph analysis────────▶ the engine (your laptop via a tunnel, or a hosted server)
 ```
 
-## One-time setup (about 20 minutes, most of it waiting for the build)
+There are three ways to run that engine:
+
+| | Cost | Always on? | Setup |
+|---|---|---|---|
+| **A. Laptop + Cloudflare tunnel** | free, no account | only while your laptop runs it | one script, about 2 minutes |
+| **B. Hugging Face Space** | PRO, $9/month. Free Docker Spaces ended: the API answered "402 … requires a PRO subscription" in October 2026 | yes (sleeps when idle) | `scripts/go_live.ps1` |
+| **C. Azure for Students** | free student credit, no card | yes | Azure CLI, about 45 minutes |
+
+## A. Laptop + Cloudflare tunnel (free)
+
+```powershell
+cd C:\Users\Dell\SIH_PROJECT
+powershell -ExecutionPolicy Bypass -File .\scripts\go_live_tunnel.ps1
+```
+
+The script:
+
+1. starts the engine in public-demo mode;
+2. downloads `cloudflared` once, from Cloudflare's GitHub releases;
+3. opens a quick tunnel;
+4. prints two links:
+   - `https://<random>.trycloudflare.com` is the full site, live, running on your laptop;
+   - `https://road-shield-ai-engine.vercel.app/inspect?engine=https://<random>.trycloudflare.com` is your
+     Vercel site using the laptop as its engine. This link is also copied to the clipboard.
+
+The links work while that window is open, and each run gives a new address. For a demo or a judge, start
+the script a few minutes before and share the link. A Cloudflare quick tunnel has no uptime guarantee, so
+keep a recorded example ready (**Try an example photograph**).
+
+## B. Hugging Face Space (PRO)
+
+Subscribe to PRO first. Then `scripts/go_live.ps1` does everything below. The manual steps follow.
+
+### Manual setup (about 20 minutes, most of it waiting for the build)
 
 **1. Merge the pull request.** Use base `master` ← compare `audit-2026-10-03`. The Space builds from `master`.
 
@@ -22,7 +55,7 @@ browser ──pages, measured reports──▶ Vercel (road-shield-ai-engine.ver
 |---|---|
 | Space name | `road-shield-engine` |
 | SDK | **Docker** → **Blank** |
-| Hardware | **CPU basic** (free) |
+| Hardware | **CPU basic** (needs PRO for a Docker Space) |
 | Visibility | **Public** |
 
 Then press **Create Space**.
@@ -55,9 +88,9 @@ Commit, push, and merge as usual. Vercel redeploys by itself.
 **7. Check it.** Open https://road-shield-ai-engine.vercel.app/inspect. The status pill should say
 **live engine · online**. Upload a road photograph and press **Analyse**.
 
-## How it behaves
+### How it behaves
 
-- **Sleeping:** a free Space goes to sleep after a period with no visitors (as far as I know, about 48 hours).
+- **Sleeping:** a Space on basic hardware goes to sleep after a period with no visitors.
   The first visitor afterwards sees "live engine is waking up". Their photograph is analysed automatically
   once the engine is up, usually 1–2 minutes later. Meanwhile, **Try an example photograph** shows recorded
   results.
@@ -72,7 +105,7 @@ Commit, push, and merge as usual. Vercel redeploys by itself.
   **Factory rebuild**.
 - **Speed:** a photograph takes about 5–20 s on the free 2-CPU hardware. A laptop is faster.
 
-## If something goes wrong
+### If something goes wrong
 
 | What you see | What to do |
 |---|---|
