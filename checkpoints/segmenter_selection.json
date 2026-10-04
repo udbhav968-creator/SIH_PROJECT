@@ -1,0 +1,148 @@
+{
+  "served": "unet",
+  "rule": "U-Net served only if, on the calibration photographs, its crack IoU AND pothole IoU both exceed the pixel classifier's, and its clean-road false-blob rate is no more than 5 points worse. Decided before the test set was scored.",
+  "why": "calibration IoU crack 0.278 vs 0.214, pothole 0.650 vs 0.119; clean false-blob rate 0.0 vs 0.1807",
+  "validation": {
+    "unet": {
+      "crack": {
+        "iou": 0.2777,
+        "dice": 0.4346,
+        "pixel_precision": 0.514,
+        "pixel_recall": 0.3765,
+        "true_pixels": 276185,
+        "predicted_pixels": 202322
+      },
+      "pothole": {
+        "iou": 0.6496,
+        "dice": 0.7876,
+        "pixel_precision": 0.8673,
+        "pixel_recall": 0.7213,
+        "true_pixels": 54971,
+        "predicted_pixels": 45720
+      },
+      "clean_false_blob_rate": 0.0
+    },
+    "pixel_classifier": {
+      "crack": {
+        "iou": 0.2136,
+        "dice": 0.352,
+        "pixel_precision": 0.3633,
+        "pixel_recall": 0.3415,
+        "true_pixels": 276185,
+        "predicted_pixels": 259611
+      },
+      "pothole": {
+        "iou": 0.1189,
+        "dice": 0.2125,
+        "pixel_precision": 0.1753,
+        "pixel_recall": 0.2698,
+        "true_pixels": 54971,
+        "predicted_pixels": 84613
+      },
+      "clean_false_blob_rate": 0.1807
+    }
+  },
+  "test": {
+    "unet": {
+      "crack": {
+        "iou": 0.294,
+        "dice": 0.4544,
+        "pixel_precision": 0.526,
+        "pixel_recall": 0.4,
+        "true_pixels": 610039,
+        "predicted_pixels": 463889
+      },
+      "pothole": {
+        "iou": 0.6411,
+        "dice": 0.7813,
+        "pixel_precision": 0.883,
+        "pixel_recall": 0.7006,
+        "true_pixels": 147007,
+        "predicted_pixels": 116630
+      },
+      "clean": {
+        "clean_photographs_scored": 120,
+        "min_blob_px": 250,
+        "pixel_rate_crack": 0.00114,
+        "pixel_rate_pothole": 8e-05,
+        "photo_rate_any_blob": 0.0167,
+        "per_folder": {
+          "05_morth_civil_hard_negatives": {
+            "photos": 120,
+            "flagged": 2,
+            "rate": 0.017
+          }
+        }
+      },
+      "source": "exported ONNX file on CPU (the served artefact)"
+    },
+    "pixel_classifier": {
+      "crack": {
+        "iou": 0.2314,
+        "dice": 0.3758,
+        "pixel_precision": 0.3729,
+        "pixel_recall": 0.3787,
+        "true_pixels": 610039,
+        "predicted_pixels": 619523
+      },
+      "pothole": {
+        "iou": 0.1437,
+        "dice": 0.2513,
+        "pixel_precision": 0.242,
+        "pixel_recall": 0.2615,
+        "true_pixels": 147007,
+        "predicted_pixels": 158857
+      },
+      "clean": {
+        "clean_photographs_scored": 120,
+        "min_blob_px": 250,
+        "pixel_rate_crack": 0.00609,
+        "pixel_rate_pothole": 0.01641,
+        "photo_rate_any_blob": 0.2333,
+        "per_folder": {
+          "05_morth_civil_hard_negatives": {
+            "photos": 120,
+            "flagged": 28,
+            "rate": 0.233
+          }
+        }
+      },
+      "source": "defect_segmenter_report.json (same split, scored at training)"
+    },
+    "unet_torch_gpu": {
+      "crack": {
+        "iou": 0.294,
+        "dice": 0.4544,
+        "pixel_precision": 0.5259,
+        "pixel_recall": 0.4,
+        "true_pixels": 610039,
+        "predicted_pixels": 463937
+      },
+      "pothole": {
+        "iou": 0.6411,
+        "dice": 0.7813,
+        "pixel_precision": 0.883,
+        "pixel_recall": 0.7006,
+        "true_pixels": 147007,
+        "predicted_pixels": 116642
+      },
+      "clean": {
+        "clean_photographs_scored": 120,
+        "min_blob_px": 250,
+        "pixel_rate_crack": 0.00114,
+        "pixel_rate_pothole": 8e-05,
+        "photo_rate_any_blob": 0.0167,
+        "per_folder": {
+          "05_morth_civil_hard_negatives": {
+            "photos": 120,
+            "flagged": 2,
+            "rate": 0.017
+          }
+        }
+      }
+    }
+  },
+  "decided_before_test": true,
+  "smoke": false,
+  "decided_unix": 1791083214
+}

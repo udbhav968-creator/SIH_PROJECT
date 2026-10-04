@@ -1,5 +1,5 @@
 ﻿python : .C:\Python314\Lib\tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 400: 'Bad Request'>
-At line:1 char:1
+At line:6 char:1
 + python -m unittest discover -s tests -t . 2>&1 | Out-File -Encoding u ...
 + ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (.C:\Python314\L... 'Bad Request'>:String) [], RemoteException
@@ -10,12 +10,12 @@ At line:1 char:1
   _warnings.warn(self.warn_message, ResourceWarning)
 ...C:\Python314\Lib\tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 400: 'Bad Request'>
   _warnings.warn(self.warn_message, ResourceWarning)
-.C:\Python314\Lib\pickle.py:1837: ResourceWarning: unclosed database in <sqlite3.Connection object at 
-0x000001937B4E25C0>
-  for k, v in state.items():
+.C:\Python314\Lib\site-packages\sklearn\base.py:473: ResourceWarning: unclosed database in <sqlite3.Connection object 
+at 0x000001E119DF23E0>
+  self.__dict__.update(state)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ...<frozen importlib._bootstrap_external>:511: ResourceWarning: unclosed database in <sqlite3.Connection object at 
-0x0000019301BE0310>
+0x000001E11AED04F0>
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Python314\Lib\tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 500: 'Internal Server Error'>
   _warnings.warn(self.warn_message, ResourceWarning)
@@ -31,111 +31,111 @@ C:\Python314\Lib\tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPE
   _warnings.warn(self.warn_message, ResourceWarning)
 ......C:\Python314\Lib\tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 503: 'Service Unavailable'>
   _warnings.warn(self.warn_message, ResourceWarning)
-....................................s.........................C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:2
+...................................Fs.........................C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:2
 39: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptjbrfdfu\\imu_model_selection.json' mode='w' encoding='cp1252'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpm7f23dyb\\imu_model_selection.json' mode='w' encoding='cp1252'>
   json.dump({"served": "cnn"}, open(os.path.join(tmp, "imu_model_selection.json"), "w"))
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 .........C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:44: ResourceWarning: unclosed file 
-<_io.TextIOWrapper name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\data.yaml' mode='r' 
+<_io.TextIOWrapper name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\data.yaml' mode='r' 
 encoding='utf-8'>
   txt = open(y, encoding="utf-8", errors="replace").read()
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\train\\India_000019.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\train\\India_000013.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\train\\India_000005.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\train\\India_000015.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\train\\India_000003.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\train\\India_000001.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\train\\India_000007.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\train\\India_000019.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\train\\India_000004.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\train\\India_000005.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\train\\India_000016.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\train\\India_000016.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\train\\India_000001.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\train\\India_000012.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\train\\India_000015.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\train\\India_000000.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\train\\India_000013.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\train\\India_000007.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\train\\India_000000.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\train\\India_000003.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\train\\India_000012.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\train\\India_000004.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\valid\\India_000008.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\valid\\India_000009.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\valid\\India_000009.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\valid\\India_000008.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\test\\India_000011.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\test\\India_000017.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:226: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmptrclorhn\\yolo\\labels\\test\\India_000017.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp0k9069hr\\yolo\\labels\\test\\India_000011.txt' mode='r' 
 encoding='cp1252'>
   all_lines += open(os.path.join(self.out, "labels", split, st + ".txt")).read().split("\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 .C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:332: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp9rysk87c\\page.html' mode='w' encoding='cp1252'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpz9mooq8z\\page.html' mode='w' encoding='cp1252'>
   open(page, "w").write("<Error><Code>AccessDenied</Code></Error>" * 50000)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 [AI Server] Loading trained models from: C:\Users\Dell\SIH_PROJECT\checkpoints
   Γ£ô Vision classifier: fine-tuned CNN (onnxruntime:deep_vision_mobilenet_v3_large_refit.onnx)
   Γ£ô IMU shock classifier loaded (random_forest)
-  Γ£ô Defect segmenter: pixel classifier masks ({'crack': 0.55, 'pothole': 0.3})
+  Γ£ô Defect segmenter: U-Net masks ({'crack': 0.6, 'pothole': 0.9})
   Γ£ô Deep inference pipeline initialized.
-  Γ£ô Fleet ledger seeded with 5 DEMO reports (ROAD_SHIELD_SEED_DEMO=1) -> C:\Users\Dell\AppData\Local\Temp\road_shield_api_test_9hzixebg\road_shield.db
+  Γ£ô Fleet ledger seeded with 5 DEMO reports (ROAD_SHIELD_SEED_DEMO=1) -> C:\Users\Dell\AppData\Local\Temp\road_shield_api_test_maq05umz\road_shield.db
 [segmenter] selection says U-Net but it did not load (file missing); using the pixel classifier
-  Γ£ô Defect segmenter: pixel classifier masks ({'crack': 0.55, 'pothole': 0.3})
-  Γ£ô Defect segmenter: pixel classifier masks ({'crack': 0.55, 'pothole': 0.3})
+  Γ£ô Defect segmenter: U-Net masks ({'crack': 0.6, 'pothole': 0.9})
+  Γ£ô Defect segmenter: U-Net masks ({'crack': 0.6, 'pothole': 0.9})
   downloading https://example.invalid/x.zip
 C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:339: ResourceWarning: unclosed file <_io.BufferedReader 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp9rysk87c\\page.html'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpz9mooq8z\\page.html'>
   urllib.request.urlopen = lambda *a, **k: Resp(open(page, "rb").read())
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ..C:\Users\Dell\SIH_PROJECT\tests\test_integrity_fixes.py:171: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpkyr16vs2\\vision_model_selection.json' mode='w' encoding='cp1252'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp1dr0cfdd\\vision_model_selection.json' mode='w' encoding='cp1252'>
   json.dump({"served": "deep_cnn"}, open(os.path.join(tmp, "vision_model_selection.json"), "w"))
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 .............C:\Users\Dell\SIH_PROJECT\tests\test_platform.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper 
@@ -143,364 +143,364 @@ name='C:\\Users\\Dell\\SIH_PROJECT\\api\\server.py' mode='r' encoding='utf-8'>
   encoding="utf-8").read()
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ..C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpnyvwpt9_\\rdd\\labels\\train\\India_train_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpza_s8sl_\\rdd\\labels\\train\\India_train_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpnyvwpt9_\\rdd\\labels\\train\\India_train_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpza_s8sl_\\rdd\\labels\\train\\India_train_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpnyvwpt9_\\rdd\\labels\\train\\India_train_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpza_s8sl_\\rdd\\labels\\train\\India_train_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpnyvwpt9_\\rdd\\labels\\valid\\India_valid_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpza_s8sl_\\rdd\\labels\\valid\\India_valid_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpnyvwpt9_\\rdd\\labels\\valid\\India_valid_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpza_s8sl_\\rdd\\labels\\valid\\India_valid_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpnyvwpt9_\\rdd\\labels\\valid\\India_valid_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpza_s8sl_\\rdd\\labels\\valid\\India_valid_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpnyvwpt9_\\rdd\\labels\\test\\India_test_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpza_s8sl_\\rdd\\labels\\test\\India_test_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpnyvwpt9_\\rdd\\labels\\test\\India_test_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpza_s8sl_\\rdd\\labels\\test\\India_test_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpnyvwpt9_\\rdd\\labels\\test\\India_test_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpza_s8sl_\\rdd\\labels\\test\\India_test_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:23: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpnyvwpt9_\\rdd\\data.yaml' mode='w' encoding='cp1252'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpza_s8sl_\\rdd\\data.yaml' mode='w' encoding='cp1252'>
   open(os.path.join(self.root, "data.yaml"), "w").write("nc: 5\nnames: ['D00', 'D10', 'D20', 'D40', 'Repair']\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 .C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpql1kg1lm\\rdd\\labels\\train\\India_train_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpoxxtq15g\\rdd\\labels\\train\\India_train_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpql1kg1lm\\rdd\\labels\\train\\India_train_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpoxxtq15g\\rdd\\labels\\train\\India_train_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpql1kg1lm\\rdd\\labels\\train\\India_train_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpoxxtq15g\\rdd\\labels\\train\\India_train_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpql1kg1lm\\rdd\\labels\\valid\\India_valid_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpoxxtq15g\\rdd\\labels\\valid\\India_valid_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpql1kg1lm\\rdd\\labels\\valid\\India_valid_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpoxxtq15g\\rdd\\labels\\valid\\India_valid_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpql1kg1lm\\rdd\\labels\\valid\\India_valid_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpoxxtq15g\\rdd\\labels\\valid\\India_valid_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpql1kg1lm\\rdd\\labels\\test\\India_test_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpoxxtq15g\\rdd\\labels\\test\\India_test_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpql1kg1lm\\rdd\\labels\\test\\India_test_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpoxxtq15g\\rdd\\labels\\test\\India_test_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpql1kg1lm\\rdd\\labels\\test\\India_test_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpoxxtq15g\\rdd\\labels\\test\\India_test_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:23: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpql1kg1lm\\rdd\\data.yaml' mode='w' encoding='cp1252'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpoxxtq15g\\rdd\\data.yaml' mode='w' encoding='cp1252'>
   open(os.path.join(self.root, "data.yaml"), "w").write("nc: 5\nnames: ['D00', 'D10', 'D20', 'D40', 'Repair']\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 .C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\train\\India_train_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\train\\India_train_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\train\\India_train_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\train\\India_train_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\train\\India_train_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\train\\India_train_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\valid\\India_valid_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\valid\\India_valid_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\valid\\India_valid_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\valid\\India_valid_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\valid\\India_valid_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\valid\\India_valid_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\test\\India_test_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\test\\India_test_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\test\\India_test_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\test\\India_test_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\test\\India_test_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\test\\India_test_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:23: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\data.yaml' mode='w' encoding='cp1252'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\data.yaml' mode='w' encoding='cp1252'>
   open(os.path.join(self.root, "data.yaml"), "w").write("nc: 5\nnames: ['D00', 'D10', 'D20', 'D40', 'Repair']\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:44: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\data.yaml' mode='r' encoding='utf-8'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\data.yaml' mode='r' encoding='utf-8'>
   txt = open(y, encoding="utf-8", errors="replace").read()
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\train\\India_train_0.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\train\\India_train_0.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\train\\India_train_1.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\train\\India_train_1.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\train\\India_train_2.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\train\\India_train_2.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\valid\\India_valid_0.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\valid\\India_valid_0.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\valid\\India_valid_1.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\valid\\India_valid_1.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\valid\\India_valid_2.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\valid\\India_valid_2.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\test\\India_test_0.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\test\\India_test_0.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\test\\India_test_1.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\test\\India_test_1.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\rdd\\labels\\test\\India_test_2.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\rdd\\labels\\test\\India_test_2.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:149: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmp3r_h2ssl\\datasets\\_eval_rdd2022_india\\manifest.json' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmprpgbxm5t\\datasets\\_eval_rdd2022_india\\manifest.json' mode='w' 
 encoding='cp1252'>
   json.dump(manifest, open(os.path.join(EVAL_DIR, "manifest.json"), "w"), indent=1)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 .C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\train\\India_train_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\train\\India_train_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\train\\India_train_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\train\\India_train_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\train\\India_train_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\train\\India_train_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\valid\\India_valid_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\valid\\India_valid_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\valid\\India_valid_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\valid\\India_valid_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\valid\\India_valid_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\valid\\India_valid_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\test\\India_test_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\test\\India_test_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\test\\India_test_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\test\\India_test_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\test\\India_test_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\test\\India_test_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:23: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\data.yaml' mode='w' encoding='cp1252'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\data.yaml' mode='w' encoding='cp1252'>
   open(os.path.join(self.root, "data.yaml"), "w").write("nc: 5\nnames: ['D00', 'D10', 'D20', 'D40', 'Repair']\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:44: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\data.yaml' mode='r' encoding='utf-8'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\data.yaml' mode='r' encoding='utf-8'>
   txt = open(y, encoding="utf-8", errors="replace").read()
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\train\\India_train_0.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\train\\India_train_0.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\train\\India_train_1.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\train\\India_train_1.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\train\\India_train_2.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\train\\India_train_2.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\valid\\India_valid_0.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\valid\\India_valid_0.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\valid\\India_valid_1.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\valid\\India_valid_1.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\valid\\India_valid_2.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\valid\\India_valid_2.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\test\\India_test_0.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\test\\India_test_0.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\test\\India_test_1.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\test\\India_test_1.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:80: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\rdd\\labels\\test\\India_test_2.txt' mode='r' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\rdd\\labels\\test\\India_test_2.txt' mode='r' 
 encoding='cp1252'>
   lines = [l.split() for l in open(lbl_path).read().splitlines() if l.strip()] if os.path.exists(lbl_path) else []
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:149: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmplwb171yv\\datasets\\_eval_rdd2022_india\\manifest.json' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpatbpie3t\\datasets\\_eval_rdd2022_india\\manifest.json' mode='w' 
 encoding='cp1252'>
   json.dump(manifest, open(os.path.join(EVAL_DIR, "manifest.json"), "w"), indent=1)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 .C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\labels\\train\\India_train_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\labels\\train\\India_train_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\labels\\train\\India_train_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\labels\\train\\India_train_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\labels\\train\\India_train_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\labels\\train\\India_train_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\labels\\valid\\India_valid_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\labels\\valid\\India_valid_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\labels\\valid\\India_valid_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\labels\\valid\\India_valid_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\labels\\valid\\India_valid_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\labels\\valid\\India_valid_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\labels\\test\\India_test_0.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\labels\\test\\India_test_0.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\labels\\test\\India_test_1.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\labels\\test\\India_test_1.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:22: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\labels\\test\\India_test_2.txt' mode='w' 
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\labels\\test\\India_test_2.txt' mode='w' 
 encoding='cp1252'>
   open(os.path.join(self.root, "labels", split, stem + ".txt"), "w").write(lines)
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:23: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\data.yaml' mode='w' encoding='cp1252'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\data.yaml' mode='w' encoding='cp1252'>
   open(os.path.join(self.root, "data.yaml"), "w").write("nc: 5\nnames: ['D00', 'D10', 'D20', 'D40', 'Repair']\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\tests\test_rdd_ingest.py:41: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\data.yaml' mode='w' encoding='cp1252'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\data.yaml' mode='w' encoding='cp1252'>
   open(os.path.join(self.root, "data.yaml"), "w").write("names:\n  0: D00\n  1: D40\n")
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 C:\Users\Dell\SIH_PROJECT\scripts\ingest_rdd2022_india.py:44: ResourceWarning: unclosed file <_io.TextIOWrapper 
-name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmpll2pcsij\\rdd\\data.yaml' mode='r' encoding='utf-8'>
+name='C:\\Users\\Dell\\AppData\\Local\\Temp\\tmper99hq86\\rdd\\data.yaml' mode='r' encoding='utf-8'>
   txt = open(y, encoding="utf-8", errors="replace").read()
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 .......................................C:\Users\Dell\SIH_PROJECT\tests\test_semantic_gate.py:30: ResourceWarning: 
@@ -509,10 +509,26 @@ name='C:\\Users\\Dell\\SIH_PROJECT\\tests\\..\\checkpoints\\semantic_gate_report
   r = json.load(open(p))["results"]
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 .............................
+======================================================================
+FAIL: test_proposals_come_from_the_mask_not_from_brightness 
+(tests.test_geometry_and_storage.FalsePositiveGate.test_proposals_come_from_the_mask_not_from_brightness)
+The fix is architectural. If proposals silently revert to the
 ----------------------------------------------------------------------
-Ran 201 tests in 282.098s
+Traceback (most recent call last):
+  File "C:\Users\Dell\SIH_PROJECT\tests\test_geometry_and_storage.py", line 585, in 
+test_proposals_come_from_the_mask_not_from_brightness
+    self.assertTrue(saw_segmentation_proposal,
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    "no proposal came from the segmentation mask on any "
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    "pothole photograph")
+                    ^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : no proposal came from the segmentation mask on any pothole photograph
 
-OK (skipped=1)
+----------------------------------------------------------------------
+Ran 201 tests in 196.249s
+
+FAILED (failures=1, skipped=1)
   not a zip archive (probably an error page) - ignored
   extracting 1 India files
   nested archive: all/RDD2022_India.zip
@@ -523,7 +539,7 @@ OK (skipped=1)
     3: D40                          -> Pothole Cavity
     4: Repair                       -> not used
 [RDD India] training crops {'crack': 2, 'pothole': 2, 'normal': 2} from 4 photographs
-[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> C:\Users\Dell\AppData\Local\Temp\tmp3r_h2ssl\datasets\_eval_rdd2022_india
+[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> C:\Users\Dell\AppData\Local\Temp\tmprpgbxm5t\datasets\_eval_rdd2022_india
 [RDD India] class mapping:
     0: D00                          -> Crack (Longitudinal / Transverse / Alligator)
     1: D10                          -> Crack (Longitudinal / Transverse / Alligator)
@@ -532,7 +548,7 @@ OK (skipped=1)
     4: Repair                       -> not used
 [RDD India] removed 6 crops from a previous run
 [RDD India] training crops {'crack': 2, 'pothole': 2, 'normal': 2} from 4 photographs
-[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> C:\Users\Dell\AppData\Local\Temp\tmp3r_h2ssl\datasets\_eval_rdd2022_india
+[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> C:\Users\Dell\AppData\Local\Temp\tmprpgbxm5t\datasets\_eval_rdd2022_india
 [RDD India] class mapping:
     0: D00                          -> Crack (Longitudinal / Transverse / Alligator)
     1: D10                          -> Crack (Longitudinal / Transverse / Alligator)
@@ -540,4 +556,4 @@ OK (skipped=1)
     3: D40                          -> Pothole Cavity
     4: Repair                       -> not used
 [RDD India] training crops {'crack': 2, 'pothole': 2, 'normal': 2} from 4 photographs
-[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> C:\Users\Dell\AppData\Local\Temp\tmplwb171yv\datasets\_eval_rdd2022_india
+[RDD India] Indian test crops {'crack': 1, 'pothole': 1, 'normal': 1} from 2 photographs -> C:\Users\Dell\AppData\Local\Temp\tmpatbpie3t\datasets\_eval_rdd2022_india

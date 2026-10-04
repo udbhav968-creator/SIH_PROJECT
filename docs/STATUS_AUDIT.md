@@ -26,7 +26,8 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | Privacy redaction of people and number plates | Added in this audit (recall not measured) | `models/privacy_redactor.py`, `/api/v1/privacy/redact` |
 | REST API + site (11 pages incl. Design and API reference) + Vercel static deployment | Done | `api/server.py`, `web/`, `api/vercel_app.py` |
 | System design, OpenAPI contract, model registry, request IDs, opt-in API key, docker compose | Done in this audit | `docs/SYSTEM_DESIGN.md`, `api/openapi.py`, `/api/v1/models/served` |
-| U-Net segmenter and YOLOv8 RDD2022 detector | Trainers, ONNX serving and selection rules done; served only if trained and the rule picks them | `training/train_unet_segmenter.py`, `training/train_rdd_detector.py` |
+| U-Net segmenter (ResNet-18 encoder) | Done and served: won on calibration; test pothole IoU 0.641 vs 0.144, crack 0.294 vs 0.231, clean-road false blobs 1.7% vs 23.3%; the exported ONNX file was itself scored on the test split | `checkpoints/defect_segmenter_unet.json`, `checkpoints/segmenter_selection.json` |
+| YOLOv8 RDD2022 detector | Trainer, ONNX serving and selection rule done; not yet trained | `training/train_rdd_detector.py` |
 | Automated tests | 200+; pipeline suite OK on a fresh clone with scikit-learn 1.8 and the fine-tuned CNN served | `tests/`, `logs/tests_after.txt` |
 
 ## Left to do (not claimed as done)
