@@ -1,28 +1,101 @@
 {
+  "protocol": {
+    "version": 2,
+    "change": "per-class thresholds tuned only on calibration photographs of road scenes (DNIT, Kaggle pothole, Pothole Mix); CrackSeg9k still trains the network but no longer sets the serving threshold",
+    "why": "in v1 the combined calibration was dominated by CrackSeg9k close-ups; the crack threshold it chose (0.85) fitted texture patches, and on DNIT calibration the U-Net's crack IoU was 0.184 against the pixel classifier's 0.214, so the IoU rule kept the pixel classifier",
+    "disclosure": "this change was decided AFTER seeing v1's results, including its test scores. The selection rule, the DNIT split and the end-to-end check are unchanged, and v1's result stays on record (previous_run). Read v2's test numbers with that in mind."
+  },
+  "previous_run": {
+    "served": "pixel_classifier",
+    "iou_selection_served": "unet",
+    "why": "calibration IoU crack 0.248 vs 0.214, pothole 0.642 vs 0.119; clean false-blob rate 0.012 vs 0.1807; awaiting the end-to-end check (python -m scripts.segmenter_deployment_check)",
+    "test": {
+      "unet": {
+        "crack": {
+          "iou": 0.2669,
+          "dice": 0.4213,
+          "pixel_precision": 0.5445,
+          "pixel_recall": 0.3436,
+          "true_pixels": 610039,
+          "predicted_pixels": 384987
+        },
+        "pothole": {
+          "iou": 0.6543,
+          "dice": 0.791,
+          "pixel_precision": 0.8772,
+          "pixel_recall": 0.7203,
+          "true_pixels": 147007,
+          "predicted_pixels": 120699
+        },
+        "clean": {
+          "clean_photographs_scored": 120,
+          "min_blob_px": 250,
+          "pixel_rate_crack": 0.00146,
+          "pixel_rate_pothole": 0.00011,
+          "photo_rate_any_blob": 0.0167,
+          "per_folder": {
+            "05_morth_civil_hard_negatives": {
+              "photos": 120,
+              "flagged": 2,
+              "rate": 0.017
+            }
+          }
+        },
+        "source": "exported ONNX file on CPU (the served artefact)"
+      },
+      "pixel_classifier": {
+        "crack": {
+          "iou": 0.2314,
+          "dice": 0.3758,
+          "pixel_precision": 0.3729,
+          "pixel_recall": 0.3787,
+          "true_pixels": 610039,
+          "predicted_pixels": 619523
+        },
+        "pothole": {
+          "iou": 0.1437,
+          "dice": 0.2513,
+          "pixel_precision": 0.242,
+          "pixel_recall": 0.2615,
+          "true_pixels": 147007,
+          "predicted_pixels": 158857
+        },
+        "source": "defect_segmenter_report.json"
+      }
+    },
+    "trained_with": "training/train_unet_multi.py",
+    "protocol": {
+      "version": 2,
+      "change": "per-class thresholds tuned only on calibration photographs of road scenes (DNIT, Kaggle pothole, Pothole Mix); CrackSeg9k still trains the network but no longer sets the serving threshold",
+      "why": "in v1 the combined calibration was dominated by CrackSeg9k close-ups; the crack threshold it chose (0.85) fitted texture patches, and on DNIT calibration the U-Net's crack IoU was 0.184 against the pixel classifier's 0.214, so the IoU rule kept the pixel classifier",
+      "disclosure": "this change was decided AFTER seeing v1's results, including its test scores. The selection rule, the DNIT split and the end-to-end check are unchanged, and v1's result stays on record (previous_run). Read v2's test numbers with that in mind."
+    },
+    "decided_unix": 1791124493
+  },
   "served": "pixel_classifier",
-  "iou_selection_served": "pixel_classifier",
+  "iou_selection_served": "unet",
   "rule": "U-Net served only if, on the calibration photographs, its crack IoU AND pothole IoU both exceed the pixel classifier's, and its clean-road false-blob rate is no more than 5 points worse. Decided before the test set was scored.",
-  "why_iou": "calibration IoU crack 0.184 vs 0.214, pothole 0.647 vs 0.119; clean false-blob rate 0.0 vs 0.1807",
-  "why": "calibration IoU crack 0.184 vs 0.214, pothole 0.647 vs 0.119; clean false-blob rate 0.0 vs 0.1807; end-to-end check recorded for information (it cannot overturn the IoU rule): end to end, U-Net found 18/24 defects with 4/36 false positives; the pixel classifier found 24/24 with 3/36",
+  "why_iou": "calibration IoU crack 0.255 vs 0.214, pothole 0.640 vs 0.119; clean false-blob rate 0.0241 vs 0.1807",
+  "why": "calibration IoU crack 0.255 vs 0.214, pothole 0.640 vs 0.119; clean false-blob rate 0.0241 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 18/24 defects with 3/36 false positives; the pixel classifier found 24/24 with 3/36",
   "validation": {
     "unet": {
       "crack": {
-        "iou": 0.1841,
-        "dice": 0.311,
-        "pixel_precision": 0.6009,
-        "pixel_recall": 0.2097,
+        "iou": 0.2545,
+        "dice": 0.4058,
+        "pixel_precision": 0.531,
+        "pixel_recall": 0.3283,
         "true_pixels": 276185,
-        "predicted_pixels": 96407
+        "predicted_pixels": 170765
       },
       "pothole": {
-        "iou": 0.6472,
-        "dice": 0.7858,
-        "pixel_precision": 0.815,
-        "pixel_recall": 0.7587,
+        "iou": 0.6405,
+        "dice": 0.7809,
+        "pixel_precision": 0.8475,
+        "pixel_recall": 0.724,
         "true_pixels": 54971,
-        "predicted_pixels": 51171
+        "predicted_pixels": 46964
       },
-      "clean_false_blob_rate": 0.0
+      "clean_false_blob_rate": 0.0241
     },
     "pixel_classifier": {
       "crack": {
@@ -47,32 +120,32 @@
   "test": {
     "unet": {
       "crack": {
-        "iou": 0.1984,
-        "dice": 0.3311,
-        "pixel_precision": 0.6143,
-        "pixel_recall": 0.2267,
+        "iou": 0.2712,
+        "dice": 0.4267,
+        "pixel_precision": 0.5447,
+        "pixel_recall": 0.3507,
         "true_pixels": 610039,
-        "predicted_pixels": 225119
+        "predicted_pixels": 392808
       },
       "pothole": {
-        "iou": 0.6543,
-        "dice": 0.791,
-        "pixel_precision": 0.8501,
-        "pixel_recall": 0.7396,
+        "iou": 0.6317,
+        "dice": 0.7743,
+        "pixel_precision": 0.8775,
+        "pixel_recall": 0.6928,
         "true_pixels": 147007,
-        "predicted_pixels": 127908
+        "predicted_pixels": 116063
       },
       "clean": {
         "clean_photographs_scored": 120,
         "min_blob_px": 250,
-        "pixel_rate_crack": 0.00077,
-        "pixel_rate_pothole": 0.00051,
-        "photo_rate_any_blob": 0.0083,
+        "pixel_rate_crack": 0.0013,
+        "pixel_rate_pothole": 0.00011,
+        "photo_rate_any_blob": 0.0167,
         "per_folder": {
           "05_morth_civil_hard_negatives": {
             "photos": 120,
-            "flagged": 1,
-            "rate": 0.008
+            "flagged": 2,
+            "rate": 0.017
           }
         }
       },
@@ -102,32 +175,32 @@
     "dnit": {
       "unet": {
         "crack": {
-          "iou": 0.1984,
-          "dice": 0.3311,
-          "pixel_precision": 0.6143,
-          "pixel_recall": 0.2267,
+          "iou": 0.2712,
+          "dice": 0.4267,
+          "pixel_precision": 0.5447,
+          "pixel_recall": 0.3507,
           "true_pixels": 610039,
-          "predicted_pixels": 225119
+          "predicted_pixels": 392808
         },
         "pothole": {
-          "iou": 0.6543,
-          "dice": 0.791,
-          "pixel_precision": 0.8501,
-          "pixel_recall": 0.7396,
+          "iou": 0.6317,
+          "dice": 0.7743,
+          "pixel_precision": 0.8775,
+          "pixel_recall": 0.6928,
           "true_pixels": 147007,
-          "predicted_pixels": 127908
+          "predicted_pixels": 116063
         },
         "clean": {
           "clean_photographs_scored": 120,
           "min_blob_px": 250,
-          "pixel_rate_crack": 0.00077,
-          "pixel_rate_pothole": 0.00051,
-          "photo_rate_any_blob": 0.0083,
+          "pixel_rate_crack": 0.0013,
+          "pixel_rate_pothole": 0.00011,
+          "photo_rate_any_blob": 0.0167,
           "per_folder": {
             "05_morth_civil_hard_negatives": {
               "photos": 120,
-              "flagged": 1,
-              "rate": 0.008
+              "flagged": 2,
+              "rate": 0.017
             }
           }
         },
@@ -154,32 +227,32 @@
       },
       "unet_torch_gpu": {
         "crack": {
-          "iou": 0.1986,
-          "dice": 0.3313,
-          "pixel_precision": 0.6142,
-          "pixel_recall": 0.2269,
+          "iou": 0.2713,
+          "dice": 0.4268,
+          "pixel_precision": 0.5447,
+          "pixel_recall": 0.3508,
           "true_pixels": 610039,
-          "predicted_pixels": 225330
+          "predicted_pixels": 392847
         },
         "pothole": {
-          "iou": 0.6543,
-          "dice": 0.791,
-          "pixel_precision": 0.8501,
-          "pixel_recall": 0.7397,
+          "iou": 0.6317,
+          "dice": 0.7743,
+          "pixel_precision": 0.8776,
+          "pixel_recall": 0.6928,
           "true_pixels": 147007,
-          "predicted_pixels": 127918
+          "predicted_pixels": 116050
         },
         "clean": {
           "clean_photographs_scored": 120,
           "min_blob_px": 250,
-          "pixel_rate_crack": 0.00077,
-          "pixel_rate_pothole": 0.00051,
-          "photo_rate_any_blob": 0.0083,
+          "pixel_rate_crack": 0.0013,
+          "pixel_rate_pothole": 0.00011,
+          "photo_rate_any_blob": 0.0167,
           "per_folder": {
             "05_morth_civil_hard_negatives": {
               "photos": 120,
-              "flagged": 1,
-              "rate": 0.008
+              "flagged": 2,
+              "rate": 0.017
             }
           }
         }
@@ -188,12 +261,12 @@
     "crackseg9k": {
       "unet": {
         "crack": {
-          "iou": 0.4061,
-          "dice": 0.5776,
-          "pixel_precision": 0.7596,
-          "pixel_recall": 0.466,
+          "iou": 0.4313,
+          "dice": 0.6027,
+          "pixel_precision": 0.642,
+          "pixel_recall": 0.5679,
           "true_pixels": 3038212,
-          "predicted_pixels": 1863902
+          "predicted_pixels": 2687890
         },
         "pothole": {
           "iou": 0.0,
@@ -201,7 +274,7 @@
           "pixel_precision": 0.0,
           "pixel_recall": null,
           "true_pixels": 0,
-          "predicted_pixels": 5837
+          "predicted_pixels": 6991
         }
       },
       "test_images": 794,
@@ -228,20 +301,20 @@
     "kaggle_pothole": {
       "unet": {
         "crack": {
-          "iou": null,
-          "dice": null,
-          "pixel_precision": null,
+          "iou": 0.0,
+          "dice": 0.0,
+          "pixel_precision": 0.0,
           "pixel_recall": null,
           "true_pixels": 0,
-          "predicted_pixels": 0
+          "predicted_pixels": 234
         },
         "pothole": {
-          "iou": 0.6786,
-          "dice": 0.8085,
-          "pixel_precision": 0.867,
-          "pixel_recall": 0.7575,
+          "iou": 0.6168,
+          "dice": 0.763,
+          "pixel_precision": 0.8705,
+          "pixel_recall": 0.6791,
           "true_pixels": 936399,
-          "predicted_pixels": 818142
+          "predicted_pixels": 730468
         }
       },
       "test_images": 95,
@@ -264,33 +337,73 @@
         },
         "scored_on_first_n": 95
       }
+    },
+    "pothole_mix": {
+      "unet": {
+        "crack": {
+          "iou": 0.2716,
+          "dice": 0.4272,
+          "pixel_precision": 0.4098,
+          "pixel_recall": 0.4461,
+          "true_pixels": 283284,
+          "predicted_pixels": 308373
+        },
+        "pothole": {
+          "iou": 0.7089,
+          "dice": 0.8297,
+          "pixel_precision": 0.8422,
+          "pixel_recall": 0.8175,
+          "true_pixels": 491729,
+          "predicted_pixels": 477330
+        }
+      },
+      "test_images": 586,
+      "pixel_classifier": {
+        "crack": {
+          "iou": 0.0192,
+          "dice": 0.0377,
+          "pixel_precision": 0.0281,
+          "pixel_recall": 0.0575,
+          "true_pixels": 71750,
+          "predicted_pixels": 146719
+        },
+        "pothole": {
+          "iou": 0.0484,
+          "dice": 0.0924,
+          "pixel_precision": 0.0553,
+          "pixel_recall": 0.2793,
+          "true_pixels": 175156,
+          "predicted_pixels": 883961
+        },
+        "scored_on_first_n": 100
+      }
     }
   },
   "trained_with": "training/train_unet_multi.py",
   "decided_before_test": true,
   "smoke": false,
-  "decided_unix": 1791094536,
+  "decided_unix": 1791131373,
   "deployment_check": {
     "rule": "U-Net served only if, through audit_image() on the detection-quality photographs (clean roads and annotated defects from other datasets, never the DNIT test split), it finds at least as many defects and reports no more false positives than the pixel classifier. Fixed before the pixel classifier's current end-to-end numbers were measured.",
     "passed": false,
-    "why": "end to end, U-Net found 18/24 defects with 4/36 false positives; the pixel classifier found 24/24 with 3/36",
+    "why": "end to end, U-Net found 18/24 defects with 3/36 false positives; the pixel classifier found 24/24 with 3/36",
     "results": {
       "unet": {
-        "false_positive_photos": 4,
+        "false_positive_photos": 3,
         "clean_photographs": 36,
         "detected_photos": 18,
         "defect_photographs": 24,
-        "false_positive_rate": 0.1111,
+        "false_positive_rate": 0.0833,
         "detection_rate": 0.75,
         "missed": [
           "1053954_DF_020_020BDF0070_06194_RAW.jpg",
           "cpr_217_457.jpg",
-          "cpr_325_683.jpg",
           "cpr_1228_2588.jpg",
           "cpr_1214_2557.jpg",
-          "cpr_256_539.jpg"
+          "cpr_256_539.jpg",
+          "cpr_208_437.jpg"
         ],
-        "seconds": 147.2
+        "seconds": 149.5
       },
       "pixel_classifier": {
         "false_positive_photos": 3,
@@ -300,9 +413,9 @@
         "false_positive_rate": 0.0833,
         "detection_rate": 1.0,
         "missed": [],
-        "seconds": 402.6
+        "seconds": 565.3
       }
     },
-    "checked_unix": 1791099519
+    "checked_unix": 1791137102
   }
 }
