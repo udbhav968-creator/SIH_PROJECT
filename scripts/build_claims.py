@@ -350,6 +350,8 @@ def _deep_extras(claims, rep):
                 claims["corrections"].append({"claim": claim, "status": "REVERSED", "reason": reason})
     det = rep("road_damage_detector_report.json")
     if det and os.path.exists(os.path.join(CKPT, "damage_rdd2022_india.onnx")):
+        from models.road_damage_detector import detector_blocked_by
+        blocked = detector_blocked_by(det)
         t = det.get("test") or {}
         entry = {
             "id": "M_RDD", "name": "Road-damage detector (RDD2022 India)",
@@ -365,7 +367,12 @@ def _deep_extras(claims, rep):
             "evidence": "checkpoints/road_damage_detector_report.json, training/train_rdd_detector.py",
             "reproduce": "python -m training.train_rdd_detector",
             "not_claimed": det.get("not_claimed"),
+            "served": blocked is None,
+            "checks": {"artefact": det.get("artefact_check"), "clean_roads": det.get("deployment_check")},
         }
+        if blocked:
+            entry["role"] = ("Trained and measured, NOT shown: the " + blocked.replace("_", " ") + " in "
+                             "scripts/verify_rdd_detector.py is missing or failed")
         if "M_RDD" in subs:
             subs["M_RDD"].update(entry)
         else:
