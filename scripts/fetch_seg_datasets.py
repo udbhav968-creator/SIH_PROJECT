@@ -306,10 +306,20 @@ def main(argv=None):
     if "pothole_mix" in want:
         report["sources"]["pothole_mix"] = fetch_pothole_mix(guard, a.pothole_mix_zip)
 
+    # Merge with an earlier run, so fetching one more source never forgets the ones already on disk.
+    man_path = os.path.join(OUT, "manifest.json")
+    if os.path.exists(man_path):
+        try:
+            with open(man_path, "r", encoding="utf-8") as fh:
+                earlier = json.load(fh).get("sources") or {}
+            for src, summ in earlier.items():
+                report["sources"].setdefault(src, summ)
+        except Exception:
+            pass
     items = {}
-    for src in report["sources"]:
+    for src in sorted(os.listdir(OUT)) if os.path.isdir(OUT) else []:
         d = os.path.join(OUT, src)
-        if os.path.isdir(os.path.join(d, "lab")):
+        if not src.startswith("_") and os.path.isdir(os.path.join(d, "lab")):
             items[src] = [{"id": os.path.splitext(os.path.basename(p))[0],
                            "split": split_of(src, os.path.splitext(os.path.basename(p))[0])}
                           for p in sorted(glob.glob(os.path.join(d, "lab", "*.png")))]
