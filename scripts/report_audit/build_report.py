@@ -41,7 +41,12 @@ def tests_line_from_log(path):
     """'Ran 176 tests ... OK (skipped=2)' -> a sentence; None if the log is unusable."""
     if not path or not os.path.exists(path):
         return None
-    txt = open(path, encoding="utf-8", errors="replace").read()
+    raw = open(path, "rb").read()
+    # PowerShell's ">" writes UTF-16 with a BOM; Linux writes UTF-8.
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        txt = raw.decode("utf-16", errors="replace")
+    else:
+        txt = raw.decode("utf-8", errors="replace")
     ran = re.findall(r"Ran (\d+) tests?", txt)
     if not ran:
         return None
