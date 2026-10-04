@@ -110,7 +110,14 @@ falsely marks 1.7% of clean roads instead of 23.3%. We served it — then a test
 we ran both through the whole pipeline on photographs from other datasets. The U-Net found
 9 of 24 defects with 6 false alarms out of 36 clean roads; the pixel classifier found 24 of
 24 with 3. The rule kept the pixel classifier. A better mask on its training data was not a
-better product; the U-Net needs more varied training photos, and that is next.
+better product; the U-Net needed more varied training photos.
+
+So we retrained it on DNIT plus two public outline datasets (CrackSeg9k and Kaggle pothole
+outlines), after dropping 475 images that were near-copies of our test photos. Pothole
+outlines on unseen Kaggle photos went from 0.035 (pixel classifier) to 0.679, and through
+the whole pipeline it found 18 of 24 defects instead of 9. It still did not ship: on DNIT
+calibration photos its crack IoU was 0.184 against 0.214, and the rule needs a win on both.
+More varied data doubled real-world detection; we report it and keep the rule.
 
 **"Did anything go wrong?"** (a strong answer — use it)
 Yes, and we fixed it in the open. Our first IMU comparison shuffled 1-second windows into

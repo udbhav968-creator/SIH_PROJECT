@@ -337,7 +337,10 @@ def _deep_extras(claims, rep):
                                   f"{(fp.get('photo_rate_any_blob') or 0) * 100:.1f}% of "
                                   f"{fp.get('clean_photographs_scored')} photographs.")
         else:
-            seg["deep_alternative_tried"] = ("A U-Net (ResNet-18 encoder) was trained on the same polygons and did NOT "
+            trained_on = ("on DNIT plus public outline datasets (" +
+                          ", ".join(k for k in (sel.get("test_per_source") or {}) if k != "dnit") + ")"
+                          if sel.get("trained_with") else "on the same polygons")
+            seg["deep_alternative_tried"] = (f"A U-Net (ResNet-18 encoder) was trained {trained_on} and did NOT "
                                              "replace this model: " + sel.get("why", "") + " " + cmp_txt)
         dc = sel.get("deployment_check") or {}
         if dc and dc.get("passed") is False and sel.get("iou_selection_served") == "unet":
