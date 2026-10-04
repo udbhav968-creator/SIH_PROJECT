@@ -223,7 +223,9 @@ def build():
     w("**How a model gets served.** Each deep model replaces its classical counterpart only by a rule written "
       "before its test set is scored: the fine-tuned CNN must beat the frozen head on validation accuracy *and* "
       "macro-F1; the U-Net must beat the pixel classifier on crack *and* pothole IoU on calibration photographs "
-      "without more false blobs on clean roads; the IMU CNN must win 5-fold cross-validation on accuracy *and* "
+      "without more false blobs on clean roads, and then hold up end to end - through the full pipeline on "
+      "photographs from other datasets it must find at least as many defects with no more false alarms "
+      "(`scripts/segmenter_deployment_check.py`; it did not: 9/24 vs 24/24); the IMU CNN must win 5-fold cross-validation on accuracy *and* "
       "macro-F1. Losers are reported, not hidden. Pretrained ImageNet/COCO weights are the starting point (transfer "
       "learning); training then updates every layer on this project's data, except the frozen-head baseline.")
     w("")
