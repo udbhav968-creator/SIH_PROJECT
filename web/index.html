@@ -5,13 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ROAD-SHIELD — AI road quality assessment</title>
 <meta name="description" content="A road photograph goes in; a classified, measured and costed repair record comes out, sealed so it cannot be quietly altered.">
+<meta name="theme-color" content="#0a0f17">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 4 5.5v6c0 4.8 3.3 8.9 8 10 4.7-1.1 8-5.2 8-10v-6z' fill='%23f0a92b'/%3E%3Cpath d='M10.2 17.5 11.2 7h1.6l1 10.5' fill='none' stroke='%230a0f17' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta property="og:site_name" content="ROAD-SHIELD">
+<meta property="og:title" content="ROAD-SHIELD · AI road quality assessment">
+<meta property="og:description" content="A road photograph in, a measured, costed and sealed repair order out.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="/web/app.css">
 </head>
 <body data-page="home">
 
 <div class="wrap">
 
-  <header style="max-width:760px">
+  <div class="hero">
+  <header>
     <span class="badge neutral">SIH 2026 · SIH26124 · Bharat Electronics Limited</span>
     <h1 style="margin-top:14px">A road photograph in.<br>A costed, sealed repair order out.</h1>
     <p class="muted" style="font-size:15.5px">
@@ -25,6 +34,14 @@
       <a class="btn" href="/models">See the measured results</a>
     </div>
   </header>
+  <figure class="hero-visual card" id="heroVisual" aria-label="A recorded example result">
+    <div class="hv-head"><span class="label" style="margin:0">example · recorded by the engine</span><span class="hv-live" id="hvLive"></span></div>
+    <canvas id="heroCanvas" class="overlay" hidden></canvas>
+    <div class="canvas-empty" id="heroEmpty" style="min-height:220px"><span class="spinner"></span></div>
+    <div class="hv-facts" id="heroFacts"></div>
+    <figcaption class="small muted" id="heroCaption"></figcaption>
+  </figure>
+  </div>
 
   <div class="grid c4" style="margin-top:34px" id="headline"></div>
 
@@ -35,35 +52,35 @@
 
   <div class="hero-tiles">
     <a class="tile" href="/inspect" style="--tile:var(--cyan)">
-      <div class="t-ico">🔍</div><h3>Inspection</h3>
+      <div class="t-ico" data-icon="search"></div><h3>Inspection</h3>
       <p>Drop in a road photograph. Classification, segmentation mask, area, depth interval and cost range.</p>
     </a>
     <a class="tile" href="/video" style="--tile:#f472b6">
-      <div class="t-ico">🎞️</div><h3>Video ingest</h3>
+      <div class="t-ico" data-icon="film"></div><h3>Video ingest</h3>
       <p>Dashcam footage sampled by ground distance, deduplicated against the ledger.</p>
     </a>
     <a class="tile" href="/corridor" style="--tile:var(--emerald)">
-      <div class="t-ico">🗺️</div><h3>Corridor map</h3>
+      <div class="t-ico" data-icon="map"></div><h3>Corridor map</h3>
       <p>Fleet reports merged by GPS proximity. Five sightings, one pothole, one bill.</p>
     </a>
     <a class="tile" href="/works" style="--tile:var(--violet)">
-      <div class="t-ico">📋</div><h3>Works &amp; costing</h3>
+      <div class="t-ico" data-icon="clipboard"></div><h3>Works &amp; costing</h3>
       <p>MoRTH Section 500 tonnage, SHA-256 sealed work orders, tamper demonstration.</p>
     </a>
     <a class="tile" href="/models" style="--tile:var(--sky)">
-      <div class="t-ico">📊</div><h3>Model card</h3>
+      <div class="t-ico" data-icon="chart"></div><h3>Model card</h3>
       <p>Held-out accuracy, per-class scores, segmentation IoU. Including the weak ones.</p>
     </a>
     <a class="tile" href="/data" style="--tile:var(--lime)">
-      <div class="t-ico">🗃️</div><h3>Data lineage</h3>
+      <div class="t-ico" data-icon="database"></div><h3>Data lineage</h3>
       <p>Every dataset, how it was deduplicated, and what it does not cover.</p>
     </a>
     <a class="tile" href="/inspect" style="--tile:var(--warn)">
-      <div class="t-ico">🛡️</div><h3>Privacy redaction</h3>
+      <div class="t-ico" data-icon="shield"></div><h3>Privacy redaction</h3>
       <p>People's heads and number plates blurred before an image is shared (DPDP Act 2023).</p>
     </a>
     <a class="tile" href="/architecture" style="--tile:#94a3b8">
-      <div class="t-ico">🧾</div><h3>Claims &amp; corrections</h3>
+      <div class="t-ico" data-icon="receipt"></div><h3>Claims &amp; corrections</h3>
       <p>Every claim with its evidence file, and every earlier claim we withdrew.</p>
     </a>
   </div>
@@ -119,8 +136,58 @@
 
 </div>
 
+<script src="/web/config.js"></script>
 <script src="/web/app.js"></script>
 <script>
+/* Hero: one result the engine recorded (web/samples/recorded_results.json), drawn with its own boxes.
+   Labelled as recorded - this page does not compute it. */
+(async () => {
+  try {
+    const res = await fetch("/web/samples/recorded_results.json");
+    if (!res.ok) throw new Error();
+    const rec = await res.json();
+    const s = rec.samples.find(x => x.expected === "defect") || rec.samples[0];
+    const r = s.result, det = (r.all_detections || [])[0] || {};
+    const img = new Image();
+    img.onload = () => {
+      const cv = el("heroCanvas"), ctx = cv.getContext("2d");
+      const paint = () => {
+        // a 16:10 window onto the photograph (cover), so a square photo does not dwarf the headline
+        const w = cv.parentElement.clientWidth - 36, h = Math.round(w * 10 / 16);
+        cv.width = w; cv.height = h;
+        const k = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+        const dw = img.naturalWidth * k, dh = img.naturalHeight * k, ox = (w - dw) / 2, oy = (h - dh) / 2;
+        ctx.drawImage(img, ox, oy, dw, dh);
+        (r.all_detections || []).forEach(d => {
+          const bn = d.bbox_normalized; if (!bn) return;
+          const measured = d.area_method === "segmentation_mask", col = measured ? "#2dd4d4" : "#f0a92b";
+          const x = ox + bn[0] * dw, y = oy + bn[1] * dh, bw = bn[2] * dw, bh = bn[3] * dh;
+          ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.setLineDash(measured ? [] : [7, 5]); ctx.strokeRect(x, y, bw, bh); ctx.setLineDash([]);
+          const label = `${(d.class_name || "").split(" ")[0]} ${(d.confidence * 100).toFixed(0)}%`;
+          ctx.font = "600 12px ui-monospace, monospace";
+          const tw = ctx.measureText(label).width + 10;
+          ctx.fillStyle = col; ctx.fillRect(x, Math.max(0, y - 19), tw, 19);
+          ctx.fillStyle = "#0a0f17"; ctx.fillText(label, x + 5, Math.max(13, y - 5));
+        });
+      };
+      el("heroEmpty").hidden = true; cv.hidden = false; paint();
+      window.addEventListener("resize", paint);
+    };
+    img.src = r.image_data_url;
+    const pci = r.astm_d6433_pci || {}, de = det.depth_estimate || {};
+    const cost = de.repair_cost_low_inr != null ? `${fmt.inr(de.repair_cost_low_inr)}–${fmt.inr(de.repair_cost_high_inr)}`
+               : fmt.inr(det.repair_cost_inr);
+    el("heroFacts").innerHTML = `
+      <div><span>finding</span><strong>${(det.class_name || "—").split(" (")[0]}</strong><em>${det.confidence != null ? (det.confidence * 100).toFixed(0) + "% confidence" : ""}</em></div>
+      <div><span>condition</span><strong>PCI ${pci.pci_score ?? "—"}</strong><em>${(pci.rating_category || "").toLowerCase()}</em></div>
+      <div><span>repair cost</span><strong>${cost}</strong><em>${de.repair_cost_low_inr != null ? "range: depth is estimated" : "estimate"}</em></div>`;
+    el("heroCaption").textContent = `Computed by the engine on ${rec.recorded_on} in ${(s.engine_ms / 1000).toFixed(1)} s on a laptop CPU. Not computed in your browser.`;
+    el("hvLive").innerHTML = `<a href="/inspect">try your own ${icon("chevron", 13).replace('class="ico"', 'class="ico" style="transform:rotate(-90deg)"')}</a>`;
+  } catch {
+    el("heroVisual").hidden = true;
+  }
+})();
+
 (async () => {
   const box = el("headline");
   const [metrics, seg, fleet, calib] = await Promise.all([
@@ -155,7 +222,8 @@
 
   const segIoU = seg.ok ? (seg.data.available ? seg.data.iou?.crack?.iou : seg.data.measured_report?.crack?.iou) : null;
   if (seg.ok && /U-Net/.test(seg.data.model || "")) {
-    el("segStepText").textContent = "A U-Net (ResNet-18 encoder) trained on the DNIT hand-drawn polygons";
+    const enc = ((seg.data.model || "").match(/ResNet-?\d+/i) || ["ResNet"])[0];
+    el("segStepText").textContent = `A U-Net (${enc} encoder) trained on pixel-labelled road photographs`;
   }
   const segNote = !seg.ok ? "status unavailable"
     : seg.data.available ? `${/U-Net/.test(seg.data.model || "") ? "U-Net" : "pixel classifier"} · ${seg.data.trained_on?.test_photographs || 500} unseen photographs`

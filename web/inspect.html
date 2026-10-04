@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Inspection — ROAD-SHIELD</title>
+<meta name="description" content="Analyse a road photograph: defect class, outline, ground area, depth interval and repair cost range.">
+<meta name="theme-color" content="#0a0f17">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 4 5.5v6c0 4.8 3.3 8.9 8 10 4.7-1.1 8-5.2 8-10v-6z' fill='%23f0a92b'/%3E%3Cpath d='M10.2 17.5 11.2 7h1.6l1 10.5' fill='none' stroke='%230a0f17' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta property="og:site_name" content="ROAD-SHIELD">
+<meta property="og:title" content="ROAD-SHIELD · AI road quality assessment">
+<meta property="og:description" content="A road photograph in, a measured, costed and sealed repair order out.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="/web/app.css">
 </head>
 <body data-page="inspect">
@@ -13,15 +22,16 @@
     <h1 style="font-size:1.9rem">Inspection</h1>
     <span class="muted small">one photograph → classification, mask, area, depth interval, cost range</span>
   </div>
+  <div id="engineBanner"></div>
 
   <div class="split">
     <!-- ------------------------------------------------ input + canvas -- -->
     <div>
       <div class="card">
-        <div id="dz" class="dropzone">
-          <div style="font-size:26px">📷</div>
-          <p style="margin:8px 0 3px;color:var(--white);font-weight:600">Drop a road photograph</p>
-          <p class="small muted" style="margin:0">or click to choose · JPG, PNG</p>
+        <div id="dz" class="dropzone" role="button" tabindex="0" aria-label="Choose a road photograph">
+          <div class="dz-ico" data-icon="upload" data-size="22"></div>
+          <p style="margin:10px 0 3px;color:var(--white);font-weight:600">Drop a road photograph</p>
+          <p class="small muted" style="margin:0">or click to choose · JPG or PNG · analysed, not stored</p>
           <input type="file" id="file" accept="image/*" hidden>
         </div>
 
@@ -36,9 +46,9 @@
           </div>
         </div>
 
-        <div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap">
+        <div class="actions">
           <button class="primary" id="run" disabled>Analyse</button>
-          <button id="sample">Use a dataset photograph</button>
+          <button id="sample">Try an example photograph</button>
           <button id="redact" disabled title="Blur people and number plates before sharing">Blur people &amp; plates</button>
           <button id="clear">Clear</button>
         </div>
@@ -46,7 +56,13 @@
 
       <div class="card" style="margin-top:16px">
         <div class="label">image · detections · segmentation mask</div>
-        <canvas id="cv" class="overlay" height="460"></canvas>
+        <div class="canvas-empty" id="cvEmpty">
+          <span data-icon="camera" data-size="30"></span>
+          <p style="color:var(--slate-200);font-weight:600">No photograph yet</p>
+          <p>Drop one above, or press <strong>Try an example photograph</strong>. Boxes and outlines are drawn here:
+            solid where the area was measured from the mask, dashed where it is an estimate.</p>
+        </div>
+        <canvas id="cv" class="overlay" hidden></canvas>
         <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;align-items:center">
           <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:12.5px">
             <input type="checkbox" id="showMask" checked style="width:auto"> segmentation mask
@@ -82,6 +98,7 @@
   </div>
 </div>
 
+<script src="/web/config.js"></script>
 <script src="/web/app.js"></script>
 <script>
 let currentImage = null;   // { dataUrl, width, height }
@@ -92,6 +109,7 @@ const cv = el("cv"), ctx = cv.getContext("2d");
 /* ---------------------------------------------------------------- input -- */
 const dz = el("dz"), fileInput = el("file");
 dz.addEventListener("click", () => fileInput.click());
+dz.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
 dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("over"); });
 dz.addEventListener("dragleave", () => dz.classList.remove("over"));
 dz.addEventListener("drop", e => {
@@ -110,6 +128,7 @@ function setImage(dataUrl) {
   const img = new Image();
   img.onload = () => {
     currentImage = { dataUrl, width: img.naturalWidth, height: img.naturalHeight, img };
+    el("cvEmpty").hidden = true; cv.hidden = false;
     el("run").disabled = false;
     el("redact").disabled = false;
     draw();
@@ -123,27 +142,52 @@ el("clear").addEventListener("click", () => {
   el("run").disabled = true;
   el("redact").disabled = true;
   ctx.clearRect(0, 0, cv.width, cv.height);
+  cv.hidden = true; el("cvEmpty").hidden = false;
   el("canvasNote").textContent = "";
   el("out").innerHTML = `<div class="card"><div class="label">cleared</div>
     <p class="small muted" style="margin:0">Drop another photograph.</p></div>`;
 });
 
-/* The public site cannot run the models (~440 MB against a 250 MB serverless
-   cap). Where the engine is absent, "Use a dataset photograph" shows a result
-   the engine RECORDED (scripts/record_samples.py), labelled as such with its
-   date and models - never an analysis this page pretends to compute. */
-function engineAbsent(r) {
-  return !r.ok && r.status === 503 && /inference engine/i.test((r.data && r.data.error) || "");
-}
+/* The public site cannot hold the models (~440 MB against a 250 MB serverless
+   cap), so photographs go to the live engine (web/config.js). If no engine is
+   connected, or it is asleep, "Try an example photograph" shows a result the
+   engine RECORDED (scripts/record_samples.py), labelled as such with its date
+   and models - never an analysis this page pretends to compute. */
+function engineAbsent(r) { return engineUnavailable(r) === "absent"; }
 function engineCard(what) {
-  return `<div class="card" style="border-color:rgba(56,189,248,.35)">
-    <div class="label" style="color:var(--sky)">runs on the engine, not on this site</div>
-    <p class="small" style="margin:0">${what} needs the model stack (~440 MB), and a serverless function here is
-      capped at 250 MB, so this public site serves the pages and every measured result but does not run the models.
+  return `<div class="card notice">
+    <div class="label">runs on the engine, not on this site</div>
+    <p class="small" style="margin:0">${what} needs the model stack (~440 MB). This site serves the pages and every
+      measured result; the models run on the inference engine, and no live engine is connected to this site right now.
       It will not invent an analysis it cannot compute.</p>
-    <p class="small muted" style="margin:.5rem 0 0">See it here: <strong>Use a dataset photograph</strong> shows results
+    <p class="small muted" style="margin:.5rem 0 0">See it here: <strong>Try an example photograph</strong> shows results
       the engine recorded. Run it live: <code>python -m api.server</code>, then open <code>http://127.0.0.1:8000</code>.</p>
   </div>`;
+}
+function wakingCard(what, retry) {
+  return `<div class="card notice waking">
+    <div class="label">live engine is waking up</div>
+    <p class="small" style="margin:0">${what} runs on the live engine, which sleeps when nobody has used it for a while.
+      It is starting now - usually 1 to 2 minutes. ${retry ? "Your photograph will be analysed automatically when it is up." : ""}</p>
+    <div class="progress"><i></i></div>
+    <p class="small muted" style="margin:.6rem 0 0">Meanwhile, <strong>Try an example photograph</strong> shows a recorded result.</p>
+  </div>`;
+}
+/* When the engine comes up while a request is waiting, run it. */
+let pendingRun = null;
+document.addEventListener("engine-state", (e) => {
+  renderBanner();
+  if (e.detail === "online" && pendingRun) { const f = pendingRun; pendingRun = null; f(); }
+});
+function renderBanner() {
+  const b = el("engineBanner");
+  if (!b || !API.siteIsStatic || !API.engineUrl) { if (b) b.innerHTML = ""; return; }
+  const st = API.engineState;
+  b.innerHTML = st === "online" ? "" :
+    `<div class="card notice ${st === "offline" ? "bad" : "waking"}" style="margin-bottom:14px;padding:12px 16px">
+      <p class="small" style="margin:0">${st === "offline"
+        ? "The live engine is not answering. Uploads cannot be analysed right now; <strong>Try an example photograph</strong> shows recorded results."
+        : "Connecting to the live engine (it sleeps when idle and takes 1 to 2 minutes to wake). You can choose a photograph meanwhile."}</p></div>`;
 }
 let recorded = null, recordedNext = 0;
 async function showRecorded() {
@@ -162,8 +206,8 @@ async function showRecorded() {
   setImage(s.result.image_data_url);
   lastResult = s.result;
   render(s.result, null);
-  el("out").insertAdjacentHTML("afterbegin", `<div class="card" style="border-color:rgba(56,189,248,.35);margin-bottom:12px">
-    <div class="label" style="color:var(--sky)">recorded result · not computed on this site</div>
+  el("out").insertAdjacentHTML("afterbegin", `<div class="card notice" style="margin-bottom:12px">
+    <div class="label">recorded result · not computed just now</div>
     <p class="small" style="margin:0">Computed by the engine on ${recorded.recorded_on} (${recorded.engine.segmenter} segmenter,
       ${recorded.engine.vision_backend || "CNN"}) in ${s.engine_ms} ms on a laptop CPU. Photograph: <code>${s.file}</code>
       (${s.expected === "clean" ? "a clean road" : "an annotated defect"}).</p>
@@ -172,9 +216,10 @@ async function showRecorded() {
 }
 
 el("sample").addEventListener("click", async () => {
-  setLoading(el("out"), true, "fetching a dataset photograph…");
+  if (API.siteIsStatic && API.engineUrl && API.engineState !== "online") { await showRecorded(); return; }
+  setLoading(el("out"), true, "fetching an example photograph…");
   const r = await API.post("/api/v1/vision/analyze-photo", { corridor_id: el("corridor").value });
-  if (engineAbsent(r)) { await showRecorded(); return; }
+  if (engineUnavailable(r)) { await showRecorded(); return; }
   if (!r.ok) { el("out").innerHTML = errorCard(r.data.error || "could not fetch", null); return; }
   if (r.data.image_data_url) setImage(r.data.image_data_url);
   lastResult = r.data;
@@ -183,9 +228,11 @@ el("sample").addEventListener("click", async () => {
 });
 
 /* --------------------------------------------------------------- analyse - */
-el("run").addEventListener("click", async () => {
+el("run").addEventListener("click", runAnalysis);
+async function runAnalysis() {
   if (!currentImage) return;
-  setLoading(el("out"), true, "running the pipeline…");
+  setLoading(el("out"), true, API.siteIsStatic && API.engineUrl
+    ? "sending to the live engine and running the pipeline… (5–20 s)" : "running the pipeline…");
   const payload = {
     image_base64: currentImage.dataUrl.split(",")[1],
     corridor_id: el("corridor").value,
@@ -193,12 +240,15 @@ el("run").addEventListener("click", async () => {
   const dev = el("device").value;
   if (dev) payload.device_id = dev;
   const r = await API.post("/api/v1/pipeline/deep-audit", payload);
-  if (engineAbsent(r)) { el("out").innerHTML = engineCard("Analysing an uploaded photograph"); return; }
+  const why = engineUnavailable(r);
+  if (why === "waking") { el("out").innerHTML = wakingCard("Analysing your photograph", true); pendingRun = runAnalysis; return; }
+  if (why) { el("out").innerHTML = engineCard("Analysing an uploaded photograph"); return; }
+  if (r.status === 429) { el("out").innerHTML = errorCard(r.data.error, "The public demo allows 20 analyses per minute per visitor."); return; }
   if (!r.ok) { el("out").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`, null); return; }
   lastResult = r.data;
   render(r.data, r.ms);
   draw();
-});
+}
 
 /* --------------------------------------------------------------- privacy - */
 el("redact").addEventListener("click", async () => {
@@ -206,7 +256,9 @@ el("redact").addEventListener("click", async () => {
   const btn = el("redact"); btn.disabled = true; btn.textContent = "blurring…";
   const r = await API.post("/api/v1/privacy/redact", { image_base64: currentImage.dataUrl.split(",")[1] });
   btn.textContent = "Blur people & plates"; btn.disabled = false;
-  if (engineAbsent(r)) { el("out").innerHTML = engineCard("Blurring people and number plates"); return; }
+  const why = engineUnavailable(r);
+  if (why === "waking") { el("out").innerHTML = wakingCard("Blurring people and number plates", false); return; }
+  if (why) { el("out").innerHTML = engineCard("Blurring people and number plates"); return; }
   if (!r.ok) { el("canvasNote").textContent = "redaction failed: " + (r.data.error || r.status); return; }
   const rep = r.data.report || {};
   lastResult = null;   // overlays belonged to the unredacted image
@@ -538,6 +590,7 @@ function render(d, ms) {
   }
 })();
 window.addEventListener("resize", draw);
+document.addEventListener("DOMContentLoaded", () => setTimeout(renderBanner, 50));
 </script>
 </body>
 </html>

@@ -166,6 +166,43 @@ class APIServerTest(unittest.TestCase):
             self.assertNotIn(b"root:", body, evil)
             self.assertNotIn(b"numpy", body, evil)
 
+    def test_files_in_web_subfolders_are_served(self):
+        code, h, body = self._req("GET", "/web/samples/recorded_results.json")
+        self.assertEqual(code, 200)
+        self.assertIn("json", h.get("Content-Type", ""))
+        self.assertIn("samples", json.loads(body))
+        code, h, _ = self._req("GET", "/web/config.js")
+        self.assertEqual(code, 200)
+        for evil in ("/web/samples/../../requirements.txt", "/web/samples/../../../etc/passwd"):
+            code, _h, body = self._req("GET", evil)
+            self.assertNotIn(b"numpy", body, evil)
+            self.assertNotIn(b"root:", body, evil)
+
+    def test_public_demo_refuses_server_files_outside_datasets(self):
+        img = _first_image("02_kaggle_pothole_600")
+        old = srv.PUBLIC
+        srv.PUBLIC = True
+        try:
+            server_file = os.path.join(srv.ENGINE_ROOT, "api", "server.py")
+            for path, body in (("/api/v1/detect/vision", {"image_base64": server_file}),
+                               ("/api/v1/detect/vision", {"image_path": "/etc/hostname"}),
+                               ("/api/v1/video/probe", {"video_path": "/etc/hostname"}),
+                               ("/api/v1/pipeline/deep-audit-batch", {"directory_path": "/etc"})):
+                code, r = self.post_json(path, body)
+                self.assertEqual(code, 403, f"{path} {body}: {r}")
+            # the bundled photographs stay usable, and base64 is never mistaken for a path
+            self.assertIsNone(srv._server_path_refused({"image_path": img} if img else {}))
+            self.assertIsNone(srv._server_path_refused({"image_base64": "aGVsbG8="}))
+        finally:
+            srv.PUBLIC = old
+        self.assertIsNone(srv._server_path_refused({"image_path": "/etc/hostname"}),
+                          "outside public mode the local convenience paths are unchanged")
+
+    def test_health_says_whether_this_is_the_public_demo(self):
+        code, h = self.get_json("/api/v1/health")
+        self.assertEqual(code, 200)
+        self.assertIn("public_demo", h)
+
     def test_cors_preflight(self):
         code, h, _ = self._req("OPTIONS", "/api/v1/health")
         self.assertEqual(code, 200)
@@ -475,6 +512,27 @@ class APIServerTest(unittest.TestCase):
     def test_malformed_json_body_does_not_crash(self):
         code, _h, _b = self._req("POST", "/api/v1/pci/predict", raw=b"{not json")
         self.assertIn(code, (200, 400))
+
+
+class HuggingFaceSpaceTest(unittest.TestCase):
+    """deploy/huggingface: the Space builds the engine from GitHub in public-demo mode on port 7860."""
+
+    def test_dockerfile_runs_the_public_engine_on_the_space_port(self):
+        root = os.path.join(os.path.dirname(__file__), "..", "deploy", "huggingface")
+        with open(os.path.join(root, "Dockerfile"), encoding="utf-8") as fh:
+            d = fh.read()
+        for must in ("ROAD_SHIELD_PUBLIC=1", "ROAD_SHIELD_RATE_LIMIT=", "useradd -m -u 1000",
+                     'CMD ["python", "-m", "api.server", "7860"]', "git clone", "requirements.txt"):
+            self.assertIn(must, d)
+        with open(os.path.join(root, "README.md"), encoding="utf-8") as fh:
+            readme = fh.read()
+        front = readme.split("---")[1]
+        self.assertIn("sdk: docker", front)
+        self.assertIn("app_port: 7860", front)
+
+    def test_site_config_declares_the_engine_url(self):
+        with open(os.path.join(os.path.dirname(__file__), "..", "web", "config.js"), encoding="utf-8") as fh:
+            self.assertIn("window.ROAD_SHIELD_ENGINE_URL", fh.read())
 
 
 class VercelHandlerTest(unittest.TestCase):

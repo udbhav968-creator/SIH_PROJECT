@@ -21,6 +21,18 @@ CKPT = os.path.join(ROOT, "checkpoints")
 LIVE_URL = "https://road-shield-ai-engine.vercel.app"
 
 
+def _engine_url():
+    """The live engine the site is connected to (web/config.js), or ''."""
+    import re
+    try:
+        with open(os.path.join(ROOT, "web", "config.js"), encoding="utf-8") as fh:
+            # the assignment at the start of a line, not the example inside the file's comment
+            m = re.search(r'^window\.ROAD_SHIELD_ENGINE_URL\s*=\s*"([^"]*)"', fh.read(), re.M)
+        return (m.group(1) if m else "").rstrip("/")
+    except OSError:
+        return ""
+
+
 
 def _unet_status(seg_sel):
     """Why the U-Net is not serving, in the README table's words."""
@@ -136,9 +148,17 @@ def build():
     w("**AI-assisted road-defect assessment using the public bus fleet as a mobile sensing network.**  ")
     w("Smart India Hackathon 2026 · Problem statement **SIH26124** · Bharat Electronics Limited")
     w("")
-    w(f"**Live site:** [{LIVE_URL.replace('https://', '')}]({LIVE_URL}) — every measured result and the claims "
-      "registry. Photograph and video analysis runs on the engine (`python -m api.server` or Docker), because the "
-      "model stack is larger than a serverless function allows.")
+    engine = _engine_url()
+    if engine:
+        w(f"**Live site:** [{LIVE_URL.replace('https://', '')}]({LIVE_URL}) — every measured result and the claims "
+          f"registry. Uploaded photographs are analysed live by the engine hosted on a Hugging Face Space "
+          f"([{engine.replace('https://', '')}]({engine})), because the model stack is larger than a serverless "
+          f"function allows (`docs/DEPLOY_LIVE_ENGINE.md`).")
+    else:
+        w(f"**Live site:** [{LIVE_URL.replace('https://', '')}]({LIVE_URL}) — every measured result and the claims "
+          "registry. Photograph and video analysis runs on the engine (`python -m api.server` or Docker), because the "
+          "model stack is larger than a serverless function allows; `docs/DEPLOY_LIVE_ENGINE.md` connects a hosted "
+          "engine to the site.")
     w("")
     w("A road photograph goes in. A classified, outlined, measured and costed repair order comes out, sealed so it "
       "cannot be quietly edited. Every number in this file is read from the report that measured it "
@@ -417,7 +437,8 @@ def build():
     w("| `training/` | every trainer; each writes its model and a JSON report to `checkpoints/` |")
     w("| `scripts/` | data fetchers, Colab runners, claims/README/report builders |")
     w("| `checkpoints/` | trained models (ONNX / joblib) and the reports every number comes from |")
-    w("| `web/` | the site |")
+    w("| `web/` | the site (`web/config.js` names the live engine it sends photographs to) |")
+    w("| `deploy/` | the Hugging Face Space that hosts the public live engine |")
     w("| `docs/` | system design and the claims-vs-repository audit |")
     w(f"| `tests/` | {n_tests} tests: models, pipeline, REST API, integrity fixes, Vercel entry point |")
     w("")

@@ -213,6 +213,41 @@ PROTECTED_POST = {
 }
 
 
+# Public demo (ROAD_SHIELD_PUBLIC=1, set by deploy/huggingface/Dockerfile): anyone on the internet can reach
+# the engine, so
+#   * the write endpoints above are locked - with a random key if the operator set none - so a visitor
+#     cannot add defects to the ledger, launch training or change settings;
+#   * no request can name a file on the server outside datasets/ (image paths, video paths, batch folders):
+#     uploads come in as base64, and the bundled photographs stay usable.
+# Analysis endpoints stay open and store nothing.
+PUBLIC = os.environ.get("ROAD_SHIELD_PUBLIC") == "1"
+if PUBLIC and not os.environ.get("ROAD_SHIELD_API_KEY"):
+    import secrets as _secrets
+    os.environ["ROAD_SHIELD_API_KEY"] = _secrets.token_urlsafe(32)
+    print("  ✓ Public demo: write endpoints locked (no ROAD_SHIELD_API_KEY was set, so a random one is in use)")
+DATASETS_ROOT = os.path.realpath(os.path.join(ENGINE_ROOT, "datasets"))
+PATH_KEYS = ("image_base64", "image_path", "before_image_base64", "after_image_base64", "before_base64",
+             "after_base64", "frame_base64", "vehicle_image_base64", "video_path", "path", "directory_path")
+
+
+def _server_path_refused(body):
+    """In public mode: the first request field that names an existing server file outside datasets/, else None."""
+    if not PUBLIC or not isinstance(body, dict):
+        return None
+    for k in PATH_KEYS:
+        v = body.get(k)
+        if not isinstance(v, str) or not v or len(v) > 4096:
+            continue
+        try:
+            real = os.path.realpath(v if os.path.isabs(v) else os.path.join(ENGINE_ROOT, v))
+            exists = os.path.exists(v) or os.path.exists(real)
+        except (OSError, ValueError):
+            continue
+        if exists and not (real == DATASETS_ROOT or real.startswith(DATASETS_ROOT + os.sep)):
+            return k
+    return None
+
+
 def _api_key_ok(headers):
     key = os.environ.get("ROAD_SHIELD_API_KEY", "")
     if not key:
@@ -326,13 +361,16 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         """
         Serve one file from web/. Returns True if it was served.
 
-        `name` is a bare filename that has already been resolved from a route
-        or a /web/ prefix; the realpath check is belt and braces against a
-        path that escapes the directory anyway.
+        `name` is a filename resolved from a route, or a path relative to web/
+        from a /web/ URL (web/samples/... included). Any ".." part is refused,
+        and the realpath check refuses anything that still escapes web/.
         """
-        safe = os.path.basename(name)
-        full = os.path.realpath(os.path.join(WEB_DIR, safe))
-        if not full.startswith(os.path.realpath(WEB_DIR)) or not os.path.isfile(full):
+        parts = [p for p in str(name).replace("\\", "/").split("/") if p not in ("", ".")]
+        if not parts or any(p == ".." for p in parts):
+            return False
+        root = os.path.realpath(WEB_DIR)
+        full = os.path.realpath(os.path.join(root, *parts))
+        if not full.startswith(root + os.sep) or not os.path.isfile(full):
             return False
         ext = os.path.splitext(full)[1].lower()
         with open(full, "rb") as fh:
@@ -431,7 +469,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # Each page is served by name; unknown names fall through to the API.
         page = PAGE_ROUTES.get(path)
         if page is None and path.startswith("/web/"):
-            page = os.path.basename(path)
+            page = path[len("/web/"):]
         if page:
             served = self._serve_static(page)
             if served:
@@ -471,6 +509,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 "service": "ROAD-SHIELD AI Engine",
                 "status": "ONLINE",
                 "timestamp_utc": int(time.time()),
+                "public_demo": PUBLIC,
                 "models": {
                     "vision_distress_net": (f"LOADED ({VISION_BACKEND})" if vision_model.is_ready else "NOT_TRAINED"),
                     "coco_object_detector": (deep_pipeline.object_detector.backend
@@ -910,6 +949,12 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 return
         body = self._read_json_body()
         t0 = time.time()
+
+        refused = _server_path_refused(body)
+        if refused:
+            self._send_json(403, {"error": f"'{refused}' names a file on the server. This public demo only reads "
+                                           f"files under datasets/; send your own image as base64."})
+            return
 
         if path in PROTECTED_POST and not _api_key_ok(self.headers):
             self._send_json(401, {"error": "this endpoint requires an API key (X-API-Key header or "

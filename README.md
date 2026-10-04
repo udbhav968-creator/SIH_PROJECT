@@ -3,7 +3,7 @@
 **AI-assisted road-defect assessment using the public bus fleet as a mobile sensing network.**  
 Smart India Hackathon 2026 · Problem statement **SIH26124** · Bharat Electronics Limited
 
-**Live site:** [road-shield-ai-engine.vercel.app](https://road-shield-ai-engine.vercel.app) — every measured result and the claims registry. Photograph and video analysis runs on the engine (`python -m api.server` or Docker), because the model stack is larger than a serverless function allows.
+**Live site:** [road-shield-ai-engine.vercel.app](https://road-shield-ai-engine.vercel.app) — every measured result and the claims registry. Photograph and video analysis runs on the engine (`python -m api.server` or Docker), because the model stack is larger than a serverless function allows; `docs/DEPLOY_LIVE_ENGINE.md` connects a hosted engine to the site.
 
 A road photograph goes in. A classified, outlined, measured and costed repair order comes out, sealed so it cannot be quietly edited. Every number in this file is read from the report that measured it (`python -m scripts.build_readme`), and every report is produced by code in this repository.
 
@@ -181,9 +181,10 @@ Main API endpoints (full reference at `/api-docs`): `POST /api/v1/pipeline/deep-
 | `training/` | every trainer; each writes its model and a JSON report to `checkpoints/` |
 | `scripts/` | data fetchers, Colab runners, claims/README/report builders |
 | `checkpoints/` | trained models (ONNX / joblib) and the reports every number comes from |
-| `web/` | the site |
+| `web/` | the site (`web/config.js` names the live engine it sends photographs to) |
+| `deploy/` | the Hugging Face Space that hosts the public live engine |
 | `docs/` | system design and the claims-vs-repository audit |
-| `tests/` | 218 tests: models, pipeline, REST API, integrity fixes, Vercel entry point |
+| `tests/` | 238 tests: models, pipeline, REST API, integrity fixes, Vercel entry point |
 
 ## Limitations
 
