@@ -29,14 +29,18 @@ The script:
 
 1. starts the engine in public-demo mode;
 2. downloads `cloudflared` once, from Cloudflare's GitHub releases;
-3. opens a quick tunnel;
-4. prints two links:
-   - `https://<random>.trycloudflare.com` is the full site, live, running on your laptop;
-   - `https://road-shield-ai-engine.vercel.app/inspect?engine=https://<random>.trycloudflare.com` is your
-     Vercel site using the laptop as its engine. This link is also copied to the clipboard.
+3. opens a quick tunnel and checks that it really answers from the internet. If it does not, it tries a
+   new one, and it falls back to localhost.run (over `ssh`) if Cloudflare is unreachable from your network;
+4. **opens your website on the right link in the browser** and copies that link to the clipboard. The link
+   looks like `https://road-shield-ai-engine.vercel.app/inspect?engine=https://<random>.trycloudflare.com`.
+   The engine's own full site is at `https://<random>.trycloudflare.com`;
+5. keeps the laptop awake while it runs, restarts the engine if it stops, and opens a new tunnel if the
+   link dies. A new tunnel means a new link, which is printed, copied and opened again.
 
-The links work while that window is open, and each run gives a new address. For a demo or a judge, start
-the script a few minutes before and share the link. A Cloudflare quick tunnel has no uptime guarantee, so
+Links go in the **browser** address bar, never in PowerShell. Keep the window open, and the lid open. Each
+run gives a new address, so for a demo start the script a few minutes before and check the link on your
+phone (on mobile data). Behind the tunnel, each visitor gets their own 20 analyses per minute: the engine
+uses the visitor address Cloudflare passes along. A Cloudflare quick tunnel has no uptime guarantee, so
 keep a recorded example ready (**Try an example photograph**).
 
 ## B. Hugging Face Space (PRO)

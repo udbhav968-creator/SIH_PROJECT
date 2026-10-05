@@ -248,6 +248,21 @@ def _server_path_refused(body):
     return None
 
 
+def _client_key(headers, client_address):
+    """
+    Who a request is from, for the rate limit. Behind a Cloudflare tunnel every request arrives from
+    127.0.0.1, so in public mode the visitor address Cloudflare adds (CF-Connecting-IP, which Cloudflare
+    sets itself) is used - but only for requests that come from this machine (the tunnel). A request
+    straight over the network keeps its socket address, so it cannot pick its own rate-limit bucket.
+    """
+    peer = client_address[0] if client_address else "-"
+    if PUBLIC and peer in ("127.0.0.1", "::1"):
+        cf = (headers.get("CF-Connecting-IP") or "").strip()
+        if cf and len(cf) <= 64:
+            return cf
+    return peer
+
+
 def _api_key_ok(headers):
     key = os.environ.get("ROAD_SHIELD_API_KEY", "")
     if not key:
@@ -934,7 +949,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                                            f"(set ROAD_SHIELD_MAX_BODY_MB to change)"})
             return
         if path in ops.RATE_LIMITED:
-            allowed, retry = LIMITER.check(self.client_address[0] if self.client_address else "-")
+            allowed, retry = LIMITER.check(_client_key(self.headers, self.client_address))
             if not allowed:
                 self.close_connection = True
                 self.send_response(429)

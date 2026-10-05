@@ -164,11 +164,27 @@ function engineCard(what) {
       the engine recorded. Run it live: <code>python -m api.server</code>, then open <code>http://127.0.0.1:8000</code>.</p>
   </div>`;
 }
+function offlineCard(what) {
+  return `<div class="card notice bad">
+    <div class="label">live engine is not answering</div>
+    <p class="small" style="margin:0">${what} runs on the live engine, and it has not answered for a few minutes:
+      the computer running it is switched off, asleep or offline. Nothing was sent anywhere.</p>
+    <p class="small muted" style="margin:.5rem 0 0"><strong>Try an example photograph</strong> shows a result the engine
+      recorded. If the engine comes back while this page is open, press <strong>Analyse</strong> again.</p>
+  </div>`;
+}
+/* "waking" while the engine is still expected to come up; "offline" once it has stayed silent (app.js decides). */
+function unavailableCard(what, retry) {
+  return API.engineState === "offline" ? offlineCard(what) : wakingCard(what, retry);
+}
 function wakingCard(what, retry) {
+  const sleeps = API.engineSleeps;
   return `<div class="card notice waking">
-    <div class="label">live engine is waking up</div>
-    <p class="small" style="margin:0">${what} runs on the live engine, which sleeps when nobody has used it for a while.
-      It is starting now - usually 1 to 2 minutes. ${retry ? "Your photograph will be analysed automatically when it is up." : ""}</p>
+    <div class="label">${sleeps ? "live engine is waking up" : "connecting to the live engine"}</div>
+    <p class="small" style="margin:0">${what} runs on the live engine${sleeps
+      ? ", which sleeps when nobody has used it for a while. It is starting now - usually 1 to 2 minutes."
+      : ". It did not answer straight away; checking again now."}
+      ${retry ? "Your photograph will be analysed automatically when it answers." : ""}</p>
     <div class="progress"><i></i></div>
     <p class="small muted" style="margin:.6rem 0 0">Meanwhile, <strong>Try an example photograph</strong> shows a recorded result.</p>
   </div>`;
@@ -187,7 +203,9 @@ function renderBanner() {
     `<div class="card notice ${st === "offline" ? "bad" : "waking"}" style="margin-bottom:14px;padding:12px 16px">
       <p class="small" style="margin:0">${st === "offline"
         ? "The live engine is not answering. Uploads cannot be analysed right now; <strong>Try an example photograph</strong> shows recorded results."
-        : "Connecting to the live engine (it sleeps when idle and takes 1 to 2 minutes to wake). You can choose a photograph meanwhile."}</p></div>`;
+        : (API.engineSleeps
+            ? "Connecting to the live engine (it sleeps when idle and takes 1 to 2 minutes to wake). You can choose a photograph meanwhile."
+            : "Connecting to the live engine…")}</p></div>`;
 }
 let recorded = null, recordedNext = 0;
 async function showRecorded() {
@@ -241,7 +259,11 @@ async function runAnalysis() {
   if (dev) payload.device_id = dev;
   const r = await API.post("/api/v1/pipeline/deep-audit", payload);
   const why = engineUnavailable(r);
-  if (why === "waking") { el("out").innerHTML = wakingCard("Analysing your photograph", true); pendingRun = runAnalysis; return; }
+  if (why === "waking") {
+    el("out").innerHTML = unavailableCard("Analysing your photograph", true);
+    pendingRun = runAnalysis;          // runs by itself if the engine comes back while the page is open
+    return;
+  }
   if (why) { el("out").innerHTML = engineCard("Analysing an uploaded photograph"); return; }
   if (r.status === 429) { el("out").innerHTML = errorCard(r.data.error, "The public demo allows 20 analyses per minute per visitor."); return; }
   if (!r.ok) { el("out").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`, null); return; }
@@ -257,7 +279,7 @@ el("redact").addEventListener("click", async () => {
   const r = await API.post("/api/v1/privacy/redact", { image_base64: currentImage.dataUrl.split(",")[1] });
   btn.textContent = "Blur people & plates"; btn.disabled = false;
   const why = engineUnavailable(r);
-  if (why === "waking") { el("out").innerHTML = wakingCard("Blurring people and number plates", false); return; }
+  if (why === "waking") { el("out").innerHTML = unavailableCard("Blurring people and number plates", false); return; }
   if (why) { el("out").innerHTML = engineCard("Blurring people and number plates"); return; }
   if (!r.ok) { el("canvasNote").textContent = "redaction failed: " + (r.data.error || r.status); return; }
   const rep = r.data.report || {};
