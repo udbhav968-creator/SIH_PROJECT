@@ -202,6 +202,20 @@ class APIServerTest(unittest.TestCase):
         self.assertIsNone(srv._server_path_refused({"image_path": os.path.join(srv.ENGINE_ROOT, "requirements.txt")}),
                           "outside public mode the local convenience paths are unchanged")
 
+    def test_public_demo_rate_limits_each_tunnel_visitor_separately(self):
+        old = srv.PUBLIC
+        try:
+            srv.PUBLIC = True
+            self.assertEqual(srv._client_key({"CF-Connecting-IP": "203.0.113.7"}, ("127.0.0.1", 5000)), "203.0.113.7")
+            self.assertEqual(srv._client_key({}, ("127.0.0.1", 5000)), "127.0.0.1")
+            self.assertEqual(srv._client_key({"CF-Connecting-IP": "203.0.113.7"}, ("192.168.1.9", 5000)), "192.168.1.9",
+                             "a request straight over the network cannot choose its own bucket")
+            srv.PUBLIC = False
+            self.assertEqual(srv._client_key({"CF-Connecting-IP": "203.0.113.7"}, ("10.0.0.2", 5000)), "10.0.0.2",
+                             "outside public mode the header is not trusted")
+        finally:
+            srv.PUBLIC = old
+
     def test_health_says_whether_this_is_the_public_demo(self):
         code, h = self.get_json("/api/v1/health")
         self.assertEqual(code, 200)

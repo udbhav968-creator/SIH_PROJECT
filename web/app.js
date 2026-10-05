@@ -31,7 +31,7 @@ const API = {
   // Only engines of the kinds this project deploys are accepted from a link, so a shared link cannot send
   // a visitor's photographs to an arbitrary server.
   engineUrl: (() => {
-    const allowed = (u) => /^https:\/\/[a-z0-9-]+\.(trycloudflare\.com|hf\.space)\/?$/i.test(u)
+    const allowed = (u) => /^https:\/\/[a-z0-9-]+\.(trycloudflare\.com|lhr\.life|hf\.space)\/?$/i.test(u)
                         || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/i.test(u);
     let q = new URLSearchParams(location.search).get("engine");
     if (q && !allowed(q)) q = null;
@@ -79,9 +79,9 @@ const API = {
     }
   },
 
-  /** The engine did not answer like an engine: it is asleep (free Spaces sleep when idle) or still loading. */
+  /** The engine did not answer like an engine: asleep (a Space sleeps when idle), still loading, or switched off. */
   _waking(out) {
-    setEngineState("waking");
+    if (API.engineState !== "offline") setEngineState("waking");   // never "un-offline" it on a failed request
     out.status = 503;
     out.data = { error: "The live inference engine is waking up.", engine_state: "waking" };
     return out;
@@ -239,7 +239,7 @@ function renderPill() {
     unknown:  ["neutral", "connecting…", "live engine"],
     online:   ["online",  "live engine", API.engineDegraded ? "online · segmenter not loaded" : "online"],
     starting: ["waking",  "engine starting", "loading models"],
-    waking:   ["waking",  "engine waking", "about 1–2 min"],
+    waking:   ["waking",  API.engineSleeps ? "engine waking" : "connecting…", API.engineSleeps ? "about 1–2 min" : "live engine"],
     offline:  ["offline", "engine offline", "recorded results"],
   };
   const [cls, main, detail] = states[API.engineUrl ? API.engineState : "none"] || states.unknown;
@@ -256,6 +256,10 @@ async function pollHealth() {
   if (API.siteIsStatic && API.engineUrl && !enginePolling) { enginePolling = true; pollEngine(); }
 }
 
+/* A Hugging Face Space sleeps and takes 1-2 minutes to wake, so silence there means "waking" for a while.
+   A laptop behind a tunnel never sleeps: if it does not answer within ~20 s, it is off. */
+API.engineSleeps = (() => { try { return /\.hf\.space$/i.test(new URL(API.engineUrl).hostname); } catch { return false; } })();
+
 let engineFails = 0, enginePolling = false;
 async function pollEngine() {
   let next = 10000;
@@ -267,10 +271,15 @@ async function pollEngine() {
     // Anything that is not JSON is the Space's own page while it wakes.
     if (data && (data.ready || (data.models && data.models.vision_classifier))) {
       engineFails = 0; API.engineDegraded = !data.ready; setEngineState("online"); next = 60000;
-    } else setEngineState(data ? "starting" : "waking");
+    } else if (data) {
+      setEngineState("starting");                       // the engine answered: models still loading
+    } else {
+      throw new Error("not the engine");                // a Space's waking page, or a tunnel error page
+    }
   } catch {
     engineFails += 1;
-    setEngineState(engineFails > 18 ? "offline" : "waking");   // ~3 minutes of no answer: call it offline
+    const patience = API.engineSleeps ? 18 : 2;          // ~3 minutes for a Space, ~20 s for a laptop
+    setEngineState(engineFails > patience ? "offline" : "waking");
   }
   setTimeout(pollEngine, next);
 }
