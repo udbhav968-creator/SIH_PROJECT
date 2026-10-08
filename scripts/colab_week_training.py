@@ -4,11 +4,16 @@
 #
 #   1. U-Net segmenter, ResNet-34, up to 80 epochs, on DNIT + CrackSeg9k + Kaggle + Pothole Mix + YOUR photos
 #   2. YOLOv8s road-damage detector on RDD2022 India, up to 100 epochs
+#   3. YOLOv8s on RDD2022 India + Japan + Czech + USA + China (~4x the photographs); served only if it beats
+#      the India-only detector on India's validation photographs (scripts/select_rdd_detector.py)
+#   4. image classifier retrained with crops from those countries too; served only if it beats the current
+#      classifier on the selection half of the Indian held-out crops (scripts/select_vision_candidate.py)
 #
 # What takes long lives in Google Drive (MyDrive/road_shield_week): the prepared datasets, the checkpoints
 # (saved every 30 minutes and whenever a session pauses), and the finished results. The U-Net pauses cleanly
 # before SESSION_HOURS. If Colab cuts a session off without warning, at most ~30 minutes of training is lost.
-# Nothing here decides what is served: run the end-to-end check on the laptop ONCE on the final result.
+# Stages 3 and 4 only replace a served model under the rules above (fixed before scoring, test data never used
+# to choose). Run the end-to-end and clean-road checks on the laptop ONCE on the final result.
 
 OWN_PHOTOS = ""           # your outlined Indian road photos in Drive: a Roboflow/CVAT "COCO Segmentation" export zip,
                           # a LabelMe folder, or images/ + masks/  e.g. "/content/drive/MyDrive/road_photos_coco.zip"
@@ -29,6 +34,16 @@ YOLO_MODEL = "yolov8s.pt"  # "yolov8m.pt" is stronger but ~2x slower and too slo
 YOLO_EPOCHS = 100
 YOLO_PATIENCE = 25
 YOLO_BATCH = 16
+
+TRAIN_YOLO_WORLD = True   # stage 3 (downloads the full RDD2022 release, ~13 GB, once)
+WORLD_EPOCHS = 50
+WORLD_PATIENCE = 12
+WORLD_CACHE_TO_DRIVE = True   # ~4-5 GB in Drive; set False if your Drive is nearly full
+
+TRAIN_CLASSIFIER = True   # stage 4
+CLS_ARCHS = "mobilenet_v3_large,efficientnet_b0,efficientnet_b2"
+CLS_EPOCHS = 40
+CLS_MAX_PER_CLASS = 3000
 
 SESSION_HOURS = 3.5       # U-Net pauses before this many hours in one session (free Colab often ends at 3-4 h)
 SAVE_EVERY_MIN = 30       # how often checkpoints are copied to Drive
@@ -330,6 +345,86 @@ if TRAIN_UNET and not unet_done and unet_go:
             else:
                 STATUS["unet"] = f"failed (exit {code}) - see the lines above; run the cell again to resume"
 
+def ensure_rdd_india():
+    """datasets/rdd2022_india (India's fixed 70/15/15 split), restored from Drive or built once."""
+    if os.path.exists("datasets/rdd2022_india/data.yaml"):        # written last: the split is complete
+        return True
+    shutil.rmtree("datasets/rdd2022_india", ignore_errors=True)
+    if untar(f"{CACHE}/rdd2022_india.tar", "datasets") and os.path.exists("datasets/rdd2022_india/data.yaml"):
+        return True
+    run("python -m scripts.fetch_rdd2022_india")
+    india = subprocess.run([sys.executable, "-c", "from scripts.fetch_rdd2022_india import india_root; "
+                            "print(india_root() or '')"], capture_output=True, text=True).stdout.strip()
+    print("India data:", india or "NOT FOUND")
+    if india and run(f'python -m scripts.prepare_rdd2022_voc --src "{india}" --out datasets/rdd2022_india') == 0:
+        run("rm -rf datasets/_downloads/rdd2022")
+        tar_to_drive("datasets/rdd2022_india", f"{CACHE}/rdd2022_india.tar")
+        return True
+    shutil.rmtree("datasets/rdd2022_india", ignore_errors=True)
+    return False
+
+
+def ensure_rdd_world():
+    """datasets/rdd2022_world, restored from Drive or built once (downloads the full release)."""
+    if os.path.exists("datasets/rdd2022_world/manifest.json"):    # written last: the set is complete
+        return True
+    shutil.rmtree("datasets/rdd2022_world", ignore_errors=True)
+    if untar(f"{CACHE}/rdd2022_world.tar", "datasets") and os.path.exists("datasets/rdd2022_world/manifest.json"):
+        return True
+    if not ensure_rdd_india():
+        return False
+    code = run("python -m scripts.prepare_rdd2022_world", keep=["downloading", "GB", "Japan", "Czech", "United",
+                                                                 "China", "Norway", "photographs", "Error", "skipped"])
+    shutil.rmtree("datasets/_downloads/rdd2022_world", ignore_errors=True)
+    if code != 0:
+        shutil.rmtree("datasets/rdd2022_world", ignore_errors=True)
+        return False
+    if WORLD_CACHE_TO_DRIVE:
+        tar_to_drive("datasets/rdd2022_world", f"{CACHE}/rdd2022_world.tar")
+    return True
+
+
+def ensure_dnit_crops():
+    """The DNIT photographs and their crops (cpr_*), which the classifier corpus includes."""
+    if glob.glob("datasets/*/real_images/cpr_*.jpg"):
+        return True
+    if untar(f"{CACHE}/dnit.tar", "datasets"):
+        return True
+    return run("python -m scripts.fetch_cracks_potholes_dataset --limit 2235 --workers 16", keep=["[4/4]", "Error"]) == 0
+
+
+def train_yolo(tag, args, drive_run):
+    """Resumable YOLO training for runs/rdd_<tag>, its folder mirrored to Drive every SAVE_EVERY_MIN."""
+    local = f"runs/rdd_{tag}"
+    os.makedirs(drive_run, exist_ok=True)
+    if os.path.islink(local):
+        os.unlink(local)
+    shutil.rmtree(local, ignore_errors=True)
+    if os.path.exists(f"{drive_run}/weights/last.pt"):
+        print(f"restoring the {tag} YOLO run from Drive")
+        copy_run(drive_run, local, min_age_s=0)
+    stop = threading.Event()
+
+    def loop():
+        while not stop.wait(SAVE_EVERY_MIN * 60):
+            try:
+                copy_run(local, drive_run)
+                print(f"  [drive] {tag} YOLO checkpoint copied to Drive at {time.strftime('%H:%M')}", flush=True)
+            except Exception as e:
+                print(f"  [drive] copy failed ({e}); will retry", flush=True)
+
+    th = threading.Thread(target=loop, daemon=True)
+    th.start()
+    globals()["_RS_SYNC_STOP"], globals()["_RS_SYNC_THREAD"] = stop, th
+    try:
+        return run(f"python -m training.train_rdd_detector {args}",
+                   keep=["rdd-detector", "RESUMING", "already finished", "VAL", "TEST", "exported", "Error"])
+    finally:
+        stop.set()
+        th.join(timeout=600)
+        copy_run(local, drive_run, min_age_s=0)
+
+
 # ---------------------------------------------------------------- 2. YOLOv8 detector
 yolo_done = load_json(f"{RESULTS}/yolo_done.json")
 if TRAIN_YOLO and yolo_done:
@@ -340,14 +435,7 @@ elif TRAIN_YOLO and STATUS.get("unet") == "paused":
     STATUS["yolo"] = "waiting for the U-Net"
 elif TRAIN_YOLO:
     step("2a. RDD2022 India boxes (restored from Drive after the first session)")
-    if not untar(f"{CACHE}/rdd2022_india.tar", "datasets"):
-        run("python -m scripts.fetch_rdd2022_india")
-        india = subprocess.run([sys.executable, "-c", "from scripts.fetch_rdd2022_india import india_root; "
-                                "print(india_root() or '')"], capture_output=True, text=True).stdout.strip()
-        print("India data:", india or "NOT FOUND")
-        if india and run(f'python -m scripts.prepare_rdd2022_voc --src "{india}" --out datasets/rdd2022_india') == 0:
-            run("rm -rf datasets/_downloads/rdd2022")
-            tar_to_drive("datasets/rdd2022_india", f"{CACHE}/rdd2022_india.tar")
+    ensure_rdd_india()
     LOCAL_RUN = "runs/rdd_india"
     yolo_resuming = os.path.exists(f"{YOLO_RUN}/weights/last.pt")
     ok = True
@@ -401,12 +489,122 @@ elif TRAIN_YOLO:
         else:
             STATUS["yolo"] = f"stopped (exit {code}) - see the lines above; run the cell again to resume"
 
-# ---------------------------------------------------------------- 3. results
-step("3. results")
+# ---------------------------------------------------------------- 3. YOLOv8 on several countries
+SERVED_DET = ("damage_rdd2022_india.onnx", "damage_rdd2022_india.json", "road_damage_detector_report.json")
+world_done = load_json(f"{RESULTS}/yolo_world_done.json")
+if TRAIN_YOLO_WORLD and world_done:
+    print(f"\nMulti-country YOLO already finished in this run ({world_done.get('finished')}); skipping.")
+    STATUS["yolo_world"] = "done earlier"
+elif TRAIN_YOLO_WORLD and (STATUS.get("unet") == "paused" or (TRAIN_YOLO and not STATUS.get("yolo", "").startswith("done"))):
+    print("\nMulti-country YOLO waits for the earlier stages. Run this cell again.")
+    STATUS["yolo_world"] = "waiting for earlier stages"
+elif TRAIN_YOLO_WORLD:
+    step("3a. multi-country RDD2022 (the first time: ~13 GB download and preparation, about an hour)")
+    if not ensure_rdd_world():
+        STATUS["yolo_world"] = "dataset could not be prepared - see the lines above; run the cell again"
+    else:
+        m = load_json("datasets/rdd2022_world/manifest.json") or {}
+        print("photographs:", m.get("photographs"), "| countries:", list((m.get("countries") or {}).keys()))
+        # the India-only detector this one is compared with. A copy is kept in Drive before anything can
+        # replace it; a previous attempt that stopped half way is undone from that copy first.
+        DET_BACKUP = f"{D}/detector_before_world"
+        if os.path.isdir(DET_BACKUP) and all(os.path.exists(f"{DET_BACKUP}/{f}") for f in SERVED_DET):
+            for f in SERVED_DET:
+                shutil.copy(f"{DET_BACKUP}/{f}", f"checkpoints/{f}")
+        else:
+            for f in SERVED_DET:
+                if os.path.exists(f"{RESULTS}/{f}"):
+                    shutil.copy(f"{RESULTS}/{f}", f"checkpoints/{f}")
+            if all(os.path.exists(f"checkpoints/{f}") for f in SERVED_DET):
+                os.makedirs(DET_BACKUP, exist_ok=True)
+                for f in SERVED_DET:
+                    shutil.copy(f"checkpoints/{f}", f"{DET_BACKUP}/{f}")
+        step("3b. multi-country YOLO training (resumes from Drive)")
+        code = train_yolo("world", f"--data-dir datasets/rdd2022_world --tag world --model {YOLO_MODEL} "
+                                   f"--epochs {WORLD_EPOCHS} --patience {WORLD_PATIENCE} --batch {YOLO_BATCH}",
+                          f"{D}/yolo_world_run")
+        if code == 0:
+            step("3c. India-only or multi-country? (decided on India's validation photographs)")
+            sel_code = run("python -m scripts.select_rdd_detector", keep=None)
+            sel = load_json("checkpoints/rdd_detector_selection.json") or {}
+            verified = None
+            if sel_code == 0 and sel.get("served") == "world":
+                verified = run("python -m scripts.verify_rdd_detector --artefact --run-name rdd_world "
+                               "--data-dir datasets/rdd2022_world", keep=None) == 0
+                if not verified and all(os.path.exists(f"{DET_BACKUP}/{f}") for f in SERVED_DET):
+                    for f in SERVED_DET:                     # the India-only detector stays served
+                        shutil.copy(f"{DET_BACKUP}/{f}", f"checkpoints/{f}")
+                    sel.update(served="india", why=sel.get("why", "") + "; but the multi-country ONNX failed "
+                               "the artefact check, so the India-only detector stays")
+                    save_json("checkpoints/rdd_detector_selection.json", sel)
+        if code == 0 and sel_code != 0:
+            STATUS["yolo_world"] = f"selection failed (exit {sel_code}) - see the lines above; run the cell again"
+        elif code == 0:
+            for f in SERVED_DET + ("damage_rdd2022_world.json", "road_damage_detector_world_report.json",
+                                   "rdd_detector_selection.json"):
+                if os.path.exists(f"checkpoints/{f}"):
+                    shutil.copy(f"checkpoints/{f}", f"{RESULTS}/{f}")
+            save_json(f"{RESULTS}/yolo_world_done.json", {"finished": time.strftime("%Y-%m-%d %H:%M"),
+                                                          "served": sel.get("served"), "why": sel.get("why"),
+                                                          "artefact_verified": verified})
+            STATUS["yolo_world"] = f"done - served: {sel.get('served')} ({sel.get('why')})"
+        else:
+            STATUS["yolo_world"] = f"stopped (exit {code}) - run the cell again to resume"
+
+# ---------------------------------------------------------------- 4. image classifier with more data
+cls_done = load_json(f"{RESULTS}/classifier_done.json")
+if TRAIN_CLASSIFIER and cls_done:
+    print(f"\nClassifier already finished in this run ({cls_done.get('finished')}); skipping.")
+    STATUS["classifier"] = "done earlier"
+elif TRAIN_CLASSIFIER and any(STATUS.get(k, "done").startswith(("paused", "waiting")) for k in ("unet", "yolo_world")):
+    print("\nClassifier waits for the earlier stages. Run this cell again.")
+    STATUS["classifier"] = "waiting for earlier stages"
+elif TRAIN_CLASSIFIER:
+    step("4a. classifier data: DNIT crops, RDD2022 India crops (+ held-out Indian set), other countries' crops")
+    ok = ensure_dnit_crops() and ensure_rdd_india()
+    ok = ok and run("python -m scripts.ingest_rdd2022_india", keep=["RDD India", "Error"]) == 0
+    world_crops = "not used"
+    if TRAIN_YOLO_WORLD and ensure_rdd_world():
+        world_crops = ("added" if run("python -m scripts.ingest_rdd2022_world", keep=["RDD world", "Error"]) == 0
+                       else "FAILED - the candidate trains without them")
+    print("other countries' crops:", world_crops)
+    if not ok:
+        STATUS["classifier"] = "data could not be prepared - see the lines above"
+    else:
+        CAND = f"{D}/classifier_candidate"
+        os.makedirs(CAND, exist_ok=True)
+        step("4b. training the candidate classifier (each finished architecture is kept in Drive)")
+        code = run(f'python -m training.train_finetune_cnn --archs {CLS_ARCHS} --epochs {CLS_EPOCHS} --batch 48 '
+                   f'--max-per-class {CLS_MAX_PER_CLASS} --out "{CAND}" --resume',
+                   keep=["[finetune]", "already trained", "epoch", "TEST", "VAL", "Indian", "onnx", "Error"])
+        if code == 0:
+            step("4c. candidate or current classifier? (decided on half of the Indian held-out crops)")
+            sel_code = run(f'python -m scripts.select_vision_candidate --candidate "{CAND}"', keep=None)
+            rec = load_json("checkpoints/vision_candidate_selection.json") or {}
+        if code == 0 and sel_code != 0:
+            STATUS["classifier"] = f"selection failed (exit {sel_code}) - see the lines above; run the cell again"
+        elif code == 0:
+            names = ["vision_candidate_selection.json"]
+            if rec.get("winner") == "candidate":
+                names += [os.path.basename(p) for p in glob.glob("checkpoints/deep_vision_*")
+                          + glob.glob("checkpoints/finetune_*.json")] + ["vision_model_selection.json"]
+            for f in names:
+                if os.path.exists(f"checkpoints/{f}"):
+                    shutil.copy(f"checkpoints/{f}", f"{RESULTS}/{f}")
+            save_json(f"{RESULTS}/classifier_done.json", {"finished": time.strftime("%Y-%m-%d %H:%M"),
+                                                          "winner": rec.get("winner"), "why": rec.get("why"),
+                                                          "other_countries_crops": world_crops})
+            STATUS["classifier"] = f"done - {rec.get('winner')} serves ({rec.get('why')})"
+        else:
+            STATUS["classifier"] = f"stopped (exit {code}) - run the cell again; finished architectures are kept"
+
+# ---------------------------------------------------------------- 5. results
+step("5. results")
 files = [f for f in sorted(os.listdir(RESULTS)) if not f.endswith(".pt")]
 print("finished files in Drive:", files)
-everything_done = all(STATUS.get(k, "done").startswith("done") for k, on in (("unet", TRAIN_UNET), ("yolo", TRAIN_YOLO))
-                      if on)
+everything_done = all(STATUS.get(k, "done").startswith("done") for k, on in
+                      (("unet", TRAIN_UNET), ("yolo", TRAIN_YOLO), ("yolo_world", TRAIN_YOLO_WORLD),
+                       ("classifier", TRAIN_CLASSIFIER)) if on)
 zip_path = (f"/content/road_shield_{RUN_NAME}_results.zip" if os.path.isdir("/content")
             else f"/tmp/road_shield_{RUN_NAME}_results.zip")
 if everything_done and files:

@@ -60,8 +60,24 @@ class DeepVisionNet(VisionDistressNet):
         matches = sorted(glob.glob(os.path.join(self.ckpt_dir, pattern)))
         return matches[0] if matches else None
 
+    def _served_onnx(self):
+        """The network finetune_summary.json says is served, if that file is here; else the only/first one.
+        (After a retrain on a different architecture an older deep_vision_*.onnx can still be on disk.)"""
+        summ = os.path.join(self.ckpt_dir, "finetune_summary.json")
+        if os.path.exists(summ):
+            try:
+                import json
+                with open(summ) as fh:
+                    tag = json.load(fh).get("served")
+                cand = os.path.join(self.ckpt_dir, f"deep_vision_{tag}.onnx") if tag else None
+                if cand and os.path.exists(cand):
+                    return cand
+            except Exception:
+                pass
+        return self._find("deep_vision_*.onnx")
+
     def _load(self):
-        onnx_path = self._find("deep_vision_*.onnx")
+        onnx_path = self._served_onnx()
         self.tta_flip = False
         self.resize_ratio = 1.15
         self.sidecar = None

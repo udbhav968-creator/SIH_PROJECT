@@ -180,10 +180,17 @@ def clean_roads_check(per_folder=12, seed=7):
 
 
 def main(argv=None):
+    global DATA, BEST_PT
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--artefact", action="store_true")
     ap.add_argument("--clean-roads", action="store_true")
+    ap.add_argument("--run-name", default="rdd_india",
+                    help="runs/<name>/weights/best.pt the served ONNX was exported from (rdd_world for the multi-country model)")
+    ap.add_argument("--data-dir", default=DATA,
+                    help="its YOLO dataset; for the multi-country model its test split is India's test photographs")
     a = ap.parse_args(argv)
+    DATA = os.path.abspath(a.data_dir)
+    BEST_PT = os.path.join(ENGINE_ROOT, "runs", a.run_name, "weights", "best.pt")
     if not (a.artefact or a.clean_roads):
         ap.error("choose --artefact and/or --clean-roads")
     ok = True
@@ -195,4 +202,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(0 if main() else 1)
