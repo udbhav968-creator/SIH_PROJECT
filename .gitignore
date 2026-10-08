@@ -98,3 +98,5 @@ runs/
 road_shield_*outputs.zip
 road_shield_imu_fix.zip
 checkpoints/defect_segmenter_unet.pt
+logs/tunnel.*
+logs/engine_public.*
