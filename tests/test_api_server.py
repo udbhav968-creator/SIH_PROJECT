@@ -695,6 +695,40 @@ class APIServerTest(unittest.TestCase):
         code, _h, _b = self._req("GET", "/api/v1/ledger/export?format=kml")
         self.assertEqual(code, 400)
 
+    def test_works_citizen_report_endpoints(self):
+        code, r = self.post_json("/api/v1/citizen/report", {"lat": 13.0, "lon": 77.0})
+        self.assertEqual(code, 400, "a photograph is required")
+        code, r = self.post_json("/api/v1/citizen/report", {"image_base64": "aGVsbG8="})
+        self.assertEqual(code, 400, "a location is required")
+        self.assertIn("location", r["error"])
+        code, r = self.post_json("/api/v1/citizen/review", {"report_id": "CR-NOPE", "action": "promote"})
+        self.assertEqual(code, 404)
+        code, r = self.post_json("/api/v1/citizen/review", {"report_id": "CR-NOPE"})
+        self.assertEqual(code, 400)
+        img = _first_image("02_kaggle_pothole_600")
+        if img:
+            code, r = self.post_json("/api/v1/citizen/report", {"image_base64": _b64(img), "lat": 13.61, "lon": 77.61,
+                                                                "location_source": "test"}, timeout=300)
+            self.assertEqual(code, 200, str(r)[:400])
+            self.assertFalse(r["photo_stored"])
+            if r["report"]:
+                self.assertEqual(r["report"]["status"], "PENDING")
+                self.assertNotIn("sender", r["report"])
+                code, lst = self.get_json("/api/v1/citizen/reports?status=pending")
+                self.assertIn(r["report"]["report_id"], [x["report_id"] for x in lst["reports"]])
+                code, done = self.post_json("/api/v1/citizen/review",
+                                            {"report_id": r["report"]["report_id"], "action": "dismiss"})
+                self.assertEqual((code, done["status"]), (200, "DISMISSED"))
+        code, lst = self.get_json("/api/v1/citizen/reports")
+        self.assertEqual(code, 200)
+        self.assertEqual(set(lst["counts"]), {"PENDING", "CONFIRMED", "DISMISSED"})
+
+    def test_works_new_pages_are_served(self):
+        for page, marker in (("/report", b"Report a pothole"), ("/order", b"WORK ORDER")):
+            code, _h, body = self._req("GET", page)
+            self.assertEqual(code, 200, page)
+            self.assertIn(marker, body)
+
     def test_alerts_endpoint(self):
         code, r = self.get_json("/api/v1/alerts")
         self.assertEqual(code, 200)

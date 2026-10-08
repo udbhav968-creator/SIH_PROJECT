@@ -195,7 +195,8 @@ async function loadDetail() {
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
       <span class="badge ${o.seal_status === "SEAL_VERIFIED_AUTHENTIC" ? "measured" : "bad"}">seal: ${esc(o.seal_status)}</span>
       <span class="badge ${o.history_chain_intact ? "measured" : "bad"}">history ${o.history_chain_intact ? "intact" : "ALTERED"}</span>
-      <span class="badge neutral">${esc(o.seal_algorithm)}</span></div>
+      <span class="badge neutral">${esc(o.seal_algorithm)}</span>
+      <a class="badge neutral" href="/order?id=${encodeURIComponent(o.work_order_id)}" target="_blank" rel="noopener">print order ↗</a></div>
     <div class="kv"><span>Defect</span><span>${esc(o.defect_class)} · <a href="/corridor?focus=${encodeURIComponent(o.defect_id)}">${esc(o.defect_id)} on the map</a></span></div>
     <div class="kv"><span>Area / depth / PCI</span><span>${esc(fmt.num(o.area_m2, 2))} m² / ${esc(fmt.num(o.depth_cm, 1))} cm / ${esc(o.pci)}</span></div>
     <div class="kv"><span>Mix / tonnage</span><span>${esc(wo.asphalt_mix)} / ${esc(fmt.num(o.tonnes, 3))} t</span></div>

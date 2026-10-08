@@ -120,6 +120,20 @@ def spec():
                               "409": _json(OBJ, "not allowed from the current status")}}},
             "/api/v1/ledger/export": {"get": {"summary": "The ledger for GIS: ?format=geojson or csv", "tags": ["fleet"],
                                               "responses": {"200": {"description": "file download"}, "400": ERR}}},
+            "/api/v1/citizen/report": {"post": {
+                "summary": "A citizen's photograph and location: analysed, pinned as pending, confirmed later by a bus "
+                           "or an operator; the photograph is not stored", "tags": ["fleet"],
+                "requestBody": _body({"image_base64": STR, "lat": NUM, "lon": NUM, "location_source": STR},
+                                     ["image_base64", "lat", "lon"]),
+                "responses": {"200": _json(OBJ, "report (null when no defect was found) and a message"), "400": ERR,
+                              "429": _json(OBJ, "too many reports from this connection")}}},
+            "/api/v1/citizen/reports": {"get": {"summary": "Citizen reports; ?status=pending|confirmed|dismissed",
+                                                "tags": ["fleet"], "responses": {"200": _json(OBJ)}}},
+            "/api/v1/citizen/review": {"post": {
+                "summary": "Operator decision on a pending citizen report: promote (into the ledger) or dismiss",
+                "tags": ["fleet"], "security": secured,
+                "requestBody": _body({"report_id": STR, "action": STR}, ["report_id", "action"]),
+                "responses": {"200": _json(OBJ), "401": AUTH_ERR, "404": _json(OBJ), "409": _json(OBJ)}}},
             "/api/v1/alerts": {"get": {"summary": "Recent alerts (P1 defects, overdue orders) and webhook status",
                                        "tags": ["fleet"], "responses": {"200": _json(OBJ)}}},
             "/api/v1/fleet/telemetry": {"get": {"summary": "Ledger counts and deduplication rate", "tags": ["fleet"],

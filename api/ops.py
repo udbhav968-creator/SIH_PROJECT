@@ -28,7 +28,7 @@ MAX_BODY_BYTES = int(float(os.environ.get("ROAD_SHIELD_MAX_BODY_MB", "25")) * 10
 RATE_LIMITED = {
     "/api/v1/pipeline/deep-audit", "/api/v1/vision/analyze-photo", "/api/v1/vision/analyze-custom-photo",
     "/api/v1/video/ingest", "/api/v1/detect/objects", "/api/v1/pedestrian/detect",
-    "/api/v1/privacy/redact", "/api/v1/telemetry/imu", "/api/v1/pipeline/batch",
+    "/api/v1/privacy/redact", "/api/v1/telemetry/imu", "/api/v1/pipeline/batch", "/api/v1/citizen/report",
 }
 
 LATENCY_BUCKETS = (0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)

@@ -22,12 +22,13 @@ const ENGINE_PATHS = new Set([
   "/api/v1/priority/ranking", "/api/v1/priority/score", "/api/v1/live/stream", "/api/v1/fleet/report-defect",
   "/api/v1/works/orders", "/api/v1/works/order", "/api/v1/works/status", "/api/v1/ledger/export", "/api/v1/alerts",
   "/api/v1/dispatch/work-order", "/api/v1/dispatch/verify-seal",
+  "/api/v1/citizen/report", "/api/v1/citizen/reports", "/api/v1/citizen/review",
 ]);
 
 /* Endpoints that change stored state. When the engine locks them (public demo), the operator's key - typed
    once on the page, kept only for this browser tab - is sent with them, and only with them. */
 const KEYED_PATHS = new Set(["/api/v1/fleet/report-defect", "/api/v1/dispatch/work-order",
-                             "/api/v1/works/orders", "/api/v1/works/status"]);
+                             "/api/v1/works/orders", "/api/v1/works/status", "/api/v1/citizen/review"]);
 function operatorKey() { try { return sessionStorage.getItem("roadShieldApiKey") || ""; } catch { return ""; } }
 function setOperatorKey(k) { try { k ? sessionStorage.setItem("roadShieldApiKey", k) : sessionStorage.removeItem("roadShieldApiKey"); } catch {} }
 
@@ -148,6 +149,7 @@ const PAGES = [
   { href: "/video",        id: "video",        label: "Video",        group: "product" },
   { href: "/corridor",     id: "corridor",     label: "Road map",     group: "product" },
   { href: "/works",        id: "works",        label: "Works",        group: "product" },
+  { href: "/report",       id: "report",       label: "Report a pothole", group: "product" },
   { href: "/models",       id: "models",       label: "Models",       group: "evidence", note: "accuracy, IoU, model card" },
   { href: "/data",         id: "data",         label: "Data",         group: "evidence", note: "datasets and lineage" },
   { href: "/system",       id: "system",       label: "System",       group: "evidence", note: "what is loaded, live" },
@@ -382,9 +384,42 @@ function errorCard(message, hint) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  buildNav();
-  buildFooter();
-  hydrateIcons();
+  if (!("bare" in document.body.dataset)) {       // a print page (data-bare) gets no site navigation
+    buildNav();
+    buildFooter();
+    hydrateIcons();
+  }
   API._healthOnce = pollHealth();
   setInterval(pollHealth, 30000);
 });
+
+/* GPS position written by the phone or camera into the JPEG (EXIF GPS IFD). Read in the browser, so a
+   photograph's location is used for the map without being sent anywhere else. null when absent. */
+function exifGps(buf) {
+  const v = new DataView(buf);
+  if (v.byteLength < 4 || v.getUint16(0) !== 0xFFD8) return null;
+  let off = 2;
+  while (off + 4 < v.byteLength) {
+    const marker = v.getUint16(off), len = v.getUint16(off + 2);
+    if (marker === 0xFFE1 && v.getUint32(off + 4) === 0x45786966) {          // "Exif"
+      const t = off + 10, le = v.getUint16(t) === 0x4949;
+      const u16 = o => v.getUint16(t + o, le), u32 = o => v.getUint32(t + o, le);
+      const ifd = o => { const n = u16(o), out = {}; for (let i = 0; i < n; i++) { const e = o + 2 + i * 12; out[u16(e)] = e; } return out; };
+      const ifd0 = ifd(u32(4));
+      if (!(0x8825 in ifd0)) return null;
+      const g = ifd(u32(ifd0[0x8825] + 8));
+      const ref = tag => g[tag] != null ? String.fromCharCode(v.getUint8(t + g[tag] + 8)) : "";
+      const dms = tag => { if (g[tag] == null) return null; const p = u32(g[tag] + 8);
+        const r = k => { const d = u32(p + k * 8 + 4); return d ? u32(p + k * 8) / d : 0; };
+        return r(0) + r(1) / 60 + r(2) / 3600; };
+      let lat = dms(2), lon = dms(4);
+      if (lat == null || lon == null || (lat === 0 && lon === 0)) return null;
+      if (ref(1) === "S") lat = -lat;
+      if (ref(3) === "W") lon = -lon;
+      return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+    }
+    if ((marker & 0xFF00) !== 0xFF00 || marker === 0xFFDA) break;
+    off += 2 + len;
+  }
+  return null;
+}

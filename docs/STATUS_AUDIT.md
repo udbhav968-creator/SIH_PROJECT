@@ -42,7 +42,9 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | INT8 benchmark tooling (Milestone 3 plan, item 3) | Script done (8 Oct): times every ONNX model on the machine it runs on and builds a calibrated INT8 copy of the served classifier with an agreement check. The Pi 5 / Jetson numbers still need the board | `scripts/benchmark_edge.py` |
 | Privacy-redactor recall | Measurement done in code (8 Oct) on WIDER FACE validation and a public licence-plate set; it runs in Colab stage 5 (the sets cannot be downloaded from the build machine). The figure appears in `checkpoints/privacy_redaction_report.json` once that stage has run | `scripts/measure_redactor_recall.py` |
 | Classifier confidence calibration | Measurement done in code (8 Oct): ECE, NLL, Brier and a reliability table on the Indian held-out crops, with a temperature fitted on one half and reported on the other; served only if both NLL and ECE improve. Runs in Colab stage 5 | `scripts/measure_calibration.py` |
-| Automated tests | 200+; pipeline suite OK on a fresh clone with scikit-learn 1.8 and the fine-tuned CNN served | `tests/`, `logs/tests_after.txt` |
+| Citizen reports | Done (8 Oct): `/report` takes a phone photograph and a location (photo GPS first, else the phone's position); the engine must find a pothole or crack, then the report is pinned on the map as pending. It joins the ledger only when a bus reports the same class within 15 m or an operator promotes it, so one person cannot fill the repair list. The photograph is not stored; senders are a salted hash, 10 reports an hour each | `pipeline/citizen.py`, `web/report.html`, `tests/test_citizen_reports.py` |
+| Printable work order | Done (8 Oct): `/order?id=` renders the sealed order on A4 with the live seal check, the hash-chained history and signature lines; the browser's print dialog saves it as PDF | `web/order.html` |
+| Automated tests | 330+; pipeline suite OK on a fresh clone with scikit-learn 1.8 and the fine-tuned CNN served | `tests/`, `logs/tests_after.txt` |
 
 ## Left to do (not claimed as done)
 

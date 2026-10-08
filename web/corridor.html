@@ -126,7 +126,7 @@ const KIND_LABEL = { pothole: "Potholes", crack: "Cracks", water: "Waterlogging"
 const show = { kinds: new Set(["pothole", "crack", "water", "other"]), bands: new Set(["P1", "P2", "P3", "P4", "none"]) };
 const hasMap = typeof L !== "undefined";
 const focusId = new URLSearchParams(location.search).get("focus");
-let map = null, defectLayer = null, busLayer = null, shockLayer = null, heatLayer = null, myLocation = null;
+let map = null, defectLayer = null, busLayer = null, shockLayer = null, heatLayer = null, myLocation = null, citizenLayer = null;
 const defectMarkers = new Map(), busMarkers = new Map(), priorityById = new Map();
 let allDefects = [], rows = [], fitted = false;
 const fallbackBuses = new Map(), fallbackShocks = [];
@@ -159,10 +159,12 @@ if (hasMap) {
                  <text x="19" y="23.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="Inter,sans-serif">${c.getChildCount()}</text></svg>` }) })
     : L.layerGroup();
   busLayer = L.layerGroup();
+  citizenLayer = L.layerGroup();
   shockLayer = L.layerGroup();
   heatLayer = L.heatLayer ? L.heatLayer([], { radius: 28, blur: 20, maxZoom: 17, minOpacity: .35 }) : null;
-  defectLayer.addTo(map); busLayer.addTo(map); shockLayer.addTo(map);
-  const overlays = { "Potholes & cracks": defectLayer, "Buses (live)": busLayer, "IMU-only shocks": shockLayer };
+  defectLayer.addTo(map); busLayer.addTo(map); shockLayer.addTo(map); citizenLayer.addTo(map);
+  const overlays = { "Potholes & cracks": defectLayer, "Buses (live)": busLayer, "IMU-only shocks": shockLayer,
+                     "Citizen reports (pending)": citizenLayer };
   if (heatLayer) overlays["Priority heatmap"] = heatLayer;
   L.control.layers({ "Streets": streets, "Satellite + roads": satellite, "Dark": dark }, overlays, { collapsed: window.innerWidth < 700 }).addTo(map);
   L.control.scale({ imperial: false, maxWidth: 160 }).addTo(map);
@@ -385,7 +387,44 @@ async function loadStats() {
         ${p.durable === false ? " · per-instance on serverless" : ""}</div></div>`;
 }
 
+async function loadCitizen() {
+  if (!hasMap) return;
+  const r = await API.get("/api/v1/citizen/reports?status=pending");
+  citizenLayer.clearLayers();
+  if (!r.ok || !r.data.reports) return;
+  r.data.reports.forEach(c => {
+    const icon = L.divIcon({ className: "pothole-icon", iconSize: [24, 30], iconAnchor: [12, 29], popupAnchor: [0, -26],
+      html: `<svg viewBox="0 0 24 30" width="24" height="30" aria-hidden="true"><path d="M12 29C12 29 2 17.5 2 11a10 10 0 0 1 20 0c0 6.5-10 18-10 18z" fill="#fb923c" stroke="#fff" stroke-width="2"/>
+             <circle cx="12" cy="9" r="2.6" fill="#fff"/><path d="M7.5 16.5c.8-2.6 2.5-3.8 4.5-3.8s3.7 1.2 4.5 3.8" fill="#fff"/></svg>` });
+    L.marker([Number(c.lat), Number(c.lon)], { icon, title: "citizen report" }).addTo(citizenLayer).bindPopup(
+      `<div><strong>Citizen report</strong> · ${esc(c.report_id)}<br>${esc(c.defect_class)}
+        ${c.confidence != null ? ` · ${esc(Math.round(c.confidence * 100))}% confidence` : ""}<br>
+        <span style="color:#6b7280">${esc(new Date(c.at * 1000).toLocaleString())} · location: ${esc(c.location_source || "—")}</span>
+        <div class="pk"><span>PCI / area</span><span>${esc(num(c.pci, 0))} / ${esc(num(c.area_m2, 2))} m²</span></div>
+        <p style="margin:6px 0">Waiting for a bus to confirm it, or for an operator.</p>
+        <button class="cit" data-id="${esc(c.report_id)}" data-a="promote">Add to the ledger</button>
+        <button class="cit" data-id="${esc(c.report_id)}" data-a="dismiss">Dismiss</button>
+        <span class="issue-msg" style="display:block;font-size:12px;margin-top:4px"></span></div>`);
+  });
+}
+
+document.addEventListener("click", async e => {
+  const b = e.target.closest && e.target.closest("button.cit");
+  if (!b) return;
+  const msg = b.parentElement.querySelector(".issue-msg");
+  const body = { report_id: b.dataset.id, action: b.dataset.a };
+  let r = await API.post("/api/v1/citizen/review", body);
+  if (r.status === 401) {
+    const k = prompt("Operator key (printed in the window that started the engine):");
+    if (k) { setOperatorKey(k.trim()); r = await API.post("/api/v1/citizen/review", body); }
+  }
+  if (!r.ok) { msg.textContent = r.data.error || `HTTP ${r.status}`; return; }
+  msg.textContent = b.dataset.a === "promote" ? `added as ${r.data.defect_id}` : "dismissed";
+  scheduleReload();
+});
+
 async function loadLedger() {
+  loadCitizen();
   const [gis, pr] = await Promise.all([API.get("/api/v1/gis/map-data"), API.get("/api/v1/priority/ranking?stability=1")]);
   allDefects = (gis.ok && (gis.data.deduplicated_defects || gis.data.defects)) || [];
   rows = (pr.ok && pr.data.defects) || [];
@@ -432,7 +471,13 @@ function handle(type, ev, replay = false) {
   } else if (type === "shock") {
     if (!replay) drawShock(d);
     feed(`shock:IMU-only from ${d.bus_id} (camera ${d.camera_unusable_because || "unusable"})`, "estimate");
-  } else if (type === "work_order") feed(`order:${d.work_order_id} · ${d.priority || ""} · ${d.seal_algorithm || ""}`, "measured");
+  } else if (type === "work_order") {
+    feed(`order:${d.work_order_id} · ${(d.status || "").toLowerCase()} ${d.priority || ""}`, "measured");
+    if (!replay) scheduleReload();
+  } else if (type === "citizen_report") {
+    feed(`citizen:${d.defect_class || ""} ${(d.status || "").toLowerCase()} (${d.report_id})`, "warn");
+    if (!replay) scheduleReload();
+  }
 }
 
 async function startLive() {
@@ -459,7 +504,7 @@ async function startLive() {
   const open = () => {
     const es = new EventSource(base + (lastId ? `?since=${lastId}` : ""));
     es.onopen = () => { failures = 0; setState("live", "measured"); if (polling) { clearInterval(polling); polling = null; } };
-    ["bus_position", "defect", "shock", "work_order"].forEach(t =>
+    ["bus_position", "defect", "shock", "work_order", "citizen_report"].forEach(t =>
       es.addEventListener(t, m => { try { const ev = JSON.parse(m.data); lastId = Math.max(lastId, ev.id); handle(t, ev); } catch {} }));
     es.onerror = () => {
       failures += 1;

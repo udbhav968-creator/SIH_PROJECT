@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report a Pothole — ROAD-SHIELD</title>
+<meta name="description" content="Send a photograph of a damaged road. The engine checks it, pins it on the map, and the bus fleet confirms it.">
+<meta name="theme-color" content="#0a0f17">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 4 5.5v6c0 4.8 3.3 8.9 8 10 4.7-1.1 8-5.2 8-10v-6z' fill='%23f0a92b'/%3E%3Cpath d='M10.2 17.5 11.2 7h1.6l1 10.5' fill='none' stroke='%230a0f17' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="/web/app.css">
+<style>
+  .steps { display: grid; gap: 14px; max-width: 640px; }
+  .shot { width: 100%; max-height: 340px; object-fit: contain; border-radius: 10px; background: var(--ink-950); display: block; }
+  .big { width: 100%; padding: 14px; font-size: 16px; font-weight: 700; }
+  .loc { font-family: var(--mono); font-size: 13px; }
+</style>
+</head>
+<body data-page="report">
+<div class="wrap">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">Report a pothole</h1>
+    <span class="muted small">a photograph and where it is — the engine checks it, the buses confirm it</span>
+  </div>
+
+  <div class="steps">
+    <div class="card">
+      <div class="label">1 · photograph</div>
+      <input id="file" type="file" accept="image/*" capture="environment" hidden>
+      <button class="primary big" id="pick">Take or choose a photograph of the road</button>
+      <img id="shot" class="shot" alt="" hidden style="margin-top:12px">
+      <p class="small muted" style="margin:10px 0 0">Stand back so the whole defect is in the frame. The photograph is
+        analysed and then discarded: only the defect, its size and the location are kept.</p>
+    </div>
+
+    <div class="card">
+      <div class="label">2 · where is it?</div>
+      <p class="small" id="locText" style="margin:0 0 10px">No location yet.</p>
+      <button id="useMe">Use my current location</button>
+      <p class="small muted" style="margin:10px 0 0">Photographs taken with location turned on carry their own position,
+        which is used first. Otherwise, take the picture where the defect is and use your location.</p>
+    </div>
+
+    <div class="card">
+      <div class="label">3 · send</div>
+      <button class="primary big" id="send" disabled>Send report</button>
+      <div id="result" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <div class="label">what happens next</div>
+      <p class="small" style="margin:0">The engine looks for a pothole or crack in your photograph. If it finds one, the
+        defect is pinned on the <a href="/corridor">road map</a>. It joins the city's repair list as soon as a bus on its
+        route sees the same defect, or an operator reviews it. Reports that only one person ever sees cannot fill the
+        repair list on their own, which keeps it free of spam.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/web/config.js"></script>
+<script src="/web/app.js"></script>
+<script>
+let photo = null, loc = null;
+function esc(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
+function ready() { el("send").disabled = !(photo && loc); }
+function showLoc() {
+  el("locText").innerHTML = loc
+    ? `<span class="loc">${loc.lat.toFixed(6)}, ${loc.lon.toFixed(6)}</span> <span class="badge ${loc.source === "photo GPS" ? "measured" : "estimate"}">${esc(loc.source)}</span>`
+    : "No location yet.";
+  ready();
+}
+
+el("pick").onclick = () => el("file").click();
+el("file").onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const g = new FileReader();
+  g.onload = () => {
+    let gps = null;
+    try { gps = exifGps(g.result); } catch {}
+    if (gps) { loc = { ...gps, source: "photo GPS" }; showLoc(); }
+  };
+  g.readAsArrayBuffer(f.slice(0, 256 * 1024));
+  const r = new FileReader();
+  r.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      photo = c.toDataURL("image/jpeg", 0.88);
+      el("shot").src = photo; el("shot").hidden = false;
+      el("pick").textContent = "Choose a different photograph";
+      ready();
+    };
+    img.src = r.result;
+  };
+  r.readAsDataURL(f);
+};
+
+el("useMe").onclick = () => {
+  if (!navigator.geolocation) { el("locText").textContent = "This browser cannot share its location."; return; }
+  el("locText").textContent = "finding your location…";
+  navigator.geolocation.getCurrentPosition(
+    p => { loc = { lat: p.coords.latitude, lon: p.coords.longitude, source: `your location ±${Math.round(p.coords.accuracy)} m` }; showLoc(); },
+    e => { el("locText").textContent = "Location not available: " + e.message; },
+    { enableHighAccuracy: true, timeout: 12000 });
+};
+
+el("send").onclick = async () => {
+  el("send").disabled = true; el("send").textContent = "checking the photograph…";
+  const r = await API.post("/api/v1/citizen/report", { image_base64: photo.split(",")[1], lat: loc.lat, lon: loc.lon,
+                                                        location_source: loc.source });
+  el("send").textContent = "Send report"; ready();
+  const why = engineUnavailable(r);
+  if (why) { el("result").innerHTML = errorCard("The road engine is not online right now.", "Please try again later."); return; }
+  if (!r.ok) { el("result").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`); return; }
+  const rep = r.data.report;
+  el("result").innerHTML = rep
+    ? `<div class="card" style="border-color:rgba(52,211,153,.45)"><div class="label" style="color:var(--ok)">received · ${esc(rep.report_id)}</div>
+        <p style="margin:0 0 6px"><strong>${esc(rep.defect_class)}</strong>${rep.confidence != null ? ` · ${esc(Math.round(rep.confidence * 100))}% confidence` : ""}</p>
+        <p class="small" style="margin:0 0 8px">${esc(r.data.message)}</p>
+        <a href="/corridor">See it on the road map →</a></div>`
+    : `<div class="card"><div class="label">nothing found</div><p class="small" style="margin:0">${esc(r.data.message)}
+        ${r.data.finding?.class ? ` The photograph looked like: ${esc(r.data.finding.class)}.` : ""}</p></div>`;
+};
+</script>
+</body>
+</html>

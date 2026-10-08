@@ -140,6 +140,15 @@ works = WorkOrders(os.path.join(WRITABLE_DIR, "road_shield.db"), fleet_dedup_eng
 alerts = Alerts(live_events)
 
 
+def _safe_priority(defect):
+    # defined here, not with the other helpers: the demo seed below fires _on_sighting at import time
+    from models import priority_index
+    try:
+        return priority_index.score_defect(defect) if defect.get("severity_pci") is not None else None
+    except (ValueError, TypeError):
+        return None
+
+
 def _on_sighting(bus_id, result, at=None):
     works.on_sighting(result["defect_id"], bus_id, at=at)
     rec = next((d for d in fleet_dedup_engine.get_all_deduplicated_defects() if d["defect_id"] == result["defect_id"]), None)
@@ -148,6 +157,11 @@ def _on_sighting(bus_id, result, at=None):
 
 
 fleet_dedup_engine.listeners.append(_on_sighting)
+
+# Citizen reports from the public Report page: pinned, and confirmed by a bus or an operator before the ledger.
+from pipeline.citizen import CitizenReports, CitizenError
+citizen = CitizenReports(os.path.join(WRITABLE_DIR, "road_shield.db"), fleet_dedup_engine, live_events)
+fleet_dedup_engine.listeners.append(citizen.on_sighting)
 edge_ingest.position_listeners.append(lambda bus, lat, lon, at=None: works.on_bus_position(bus, lat, lon, at=at))
 
 # Operational guard rails: body limit, rate limit, Prometheus metrics, readiness (api/ops.py).
@@ -212,6 +226,8 @@ PAGE_ROUTES = {
     "/": "index.html",
     "/inspect": "inspect.html",
     "/corridor": "corridor.html",
+    "/report": "report.html",
+    "/order": "order.html",
     "/works": "works.html",
     "/models": "models.html",
     "/data": "data.html",
@@ -237,6 +253,7 @@ PROTECTED_POST = {
     "/api/v1/works/orders",
     "/api/v1/works/status",
     "/api/v1/video/ingest",            # writes sightings to the ledger, which can reopen repaired orders
+    "/api/v1/citizen/review",
 }
 
 
@@ -336,14 +353,6 @@ def _text_or_none(v, n):
 def _actor(body):
     a = _text_or_none(body.get("actor"), 40) if isinstance(body, dict) else None
     return a if a and all(c.isalnum() or c in " ._-@" for c in a) else "operator"
-
-
-def _safe_priority(defect):
-    from models import priority_index
-    try:
-        return priority_index.score_defect(defect) if defect.get("severity_pci") is not None else None
-    except (ValueError, TypeError):
-        return None
 
 
 def _float_or_none(src, *keys):
@@ -893,6 +902,15 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(404, {"error": "no such work order"})
                 return
             self._send_json(200, order)
+            return
+
+        if path == "/api/v1/citizen/reports":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
+            status = (q.get("status") or [None])[0]
+            if status and status.upper() not in ("PENDING", "CONFIRMED", "DISMISSED"):
+                self._send_json(400, {"error": "status must be pending, confirmed or dismissed"})
+                return
+            self._send_json(200, {"reports": citizen.list(status), "counts": citizen.counts()})
             return
 
         if path == "/api/v1/alerts":
@@ -1833,6 +1851,50 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                         if d["defect_id"] == res["defect_id"]), None)
             live_events.publish("defect", {"bus_id": bus_id, "result": res, "defect": rec, "via": "api"})
             self._send_json(200, res)
+            return
+
+        if path == "/api/v1/citizen/report":
+            b64 = body.get("image_base64") if isinstance(body, dict) else None
+            if not b64:
+                self._send_json(400, {"error": "image_base64 is required"})
+                return
+            try:
+                lat, lon = _float_or_none(body, "lat", "latitude"), _float_or_none(body, "lon", "lng", "longitude")
+            except ValueError as e:
+                self._send_json(400, {"error": str(e)})
+                return
+            if lat is None or lon is None:
+                self._send_json(400, {"error": "a location is needed: allow location access, or use a photograph with GPS"})
+                return
+            try:
+                audit = deep_pipeline.audit_image(b64, corridor_id="CITIZEN", latitude=lat, longitude=lon)
+            except Exception as e:
+                self._send_json(400, {"error": f"could not read the photograph: {e}"})
+                return
+            try:
+                report, message = citizen.submit(audit, lat, lon, client=_client_key(self.headers, self.client_address),
+                                                 location_source=_text_or_none(body.get("location_source"), 40) or "unknown")
+            except CitizenError as e:
+                self._send_json(429 if "per hour" in str(e) else 400, {"error": str(e)})
+                return
+            top = audit.get("primary_distress") or {}
+            self._send_json(200, {"report": report, "message": message,
+                                  "finding": {"class": top.get("class_name"), "confidence": top.get("confidence"),
+                                              "is_distress": audit.get("is_distress")},
+                                  "photo_stored": False})
+            return
+
+        if path == "/api/v1/citizen/review":
+            rid, action = _first(body, "report_id"), _first(body, "action")
+            if not rid or not action:
+                self._send_json(400, {"error": "report_id and action (promote or dismiss) are required"})
+                return
+            try:
+                self._send_json(200, citizen.review(str(rid), str(action), actor=_actor(body)))
+            except CitizenError as e:
+                self._send_json(404 if str(e).startswith("no report") else 409, {"error": str(e)})
+            except ValueError as e:
+                self._send_json(400, {"error": str(e)})
             return
 
         if path == "/api/v1/works/orders":
