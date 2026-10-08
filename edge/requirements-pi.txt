@@ -1,0 +1,3 @@
+# On the Raspberry Pi, in addition to ../requirements.txt:
+smbus2>=0.4        # MPU-6050 accelerometer on I2C
+pyserial>=3.5      # Neo-6M GPS on the serial port

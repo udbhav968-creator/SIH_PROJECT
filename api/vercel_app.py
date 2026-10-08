@@ -309,7 +309,7 @@ class handler(BaseHTTPRequestHandler):
             return
 
         if path in ("/api/v1/fleet/telemetry", "/api/v1/gis/map-data",
-                    "/api/v1/ledger/defects"):
+                    "/api/v1/ledger/defects", "/api/v1/priority/ranking", "/api/v1/fleet/live"):
             self._send(200, {
                 "storage": "not deployed",
                 "unique_defects_registered": 0, "total_reports_ingested": 0,

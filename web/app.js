@@ -18,6 +18,8 @@ const ENGINE_PATHS = new Set([
   "/api/v1/pipeline/deep-audit", "/api/v1/vision/analyze-photo", "/api/v1/vision/analyze-custom-photo",
   "/api/v1/privacy/redact", "/api/v1/detect/vision", "/api/v1/vision/predict", "/api/v1/detect/objects",
   "/api/v1/pedestrian/detect", "/api/v1/telemetry/imu",
+  "/api/v1/fleet/telemetry", "/api/v1/gis/map-data", "/api/v1/ledger/defects", "/api/v1/fleet/live",
+  "/api/v1/priority/ranking", "/api/v1/priority/score", "/api/v1/live/stream",
 ]);
 
 const API = {
@@ -46,11 +48,13 @@ const API = {
   _healthOnce: null,
 
   async get(path) { return this._go("GET", path); },
+  /** Absolute URL for a streaming endpoint (EventSource cannot go through _go). */
+  async urlFor(path) { return (await this.baseFor(path)) + path; },
   async post(path, body) { return this._go("POST", path, body); },
 
   /** Base URL for a path: the live engine for model endpoints on the static site, else this site. */
   async baseFor(path) {
-    if (this.base || !this.engineUrl || !ENGINE_PATHS.has(path)) return this.base;
+    if (this.base || !this.engineUrl || !ENGINE_PATHS.has(path.split("?")[0])) return this.base;
     if (this.siteIsStatic === null && this._healthOnce) await this._healthOnce;
     return this.siteIsStatic ? this.engineUrl : this.base;
   },

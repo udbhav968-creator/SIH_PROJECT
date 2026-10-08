@@ -370,7 +370,8 @@ class APIServerTest(unittest.TestCase):
         code, r = self.post_json("/api/v1/privacy/redact", {"image_base64": _b64(img)}, timeout=120)
         self.assertEqual(code, 200, str(r)[:300])
         self.assertTrue(r["redacted_image_base64"])
-        self.assertFalse(r["report"]["recall_measured"])
+        from models.privacy_redactor import measured_recall
+        self.assertEqual(r["report"]["recall_measured"], measured_recall()[0] is not None)
 
     def test_verify_seal_rejects_malformed_input_without_crashing(self):
         for body in ({"work_order": "not-an-object"}, {"work_order": []}, {"work_order": None}):
@@ -530,6 +531,111 @@ class APIServerTest(unittest.TestCase):
     def test_malformed_json_body_does_not_crash(self):
         code, _h, _b = self._req("POST", "/api/v1/pci/predict", raw=b"{not json")
         self.assertIn(code, (200, 400))
+
+
+    # -- Priority Index, sealed bus packets, live feed ----------------------
+    def _report(self, bus, lat, lon, cls="Pothole Cavity", pci=40, area=1.2, depth=None):
+        body = {"bus_id": bus, "lat": lat, "lon": lon, "defect_class": cls, "severity_pci": pci, "area_m2": area}
+        if depth is not None:
+            body["depth_cm"] = depth
+        return self.post_json("/api/v1/fleet/report-defect", body)
+
+    def test_priority_ranking_orders_the_ledger(self):
+        self._report("PI-BUS-1", 13.10001, 77.70001, pci=20, area=2.0, depth=8)
+        self._report("PI-BUS-2", 13.20001, 77.80001, pci=85, area=0.1, depth=2)
+        code, r = self.get_json("/api/v1/priority/ranking?stability=1")
+        self.assertEqual(code, 200)
+        ids = [d["defect_id"] for d in r["defects"]]
+        pis = [d["priority"]["priority_index"] for d in r["defects"]]
+        self.assertEqual(pis, sorted(pis, reverse=True))
+        self.assertEqual([d["rank"] for d in r["defects"]], list(range(1, len(ids) + 1)))
+        self.assertIsNotNone(r["rank_stability"])
+        code, bad = self.get_json("/api/v1/priority/ranking?weights=0.9,0.9,0.9")
+        self.assertEqual(code, 400)
+        code, led = self.get_json("/api/v1/ledger/defects")
+        self.assertTrue(all("priority" in d for d in led["defects"]))
+        code, r = self._report("PI-BUS-3", 13.3, 77.9, pci=150)
+        self.assertEqual(code, 400, "an out-of-range PCI never reaches the ledger")
+
+    def test_priority_score_endpoint(self):
+        code, r = self.post_json("/api/v1/priority/score", {"pci": 30, "area_m2": 1.0, "depth_cm": 10,
+                                                            "traffic_pcu_per_day": 12000})
+        self.assertEqual(code, 200)
+        self.assertEqual(r["missing"], [])
+        self.assertEqual(r["traffic_basis"], "measured_pcu_per_day")
+        code, r = self.post_json("/api/v1/priority/score", {"area_m2": 1.0})
+        self.assertEqual(code, 400)
+
+    def test_sealed_bus_packets_are_applied_once_and_published(self):
+        from edge import crypto
+        key = crypto.load_key("api-test-fleet-key")
+        saved = srv.edge_ingest.key
+        srv.edge_ingest.key = key
+        try:
+            q = srv.live_events.subscribe()
+            pkts = [crypto.pack({"t": "pos", "ts": 1, "lat": 12.9, "lon": 77.6, "spd": 20}, "SEAL-BUS", 1, key),
+                    crypto.pack({"t": "defect", "ts": 2, "lat": 12.91, "lon": 77.61, "cls": "Pothole Cavity",
+                                 "pci": 35.0, "area": 0.8, "depth": 6.0}, "SEAL-BUS", 2, key)]
+            code, r = self.post_json("/api/v1/fleet/ingest-sealed", {"packets": pkts})
+            self.assertEqual(code, 200, r)
+            self.assertEqual(r["accepted_in_order"], 2)
+            self.assertEqual([x["status"] for x in r["results"]], ["applied", "applied"])
+            code, again = self.post_json("/api/v1/fleet/ingest-sealed", {"packets": pkts})
+            self.assertEqual([x["status"] for x in again["results"]], ["duplicate", "duplicate"])
+            forged = dict(crypto.pack({"t": "pos", "ts": 3, "lat": 1, "lon": 1}, "SEAL-BUS", 3, key), bus="OTHER")
+            code, f = self.post_json("/api/v1/fleet/ingest-sealed", {"packets": [forged]})
+            self.assertEqual(f["accepted_in_order"], 0)
+            self.assertEqual(f["results"][0]["status"], "rejected")
+            types = []
+            while not q.empty():
+                types.append(q.get_nowait()["type"])
+            self.assertIn("bus_position", types)
+            self.assertIn("defect", types)
+            code, live = self.get_json("/api/v1/fleet/live")
+            self.assertTrue(any(b["bus_id"] == "SEAL-BUS" for b in live["buses"]))
+        finally:
+            srv.live_events.unsubscribe(q)
+            srv.edge_ingest.key = saved
+
+    def test_sealed_ingest_without_a_key_is_503(self):
+        saved = srv.edge_ingest.key
+        srv.edge_ingest.key = None
+        try:
+            code, r = self.post_json("/api/v1/fleet/ingest-sealed", {"packets": [{"v": 1}]})
+            self.assertEqual(code, 503)
+        finally:
+            srv.edge_ingest.key = saved
+
+    def test_live_stream_sends_events(self):
+        import socket
+        host, port = self.httpd.server_address
+        s = socket.create_connection((host, port), timeout=10)
+        try:
+            s.sendall(b"GET /api/v1/live/stream HTTP/1.1\r\nHost: x\r\nAccept: text/event-stream\r\n\r\n")
+            buf = b""
+            while b"retry:" not in buf:
+                buf += s.recv(4096)
+            self.assertIn(b"text/event-stream", buf)
+            srv.live_events.publish("work_order", {"work_order_id": "TEST-SSE"})
+            while b"TEST-SSE" not in buf:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                buf += chunk
+            self.assertIn(b"event: work_order", buf)
+        finally:
+            s.close()
+
+    def test_verify_seal_reports_algorithm(self):
+        code, wo = self.post_json("/api/v1/dispatch/work-order", {"distress_class": "Pothole Cavity",
+                                                                  "area_sqm": 1.0, "depth_cm": 5, "pci_score": 40})
+        self.assertEqual(code, 200)
+        code, v = self.post_json("/api/v1/dispatch/verify-seal", {"work_order": wo})
+        self.assertTrue(v["is_valid"])
+        self.assertEqual(v["seal_algorithm"], wo["seal_algorithm"])
+        wo["allocated_budget_inr"] = 1.0
+        code, v = self.post_json("/api/v1/dispatch/verify-seal", {"work_order": wo})
+        self.assertEqual(v["status"], "CORRUPTED_OR_TAMPERED")
 
 
 class HuggingFaceSpaceTest(unittest.TestCase):

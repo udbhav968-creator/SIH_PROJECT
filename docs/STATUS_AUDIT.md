@@ -28,6 +28,14 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | System design, OpenAPI contract, model registry, request IDs, opt-in API key, docker compose | Done in this audit | `docs/SYSTEM_DESIGN.md`, `api/openapi.py`, `/api/v1/models/served` |
 | U-Net segmenter (ResNet-18 encoder) | Trained three times; not served. Run 1 (DNIT only): 9/24 defects end to end. Run 2 (+ CrackSeg9k, Kaggle outlines): Kaggle pothole IoU 0.679, 18/24 end to end, lost the IoU rule on DNIT cracks. Run 3 (+ Pothole Mix, 905 copies of DNIT check/test photographs removed after our overlap check found them; 7,967 training images from 5 sources): passed the IoU rule (DNIT calibration crack 0.255 vs 0.214, pothole 0.640 vs 0.119), test DNIT crack 0.271 / pothole 0.632, Kaggle pothole 0.617, CrackSeg9k crack 0.431; end to end 18/24 defects with 3/36 false positives vs the pixel classifier's 24/24 and 3/36, so the pixel classifier stays. Pothole Mix's own test still contains some DNIT copies, so its 0.709 is an upper bound | `checkpoints/segmenter_selection.json`, `training/train_unet_multi.py`, `scripts/segmenter_deployment_check.py` |
 | YOLOv8 RDD2022 detector | Trainer, ONNX serving and selection rule done; not yet trained | `training/train_rdd_detector.py` |
+| Repair Priority Index `PI = w1(100-PCI) + w2 Vol + w3 Traffic` (Milestone 2, section 3.5) | Done (8 Oct): each term on 0-100, weights 0.5/0.2/0.3 adjustable and validated, missing terms re-weighted rather than assumed, traffic basis labelled (measured PCU/day or the fleet's bus-count proxy), Kendall-tau check of how much the order depends on the weights; the corridor page ranks the ledger by it | `models/priority_index.py`, `/api/v1/priority/ranking`, `/api/v1/priority/score` |
+| Keyed work-order seal (the SIH submission said HMAC) | Done (8 Oct): HMAC-SHA256 when `ROAD_SHIELD_SEAL_KEY` is set; the algorithm is inside the sealed fields, and a verifier with a key refuses unkeyed seals (no downgrade) | `models/morth_dispatch_agent.py`, `/api/v1/dispatch/verify-seal` |
+| Bus agent: camera + MPU-6050 + GPS loop, frame-quality gate, IMU-only fallback when the camera cannot see | Done in software (8 Oct), tested by replay against the real server; not yet run on a Pi with the parts | `edge/bus_agent.py`, `edge/sensors.py`, `edge/frame_quality.py`, `docs/EDGE_AGENT.md` |
+| Encrypted packets under 1 KB and offline store-and-forward (SIH: "encrypted SQLite store-and-forward queue") | Done (8 Oct): AES-256-GCM with bus id and sequence authenticated, replay refused by the server, queue encrypted at rest, bounded, in-order delivery with back-off | `edge/crypto.py`, `edge/store_forward.py`, `pipeline/edge_ingest.py` |
+| Live command centre (Milestone 3 plan, item 4) | Done (8 Oct): server-sent events for bus positions, defects, IMU-only shocks and work orders; the corridor map moves buses and adds defects as they arrive, with a polling fallback | `/api/v1/live/stream`, `/api/v1/fleet/live`, `web/corridor.html` |
+| INT8 benchmark tooling (Milestone 3 plan, item 3) | Script done (8 Oct): times every ONNX model on the machine it runs on and builds a calibrated INT8 copy of the served classifier with an agreement check. The Pi 5 / Jetson numbers still need the board | `scripts/benchmark_edge.py` |
+| Privacy-redactor recall | Measurement done in code (8 Oct) on WIDER FACE validation and a public licence-plate set; it runs in Colab stage 5 (the sets cannot be downloaded from the build machine). The figure appears in `checkpoints/privacy_redaction_report.json` once that stage has run | `scripts/measure_redactor_recall.py` |
+| Classifier confidence calibration | Measurement done in code (8 Oct): ECE, NLL, Brier and a reliability table on the Indian held-out crops, with a temperature fitted on one half and reported on the other; served only if both NLL and ECE improve. Runs in Colab stage 5 | `scripts/measure_calibration.py` |
 | Automated tests | 200+; pipeline suite OK on a fresh clone with scikit-learn 1.8 and the fine-tuned CNN served | `tests/`, `logs/tests_after.txt` |
 
 ## Left to do (not claimed as done)
@@ -35,14 +43,16 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | Item | Why it is not done |
 |---|---|
 | Hardware on a real bus (dashcam + MPU-6050) | No vehicle trial yet; all images are public datasets, IMU data is from car drive logs |
-| Detection recall for the privacy redactor | No annotated face / plate set in the project |
-| Priority Index `PI = w1(100-PCI) + w2 Vol + w3 Traffic` | Proposed only; weights not set, not implemented |
-| Encrypted transmission | Work orders are tamper-evident (SHA-256), not encrypted; TLS belongs to a deployment |
-| INT8 benchmark on Raspberry Pi 5 / Jetson | INT8 ONNX files exist; never timed on that hardware |
+| Redactor recall and calibration numbers | The code is done; the numbers come from Colab stage 5 |
+| Priority Index weights chosen by a municipality | The defaults are a stated policy choice, not a consultation result |
+| INT8 benchmark on Raspberry Pi 5 / Jetson | `scripts/benchmark_edge.py` is ready; needs the board |
+| Bus agent on real hardware | Tested by replay only; MPU-6050 and GPS readers not yet run on a Pi |
+| Per-bus keys | One fleet key today; per-bus keys need a key-distribution process |
+| Permanent hosting | Laptop tunnel for demos; options in `docs/HOSTING.md` |
 | Field validation of PCI / deterioration / depth | Needs field surveys or depth ground truth |
 | More photographs for the four municipal classes | ~50 each; test scores rest on 7-8 images |
 | Pixel labels for water-filled potholes | Segmenter under-detects them; no labels exist |
-| Live GIS feed from buses | No fleet; the ledger fills only from API calls (demo rows are opt-in) |
+| Live GIS feed from real buses | The feed and the bus agent exist; there is no fleet yet, so the map shows replayed or demo buses |
 
 ## False or hard-coded items found and what was done
 

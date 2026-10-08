@@ -26,6 +26,7 @@ import time
 import base64
 import io
 import socketserver
+import queue
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import numpy as np
 
@@ -125,6 +126,12 @@ from pipeline.defect_store import DefectStore
 defect_store = DefectStore(os.path.join(WRITABLE_DIR, "road_shield.db"))
 fleet_dedup_engine = FleetDeduplicationEngine(proximity_threshold_meters=8.0,
                                               store=defect_store)
+
+# Live map feed (server-sent events) and the encrypted link from the bus agents (edge/).
+from pipeline.live_events import live_events, sse_frame
+from pipeline.edge_ingest import EdgeIngest
+edge_ingest = EdgeIngest(os.path.join(WRITABLE_DIR, "road_shield.db"), fleet_dedup_engine, live_events)
+SSE_MAX_SECONDS = 1800
 
 # Operational guard rails: body limit, rate limit, Prometheus metrics, readiness (api/ops.py).
 from api import ops
@@ -300,6 +307,14 @@ def _first(src, *keys):
             if v is not None and v != "":
                 return v
     return None
+
+
+def _safe_priority(defect):
+    from models import priority_index
+    try:
+        return priority_index.score_defect(defect) if defect.get("severity_pci") is not None else None
+    except (ValueError, TypeError):
+        return None
 
 
 def _float_or_none(src, *keys):
@@ -798,7 +813,75 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if path == "/api/v1/live/stream":
+            raw = self.headers.get("Last-Event-ID") or _first(
+                urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query), "since") or ""
+            sub = live_events.subscribe(int(raw) if str(raw).isdigit() else None)
+            if sub is None:
+                self._send_json(503, {"error": "too many open live streams; retry shortly"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Accel-Buffering", "no")
+            self._send_cors_headers()
+            self.end_headers()
+            self.close_connection = True
+            try:
+                self.wfile.write(b"retry: 3000\n\n")
+                self.wfile.flush()
+                deadline = time.time() + SSE_MAX_SECONDS
+                while time.time() < deadline:
+                    try:
+                        self.wfile.write(sse_frame(sub.get(timeout=15)))
+                    except queue.Empty:
+                        self.wfile.write(b": keep-alive\n\n")
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                pass
+            finally:
+                live_events.unsubscribe(sub)
+            return
+
+        if path == "/api/v1/fleet/live":
+            self._send_json(200, {
+                "buses": edge_ingest.live_positions(),
+                "imu_only_shocks": edge_ingest.recent_shocks(100),
+                "known_buses": edge_ingest.buses(),
+                "encrypted_link": "configured" if edge_ingest.configured else "ROAD_SHIELD_FLEET_KEY not set",
+                "live_stream_subscribers": live_events.subscribers,
+                "recent_events": live_events.recent()[-50:],
+            })
+            return
+
+        if path == "/api/v1/priority/ranking":
+            from models import priority_index
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
+            try:
+                w = priority_index.parse_weights(q["weights"][0]) if "weights" in q else priority_index.default_weights()
+                ranked = priority_index.rank(fleet_dedup_engine.get_all_deduplicated_defects(), w)
+                stability = (priority_index.rank_stability(fleet_dedup_engine.get_all_deduplicated_defects(), w)
+                             if q.get("stability", ["0"])[0] in ("1", "true", "yes") else None)
+            except ValueError as e:
+                self._send_json(400, {"error": str(e)})
+                return
+            self._send_json(200, {
+                "formula": "PI = w1*(100-PCI) + w2*Vol + w3*Traffic, each term on 0-100",
+                "weights": dict(zip(priority_index.TERMS, w)),
+                "bands": [{"band": b, "from": f, "action": a} for f, b, a in priority_index.BANDS],
+                "defects": [{
+                    "rank": r["priority"]["rank"], "defect_id": r["defect_id"], "defect_class": r["defect_class"],
+                    "lat": r["lat"], "lon": r["lon"], "severity_pci": r["severity_pci"],
+                    "area_m2": r.get("area_m2"), "depth_cm": r.get("depth_cm"),
+                    "confirmations": r.get("confirmation_count"), "address": r.get("address"),
+                    "priority": r["priority"],
+                } for r in ranked],
+                "rank_stability": stability,
+            })
+            return
+
         if path == "/api/v1/ledger/defects":
+            from models import priority_index
             defects = fleet_dedup_engine.get_all_deduplicated_defects()
             enriched = []
             total_tonnage = 0.0
@@ -821,6 +904,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     "estimated_repair_tonnes": round(tonnage, 3),
                     "estimated_repair_inr": round(cost, 2),
                     "address": d.get("address"),
+                    "priority": _safe_priority(d),
                 })
             self._send_json(200, {
                 "total_active_defects": len(enriched),
@@ -1186,6 +1270,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 return
             work_order["model"] = "MoRTHDispatchAgent"
             work_order["latency_ms"] = round((time.time() - t0) * 1000.0, 3)
+            live_events.publish("work_order", {k: work_order.get(k) for k in (
+                "work_order_id", "coordinates", "distress_type", "priority", "allocated_budget_inr",
+                "dispatch_status", "seal_algorithm")})
             self._send_json(200, work_order)
             return
 
@@ -1198,18 +1285,39 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     "error": "work_order must be the JSON object returned by /api/v1/dispatch/work-order",
                 })
                 return
-            clean_wo = {k: v for k, v in work_order.items() if k not in ("model", "latency_ms")}
-            is_valid = dispatch_agent.verify_work_order_seal(clean_wo)
+            status = dispatch_agent.check_work_order_seal(work_order)
             self._send_json(200, {
-                "is_valid": is_valid,
-                "work_order_id": clean_wo.get("work_order_id", "UNKNOWN"),
-                "status": "SEAL_VERIFIED_AUTHENTIC" if is_valid else "CORRUPTED_OR_TAMPERED",
+                "is_valid": status == "SEAL_VERIFIED_AUTHENTIC",
+                "work_order_id": work_order.get("work_order_id", "UNKNOWN"),
+                "seal_algorithm": work_order.get("seal_algorithm", "SHA-256"),
+                "status": status,
             })
             return
 
         # ----------------------------------------------------------------------
         # ASTM D6433 PCI (real deduct-value formula, not a trained regressor)
         # ----------------------------------------------------------------------
+        if path == "/api/v1/priority/score":
+            from models import priority_index
+            try:
+                pci = _float_or_none(body, "pci", "severity_pci", "pci_score")
+                if pci is None:
+                    raise ValueError("pci is required")
+                res = priority_index.score(
+                    pci=pci,
+                    volume_m3=_float_or_none(body, "volume_m3"),
+                    area_m2=_float_or_none(body, "area_m2", "area_sqm"),
+                    depth_cm=_float_or_none(body, "depth_cm"),
+                    traffic_pcu_per_day=_float_or_none(body, "traffic_pcu_per_day", "pcu_per_day"),
+                    reporting_buses=body.get("reporting_buses"),
+                    weights=body.get("weights"),
+                )
+            except (ValueError, TypeError) as e:
+                self._send_json(400, {"error": str(e)})
+                return
+            self._send_json(200, res)
+            return
+
         if path == "/api/v1/pci/predict":
             result = pci_model.compute(
                 crack_density_pct=float(body.get("crack_density_pct", 0.0)),
@@ -1630,8 +1738,34 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             if err or missing:
                 self._send_json(400, {"error": err or ("missing required fields: " + ", ".join(missing))})
                 return
-            res = fleet_dedup_engine.ingest_fleet_detection(bus_id, lat, lon, cls_name, pci, area)
+            try:
+                depth = _float_or_none(body, "depth_cm")
+                traffic = _float_or_none(body, "traffic_pcu_per_day", "pcu_per_day")
+            except ValueError as e:
+                self._send_json(400, {"error": str(e)})
+                return
+            try:
+                res = fleet_dedup_engine.ingest_fleet_detection(bus_id, lat, lon, cls_name, pci, area,
+                                                                depth_cm=depth, traffic_pcu_per_day=traffic)
+            except ValueError as e:
+                self._send_json(400, {"error": str(e)})
+                return
+            rec = next((d for d in fleet_dedup_engine.get_all_deduplicated_defects()
+                        if d["defect_id"] == res["defect_id"]), None)
+            live_events.publish("defect", {"bus_id": bus_id, "result": res, "defect": rec, "via": "api"})
             self._send_json(200, res)
+            return
+
+        if path == "/api/v1/fleet/ingest-sealed":
+            packets = body.get("packets") if isinstance(body, dict) else None
+            if not isinstance(packets, list) or not packets or len(packets) > 500:
+                self._send_json(400, {"error": "packets must be a list of 1-500 sealed envelopes"})
+                return
+            if not edge_ingest.configured:
+                self._send_json(503, {"error": "ROAD_SHIELD_FLEET_KEY is not set on this server, so bus packets "
+                                               "cannot be opened"})
+                return
+            self._send_json(200, edge_ingest.ingest(packets))
             return
 
         # ----------------------------------------------------------------------
@@ -1639,8 +1773,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         # ----------------------------------------------------------------------
         if path == "/api/v1/privacy/redact":
             # Blur people (head region) and number plates before an image is
-            # shared. Returns the redacted JPEG and what was found; it does not
-            # claim a recall figure (there is no annotated set to measure one).
+            # shared. Returns the redacted JPEG and what was found, plus the measured recall when
+            # scripts/measure_redactor_recall.py has written one.
             b64 = body.get("image_base64")
             if not b64:
                 self._send_json(400, {"error": "image_base64 is required"})

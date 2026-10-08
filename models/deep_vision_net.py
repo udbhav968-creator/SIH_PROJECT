@@ -80,6 +80,7 @@ class DeepVisionNet(VisionDistressNet):
         onnx_path = self._served_onnx()
         self.tta_flip = False
         self.resize_ratio = 1.15
+        self.temperature = 1.0
         self.sidecar = None
         if onnx_path:
             # training/train_finetune_cnn.py writes a sidecar with the exact
@@ -91,6 +92,9 @@ class DeepVisionNet(VisionDistressNet):
                     self.sidecar = json.load(fh)
                 self.tta_flip = bool(self.sidecar.get("tta_flip"))
                 self.resize_ratio = float(self.sidecar.get("resize_ratio", 1.15))
+                # written by scripts/measure_calibration.py --apply, only when it improved held-out NLL;
+                # it rescales confidence and never changes which class wins
+                self.temperature = float(self.sidecar.get("temperature", 1.0)) or 1.0
                 if self.sidecar.get("class_names"):
                     self.class_names = list(self.sidecar["class_names"])
             try:
@@ -150,6 +154,10 @@ class DeepVisionNet(VisionDistressNet):
         return np.transpose(arr, (2, 0, 1))[None, ...].astype(np.float32)
 
     def predict_probabilities(self, image_rgb):
+        return _softmax(self.predict_logits(image_rgb) / self.temperature)[0]
+
+    def predict_logits(self, image_rgb):
+        """Raw (flip-averaged) logits, before any temperature: shape (1, classes)."""
         if not self.is_ready:
             raise RuntimeError("No fine-tuned CNN available. Train one with training/train_deep_vision.py")
         batch = self._preprocess(image_rgb)
@@ -162,8 +170,7 @@ class DeepVisionNet(VisionDistressNet):
             import torch
             with torch.no_grad():
                 logits = self._torch_model(torch.from_numpy(batch)).numpy()
-        logits = logits.mean(axis=0, keepdims=True)
-        return _softmax(logits)[0]
+        return logits.mean(axis=0, keepdims=True)
 
     def predict_image(self, image_rgb):
         probs = self.predict_probabilities(image_rgb)

@@ -8,7 +8,20 @@ proximity threshold (default 8m, roughly GPS accuracy under tree cover).
 Only reports of the same defect class are merged.
 """
 import math
+import threading
 import time
+
+
+def _finite(value, name, lo, hi):
+    """A float in [lo, hi] (hi None = no upper bound); ValueError for NaN, infinity or out of range, so one bad
+    report can never be stored and break every later read of the ledger."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number")
+    if not math.isfinite(v) or v < lo or (hi is not None and v > hi):
+        raise ValueError(f"{name} must be between {lo} and {hi if hi is not None else 'any positive value'}")
+    return v
 
 class FleetDeduplicationEngine:
     """
@@ -28,6 +41,8 @@ class FleetDeduplicationEngine:
     def __init__(self, proximity_threshold_meters=8.0, store=None):
         self.proximity_threshold_m = proximity_threshold_meters
         self.store = store
+        # Several request threads (fleet reports, sealed bus packets, video ingest) write here at once.
+        self._lock = threading.RLock()
         # Registry of persistent ground-truth defects: {defect_id: defect_record}
         self.defect_registry = {}
         self.next_defect_id = 1001
@@ -52,14 +67,28 @@ class FleetDeduplicationEngine:
         c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
         return R * c
 
-    def ingest_fleet_detection(self, bus_id, lat, lon, defect_class, severity_pci, area_m2, image_timestamp=None, enrich_location=True):
+    def ingest_fleet_detection(self, bus_id, lat, lon, defect_class, severity_pci, area_m2, image_timestamp=None,
+                               enrich_location=True, depth_cm=None, traffic_pcu_per_day=None):
         """
         Ingests a detection from any bus in the fleet.
         If near an existing defect (<= threshold), merges it, updates confirmation count and timestamp.
-        Otherwise, registers a new unique defect. enrich_location=False skips
+        Otherwise, registers a new unique defect. depth_cm and traffic_pcu_per_day
+        are optional measurements kept with the defect for the Priority Index
+        (models/priority_index.py); nothing is assumed when they are absent.
+        enrich_location=False skips
         the (network) address/elevation lookup - used for startup fixtures so
         a cold start never waits on external services.
         """
+        severity_pci, area_m2 = _finite(severity_pci, "severity_pci", 0, 100), _finite(area_m2, "area_m2", 0, None)
+        depth_cm = None if depth_cm is None else _finite(depth_cm, "depth_cm", 0, 200)
+        traffic_pcu_per_day = (None if traffic_pcu_per_day is None
+                               else _finite(traffic_pcu_per_day, "traffic_pcu_per_day", 0, None))
+        with self._lock:
+            return self._ingest(bus_id, lat, lon, defect_class, severity_pci, area_m2, image_timestamp,
+                                enrich_location, depth_cm, traffic_pcu_per_day)
+
+    def _ingest(self, bus_id, lat, lon, defect_class, severity_pci, area_m2, image_timestamp,
+                enrich_location, depth_cm, traffic_pcu_per_day):
         now = image_timestamp or time.time()
         self.total_reports_ingested += 1
         matched_id = None
@@ -89,6 +118,10 @@ class FleetDeduplicationEngine:
             # Weighted moving average of severity & area
             rec["severity_pci"] = round((rec["severity_pci"] * 0.7) + (severity_pci * 0.3), 2)
             rec["area_m2"] = round(max(rec["area_m2"], area_m2), 2)
+            if depth_cm is not None:
+                rec["depth_cm"] = round(max(float(rec.get("depth_cm") or 0.0), float(depth_cm)), 1)
+            if traffic_pcu_per_day is not None:
+                rec["traffic_pcu_per_day"] = float(traffic_pcu_per_day)
             rec["is_verified_hotspot"] = (rec["confirmation_count"] >= 2)
             if self.store is not None:
                 self.store.upsert_defect(rec)
@@ -151,6 +184,10 @@ class FleetDeduplicationEngine:
                 "elevation_m": elevation_m,
                 "drainage_risk": drainage_risk
             }
+            if depth_cm is not None:
+                self.defect_registry[new_id]["depth_cm"] = round(float(depth_cm), 1)
+            if traffic_pcu_per_day is not None:
+                self.defect_registry[new_id]["traffic_pcu_per_day"] = float(traffic_pcu_per_day)
             if self.store is not None:
                 self.store.upsert_defect(self.defect_registry[new_id])
                 self.store.record_report(bus_id, lat, lon, defect_class, area_m2, severity_pci,
@@ -167,8 +204,9 @@ class FleetDeduplicationEngine:
             }
 
     def get_all_deduplicated_defects(self):
-        """Returns the deduplicated list for GIS map visualization."""
-        return list(self.defect_registry.values())
+        """Returns the deduplicated list for GIS map visualization (copies, safe to read while buses report)."""
+        with self._lock:
+            return [dict(r, reporting_buses=list(r.get("reporting_buses", []))) for r in self.defect_registry.values()]
 
     def get_deduplication_stats(self):
         """Real dedup efficiency from actual ingested/registered counts - not a fixed placeholder."""

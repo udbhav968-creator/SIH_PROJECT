@@ -216,7 +216,7 @@ body.sheet-open { overflow: hidden; }
 .grid > .span2 { grid-column: span 2; }
 @media (max-width: 640px) { .grid > .span2 { grid-column: auto; } }
 .split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
-@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .split { grid-template-columns: minmax(0, 1fr); } }
 
 .card {
   background: linear-gradient(180deg, var(--ink-900), var(--ink-950));

@@ -20,7 +20,7 @@
 <div class="wrap wide">
   <div class="section-head" style="margin-top:6px">
     <h1 style="font-size:1.9rem">Corridor</h1>
-    <span class="muted small">fleet reports merged by GPS proximity — five sightings, one pothole, one bill</span>
+    <span class="muted small">fleet reports merged by GPS proximity, ranked by the repair Priority Index, live as buses report</span>
   </div>
 
   <div class="grid c4" id="stats"></div>
@@ -31,12 +31,23 @@
     </div>
     <div>
       <div class="card">
-        <div class="label">the ledger</div>
+        <div class="label" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <span>live feed</span><span id="live-state" class="badge neutral">connecting…</span>
+        </div>
+        <p class="small muted" style="margin:0 0 8px">
+          Bus positions, defects, IMU-only shocks and work orders as they arrive. Buses send sealed
+          (AES-256-GCM) packets; a bus that was out of coverage catches up when it reconnects.
+        </p>
+        <ul id="feed" class="small" style="list-style:none;margin:0;padding:0;max-height:180px;overflow:auto"></ul>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="label">repair order — Priority Index</div>
         <p class="small muted" style="margin:0 0 10px">
-          Each row is one physical defect after deduplication. The confirmation
-          count is how many separate buses reported it.
+          PI = w1·(100 − PCI) + w2·Vol + w3·Traffic, each term on 0–100. No ward, road name or "VIP" input:
+          the order follows measured damage and use. <span id="pi-weights"></span>
         </p>
         <div id="list"></div>
+        <p class="small muted" id="pi-stability" style="margin:8px 0 0"></p>
       </div>
       <div class="card" style="margin-top:14px">
         <div class="label">why the raw sightings are kept</div>
@@ -55,88 +66,195 @@
 <script src="/web/config.js"></script>
 <script src="/web/app.js"></script>
 <script>
-(async () => {
-  const [tel, gis] = await Promise.all([
-    API.get("/api/v1/fleet/telemetry"),
-    API.get("/api/v1/gis/map-data"),
-  ]);
+const colours = { "Pothole Cavity": "#fb7185", "Crack": "#f0a92b", "Waterlogging / Flooding Hazard": "#56a8f5" };
+const colourFor = cls => Object.entries(colours).find(([k]) => (cls || "").startsWith(k.split(" ")[0]))?.[1] || "#a3e635";
+const bandBadge = { P1: "bad", P2: "warn", P3: "estimate", P4: "neutral" };
+const hasMap = typeof L !== "undefined";
+const map = hasMap ? L.map("map").setView([12.9716, 77.5946], 14) : null;
+if (hasMap) L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+const defectMarkers = new Map(), busMarkers = new Map();
+let rows = [], fitted = false, lastDefects = [];
+const fallbackBuses = new Map(), fallbackShocks = [];
 
-  if (tel.ok) {
-    const t = tel.data, p = t.persisted || {};
-    el("stats").innerHTML = `
-      <div class="card accent"><div class="label">unique defects</div>
-        <div class="stat">${t.unique_defects_registered ?? "—"}</div>
-        <div class="stat-sub">after GPS deduplication</div></div>
-      <div class="card"><div class="label">raw sightings</div>
-        <div class="stat" style="color:var(--sky)">${p.total_reports ?? t.total_reports_ingested ?? "—"}</div>
-        <div class="stat-sub">${p.merged_reports != null ? p.merged_reports + " merged into an existing defect" : ""}</div></div>
-      <div class="card"><div class="label">deduplication rate</div>
-        <div class="stat" style="color:var(--violet)">${p.deduplication_rate_pct ?? t.deduplication_efficiency_pct ?? "—"}%</div>
-        <div class="stat-sub">reports that were a repeat sighting</div></div>
-      <div class="card"><div class="label">storage</div>
-        <div class="stat sm" style="color:${t.storage === "sqlite" ? "var(--ok)" : "var(--warn)"}">
-          ${t.storage === "sqlite" ? "durable" : "in-memory"}</div>
-        <div class="stat-sub">${p.database ? p.database.split(/[\\/]/).pop() : t.storage || ""}
-          ${p.durable === false ? " · per-instance on serverless" : ""}</div></div>`;
+function esc(t) { return String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+
+function feed(text, kind) {
+  const li = document.createElement("li");
+  li.style.cssText = "padding:4px 0;border-bottom:1px solid var(--ink-800)";
+  li.innerHTML = `<span class="mono muted">${new Date().toLocaleTimeString()}</span> ` +
+                 `<span class="badge ${kind}">${esc(text.split(":")[0])}</span> ${esc(text.split(":").slice(1).join(":"))}`;
+  el("feed").prepend(li);
+  while (el("feed").children.length > 60) el("feed").lastChild.remove();
+}
+
+function drawDefect(d) {
+  const lat = d.lat ?? d.latitude, lon = d.lon ?? d.lng ?? d.longitude;
+  if (lat == null || lon == null || !hasMap) return;
+  const cls = String(d.defect_class ?? d.class_name ?? "defect"), conf = Number(d.confirmation_count) || 1, colour = colourFor(cls);
+  const popup = `<strong>${esc(cls)}</strong><br>${conf} bus report${conf > 1 ? "s" : ""}<br>` +
+    `${d.area_m2 != null ? fmt.num(d.area_m2, 2) + " m²<br>" : ""}` +
+    `<span style="font-family:monospace;font-size:11px">${Number(lat).toFixed(5)}, ${Number(lon).toFixed(5)}</span>`;
+  const m = defectMarkers.get(d.defect_id);
+  if (m) { m.setLatLng([lat, lon]).setRadius(7 + Math.min(conf, 5) * 2).setPopupContent(popup); return; }
+  defectMarkers.set(d.defect_id, L.circleMarker([lat, lon], {
+    radius: 7 + Math.min(conf, 5) * 2, color: colour, weight: 2, fillColor: colour, fillOpacity: .35,
+  }).addTo(map).bindPopup(popup));
+}
+
+function drawBus(p) {
+  if (p.lat == null) return;
+  if (!hasMap) { fallbackBuses.set(p.bus_id, p); drawFallback(lastDefects); return; }
+  const label = `<strong>${esc(p.bus_id)}</strong><br>${p.speed_kmh != null ? esc(fmt.num(p.speed_kmh, 0)) + " km/h<br>" : ""}` +
+                `${p.queued_on_bus ? esc(p.queued_on_bus) + " packets waiting on the bus" : "queue empty"}`;
+  const m = busMarkers.get(p.bus_id);
+  if (m) { m.setLatLng([p.lat, p.lon]).setPopupContent(label); return; }
+  busMarkers.set(p.bus_id, L.circleMarker([p.lat, p.lon], { radius: 6, color: "#e5e7eb", weight: 3,
+    fillColor: "#56a8f5", fillOpacity: 1 }).addTo(map).bindPopup(label).bindTooltip(esc(p.bus_id)));
+}
+
+function drawShock(s) {
+  if (s.lat == null) return;
+  if (!hasMap) { fallbackShocks.push(s); drawFallback(lastDefects); return; }
+  L.circleMarker([s.lat, s.lon], { radius: 4, color: "#9b7cf0", weight: 2, fillOpacity: .1, dashArray: "2 3" })
+    .addTo(map).bindPopup(`<strong>IMU-only shock</strong><br>${esc(s.class || "")}<br>` +
+      `Δz ${esc(s.dz ?? "—")} m/s² · p ${esc(s.p ?? "—")}<br>camera unusable: ${esc(s.camera_unusable_because || "—")}`);
+}
+
+async function loadStats() {
+  const tel = await API.get("/api/v1/fleet/telemetry");
+  if (!tel.ok) return;
+  const t = tel.data, p = t.persisted || {};
+  el("stats").innerHTML = `
+    <div class="card accent"><div class="label">unique defects</div>
+      <div class="stat">${t.unique_defects_registered ?? "—"}</div>
+      <div class="stat-sub">after GPS deduplication</div></div>
+    <div class="card"><div class="label">raw sightings</div>
+      <div class="stat" style="color:var(--sky)">${p.total_reports ?? t.total_reports_ingested ?? "—"}</div>
+      <div class="stat-sub">${p.merged_reports != null ? p.merged_reports + " merged into an existing defect" : ""}</div></div>
+    <div class="card"><div class="label">deduplication rate</div>
+      <div class="stat" style="color:var(--violet)">${p.deduplication_rate_pct ?? t.deduplication_efficiency_pct ?? "—"}%</div>
+      <div class="stat-sub">reports that were a repeat sighting</div></div>
+    <div class="card"><div class="label">storage</div>
+      <div class="stat sm" style="color:${t.storage === "sqlite" ? "var(--ok)" : "var(--warn)"}">
+        ${t.storage === "sqlite" ? "durable" : esc(t.storage === "not deployed" ? "engine off" : "in-memory")}</div>
+      <div class="stat-sub">${p.database ? esc(p.database.split(/[\\/]/).pop()) : esc(t.note ? "connect the live engine to see the ledger" : t.storage || "")}
+        ${p.durable === false ? " · per-instance on serverless" : ""}</div></div>`;
+}
+
+async function loadLedger() {
+  const [gis, pr] = await Promise.all([API.get("/api/v1/gis/map-data"), API.get("/api/v1/priority/ranking?stability=1")]);
+  const defects = (gis.ok && (gis.data.deduplicated_defects || gis.data.defects)) || [];
+  lastDefects = defects;
+  defects.forEach(drawDefect);
+  rows = (pr.ok && pr.data.defects) || [];
+  if (pr.ok && pr.data.weights) {
+    const w = pr.data.weights;
+    el("pi-weights").textContent = `Weights in use: ${w.severity} / ${w.volume} / ${w.traffic}.`;   // textContent: no markup
   }
-
-  // Leaflet comes from a CDN. If it is blocked (offline demo, venue Wi-Fi), the
-  // ledger still renders and the map falls back to a plain plot of the same points.
-  const hasMap = typeof L !== "undefined";
-  const map = hasMap ? L.map("map").setView([12.9716, 77.5946], 14) : null;
-  if (hasMap) L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
-
-  const defects = (gis.ok && (gis.data.deduplicated_defects || gis.data.defects || gis.data.markers)) || [];
-  const rows = [];
-  const colours = { "Pothole Cavity": "#fb7185", "Crack": "#f0a92b",
-                    "Waterlogging / Flooding Hazard": "#56a8f5" };
-
-  defects.forEach(d => {
-    const lat = d.lat ?? d.latitude, lon = d.lon ?? d.lng ?? d.longitude;
-    if (lat == null || lon == null) return;
-    const cls = d.defect_class || d.class_name || "defect";
-    const conf = d.confirmation_count ?? 1;
-    const colour = Object.entries(colours).find(([k]) => cls.startsWith(k.split(" ")[0]))?.[1] || "#a3e635";
-    if (hasMap) L.circleMarker([lat, lon], {
-      radius: 7 + Math.min(conf, 5) * 2, color: colour, weight: 2,
-      fillColor: colour, fillOpacity: .35,
-    }).addTo(map).bindPopup(
-      `<strong>${cls}</strong><br>${conf} bus report${conf > 1 ? "s" : ""}<br>` +
-      `${d.area_m2 != null ? fmt.num(d.area_m2, 2) + " m²<br>" : ""}` +
-      `<span style="font-family:monospace;font-size:11px">${lat.toFixed(5)}, ${lon.toFixed(5)}</span>`);
-    rows.push({ cls, conf, lat, lon, area: d.area_m2, pci: d.severity_pci,
-                buses: d.reporting_buses || [], colour });
-  });
-
+  const st = pr.ok && pr.data.rank_stability;
+  el("pi-stability").textContent = !(st && st.defects > 1) ? ""
+    : st.min_kendall_tau >= 1
+      ? `Weight check: moving 0.1 of weight between any two terms leaves this order unchanged (${st.trials.length} variations).`
+      : `Weight check: moving 0.1 of weight between any two terms keeps the order with Kendall τ ≥ ${st.min_kendall_tau}` +
+        ` (mean ${st.mean_kendall_tau}); the top defect changes in ${st.top_priority_changes_in} of ${st.trials.length} variations.`;
   if (rows.length) {
-    if (hasMap) map.fitBounds(rows.map(r => [r.lat, r.lon]), { padding: [45, 45] });
-    else drawFallback(rows);
     el("list").innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>class</th><th class="num">buses</th><th class="num">area m²</th><th class="num">PCI</th></tr></thead>
-      <tbody>${rows.map(r => `<tr>
-        <td>${r.cls.slice(0, 26)}${r.conf > 1 ? ' <span class="badge measured">confirmed</span>' : ""}</td>
-        <td class="num">${r.conf}</td>
-        <td class="num">${fmt.num(r.area, 2)}</td>
-        <td class="num">${r.pci ?? "—"}</td></tr>`).join("")}</tbody></table></div>`;
+      <thead><tr><th class="num">#</th><th>class</th><th class="num">PI</th><th class="num">PCI</th><th class="num">buses</th></tr></thead>
+      <tbody>${rows.map(r => `<tr title="${esc((r.priority.missing || []).length ? "missing: " + r.priority.missing.join(", ") : "all three terms measured")} · traffic: ${esc(r.priority.traffic_basis || "—")}">
+        <td class="num">${esc(r.rank)}</td>
+        <td>${esc(String(r.defect_class ?? "").slice(0, 24))}</td>
+        <td class="num"><span class="badge ${bandBadge[r.priority.band] || "neutral"}">${esc(r.priority.band)}</span> ${esc(fmt.num(r.priority.priority_index, 1))}</td>
+        <td class="num">${esc(r.severity_pci ?? "—")}</td>
+        <td class="num">${esc(r.confirmations ?? 1)}</td></tr>`).join("")}</tbody></table></div>`;
   } else {
-    el("list").innerHTML = `<p class="small muted">No defects in the ledger yet.</p>`;
-    if (!hasMap) el("map").innerHTML = `<p class="small muted" style="padding:18px">Map tiles unavailable offline.</p>`;
+    el("list").innerHTML = `<p class="small muted">No defects in the ledger yet${pr.ok ? "" : " (the live engine is not connected)"}.</p>`;
   }
-})();
+  if (hasMap && !fitted && defectMarkers.size) {
+    map.fitBounds([...defectMarkers.values()].map(m => m.getLatLng()), { padding: [45, 45] });
+    fitted = true;
+  }
+  if (!hasMap) drawFallback(defects);
+}
 
-function drawFallback(rows) {
+let reloadTimer = null;
+function scheduleReload() { clearTimeout(reloadTimer); reloadTimer = setTimeout(() => { loadLedger(); loadStats(); }, 1500); }
+
+function handle(type, ev, replay = false) {
+  const d = ev.data || {};
+  if (replay && type === "shock") { feed(`shock:IMU-only from ${d.bus_id} (camera ${d.camera_unusable_because || "unusable"})`, "estimate"); return; }
+  if (type === "bus_position") drawBus(d);
+  else if (type === "defect") {
+    if (d.defect) drawDefect(d.defect);
+    feed(`defect:${d.result?.action === "DEDUPLICATED_AND_UPDATED" ? "confirmed again" : "new"} ` +
+         `${d.defect?.defect_class || ""} by ${d.bus_id}`, "bad");
+    if (!replay) scheduleReload();
+  } else if (type === "shock") { drawShock(d); feed(`shock:IMU-only from ${d.bus_id} (camera ${d.camera_unusable_because || "unusable"})`, "estimate"); }
+  else if (type === "work_order") feed(`order:${d.work_order_id} · ${d.priority || ""} · ${d.seal_algorithm || ""}`, "measured");
+}
+
+async function startLive() {
+  const setState = (t, cls) => { el("live-state").textContent = t; el("live-state").className = "badge " + cls; };
+  let failures = 0, polling = null, lastId = 0;
+  const poll = async () => {
+    const r = await API.get("/api/v1/fleet/live");
+    if (!r.ok || !r.data.buses) { setState("engine off", "neutral"); return; }
+    setState("polling", "warn");
+    r.data.buses.forEach(drawBus);
+    const evs = r.data.recent_events || [];
+    if (evs.length && Math.max(...evs.map(e => e.id)) < lastId) lastId = 0;     // the engine restarted
+    evs.filter(e => e.id > lastId).forEach(e => { lastId = e.id; handle(e.type, e); });
+  };
+  const snap = await API.get("/api/v1/fleet/live");
+  if (snap.ok && snap.data.buses) {
+    snap.data.buses.forEach(drawBus);
+    (snap.data.imu_only_shocks || []).forEach(drawShock);
+    (snap.data.recent_events || []).filter(e => e.type !== "bus_position").slice(-15)
+      .forEach(e => { lastId = Math.max(lastId, e.id); handle(e.type, e, true); });
+  }
+  if (typeof EventSource === "undefined") { polling = setInterval(poll, 10000); return poll(); }
+  const base = await API.urlFor("/api/v1/live/stream");
+  const open = () => {
+    const es = new EventSource(base + (lastId ? `?since=${lastId}` : ""));
+    es.onopen = () => { failures = 0; setState("live", "measured"); if (polling) { clearInterval(polling); polling = null; } };
+    ["bus_position", "defect", "shock", "work_order"].forEach(t =>
+      es.addEventListener(t, m => { try { const ev = JSON.parse(m.data); lastId = Math.max(lastId, ev.id); handle(t, ev); } catch {} }));
+    es.onerror = () => {
+      failures += 1;
+      if (failures >= 3) { es.close(); if (!polling) { poll(); polling = setInterval(poll, 10000); } setTimeout(open, 60000); }
+    };
+  };
+  open();
+}
+
+loadStats();
+loadLedger();
+startLive();
+
+function drawFallback(defects) {
+  const pts = defects.map(d => ({ lat: Number(d.lat ?? d.latitude), lon: Number(d.lon ?? d.lng ?? d.longitude),
+                                  cls: String(d.defect_class ?? "defect"), conf: Number(d.confirmation_count) || 1 }))
+                     .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+  const finite = p => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lon));
+  const buses = [...fallbackBuses.values()].filter(finite), shocks = fallbackShocks.slice(-50).filter(finite);
+  const all = pts.concat(buses, shocks);
+  if (!all.length) { el("map").innerHTML = `<p class="small muted" style="padding:18px">Map tiles unavailable offline.</p>`; return; }
   const W = 600, H = 420, pad = 40;
-  const lats = rows.map(r => r.lat), lons = rows.map(r => r.lon);
+  const lats = all.map(r => r.lat), lons = all.map(r => r.lon);
   const [la0, la1] = [Math.min(...lats), Math.max(...lats)];
   const [lo0, lo1] = [Math.min(...lons), Math.max(...lons)];
   const sx = v => pad + (lo1 > lo0 ? (v - lo0) / (lo1 - lo0) : .5) * (W - 2 * pad);
   const sy = v => H - pad - (la1 > la0 ? (v - la0) / (la1 - la0) : .5) * (H - 2 * pad);
   el("map").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" role="img"
-      aria-label="defect positions (map tiles unavailable)" style="background:var(--panel-2,#0f1620)">
-    ${rows.map(r => `<circle cx="${sx(r.lon).toFixed(1)}" cy="${sy(r.lat).toFixed(1)}"
-        r="${7 + Math.min(r.conf, 5) * 2}" fill="${r.colour}" fill-opacity=".35" stroke="${r.colour}" stroke-width="2">
-        <title>${r.cls} · ${r.conf} report(s) · ${r.lat.toFixed(5)}, ${r.lon.toFixed(5)}</title></circle>`).join("")}
+      aria-label="defect positions (map tiles unavailable)" style="display:block;background:var(--panel-2,#0f1620)">
+    ${pts.map(r => `<circle cx="${sx(r.lon).toFixed(1)}" cy="${sy(r.lat).toFixed(1)}"
+        r="${7 + Math.min(r.conf, 5) * 2}" fill="${colourFor(r.cls)}" fill-opacity=".35" stroke="${colourFor(r.cls)}" stroke-width="2">
+        <title>${esc(r.cls)} · ${esc(r.conf)} report(s) · ${Number(r.lat).toFixed(5)}, ${Number(r.lon).toFixed(5)}</title></circle>`).join("")}
+    ${shocks.map(s => `<circle cx="${sx(s.lon).toFixed(1)}" cy="${sy(s.lat).toFixed(1)}" r="5" fill="none"
+        stroke="#9b7cf0" stroke-width="2" stroke-dasharray="2 3"><title>IMU-only shock · ${esc(s.bus_id)}</title></circle>`).join("")}
+    ${buses.map(b => `<g><circle cx="${sx(b.lon).toFixed(1)}" cy="${sy(b.lat).toFixed(1)}" r="6" fill="#56a8f5" stroke="#e5e7eb" stroke-width="3">
+        <title>${esc(b.bus_id)}</title></circle><text x="${(sx(b.lon) + 10).toFixed(1)}" y="${(sy(b.lat) + 4).toFixed(1)}"
+        fill="currentColor" font-size="12">${esc(b.bus_id)}</text></g>`).join("")}
     <text x="12" y="${H - 12}" fill="currentColor" opacity=".6" font-size="12">
       map tiles unavailable — positions plotted by latitude/longitude</text></svg>`;
 }
