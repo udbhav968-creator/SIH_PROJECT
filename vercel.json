@@ -65,6 +65,20 @@
       }
     },
     {
+      "src": "/report",
+      "dest": "/web/report.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
+      "src": "/order",
+      "dest": "/web/order.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
       "src": "/models",
       "dest": "/web/models.html",
       "headers": {

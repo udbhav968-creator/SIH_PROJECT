@@ -637,6 +637,103 @@ class APIServerTest(unittest.TestCase):
         code, v = self.post_json("/api/v1/dispatch/verify-seal", {"work_order": wo})
         self.assertEqual(v["status"], "CORRUPTED_OR_TAMPERED")
 
+    def test_works_full_loop_detect_order_repair_fleet_verifies(self):
+        """A defect is reported, ordered, repaired, and closed by buses driving past it."""
+        from edge import crypto
+        code, r = self._report("LOOP-BUS-1", 13.40001, 77.40001, pci=25, area=1.4, depth=7)
+        self.assertEqual(code, 200, r)
+        did = r["defect_id"]
+        code, o = self.post_json("/api/v1/works/orders", {"defect_id": did, "note": "from the test"})
+        self.assertEqual(code, 200, o)
+        oid = o["work_order_id"]
+        self.assertEqual(o["seal_status"], "SEAL_VERIFIED_AUTHENTIC")
+        code, dup = self.post_json("/api/v1/works/orders", {"defect_id": did})
+        self.assertEqual(code, 409)
+        code, bad = self.post_json("/api/v1/works/status", {"work_order_id": oid, "status": "REPAIRED"})
+        self.assertEqual(code, 409, "cannot skip straight to repaired")
+        for st, extra in (("ASSIGNED", {"contractor": "Test Infra Pvt Ltd"}), ("IN_PROGRESS", {}), ("REPAIRED", {})):
+            code, o = self.post_json("/api/v1/works/status", {"work_order_id": oid, "status": st, **extra})
+            self.assertEqual(code, 200, o)
+        key = crypto.load_key("loop-key")
+        saved = (srv.edge_ingest.key, srv.works.verify_passes, srv.works.verify_min_hours)
+        srv.edge_ingest.key, srv.works.verify_passes, srv.works.verify_min_hours = key, 2, 0
+        try:
+            pkts = [crypto.pack({"t": "pos", "lat": 13.40002, "lon": 77.40001}, bus, 1, key, epoch="ab")
+                    for bus in ("LOOP-BUS-2", "LOOP-BUS-3")]
+            code, res = self.post_json("/api/v1/fleet/ingest-sealed", {"packets": pkts})
+            self.assertEqual(res["accepted_in_order"], 2, res)
+            code, o = self.get_json(f"/api/v1/works/order?id={oid}")
+            self.assertEqual(o["status"], "REPAIRED", "not verified until the settle window has passed")
+            import time as _time
+            srv.works.clock = lambda: _time.time() + 120
+            code, o = self.get_json(f"/api/v1/works/order?id={oid}")
+        finally:
+            srv.edge_ingest.key, srv.works.verify_passes, srv.works.verify_min_hours = saved
+            srv.works.clock = __import__("time").time
+        self.assertEqual(o["status"], "VERIFIED")
+        self.assertTrue(o["history_chain_intact"])
+        self.assertEqual([h["status"] for h in o["history"]],
+                         ["ISSUED", "ASSIGNED", "IN_PROGRESS", "REPAIRED", "VERIFIED"])
+        code, again = self._report("LOOP-BUS-4", 13.40001, 77.40001, pci=25, area=1.4)
+        code, o = self.get_json(f"/api/v1/works/order?id={oid}")
+        self.assertEqual(o["status"], "REOPENED", "the pothole came back")
+        code, lst = self.get_json("/api/v1/works/orders")
+        self.assertIn(oid, [x["work_order_id"] for x in lst["orders"]])
+        code, gis = self.get_json("/api/v1/gis/map-data")
+        rec = next(d for d in gis["deduplicated_defects"] if d["defect_id"] == did)
+        self.assertEqual(rec["repair"]["status"], "REOPENED")
+
+    def test_works_ledger_exports(self):
+        self._report("EXP-BUS", 13.5, 77.5, pci=30, area=1.0, depth=4)
+        code, headers, body = self._req("GET", "/api/v1/ledger/export?format=geojson")
+        self.assertEqual(code, 200)
+        g = json.loads(body)
+        self.assertEqual(g["type"], "FeatureCollection")
+        self.assertIn("attachment", headers.get("Content-Disposition", ""))
+        code, headers, body = self._req("GET", "/api/v1/ledger/export?format=csv")
+        self.assertTrue(body.decode("utf-8-sig").startswith("defect_id,defect_class,lat,lon"))
+        code, _h, _b = self._req("GET", "/api/v1/ledger/export?format=kml")
+        self.assertEqual(code, 400)
+
+    def test_works_citizen_report_endpoints(self):
+        code, r = self.post_json("/api/v1/citizen/report", {"lat": 13.0, "lon": 77.0})
+        self.assertEqual(code, 400, "a photograph is required")
+        code, r = self.post_json("/api/v1/citizen/report", {"image_base64": "aGVsbG8="})
+        self.assertEqual(code, 400, "a location is required")
+        self.assertIn("location", r["error"])
+        code, r = self.post_json("/api/v1/citizen/review", {"report_id": "CR-NOPE", "action": "promote"})
+        self.assertEqual(code, 404)
+        code, r = self.post_json("/api/v1/citizen/review", {"report_id": "CR-NOPE"})
+        self.assertEqual(code, 400)
+        img = _first_image("02_kaggle_pothole_600")
+        if img:
+            code, r = self.post_json("/api/v1/citizen/report", {"image_base64": _b64(img), "lat": 13.61, "lon": 77.61,
+                                                                "location_source": "test"}, timeout=300)
+            self.assertEqual(code, 200, str(r)[:400])
+            self.assertFalse(r["photo_stored"])
+            if r["report"]:
+                self.assertEqual(r["report"]["status"], "PENDING")
+                self.assertNotIn("sender", r["report"])
+                code, lst = self.get_json("/api/v1/citizen/reports?status=pending")
+                self.assertIn(r["report"]["report_id"], [x["report_id"] for x in lst["reports"]])
+                code, done = self.post_json("/api/v1/citizen/review",
+                                            {"report_id": r["report"]["report_id"], "action": "dismiss"})
+                self.assertEqual((code, done["status"]), (200, "DISMISSED"))
+        code, lst = self.get_json("/api/v1/citizen/reports")
+        self.assertEqual(code, 200)
+        self.assertEqual(set(lst["counts"]), {"PENDING", "CONFIRMED", "DISMISSED"})
+
+    def test_works_new_pages_are_served(self):
+        for page, marker in (("/report", b"Report a pothole"), ("/order", b"WORK ORDER")):
+            code, _h, body = self._req("GET", page)
+            self.assertEqual(code, 200, page)
+            self.assertIn(marker, body)
+
+    def test_alerts_endpoint(self):
+        code, r = self.get_json("/api/v1/alerts")
+        self.assertEqual(code, 200)
+        self.assertIn("webhook", r)
+
 
 class HuggingFaceSpaceTest(unittest.TestCase):
     """deploy/huggingface: the Space builds the engine from GitHub in public-demo mode on port 7860."""

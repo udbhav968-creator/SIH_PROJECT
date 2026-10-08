@@ -43,6 +43,10 @@ class FleetDeduplicationEngine:
         self.store = store
         # Several request threads (fleet reports, sealed bus packets, video ingest) write here at once.
         self._lock = threading.RLock()
+        # Called as fn(bus_id, result, at) after every ingested sighting, outside the lock (at = when the
+        # sighting was recorded, which for a bus uploading a backlog is earlier than now): the repair workflow
+        # reopens an order when a repaired defect is seen again, alerts check for new P1 defects.
+        self.listeners = []
         # Registry of persistent ground-truth defects: {defect_id: defect_record}
         self.defect_registry = {}
         self.next_defect_id = 1001
@@ -84,8 +88,15 @@ class FleetDeduplicationEngine:
         traffic_pcu_per_day = (None if traffic_pcu_per_day is None
                                else _finite(traffic_pcu_per_day, "traffic_pcu_per_day", 0, None))
         with self._lock:
-            return self._ingest(bus_id, lat, lon, defect_class, severity_pci, area_m2, image_timestamp,
-                                enrich_location, depth_cm, traffic_pcu_per_day)
+            result = self._ingest(bus_id, lat, lon, defect_class, severity_pci, area_m2, image_timestamp,
+                                  enrich_location, depth_cm, traffic_pcu_per_day)
+        at = float(image_timestamp) if image_timestamp else time.time()
+        for fn in list(self.listeners):
+            try:
+                fn(bus_id, result, at)
+            except Exception as e:
+                print(f"[dedup] listener failed: {e}")
+        return result
 
     def _ingest(self, bus_id, lat, lon, defect_class, severity_pci, area_m2, image_timestamp,
                 enrich_location, depth_cm, traffic_pcu_per_day):

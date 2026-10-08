@@ -23,6 +23,7 @@ one and re-seal it.
 import hashlib
 import hmac
 import json
+import math
 import os
 import time
 import uuid
@@ -97,12 +98,16 @@ class MoRTHDispatchAgent:
         # Cast inputs to native Python types
         area_sqm = float(area_sqm)
         depth_cm = float(depth_cm)
+        if not math.isfinite(float(pci_score)):
+            raise ValueError("PCI must be a finite number")
         pci_score = int(round(float(pci_score)))
         has_gps = latitude is not None and longitude is not None
         if has_gps:
             latitude, longitude = float(latitude), float(longitude)
             if not (-90.0 <= latitude <= 90.0 and -180.0 <= longitude <= 180.0):
                 raise ValueError("latitude/longitude out of range")
+        if not (math.isfinite(area_sqm) and math.isfinite(depth_cm)):
+            raise ValueError("area and depth must be finite numbers")
         if area_sqm < 0 or depth_cm < 0 or not (0 <= pci_score <= 100):
             raise ValueError("area and depth must be >= 0 and PCI must be 0-100")
 

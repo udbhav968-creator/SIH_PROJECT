@@ -182,7 +182,8 @@ class ReplayImu:
 class ReplayGps:
     """Positions from a CSV route (t, lat, lon[, speed_kmh]), interpolated against the agent's clock."""
 
-    def __init__(self, path, loop=True):
+    def __init__(self, path, loop=True, offset_s=0.0, reverse=False):
+        """offset_s starts part-way along the route; reverse drives it the other way (two buses on one road)."""
         self.rows = []
         with open(path, newline="") as fh:
             for r in csv.DictReader(fh):
@@ -191,7 +192,11 @@ class ReplayGps:
         if len(self.rows) < 2:
             raise ValueError(f"{path}: need at least two positions")
         self.rows.sort()
+        if reverse:
+            end = self.rows[-1][0]
+            self.rows = sorted((end - t, la, lo, sp) for t, la, lo, sp in self.rows)
         self.loop = loop
+        self.offset_s = float(offset_s)
         self.t0 = None
 
     def fix(self, now=None):
@@ -199,7 +204,7 @@ class ReplayGps:
         if self.t0 is None:
             self.t0 = now
         span = self.rows[-1][0] - self.rows[0][0]
-        t = self.rows[0][0] + (now - self.t0)
+        t = self.rows[0][0] + (now - self.t0) + self.offset_s
         if t > self.rows[-1][0]:
             if not self.loop or span <= 0:
                 return None
@@ -234,13 +239,18 @@ class Camera:
 
 
 class ReplayFrames:
-    def __init__(self, folder, loop=True):
-        self.files = sorted(f for ext in ("*.jpg", "*.jpeg", "*.png")
-                            for f in glob.glob(os.path.join(folder, "**", ext), recursive=True))
+    def __init__(self, folder, loop=True, start=0, seed=None):
+        """folder: one folder, or a list of folders whose photographs are mixed (shuffled with `seed`)."""
+        folders = [folder] if isinstance(folder, str) else list(folder)
+        self.files = sorted(f for d in folders for ext in ("*.jpg", "*.jpeg", "*.png")
+                            for f in glob.glob(os.path.join(d, "**", ext), recursive=True))
         if not self.files:
-            raise ValueError(f"no images under {folder}")
+            raise ValueError(f"no images under {folders}")
+        if seed is not None or len(folders) > 1:
+            import random
+            random.Random(0 if seed is None else seed).shuffle(self.files)
         self.loop = loop
-        self.i = 0
+        self.i = int(start) % len(self.files)
 
     def frame(self):
         from PIL import Image

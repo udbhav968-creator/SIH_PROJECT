@@ -133,6 +133,37 @@ from pipeline.edge_ingest import EdgeIngest
 edge_ingest = EdgeIngest(os.path.join(WRITABLE_DIR, "road_shield.db"), fleet_dedup_engine, live_events)
 SSE_MAX_SECONDS = 1800
 
+# Repair lifecycle (issue -> repair -> verified by the fleet) and alerts.
+from pipeline.works import WorkOrders, WorkflowError, STATES as ORDER_STATES
+from pipeline.alerts import Alerts
+works = WorkOrders(os.path.join(WRITABLE_DIR, "road_shield.db"), fleet_dedup_engine, dispatch_agent, live_events)
+alerts = Alerts(live_events)
+
+
+def _safe_priority(defect):
+    # defined here, not with the other helpers: the demo seed below fires _on_sighting at import time
+    from models import priority_index
+    try:
+        return priority_index.score_defect(defect) if defect.get("severity_pci") is not None else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _on_sighting(bus_id, result, at=None):
+    works.on_sighting(result["defect_id"], bus_id, at=at)
+    rec = next((d for d in fleet_dedup_engine.get_all_deduplicated_defects() if d["defect_id"] == result["defect_id"]), None)
+    if rec is not None:
+        alerts.check_defect(rec, _safe_priority(rec))
+
+
+fleet_dedup_engine.listeners.append(_on_sighting)
+
+# Citizen reports from the public Report page: pinned, and confirmed by a bus or an operator before the ledger.
+from pipeline.citizen import CitizenReports, CitizenError
+citizen = CitizenReports(os.path.join(WRITABLE_DIR, "road_shield.db"), fleet_dedup_engine, live_events)
+fleet_dedup_engine.listeners.append(citizen.on_sighting)
+edge_ingest.position_listeners.append(lambda bus, lat, lon, at=None: works.on_bus_position(bus, lat, lon, at=at))
+
 # Operational guard rails: body limit, rate limit, Prometheus metrics, readiness (api/ops.py).
 from api import ops
 try:
@@ -195,6 +226,8 @@ PAGE_ROUTES = {
     "/": "index.html",
     "/inspect": "inspect.html",
     "/corridor": "corridor.html",
+    "/report": "report.html",
+    "/order": "order.html",
     "/works": "works.html",
     "/models": "models.html",
     "/data": "data.html",
@@ -217,6 +250,10 @@ PROTECTED_POST = {
     "/api/v1/training/active-feedback",
     "/api/v1/incidents/alpr",
     "/api/v1/maps/config",
+    "/api/v1/works/orders",
+    "/api/v1/works/status",
+    "/api/v1/video/ingest",            # writes sightings to the ledger, which can reopen repaired orders
+    "/api/v1/citizen/review",
 }
 
 
@@ -309,12 +346,13 @@ def _first(src, *keys):
     return None
 
 
-def _safe_priority(defect):
-    from models import priority_index
-    try:
-        return priority_index.score_defect(defect) if defect.get("severity_pci") is not None else None
-    except (ValueError, TypeError):
-        return None
+def _text_or_none(v, n):
+    return None if v is None or v == "" else str(v)[:n]
+
+
+def _actor(body):
+    a = _text_or_none(body.get("actor"), 40) if isinstance(body, dict) else None
+    return a if a and all(c.isalnum() or c in " ._-@" for c in a) else "operator"
 
 
 def _float_or_none(src, *keys):
@@ -634,6 +672,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 civil_depots = google_maps_service.find_nearby_civil_facilities(c_lat, c_lon)["facilities"]
             else:
                 civil_depots = []
+            repair = works.status_by_defect()
+            for d in defects:
+                d["repair"] = repair.get(d["defect_id"])
             self._send_json(200, {
                 "system": "ROAD-SHIELD Fleet & Defect GIS Dashboard",
                 "note": "deduplicated_defects is real, computed state from fleet_dedup_engine (demo reports only if the server was started with ROAD_SHIELD_SEED_DEMO=1). There is no live bus GPS/traffic feed in this project, so fleet_units/congestion figures below are not shown here - see /api/v1/fleet/telemetry for the real dedup registry stats instead.",
@@ -843,6 +884,60 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 live_events.unsubscribe(sub)
             return
 
+        if path == "/api/v1/works/orders":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
+            status = (q.get("status") or [None])[0]
+            if status and status.upper() not in ORDER_STATES:
+                self._send_json(400, {"error": f"status must be one of {', '.join(ORDER_STATES)}"})
+                return
+            orders = works.list(status)
+            alerts.check_overdue(orders)
+            self._send_json(200, {"orders": orders, "summary": works.summary()})
+            return
+
+        if path == "/api/v1/works/order":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
+            order = works.get((q.get("id") or [""])[0])
+            if order is None:
+                self._send_json(404, {"error": "no such work order"})
+                return
+            self._send_json(200, order)
+            return
+
+        if path == "/api/v1/citizen/reports":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
+            status = (q.get("status") or [None])[0]
+            if status and status.upper() not in ("PENDING", "CONFIRMED", "DISMISSED"):
+                self._send_json(400, {"error": "status must be pending, confirmed or dismissed"})
+                return
+            self._send_json(200, {"reports": citizen.list(status), "counts": citizen.counts()})
+            return
+
+        if path == "/api/v1/alerts":
+            self._send_json(200, {"alerts": alerts.recent(), **alerts.status()})
+            return
+
+        if path == "/api/v1/ledger/export":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
+            fmt_ = (q.get("format") or ["geojson"])[0].lower()
+            if fmt_ not in ("geojson", "csv"):
+                self._send_json(400, {"error": "format must be geojson or csv"})
+                return
+            from pipeline.export import ledger_csv, ledger_geojson
+            defects = fleet_dedup_engine.get_all_deduplicated_defects()
+            repair = works.status_by_defect()
+            body_bytes = (ledger_geojson(defects, _safe_priority, repair) if fmt_ == "geojson"
+                          else ledger_csv(defects, _safe_priority, repair)).encode("utf-8")
+            stamp = time.strftime("%Y%m%d")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/geo+json" if fmt_ == "geojson" else "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition", f'attachment; filename="road_shield_defects_{stamp}.{fmt_}"')
+            self.send_header("Content-Length", str(len(body_bytes)))
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(body_bytes)
+            return
+
         if path == "/api/v1/fleet/live":
             self._send_json(200, {
                 "buses": edge_ingest.live_positions(),
@@ -860,6 +955,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             try:
                 w = priority_index.parse_weights(q["weights"][0]) if "weights" in q else priority_index.default_weights()
                 ranked = priority_index.rank(fleet_dedup_engine.get_all_deduplicated_defects(), w)
+                repair_status = works.status_by_defect()
                 stability = (priority_index.rank_stability(fleet_dedup_engine.get_all_deduplicated_defects(), w)
                              if q.get("stability", ["0"])[0] in ("1", "true", "yes") else None)
             except ValueError as e:
@@ -874,7 +970,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     "lat": r["lat"], "lon": r["lon"], "severity_pci": r["severity_pci"],
                     "area_m2": r.get("area_m2"), "depth_cm": r.get("depth_cm"),
                     "confirmations": r.get("confirmation_count"), "address": r.get("address"),
-                    "priority": r["priority"],
+                    "priority": r["priority"], "repair": repair_status.get(r["defect_id"]),
                 } for r in ranked],
                 "rank_stability": stability,
             })
@@ -1185,7 +1281,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             # output to use, so an explicit p_imu_shock is required unless
             # the caller only wants the peak-shock heuristic below.
             p_imu = body.get("p_imu_shock")
-            p_imu = float(p_imu) if p_imu is not None else (0.9 if accel_delta_z >= 3.5 else 0.05)
+            from models.bayesian_fusion_gate import SEVERE_JOLT_MS2
+            p_imu = float(p_imu) if p_imu is not None else (0.9 if accel_delta_z >= SEVERE_JOLT_MS2 else 0.05)
 
             fusion_res = bayesian_gate.fuse(p_visual=p_vision, p_imu_shock=p_imu, delta_z_ms2=accel_delta_z)
             fusion_res["model"] = "BayesianFusionGate"
@@ -1756,6 +1853,83 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, res)
             return
 
+        if path == "/api/v1/citizen/report":
+            b64 = body.get("image_base64") if isinstance(body, dict) else None
+            if not b64:
+                self._send_json(400, {"error": "image_base64 is required"})
+                return
+            try:
+                lat, lon = _float_or_none(body, "lat", "latitude"), _float_or_none(body, "lon", "lng", "longitude")
+            except ValueError as e:
+                self._send_json(400, {"error": str(e)})
+                return
+            if lat is None or lon is None:
+                self._send_json(400, {"error": "a location is needed: allow location access, or use a photograph with GPS"})
+                return
+            try:
+                audit = deep_pipeline.audit_image(b64, corridor_id="CITIZEN", latitude=lat, longitude=lon)
+            except Exception as e:
+                self._send_json(400, {"error": f"could not read the photograph: {e}"})
+                return
+            try:
+                report, message = citizen.submit(audit, lat, lon, client=_client_key(self.headers, self.client_address),
+                                                 location_source=_text_or_none(body.get("location_source"), 40) or "unknown")
+            except CitizenError as e:
+                self._send_json(429 if "per hour" in str(e) else 400, {"error": str(e)})
+                return
+            top = audit.get("primary_distress") or {}
+            self._send_json(200, {"report": report, "message": message,
+                                  "finding": {"class": top.get("class_name"), "confidence": top.get("confidence"),
+                                              "is_distress": audit.get("is_distress")},
+                                  "photo_stored": False})
+            return
+
+        if path == "/api/v1/citizen/review":
+            rid, action = _first(body, "report_id"), _first(body, "action")
+            if not rid or not action:
+                self._send_json(400, {"error": "report_id and action (promote or dismiss) are required"})
+                return
+            try:
+                self._send_json(200, citizen.review(str(rid), str(action), actor=_actor(body)))
+            except CitizenError as e:
+                self._send_json(404 if str(e).startswith("no report") else 409, {"error": str(e)})
+            except ValueError as e:
+                self._send_json(400, {"error": str(e)})
+            return
+
+        if path == "/api/v1/works/orders":
+            defect_id = _first(body, "defect_id")
+            if not defect_id:
+                self._send_json(400, {"error": "defect_id is required (a defect from the ledger)"})
+                return
+            try:
+                depth = _float_or_none(body, "depth_cm")
+                order = works.issue(str(defect_id), actor=_actor(body), depth_cm=depth,
+                                    note=_text_or_none(body.get("note"), 300))
+            except WorkflowError as e:
+                self._send_json(409 if "already has an open order" in str(e) else 400, {"error": str(e)})
+                return
+            except ValueError as e:
+                self._send_json(400, {"error": str(e)})
+                return
+            self._send_json(200, order)
+            return
+
+        if path == "/api/v1/works/status":
+            oid, status = _first(body, "work_order_id", "order_id"), _first(body, "status")
+            if not oid or not status:
+                self._send_json(400, {"error": "work_order_id and status are required"})
+                return
+            try:
+                order = works.transition(str(oid), str(status), actor=_actor(body),
+                                         note=_text_or_none(body.get("note"), 300),
+                                         contractor=_text_or_none(body.get("contractor"), 80))
+            except WorkflowError as e:
+                self._send_json(404 if str(e).startswith("no work order") else 409, {"error": str(e)})
+                return
+            self._send_json(200, order)
+            return
+
         if path == "/api/v1/fleet/ingest-sealed":
             packets = body.get("packets") if isinstance(body, dict) else None
             if not isinstance(packets, list) or not packets or len(packets) > 500:
@@ -1881,7 +2055,23 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
 # ==============================================================================
 # SERVER ENTRYPOINT
 # ==============================================================================
+def _overdue_loop(every_s=300):
+    import threading as _t
+    stop = _t.Event()
+
+    def loop():
+        while not stop.wait(every_s):
+            try:
+                works.tick()
+                alerts.check_overdue(works.list())
+            except Exception as e:
+                print(f"[alerts] overdue check failed: {e}")
+    _t.Thread(target=loop, daemon=True).start()
+    return stop
+
+
 def start_server(port=8000, host="0.0.0.0"):
+    _overdue_loop(every_s=30)
     server_address = (host, port)
     httpd = ThreadedHTTPServer(server_address, RoadShieldAPIHandler)
     print(f"\n{'=' * 70}")

@@ -72,7 +72,7 @@ STATIC_TYPES = {
 }
 PAGE_ROUTES = {
     "/": "index.html", "/inspect": "inspect.html", "/video": "video.html",
-    "/corridor": "corridor.html", "/works": "works.html", "/models": "models.html",
+    "/corridor": "corridor.html", "/works": "works.html", "/report": "report.html", "/order": "order.html", "/models": "models.html",
     "/data": "data.html", "/system": "system.html", "/architecture": "architecture.html",
     "/design": "design.html", "/api-docs": "api-docs.html", "/impact": "impact.html",
 }
@@ -309,7 +309,8 @@ class handler(BaseHTTPRequestHandler):
             return
 
         if path in ("/api/v1/fleet/telemetry", "/api/v1/gis/map-data",
-                    "/api/v1/ledger/defects", "/api/v1/priority/ranking", "/api/v1/fleet/live"):
+                    "/api/v1/ledger/defects", "/api/v1/priority/ranking", "/api/v1/fleet/live",
+                    "/api/v1/works/orders", "/api/v1/alerts", "/api/v1/citizen/reports"):
             self._send(200, {
                 "storage": "not deployed",
                 "unique_defects_registered": 0, "total_reports_ingested": 0,

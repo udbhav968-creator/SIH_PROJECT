@@ -307,6 +307,22 @@ class EdgeIngestTest(unittest.TestCase):
         self.assertEqual(r["results"][0]["status"], "invalid_event")
         self.assertEqual(r["accepted_in_order"], 1, "an authentic but unusable event must not block the queue")
 
+    def test_camera_only_needs_a_second_bus(self):
+        cam = {"t": "cam", "lat": 12.95, "lon": 77.61, "cls": "Pothole Cavity", "pci": 40, "area": 0.8, "depth": 5}
+        with mock.patch("services.google_maps_service.google_maps_service.reverse_geocode", side_effect=Exception):
+            r = self.ing.ingest([self.env(cam, 1, bus="B1")])
+            self.assertEqual(r["results"][0]["status"], "applied")
+            self.assertTrue(r["results"][0]["decision"].startswith("held"))
+            self.assertEqual(self.dedup.get_all_deduplicated_defects(), [], "one camera-only sighting is held")
+            r = self.ing.ingest([self.env(dict(cam, lat=12.95003), 2, bus="B1")])
+            self.assertEqual(self.dedup.get_all_deduplicated_defects(), [], "the same bus again is not confirmation")
+            r = self.ing.ingest([self.env(dict(cam, lat=12.95002), 1, bus="B2")])
+            ledger = self.dedup.get_all_deduplicated_defects()
+            self.assertEqual(len(ledger), 1, "a second bus confirms it")
+            self.assertEqual(ledger[0]["confirmation_count"], 2)
+            r = self.ing.ingest([self.env(dict(cam, lat=12.95001), 3, bus="B1")])
+            self.assertEqual(r["results"][0]["confirmed_by"], "existing defect")
+
     def test_needs_a_key(self):
         from pipeline.edge_ingest import EdgeIngest
         with mock.patch.dict(os.environ, {"ROAD_SHIELD_FLEET_KEY": ""}):
@@ -421,8 +437,10 @@ class BusAgentTest(unittest.TestCase):
         fix = {"lat": 12.9716, "lon": 77.5946, "speed_kmh": 22.0}
         ev = defect_event(self.AUDIT, fix, 1000)
         self.assertEqual((ev["cls"], ev["pci"], ev["area"], ev["imu"]), ("Pothole Cavity", 38.0, 0.8, True))
-        rejected = dict(self.AUDIT, bayesian_sensor_fusion={"verdict": "REJECTED_OPTICAL_FALSE_ALARM"})
-        self.assertIsNone(defect_event(rejected, fix, 1000))
+        rejected = dict(self.AUDIT, bayesian_sensor_fusion={"verdict": "REJECTED_OPTICAL_FALSE_ALARM",
+                                                            "imu_evidence_source": "real_sensor_window_at_defect"})
+        self.assertEqual(defect_event(rejected, fix, 1000)["t"], "cam", "seen but not felt: kept, not dropped")
+        self.assertTrue(defect_event(rejected, fix, 1000)["imu"])
         self.assertIsNone(defect_event(dict(self.AUDIT, is_distress=False), fix, 1000))
         sign = dict(self.AUDIT, primary_distress=dict(self.AUDIT["primary_distress"], class_id=6))
         self.assertIsNone(defect_event(sign, fix, 1000), "a damaged sign has no area to repair")
@@ -434,7 +452,7 @@ class BusAgentTest(unittest.TestCase):
 
     def test_tick_paths(self):
         from edge import crypto
-        from edge.bus_agent import BusAgent
+        from edge.bus_agent import BusAgent, lookahead_s
         from edge.store_forward import StoreAndForward
         d = tempfile.mkdtemp()
         try:
@@ -456,8 +474,13 @@ class BusAgentTest(unittest.TestCase):
                 def window(self, n=100):
                     return np.zeros((100, 3), np.float32)
 
+            from models.bayesian_fusion_gate import BayesianFusionGate
+
             class Pipe:
+                bayesian_gate = BayesianFusionGate()
+
                 def audit_image(self_, frame, **kw):
+                    assert kw["imu_series"] is None, "the frame is analysed before the wheel reaches the spot"
                     return BusAgentTest.AUDIT
 
                 def _run_imu_stage(self_, w):
@@ -468,13 +491,19 @@ class BusAgentTest(unittest.TestCase):
             agent = BusAgent("B", q, cam, Imu(), gps, pipeline=Pipe(), position_every=10)
             rng = np.random.default_rng(0)
             cam.frame_ = np.clip(120 + rng.normal(0, 30, (240, 320, 3)), 0, 255).astype(np.uint8)
-            self.assertEqual(agent.tick(now=0), ["pos", "defect"])
+            self.assertEqual(agent.tick(now=0), ["pos"], "the candidate waits for the bus to reach it")
+            self.assertAlmostEqual(agent._pending[0]["wait"], 8.0 / (20 / 3.6), places=3)
             cam.frame_ = np.zeros((240, 320, 3), np.uint8)
-            self.assertEqual(agent.tick(now=1), ["shock"])
+            self.assertEqual(agent.tick(now=0.5), ["shock"])
+            out = agent.tick(now=2.0)
+            self.assertIn("defect", out, "fused with the IMU second at the defect: felt, so a defect")
             gps.fix_ = None
-            self.assertEqual(agent.tick(now=2), [])
+            self.assertEqual(agent.tick(now=3), [])
             self.assertEqual(agent.counters["skipped_no_gps"], 1)
-            self.assertEqual(q.stats()["queued"], 3)
+            self.assertEqual(agent.counters["defects"], 1)
+            self.assertEqual(q.stats()["queued"], 4)                   # pos, shock, shock (dark frame again), defect
+            self.assertEqual(lookahead_s(0), 4.0)
+            self.assertEqual(lookahead_s(200), 0.5)
             q.close()
         finally:
             shutil.rmtree(d, ignore_errors=True)
@@ -559,6 +588,35 @@ class HotspotNeedsTwoSources(unittest.TestCase):
         self.assertTrue(r["is_hotspot"])
         with self.assertRaises(ValueError):
             e.ingest_fleet_detection("BMTC-201", **dict(args, severity_pci=float("nan")))
+
+
+
+class FusionGateCalibration(unittest.TestCase):
+    def test_ordinary_road_jolts_do_not_override_the_imu_classifier(self):
+        from models.bayesian_fusion_gate import BayesianFusionGate
+        g = BayesianFusionGate(prior_pothole_prob=0.05, decision_threshold_log_odds=1.8)
+        # a confident camera, an IMU classifier that felt nothing, and a jolt typical of plain road
+        self.assertEqual(g.fuse(0.9, 0.05, delta_z_ms2=10.0)["verdict"], "REJECTED_OPTICAL_FALSE_ALARM")
+        # a weak camera and the same ordinary jolt is not a submerged pothole
+        self.assertNotEqual(g.fuse(0.2, 0.05, delta_z_ms2=10.0)["verdict"], "SUBMERGED_MONSOON_POTHOLE")
+        # a jolt beyond anything plain road produced still counts
+        self.assertEqual(g.fuse(0.2, 0.05, delta_z_ms2=45.0)["verdict"], "SUBMERGED_MONSOON_POTHOLE")
+
+    def test_threshold_sits_between_plain_road_and_pothole_drives(self):
+        from edge.sensors import ReplayImu
+        from models.bayesian_fusion_gate import SEVERE_JOLT_MS2
+        logs = glob.glob(os.path.join(ENGINE_ROOT, "datasets", "04_mobile_imu_telemetry_100hz", "raw_logs", "*.csv"))
+        if not logs:
+            self.skipTest("drive logs not on disk")
+        dz = {"plain": [], "pothole": []}
+        for f in logs:
+            kind = "plain" if "plain_road" in f else "pothole" if "potholes" in f else None
+            if not kind:
+                continue
+            d = ReplayImu(f).data
+            dz[kind] += [float(d[k:k + 100, 2].max() - d[k:k + 100, 2].min()) for k in range(0, len(d) - 99, 100)]
+        self.assertGreaterEqual(SEVERE_JOLT_MS2, np.percentile(dz["plain"], 99) - 0.5)
+        self.assertLess(SEVERE_JOLT_MS2, np.percentile(dz["pothole"], 90))
 
 
 if __name__ == "__main__":
