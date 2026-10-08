@@ -51,6 +51,11 @@ if ($owner) {
     }
 }
 Stop-Tracked     # leftovers of an earlier run that was closed without Ctrl+C
+# logs of earlier runs are not needed any more (and only the last few tunnel logs are kept while running)
+Remove-Item "logs\tunnel_*", "logs\engine_public_*" -Force -ErrorAction SilentlyContinue
+function Drop-OldLogs($n) {
+    if ($n -gt 4) { Remove-Item "logs\tunnel_$($n - 4).*" -Force -ErrorAction SilentlyContinue }
+}
 Set-Content $PIDS "$PID $((Get-Process -Id $PID).StartTime.Ticks)"
 
 # ------------------------------------------------------------ keep awake
@@ -121,6 +126,7 @@ function Get-Cloudflared {
 function Start-CfTunnel($cf) {
     $script:tunnelRuns++
     $n = $script:tunnelRuns
+    Drop-OldLogs $n
     $log = "logs\tunnel_$n.log"
     $p = Start-Process $cf -ArgumentList "tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:$port" -PassThru `
          -WindowStyle Hidden -RedirectStandardError $log -RedirectStandardOutput "logs\tunnel_$n.out"
@@ -159,6 +165,7 @@ function Start-LhrTunnel {
     if (-not (Get-Command ssh -ErrorAction SilentlyContinue)) { Say "ssh is not installed, so localhost.run cannot be used." Yellow; return $null }
     $script:tunnelRuns++
     $n = $script:tunnelRuns
+    Drop-OldLogs $n
     $log = "logs\tunnel_$n.log"
     $p = Start-Process ssh -ArgumentList "-T", "-n", "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30", `
          "-R", "80:127.0.0.1:$port", "nokey@localhost.run" -PassThru -WindowStyle Hidden `
