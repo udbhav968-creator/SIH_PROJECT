@@ -126,7 +126,7 @@ const KIND_LABEL = { pothole: "Potholes", crack: "Cracks", water: "Waterlogging"
 const show = { kinds: new Set(["pothole", "crack", "water", "other"]), bands: new Set(["P1", "P2", "P3", "P4", "none"]) };
 const hasMap = typeof L !== "undefined";
 const focusId = new URLSearchParams(location.search).get("focus");
-let map = null, defectLayer = null, busLayer = null, shockLayer = null, heatLayer = null, myLocation = null, citizenLayer = null;
+let map = null, defectLayer = null, busLayer = null, shockLayer = null, heatLayer = null, myLocation = null, citizenLayer = null, trafficLayer = null;
 const defectMarkers = new Map(), busMarkers = new Map(), priorityById = new Map();
 let allDefects = [], rows = [], fitted = false;
 const fallbackBuses = new Map(), fallbackShocks = [];
@@ -160,11 +160,12 @@ if (hasMap) {
     : L.layerGroup();
   busLayer = L.layerGroup();
   citizenLayer = L.layerGroup();
+  trafficLayer = L.layerGroup();
   shockLayer = L.layerGroup();
   heatLayer = L.heatLayer ? L.heatLayer([], { radius: 28, blur: 20, maxZoom: 17, minOpacity: .35 }) : null;
   defectLayer.addTo(map); busLayer.addTo(map); shockLayer.addTo(map); citizenLayer.addTo(map);
   const overlays = { "Potholes & cracks": defectLayer, "Buses (live)": busLayer, "IMU-only shocks": shockLayer,
-                     "Citizen reports (pending)": citizenLayer };
+                     "Citizen reports (pending)": citizenLayer, "Traffic from bus cameras": trafficLayer };
   if (heatLayer) overlays["Priority heatmap"] = heatLayer;
   L.control.layers({ "Streets": streets, "Satellite + roads": satellite, "Dark": dark }, overlays, { collapsed: window.innerWidth < 700 }).addTo(map);
   L.control.scale({ imperial: false, maxWidth: 160 }).addTo(map);
@@ -423,8 +424,32 @@ document.addEventListener("click", async e => {
   scheduleReload();
 });
 
+// Traffic per 100 m cell from vehicle counts in bus frames (pipeline/traffic.py): one hue, darker = more PCU per day.
+const TRAFFIC_STEPS = ["#bae6fd", "#7dd3fc", "#38bdf8", "#0284c7", "#075985"];
+async function loadTraffic() {
+  if (!hasMap) return;
+  const r = await API.get("/api/v1/traffic/cells");
+  trafficLayer.clearLayers();
+  if (!r.ok || !r.data.cells) return;
+  const vals = r.data.cells.map(c => c.daily_pcu_estimate).sort((a, b) => a - b);
+  const q = k => vals[Math.min(vals.length - 1, Math.floor(vals.length * k))];
+  const edges = [q(.2), q(.4), q(.6), q(.8)];
+  r.data.cells.forEach(c => {
+    const i = edges.filter(e => c.daily_pcu_estimate > e).length;
+    L.circle([c.lat, c.lon], { radius: 48, color: "#fff", weight: 2, fillColor: TRAFFIC_STEPS[i],
+                               fillOpacity: c.usable_for_priority ? .7 : .3, dashArray: c.usable_for_priority ? null : "4 4" })
+      .addTo(trafficLayer).bindPopup(`<div><strong>${esc(Math.round(c.daily_pcu_estimate).toLocaleString())} PCU / day</strong> (estimate)
+        <div class="pk"><span>observations</span><span>${esc(c.observations)} in ${esc(c.hours_observed.length)} hours</span></div>
+        <div class="pk"><span>buses</span><span>${esc(c.buses)}</span></div>
+        <div class="pk"><span>density</span><span>${esc(c.density_pcu_per_km_median)} PCU/km</span></div>
+        <p style="margin:6px 0;color:#6b7280">${c.usable_for_priority ? "Used by the Priority Index for defects in this cell." :
+          "Not yet used: needs more observations at more hours."} ${esc(c.basis)}.</p></div>`);
+  });
+}
+
 async function loadLedger() {
   loadCitizen();
+  loadTraffic();
   const [gis, pr] = await Promise.all([API.get("/api/v1/gis/map-data"), API.get("/api/v1/priority/ranking?stability=1")]);
   allDefects = (gis.ok && (gis.data.deduplicated_defects || gis.data.defects)) || [];
   rows = (pr.ok && pr.data.defects) || [];

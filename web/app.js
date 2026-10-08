@@ -23,12 +23,21 @@ const ENGINE_PATHS = new Set([
   "/api/v1/works/orders", "/api/v1/works/order", "/api/v1/works/status", "/api/v1/ledger/export", "/api/v1/alerts",
   "/api/v1/dispatch/work-order", "/api/v1/dispatch/verify-seal",
   "/api/v1/citizen/report", "/api/v1/citizen/reports", "/api/v1/citizen/review",
+  "/api/v1/mlops/overview", "/api/v1/mlops/drift", "/api/v1/mlops/versions", "/api/v1/mlops/gate",
+  "/api/v1/mlops/runs", "/api/v1/mlops/run", "/api/v1/mlops/promote", "/api/v1/mlops/rollback",
+  "/api/v1/mlops/stage", "/api/v1/mlops/register", "/api/v1/mlops/reload", "/api/v1/mlops/al/queue",
+  "/api/v1/mlops/al/image", "/api/v1/mlops/al/label", "/api/v1/mlops/al/export", "/api/v1/mlops/rebaseline",
+  "/api/v1/traffic/cells", "/api/v1/traffic/estimate",
 ]);
 
 /* Endpoints that change stored state. When the engine locks them (public demo), the operator's key - typed
    once on the page, kept only for this browser tab - is sent with them, and only with them. */
 const KEYED_PATHS = new Set(["/api/v1/fleet/report-defect", "/api/v1/dispatch/work-order",
-                             "/api/v1/works/orders", "/api/v1/works/status", "/api/v1/citizen/review"]);
+                             "/api/v1/works/orders", "/api/v1/works/status", "/api/v1/citizen/review",
+                             "/api/v1/mlops/promote", "/api/v1/mlops/rollback", "/api/v1/mlops/stage",
+                             "/api/v1/mlops/register", "/api/v1/mlops/reload", "/api/v1/mlops/al/label",
+                             "/api/v1/mlops/al/export", "/api/v1/mlops/al/queue", "/api/v1/mlops/al/image",
+                             "/api/v1/mlops/rebaseline"]);
 function operatorKey() { try { return sessionStorage.getItem("roadShieldApiKey") || ""; } catch { return ""; } }
 function setOperatorKey(k) { try { k ? sessionStorage.setItem("roadShieldApiKey", k) : sessionStorage.removeItem("roadShieldApiKey"); } catch {} }
 
@@ -75,7 +84,7 @@ const API = {
     const toEngine = base && base === this.engineUrl;
     try {
       const headers = body ? { "Content-Type": "application/json" } : {};
-      if (method === "POST" && KEYED_PATHS.has(path.split("?")[0]) && operatorKey()) headers["X-API-Key"] = operatorKey();
+      if (KEYED_PATHS.has(path.split("?")[0]) && operatorKey()) headers["X-API-Key"] = operatorKey();
       const res = await fetch(base + path, {
         method,
         headers: Object.keys(headers).length ? headers : undefined,
@@ -150,6 +159,7 @@ const PAGES = [
   { href: "/corridor",     id: "corridor",     label: "Road map",     group: "product" },
   { href: "/works",        id: "works",        label: "Works",        group: "product" },
   { href: "/report",       id: "report",       label: "Report a pothole", group: "product" },
+  { href: "/mlops",        id: "mlops",        label: "MLOps",        group: "product" },
   { href: "/models",       id: "models",       label: "Models",       group: "evidence", note: "accuracy, IoU, model card" },
   { href: "/data",         id: "data",         label: "Data",         group: "evidence", note: "datasets and lineage" },
   { href: "/system",       id: "system",       label: "System",       group: "evidence", note: "what is loaded, live" },

@@ -1,0 +1,33 @@
+name: models
+
+# Model quality gate. Runs when a pull request touches checkpoints/, the model specs or the MLOps code:
+# every committed model's report must meet its promotion floor (mlops/specs.py), the input guard must
+# load and score its own report's numbers, and the registry, drift and retraining tests must pass.
+
+on:
+  pull_request:
+    paths: ["checkpoints/**", "mlops/**", "models/**", "training/**", ".github/workflows/models.yml"]
+  push:
+    branches: [master, main]
+    paths: ["checkpoints/**", "mlops/**", "models/**", "training/**"]
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Committed models meet their floors
+        run: python -m mlops.ci_check
+      - name: Registry, monitoring, active learning, traffic and input-guard tests
+        env:
+          ROAD_SHIELD_MLFLOW: "0"
+        run: python -m unittest tests.test_mlops -v

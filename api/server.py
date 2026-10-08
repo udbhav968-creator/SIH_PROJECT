@@ -139,14 +139,55 @@ from pipeline.alerts import Alerts
 works = WorkOrders(os.path.join(WRITABLE_DIR, "road_shield.db"), fleet_dedup_engine, dispatch_agent, live_events)
 alerts = Alerts(live_events)
 
+# MLOps: model registry, production monitoring, shadow testing, active learning and the traffic estimate
+# (mlops/, pipeline/traffic.py, api/mlops_routes.py).
+from api import mlops_routes
+
+
+def _reload_pipeline():
+    """Load every model again from checkpoints/ (after a promotion or rollback) and swap them in: the pipeline
+    and the stand-alone models the single-model endpoints use."""
+    global deep_pipeline, vision_model, VISION_BACKEND, imu_model, imu_backend, pci_model, degrade_model
+    new = DeepInferencePipeline(CKPT_DIR)
+    vm, vb = load_best_vision_model(CKPT_DIR)
+    im, ib = load_served_imu_model(CKPT_DIR)
+    pm, dm = PCIRegressorNet(), PavementDeteriorationForecaster()
+    deep_pipeline, vision_model, VISION_BACKEND = new, vm, vb
+    imu_model, imu_backend = (im, ib) if im is not None else (IMUShockClassifier(), ib)
+    pci_model, degrade_model = pm, dm
+    return new
+
+
+try:
+    MLOPS = mlops_routes.MLOps(WRITABLE_DIR, CKPT_DIR, deep_pipeline, edge_ingest=edge_ingest, events=live_events,
+                               alerts=alerts, reload_pipeline=_reload_pipeline)
+except Exception as _e:
+    print(f"[WARN] MLOps unavailable: {_e}")
+    MLOPS = None
+
+
+def _upload_source():
+    """Where an uploaded photograph came from, for monitoring and active learning: an anonymous visitor to a
+    public deployment is promised that nothing is kept."""
+    return "public" if os.environ.get("ROAD_SHIELD_PUBLIC") == "1" else "api"
+
 
 def _safe_priority(defect):
     # defined here, not with the other helpers: the demo seed below fires _on_sighting at import time
     from models import priority_index
     try:
+        if MLOPS is not None:
+            defect = MLOPS.traffic.enrich(defect)     # measured traffic per day where the fleet has counted it
         return priority_index.score_defect(defect) if defect.get("severity_pci") is not None else None
     except (ValueError, TypeError):
         return None
+
+
+def _with_traffic(defects):
+    """Ledger defects with the camera traffic estimate attached where a road cell has one."""
+    if MLOPS is None:
+        return defects
+    return [MLOPS.traffic.enrich(d) for d in defects]
 
 
 def _on_sighting(bus_id, result, at=None):
@@ -228,6 +269,7 @@ PAGE_ROUTES = {
     "/corridor": "corridor.html",
     "/report": "report.html",
     "/order": "order.html",
+    "/mlops": "mlops.html",
     "/works": "works.html",
     "/models": "models.html",
     "/data": "data.html",
@@ -254,7 +296,7 @@ PROTECTED_POST = {
     "/api/v1/works/status",
     "/api/v1/video/ingest",            # writes sightings to the ledger, which can reopen repaired orders
     "/api/v1/citizen/review",
-}
+} | mlops_routes.PROTECTED_POST
 
 
 # Public demo (ROAD_SHIELD_PUBLIC=1, set by deploy/huggingface/Dockerfile): anyone on the internet can reach
@@ -558,7 +600,13 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     return
 
         if path == "/metrics":
-            body = METRICS.render(_readiness()).encode("utf-8")
+            text = METRICS.render(_readiness())
+            if MLOPS is not None:
+                try:
+                    text += MLOPS.monitor.prometheus()
+                except Exception as e:
+                    text += f"# model monitoring unavailable: {e}\n"
+            body = text.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -917,6 +965,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"alerts": alerts.recent(), **alerts.status()})
             return
 
+        if mlops_routes.handle_get(self, MLOPS, path, full_path, _api_key_ok):
+            return
+
         if path == "/api/v1/ledger/export":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
             fmt_ = (q.get("format") or ["geojson"])[0].lower()
@@ -954,9 +1005,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             q = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
             try:
                 w = priority_index.parse_weights(q["weights"][0]) if "weights" in q else priority_index.default_weights()
-                ranked = priority_index.rank(fleet_dedup_engine.get_all_deduplicated_defects(), w)
+                ranked = priority_index.rank(_with_traffic(fleet_dedup_engine.get_all_deduplicated_defects()), w)
                 repair_status = works.status_by_defect()
-                stability = (priority_index.rank_stability(fleet_dedup_engine.get_all_deduplicated_defects(), w)
+                stability = (priority_index.rank_stability(_with_traffic(fleet_dedup_engine.get_all_deduplicated_defects()), w)
                              if q.get("stability", ["0"])[0] in ("1", "true", "yes") else None)
             except ValueError as e:
                 self._send_json(400, {"error": str(e)})
@@ -1154,6 +1205,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         if path in PROTECTED_POST and not _api_key_ok(self.headers):
             self._send_json(401, {"error": "this endpoint requires an API key (X-API-Key header or "
                                            "Authorization: Bearer <key>)"})
+            return
+
+        if mlops_routes.handle_post(self, MLOPS, path, body, _actor(body)):
             return
 
         # ---------------- Google Maps (POST) ----------------
@@ -1474,7 +1528,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(503, {"error": "No labeled photos found under datasets/*/real_images."})
                 return
             try:
-                result = deep_pipeline.audit_image(image_input=preset["image_path"], corridor_id=f"Demo preset ({preset['class_name']})")
+                result = deep_pipeline.audit_image(image_input=preset["image_path"], corridor_id=f"Demo preset ({preset['class_name']})",
+                                                   _source="dataset")
                 # Hand the dashboard the actual photo that was analysed, so the
                 # overlay it draws is over the real input rather than a stand-in.
                 try:
@@ -1510,7 +1565,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             try:
                 analysis = deep_pipeline.audit_image(
                     image_input=img_b64, corridor_id=highway,
-                    device_id=body.get("device_id"))
+                    device_id=body.get("device_id"), _source=_upload_source())
                 analysis["latency_ms"] = round((time.time() - t0) * 1000.0, 3)
                 self._send_json(200, analysis)
             except Exception as e:
@@ -1536,7 +1591,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
 
             try:
                 tracker = get_session_tracker(session_id, reset=reset_tracker)
-                analysis = deep_pipeline.audit_image(image_input=frame_b64, corridor_id=body.get("clip_id", "uploaded_stream"))
+                analysis = deep_pipeline.audit_image(image_input=frame_b64, corridor_id=body.get("clip_id", "uploaded_stream"),
+                                                     _source=_upload_source())
                 adapted_dets = [
                     {
                         "bbox_normalized": d["bbox_normalized"],
@@ -1666,6 +1722,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             try:
                 audit_result = deep_pipeline.audit_image(
                     image_input=image_input,
+                    _source="dataset" if not body.get("image_base64") else _upload_source(),
                     corridor_id=corridor,
                     latitude=lat,
                     longitude=lng,
@@ -1700,7 +1757,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 return
             try:
                 from pipeline.video_ingest import VideoIngestor
-                ing = VideoIngestor(deep_pipeline, fleet_dedup_engine)
+                ing = VideoIngestor(deep_pipeline, fleet_dedup_engine,
+                                    traffic=MLOPS.traffic if MLOPS is not None else None)
                 summary = ing.process(
                     src,
                     gps_track=body.get("gps_track"),
@@ -1709,6 +1767,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     sample_every_s=float(body.get("sample_every_s", 1.0)),
                     max_frames=int(body.get("max_frames", 200)),
                     device_id=body.get("device_id"),
+                    recorded_at=_float_or_none(body, "recorded_at_unix"),
                 )
                 # The frame-by-frame list can be enormous; return it only if asked.
                 if not body.get("include_frames"):
@@ -1739,7 +1798,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                                                "(datasets/ is not deployed). Use /api/v1/pipeline/deep-audit with your own photo."})
                 return
             try:
-                batch_result = deep_pipeline.process_batch(image_source=dir_path, max_samples=max_samples, corridor_id=corridor)
+                batch_result = deep_pipeline.process_batch(image_source=dir_path, max_samples=max_samples, corridor_id=corridor,
+                                                           _source="dataset")
                 self._send_json(200, batch_result)
             except Exception as e:
                 self._send_json(500, {"error": f"Batch deep audit failed: {str(e)}"})
@@ -1867,9 +1927,19 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": "a location is needed: allow location access, or use a photograph with GPS"})
                 return
             try:
-                audit = deep_pipeline.audit_image(b64, corridor_id="CITIZEN", latitude=lat, longitude=lon)
+                audit = deep_pipeline.audit_image(b64, corridor_id="CITIZEN", latitude=lat, longitude=lon,
+                                                  _source="citizen")
             except Exception as e:
                 self._send_json(400, {"error": f"could not read the photograph: {e}"})
+                return
+            check = audit.get("input_check") or {}
+            if check.get("verdict") in ("not_road", "poor_quality"):
+                from models.ood_guard import OODGuard
+                self._send_json(422, {"error": OODGuard.MESSAGES[check["verdict"]]
+                                      + (" Please take it again in daylight, holding the phone steady."
+                                         if check["verdict"] == "poor_quality" else
+                                         " Photograph the damaged road surface itself."),
+                                      "input_check": check, "report": None, "photo_stored": False})
                 return
             try:
                 report, message = citizen.submit(audit, lat, lon, client=_client_key(self.headers, self.client_address),

@@ -19,7 +19,9 @@ Every tick (default every 2 s, about what a Pi 4 can analyse):
          unusable  -> IMU only; a shock the classifier calls a pothole becomes an IMU-only sighting
     3. a confirmed defect becomes a compact event (well under 1 KB), sealed with AES-256-GCM and queued
     4. a position heartbeat is queued every --position-every seconds, for the live map
-    5. a background thread sends the queue to the server whenever there is a connection
+    5. vehicles counted by the COCO detector are averaged per 100 m road cell and sent as a "trf" event
+       when the bus leaves the cell (pipeline/traffic.py turns them into traffic per day for the Priority Index)
+    6. a background thread sends the queue to the server whenever there is a connection
 
 What never leaves the bus: the photograph. Events carry the class, measurements and location only. With
 --evidence-dir, the frame behind each defect is kept on the device after people and number plates are
@@ -100,6 +102,16 @@ def position_event(fix, now, queued):
             "spd": _r(fix.get("speed_kmh"), 1), "hdg": _r(fix.get("heading_deg"), 1), "q": int(queued)}
 
 
+def traffic_event(acc, now):
+    """Mean vehicles per frame by type over the frames analysed in one road cell, with the bus's mean speed."""
+    n = acc["frames"]
+    if n < 2:
+        return None
+    return {"t": "trf", "ts": int(now), "lat": _r(acc["lat"] / n, 6), "lon": _r(acc["lon"] / n, 6), "n": n,
+            "spd": _r(acc["speed"] / acc["speed_n"], 1) if acc["speed_n"] else None,
+            "veh": {k: _r(v / n, 2) for k, v in acc["counts"].items()}}
+
+
 def http_sender(server, api_key=None, timeout=20):
     url = server.rstrip("/") + "/api/v1/fleet/ingest-sealed"
 
@@ -116,7 +128,8 @@ def http_sender(server, api_key=None, timeout=20):
 
 class BusAgent:
     def __init__(self, bus_id, queue, camera, imu, gps, pipeline=None, corridor="UNSPECIFIED",
-                 position_every=10.0, evidence_dir=None, device_id=None, quality_thresholds=None):
+                 position_every=10.0, evidence_dir=None, device_id=None, quality_thresholds=None,
+                 traffic_every=20.0):
         self.bus_id = bus_id
         self.queue = queue
         self.camera, self.imu, self.gps = camera, imu, gps
@@ -128,8 +141,10 @@ class BusAgent:
         self.quality_thresholds = quality_thresholds
         self._last_pos = float("-inf")
         self._pending = []           # camera candidates waiting for the bus to reach them
+        self.traffic_every = float(traffic_every)
+        self._trf = None             # vehicle counts in the current road cell (pipeline/traffic.py)
         self.counters = {"ticks": 0, "frames_usable": 0, "frames_unusable": 0, "defects": 0, "shocks": 0,
-                         "camera_only": 0, "positions": 0, "skipped_no_gps": 0, "skipped_no_frame": 0, "errors": 0}
+                         "camera_only": 0, "positions": 0, "traffic": 0, "skipped_no_gps": 0, "skipped_no_frame": 0, "errors": 0}
 
     def _pipeline(self):
         if self.pipeline is None:
@@ -159,6 +174,33 @@ class BusAgent:
         else:
             self.counters["camera_only"] += 1
             out.append("cam")
+
+    def _count_traffic(self, audit, fix, now, out):
+        """Vehicle counts go out once per road cell (or every traffic_every seconds), never per frame."""
+        from pipeline.traffic import cell_of, counts_from_audit
+        counts = counts_from_audit(audit)
+        if counts is None:
+            return                   # no COCO detector on this bus: no traffic, rather than zero traffic
+        cell = cell_of(fix["lat"], fix["lon"])
+        acc = self._trf
+        if acc is not None and (acc["cell"] != cell or now - acc["t0"] >= self.traffic_every):
+            ev = traffic_event(acc, now)
+            if ev:
+                self.queue.put(ev)
+                self.counters["traffic"] += 1
+                out.append("trf")
+            acc = None
+        if acc is None:
+            acc = {"cell": cell, "t0": now, "frames": 0, "lat": 0.0, "lon": 0.0, "speed": 0.0, "speed_n": 0, "counts": {}}
+        acc["frames"] += 1
+        acc["lat"] += fix["lat"]
+        acc["lon"] += fix["lon"]
+        if fix.get("speed_kmh") is not None:
+            acc["speed"] += float(fix["speed_kmh"])
+            acc["speed_n"] += 1
+        for k, v in counts.items():
+            acc["counts"][k] = acc["counts"].get(k, 0) + v
+        self._trf = acc
 
     def _resolve_pending(self, now, fix, out, flush=False):
         """Fuse each waiting camera candidate with the accelerometer second from when the bus reached it."""
@@ -212,7 +254,9 @@ class BusAgent:
                 audit = self._pipeline().audit_image(frame, corridor_id=self.corridor, latitude=fix["lat"],
                                                      longitude=fix["lon"], imu_series=None,
                                                      device_id=self.device_id,
-                                                     vehicle_speed_kmh=fix.get("speed_kmh") or 30.0)
+                                                     vehicle_speed_kmh=fix.get("speed_kmh") or 30.0,
+                                                     _source="fleet")
+                self._count_traffic(audit, fix, now, out)
                 if defect_event(audit, fix, now):
                     if self.imu is None:
                         self._emit(audit, fix, now, frame, out)
@@ -273,6 +317,8 @@ def main(argv=None):
     ap.add_argument("--corridor", default="UNSPECIFIED")
     ap.add_argument("--interval", type=float, default=2.0)
     ap.add_argument("--position-every", type=float, default=10.0)
+    ap.add_argument("--traffic-every", type=float, default=20.0,
+                    help="seconds between vehicle-count events within one road cell")
     ap.add_argument("--duration", type=float, default=None, help="seconds, for tests; default runs forever")
     ap.add_argument("--evidence-dir", default=None)
     ap.add_argument("--camera", type=int, default=0)
@@ -296,7 +342,7 @@ def main(argv=None):
     gps = sensors.ReplayGps(a.replay_gps) if a.replay_gps else (None if a.replay_frames else sensors.SerialGps(a.gps_port))
     queue = StoreAndForward(a.queue, a.bus, key)
     agent = BusAgent(a.bus, queue, camera, imu, gps, corridor=a.corridor, position_every=a.position_every,
-                     evidence_dir=a.evidence_dir)
+                     evidence_dir=a.evidence_dir, traffic_every=a.traffic_every)
     sender = http_sender(a.server, a.api_key) if a.server else None
     print(f"[agent] bus {a.bus}: {'replay' if a.replay_frames else 'live sensors'}, "
           f"server {a.server or 'none (queue only)'}", flush=True)

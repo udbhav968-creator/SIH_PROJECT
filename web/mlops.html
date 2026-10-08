@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MLOps — ROAD-SHIELD</title>
+<meta name="description" content="Models in production: registry and promotion, drift and out-of-distribution monitoring, shadow testing, the labelling queue and the traffic estimate.">
+<meta name="theme-color" content="#0a0f17">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 4 5.5v6c0 4.8 3.3 8.9 8 10 4.7-1.1 8-5.2 8-10v-6z' fill='%23f0a92b'/%3E%3Cpath d='M10.2 17.5 11.2 7h1.6l1 10.5' fill='none' stroke='%230a0f17' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="/web/app.css">
+<style>
+  body[data-page="mlops"] { --accent: var(--cyan); --accent-soft: rgba(45,212,212,.13); }
+  .mono { font-family: var(--mono); }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .kpi .v { font: 700 1.6rem/1.1 var(--mono); margin-top: 4px; }
+  .kpi .s { font-size: 12px; color: var(--slate-400); margin-top: 4px; }
+  .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .row-actions button { padding: 4px 10px; font-size: 12px; }
+  details.versions { margin-top: 8px; }
+  details.versions summary { cursor: pointer; color: var(--slate-300); font-size: 13px; }
+  .gate-ok { color: var(--ok); } .gate-bad { color: var(--bad); }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .chart { position: relative; }
+  .chart svg { width: 100%; height: 130px; display: block; overflow: visible; }
+  .chart .tip { position: absolute; pointer-events: none; background: var(--ink-950); border: 1px solid var(--ink-700);
+    border-radius: 8px; padding: 6px 9px; font-size: 12px; white-space: nowrap; transform: translate(-50%, -110%); display: none; z-index: 2; }
+  .mixrow { display: grid; grid-template-columns: minmax(120px, 34%) 1fr 54px; gap: 8px; align-items: center; font-size: 12.5px; margin: 5px 0; }
+  .mixbars { display: grid; gap: 2px; }
+  .mixbars span { display: block; height: 7px; border-radius: 0 4px 4px 0; min-width: 2px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--slate-300); margin: 4px 0 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .al-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .al-item { background: var(--ink-900); border: 1px solid var(--ink-800); border-radius: var(--radius-sm); overflow: hidden; }
+  .al-item img { width: 100%; aspect-ratio: 4/3; object-fit: cover; background: var(--ink-950); display: block; }
+  .al-item .body { padding: 10px; font-size: 12.5px; }
+  .al-item select { width: 100%; margin-top: 8px; }
+  .al-item .done { color: var(--ok); font-weight: 600; margin-top: 6px; }
+  .reasons { color: var(--slate-300); margin: 4px 0 0; padding-left: 16px; }
+  .muted-row td { color: var(--slate-400); }
+  .stack { display: grid; gap: 16px; }
+  .stack > *, .grid > *, .card { min-width: 0; }
+  @media (max-width: 640px) { .mixrow { grid-template-columns: 1fr 1fr 44px; } }
+</style>
+</head>
+<body data-page="mlops">
+<div class="wrap" id="main">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">MLOps</h1>
+    <span class="muted small">every model in production: which version serves, how it was trained, whether what it sees still looks like what it learnt from</span>
+  </div>
+  <div id="top" class="small muted" style="margin:-4px 0 14px"></div>
+
+  <div class="stack">
+    <section class="card">
+      <div class="label">models · registry</div>
+      <p class="small muted" style="margin:0 0 10px">A version is the exact set of files a model is made of, by SHA-256. Promotion copies a version into
+        <span class="mono">checkpoints/</span> only after its gate (the primary metric may not fall below the floor, or more than the allowed drop below production) and reloads the models in place. Every step is in the registry's event log.</p>
+      <div class="table-wrap"><table id="models"><thead><tr><th>Model</th><th>Serving</th><th>Key metrics (production)</th><th>Files</th><th>Staging</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div id="versions"></div>
+    </section>
+
+    <section class="card">
+      <div class="label">production monitoring · last 7 days</div>
+      <div id="monStatus"></div>
+      <div class="kpis" id="monKpis" style="margin:12px 0"></div>
+      <div class="charts" id="charts"></div>
+      <div class="grid c2" style="margin-top:14px">
+        <div>
+          <h3 style="font-size:15px">Input drift (PSI against the training reference)</h3>
+          <div class="table-wrap"><table id="drift"><thead><tr><th>Measure</th><th>Reference mean</th><th>Now</th><th>PSI</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+          <p class="small muted" id="refNote" style="margin:8px 0 0"></p>
+        </div>
+        <div>
+          <h3 style="font-size:15px">Prediction drift (classifier's class mix)</h3>
+          <div class="legend"><span><i style="background:var(--slate-400)"></i>training reference</span><span><i style="background:var(--accent)"></i>production</span></div>
+          <div id="mix"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid c2">
+      <div class="card">
+        <div class="label">input guard · out-of-distribution model</div>
+        <div id="guard"></div>
+      </div>
+      <div class="card">
+        <div class="label">shadow test · staging version beside production</div>
+        <div id="shadow"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="label">active learning · photographs the models were least sure about</div>
+      <div id="alHead" class="small" style="margin-bottom:10px"></div>
+      <div id="al" class="al-grid"></div>
+    </section>
+
+    <section class="grid c2">
+      <div class="card">
+        <div class="label">traffic from bus cameras</div>
+        <div id="traffic"></div>
+      </div>
+      <div class="card">
+        <div class="label">training runs</div>
+        <div class="table-wrap"><table id="runs"><thead><tr><th>Run</th><th>Experiment</th><th>Status</th><th>Metrics</th></tr></thead><tbody></tbody></table></div>
+        <p class="small muted" style="margin:8px 0 0">Every training script run through <span class="mono">mlops.tracking</span> is recorded here with its parameters, metrics, output files and git commit; with MLflow installed the same runs appear in <span class="mono">mlflow ui</span>.</p>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="/web/config.js"></script>
+<script src="/web/app.js"></script>
+<script>
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const n = (v, d = 3) => v == null || isNaN(v) ? "—" : Number(v).toFixed(d).replace(/\.?0+$/, m => m.includes(".") ? "" : m);
+const pct = (v, d = 1) => v == null ? "—" : (v * 100).toFixed(d) + "%";
+const when = t => t ? new Date(t * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—";
+const STATUS = { stable: ["measured", "stable"], watch: ["warn", "watch"], drift: ["bad", "drift"] };
+const badge = (s) => { const [cls, txt] = STATUS[s] || ["neutral", s || "—"]; return `<span class="badge ${cls}">${esc(txt)}</span>`; };
+let state = null;
+
+async function keyed(fn) {
+  let r = await fn();
+  if (r.status === 401) {
+    const k = prompt("Operator key (ROAD_SHIELD_API_KEY) for this action:");
+    if (!k) return r;
+    setOperatorKey(k.trim());
+    r = await fn();
+  }
+  return r;
+}
+
+async function load() {
+  const r = await API.get("/api/v1/mlops/overview");
+  if (!r.ok) {
+    const why = engineUnavailable(r);
+    el("main").insertAdjacentHTML("beforeend", errorCard(why ? "The engine is not running, so there are no models to show."
+      : (r.data.error || `HTTP ${r.status}`), why ? "MLOps lives with the engine: start it with python -m api.server." : ""));
+    return;
+  }
+  state = r.data;
+  renderTop(state); renderModels(state); renderMonitoring(state.monitoring); renderGuard(state.input_guard);
+  renderShadow(state.shadow); renderTraffic(state.traffic); renderRuns(state.runs); loadQueue();
+}
+
+function renderTop(s) {
+  const v = Object.entries(s.serving || {}).map(([k, x]) => `${esc(k)} <span class="mono">${typeof x === "number" ? "v" + x : esc(x)}</span>`).join(" · ");
+  const rl = s.reload || {};
+  el("top").innerHTML = (v ? `serving: ${v}` : "registry not ready yet") +
+    (rl.state && rl.state !== "idle" ? ` · reload <strong>${esc(rl.state)}</strong>${rl.reason ? " (" + esc(rl.reason) + ")" : ""}${rl.error ? ": " + esc(rl.error) : ""}` : "") +
+    (s.registry_error ? ` · <span style="color:var(--bad)">${esc(s.registry_error)}</span>` : "");
+}
+
+function metricsLine(m) {
+  return Object.entries(m || {}).slice(0, 4).map(([k, v]) => `${esc(k.replace(/_/g, " "))} <span class="num">${n(v)}</span>`).join("<br>") || '<span class="muted">—</span>';
+}
+
+function renderModels(s) {
+  const rows = (s.registry || []).map(m => {
+    const p = m.production;
+    const files = !m.on_disk ? '<span class="badge neutral">not on disk</span>'
+      : !p ? '<span class="badge warn">unregistered</span>'
+      : m.served_files_match ? '<span class="badge measured">match v' + p.version + "</span>"
+      : `<span class="badge bad" title="${esc(m.changed_files.join(", "))}">changed by hand</span>`;
+    const st = m.staging ? `v${m.staging.version}` : "—";
+    return `<tr class="${m.on_disk ? "" : "muted-row"}"><td><strong>${esc(m.title)}</strong><div class="small muted">${esc(m.task)} · retrain: <span class="mono">${esc(m.train)}</span></div></td>
+      <td class="num">${p ? "v" + p.version : "—"}<div class="small muted">${p ? esc(p.source || "") : ""}</div></td>
+      <td class="small">${metricsLine(p && p.metrics)}</td><td>${files}</td><td class="num">${st}</td>
+      <td><div class="row-actions"><button data-v="${esc(m.model)}">versions</button>
+        ${m.staging ? `<button class="primary" data-promote="${esc(m.model)}" data-ver="${m.staging.version}">promote v${m.staging.version}</button>` : ""}
+        ${p && p.version > 1 ? `<button data-rollback="${esc(m.model)}">rollback</button>` : ""}</div></td></tr>`;
+  });
+  el("models").querySelector("tbody").innerHTML = rows.join("") || `<tr><td colspan="6" class="muted">${esc(s.registry_error || "registry starting")}</td></tr>`;
+}
+
+async function showVersions(model) {
+  const r = await API.get(`/api/v1/mlops/versions?model=${encodeURIComponent(model)}`);
+  if (!r.ok) { el("versions").innerHTML = errorCard(r.data.error || r.status); return; }
+  const vs = r.data.versions;
+  const gates = await Promise.all(vs.map(v => v.stage === "production" ? null : API.get(`/api/v1/mlops/gate?model=${encodeURIComponent(model)}&version=${v.version}`)));
+  el("versions").innerHTML = `<div class="card" style="margin-top:12px;background:var(--ink-900)"><h3 style="font-size:15px">${esc(model)} · ${vs.length} version(s)</h3>
+    <div class="table-wrap"><table><thead><tr><th>Version</th><th>Stage</th><th>Created</th><th>Metrics</th><th>Gate vs production</th><th></th></tr></thead><tbody>
+    ${vs.map((v, i) => { const g = gates[i] && gates[i].ok ? gates[i].data : null;
+      const gtxt = v.stage === "production" ? "serving" : !g ? "—" : g.manual ? esc(g.reason) :
+        `<span class="${g.passed ? "gate-ok" : "gate-bad"}">${g.passed ? "passes" : "fails"}</span>` +
+        g.checks.map(c => `<div class="small ${c.passed ? "" : "gate-bad"}">${esc(c.metric)} ${n(c.value)} ${esc(c.rule)} ${n(c.limit)}</div>`).join("");
+      return `<tr><td class="num">v${v.version}</td><td>${esc(v.stage)}</td><td class="small">${when(v.created_at)}<div class="muted">${esc(v.source || "")} ${v.run_id ? "· " + esc(v.run_id) : ""} ${v.git_commit ? "· " + esc(v.git_commit) : ""}</div></td>
+        <td class="small">${metricsLine(v.metrics)}</td><td class="small">${gtxt}</td>
+        <td><div class="row-actions">${v.stage === "candidate" ? `<button data-stage="${esc(model)}" data-ver="${v.version}">to staging</button>` : ""}
+        ${v.stage !== "production" ? `<button data-promote="${esc(model)}" data-ver="${v.version}"${g && !g.passed ? ' data-force="1"' : ""}>promote${g && !g.passed ? " (force)" : ""}</button>` : ""}</div></td></tr>`; }).join("")}
+    </tbody></table></div>
+    <details class="versions"><summary>registry events</summary><ul class="small">${r.data.events.map(e => `<li>${when(e.at)} · ${esc(e.action)} v${esc(e.version ?? "")} by ${esc(e.actor || "")}${e.detail.reason ? " · " + esc(e.detail.reason) : ""}${e.detail.forced ? ' · <span class="gate-bad">forced past a failed gate</span>' : ""}</li>`).join("")}</ul></details></div>`;
+}
+
+document.addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button");
+  if (!b) return;
+  if (b.dataset.v) return showVersions(b.dataset.v);
+  let r = null;
+  if (b.dataset.promote) {
+    const force = !!b.dataset.force;
+    if (force && !confirm(`v${b.dataset.ver} fails its gate. Promote anyway? This is recorded as forced.`)) return;
+    const reason = force ? prompt("Reason for forcing past the gate:") : null;
+    r = await keyed(() => API.post("/api/v1/mlops/promote", { model: b.dataset.promote, version: +b.dataset.ver, force, reason }));
+  } else if (b.dataset.rollback) {
+    if (!confirm(`Put the previous production version of ${b.dataset.rollback} back?`)) return;
+    r = await keyed(() => API.post("/api/v1/mlops/rollback", { model: b.dataset.rollback }));
+  } else if (b.dataset.stage) {
+    r = await keyed(() => API.post("/api/v1/mlops/stage", { model: b.dataset.stage, version: +b.dataset.ver, stage: "staging" }));
+  } else return;
+  if (r && !r.ok) alert(r.data.error || `HTTP ${r.status}`);
+  setTimeout(load, 600);
+});
+
+function lineChart(id, title, rows, key, fmtv) {
+  const pts = rows.map((r, i) => ({ i, d: r.day, v: r[key] })).filter(p => p.v != null);
+  const W = 300, H = 130, L = 36, R = 8, T = 16, B = 20;
+  if (!pts.length) return `<div class="chart"><div class="small muted">${esc(title)}</div><div class="small muted" style="padding:40px 0">no data yet</div></div>`;
+  const max = Math.max(...pts.map(p => p.v)) || 1;
+  const x = i => L + (rows.length < 2 ? (W - L - R) / 2 : i * (W - L - R) / (rows.length - 1));
+  const y = v => T + (H - T - B) * (1 - v / max);
+  const path = pts.map((p, k) => `${k ? "L" : "M"}${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
+  return `<div class="chart" data-chart="${id}"><div class="small muted">${esc(title)}</div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}">
+      <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--ink-700)"/>
+      <line x1="${L}" x2="${W - R}" y1="${y(max)}" y2="${y(max)}" stroke="var(--ink-800)" stroke-dasharray="3 4"/>
+      <text x="${L - 6}" y="${y(max) + 4}" fill="var(--slate-400)" font-size="10" text-anchor="end">${esc(fmtv(max))}</text>
+      <text x="${L - 6}" y="${y(0) + 4}" fill="var(--slate-400)" font-size="10" text-anchor="end">0</text>
+      <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+      ${pts.map(p => `<circle cx="${x(p.i)}" cy="${y(p.v)}" r="4" fill="var(--accent)" stroke="var(--ink-850)" stroke-width="2"/>
+        <rect x="${x(p.i) - 12}" y="${T}" width="24" height="${H - T - B}" fill="transparent" data-tip="${esc(p.d)}: ${esc(fmtv(p.v))}" data-x="${x(p.i)}" data-y="${y(p.v)}"/>`).join("")}
+      <text x="${L}" y="${H - 4}" fill="var(--slate-400)" font-size="10">${esc(rows[0].day.slice(5))}</text>
+      <text x="${W - R}" y="${H - 4}" fill="var(--slate-400)" font-size="10" text-anchor="end">${esc(rows[rows.length - 1].day.slice(5))}</text>
+    </svg><div class="tip"></div></div>`;
+}
+document.addEventListener("mousemove", (ev) => {
+  const t = ev.target.closest && ev.target.closest("rect[data-tip]");
+  document.querySelectorAll(".chart .tip").forEach(x => { if (!t || !x.parentNode.contains(t)) x.style.display = "none"; });
+  if (!t) return;
+  const box = t.closest(".chart"), svg = box.querySelector("svg"), tip = box.querySelector(".tip");
+  const s = svg.getBoundingClientRect().width / 300;
+  tip.textContent = t.dataset.tip; tip.style.display = "block";
+  tip.style.left = (+t.dataset.x * s) + "px"; tip.style.top = (+t.dataset.y * s + 18) + "px";
+});
+
+function renderMonitoring(m) {
+  if (!m) return;
+  const st = m.status;
+  el("monStatus").innerHTML = `${badge(st)} <span class="small muted">${m.samples} photographs analysed in the window` +
+    (st === "not enough data" ? ` — drift is judged from 30 onwards` : "") + (st === "no reference" ? " — no checkpoints/monitoring_reference.json (python -m training.train_ood_guard)" : "") + "</span>" +
+    `<div class="small muted" style="margin-top:6px">Reference: ${esc(m.reference_built_from || "none")}${m.reference_source === "production" ? ' <span class="badge neutral">from production</span>' : ""}.
+      A city's own cameras differ from public datasets, so after the first weeks of fleet data set the reference from them:
+      <button id="rebase" style="margin-left:6px;padding:3px 10px;font-size:12px">use the last 7 days as the reference</button></div>`;
+  el("rebase").onclick = async () => {
+    if (!confirm("Replace the monitoring reference with the last 7 days of production? Drift is then measured against this period.")) return;
+    const r = await keyed(() => API.post("/api/v1/mlops/rebaseline", { hours: 168 }));
+    if (!r.ok) alert(r.data.error || r.status); else load();
+  };
+  const ig = m.input_guard || {}, lat = m.latency_ms || {};
+  el("monKpis").innerHTML = [
+    ["analysed", m.samples, Object.entries(m.by_source || {}).map(([k, v]) => `${k} ${v}`).join(" · ") || "no traffic yet"],
+    ["out-of-distribution", pct(ig.ood_rate), Object.entries(ig.by_verdict || {}).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"],
+    ["latency p50 / p95", lat.p50 == null ? "—" : `${Math.round(lat.p50)} / ${Math.round(lat.p95)}`, "ms per photograph, whole pipeline"],
+    ["bus detections", (m.fleet_events || {}).count ?? 0, (m.fleet_events || {}).camera_only_share != null ? `${pct(m.fleet_events.camera_only_share)} camera-only` : "sealed events from the fleet"],
+  ].map(([l, v, s]) => `<div class="kpi card" style="padding:12px"><div class="label">${esc(l)}</div><div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`).join("");
+  const d = m.daily || [];
+  el("charts").innerHTML = lineChart("n", "Photographs analysed per day", d, "predictions", v => Math.round(v)) +
+    lineChart("ood", "Out-of-distribution rate per day", d, "ood_rate", v => pct(v, 0)) +
+    lineChart("conf", "Classifier mean confidence per day", d, "mean_confidence", v => n(v, 2));
+  const names = { brightness: "Brightness", contrast: "Contrast", clipped_fraction: "Clipped highlights", sharpness_log10: "Sharpness (log)",
+                  novelty_score: "Novelty (guard)", top_confidence: "Classifier confidence" };
+  el("drift").querySelector("tbody").innerHTML = Object.entries(m.features || {}).map(([k, f]) =>
+    `<tr><td>${esc(names[k] || k)}</td><td class="num">${n(f.reference_mean, 2)}</td><td class="num">${n(f.mean, 2)}</td><td class="num">${f.psi == null ? "—" : n(f.psi, 3)}</td><td>${f.psi == null ? `<span class="small muted">${esc(f.status)}</span>` : badge(f.status)}</td></tr>`).join("")
+    || `<tr><td colspan="5" class="muted">no reference loaded</td></tr>`;
+  el("refNote").textContent = m.reference_built_from ? `Reference: ${m.reference_built_from}. PSI < 0.10 stable, 0.10–0.25 watch, > 0.25 drift.` : "";
+  const cm = m.class_mix;
+  if (!cm) { el("mix").innerHTML = '<p class="small muted">no reference</p>'; return; }
+  const ref = cm.reference || {}, now = cm.now || {};
+  const keys = Object.keys(ref).length ? Object.keys(ref) : Object.keys(now);
+  el("mix").innerHTML = (cm.psi != null ? `<div class="small" style="margin-bottom:6px">PSI <span class="num">${n(cm.psi, 3)}</span> ${badge(cm.status)}</div>` : `<div class="small muted" style="margin-bottom:6px">${esc(cm.status)}: production bars appear after 30 photographs</div>`) +
+    keys.map(k => `<div class="mixrow"><span title="${esc(k)}">${esc(k.split(" (")[0].replace(" / Sound Pavement", ""))}</span>
+      <div class="mixbars"><span style="width:${(ref[k] || 0) * 100}%;background:var(--slate-400)" title="reference ${pct(ref[k])}"></span>
+      ${cm.now ? `<span style="width:${(now[k] || 0) * 100}%;background:var(--accent)" title="production ${pct(now[k])}"></span>` : ""}</div>
+      <span class="num small">${cm.now ? pct(now[k], 0) : pct(ref[k], 0)}</span></div>`).join("");
+}
+
+function renderGuard(g) {
+  if (!g || !g.ready) { el("guard").innerHTML = `<p class="small muted">${esc((g && g.reason) || "not loaded")}</p>`; return; }
+  el("guard").innerHTML = `<p class="small" style="margin:0 0 10px">Before any defect model runs, the guard asks whether the photograph is a road scene the models can be trusted on: Mahalanobis novelty on MobileNetV2 embeddings, a not-road classifier trained against everyday photographs, and brightness, sharpness and exposure limits. The Report page turns away photographs it calls not-a-road or too poor to measure.</p>
+    <div class="kpis"><div><div class="label">AUROC (held out)</div><div class="v num" style="font-size:1.3rem">${n(g.auroc_combined, 3)}</div></div>
+    <div><div class="label">non-road refused</div><div class="v num" style="font-size:1.3rem">${pct(g.non_road_photos_refused ?? g.non_road_photos_caught)}</div></div>
+    <div><div class="label">road photos refused</div><div class="v num" style="font-size:1.3rem">${pct(g.road_photos_refused)}</div></div></div>
+    <p class="small muted" style="margin:6px 0 0">${pct(g.road_photos_flagged)} of genuine road photographs get a flag of any kind (most are "unusual", a warning that does not refuse).</p>
+    <p class="small muted" style="margin:10px 0 0">version ${esc(g.version)} · thresholds: novelty ${n(g.thresholds.maha, 2)}, not-road p &gt; ${n(g.thresholds.p_not_road, 2)} · <span class="mono">checkpoints/ood_guard_report.json</span></p>`;
+}
+
+function renderShadow(s) {
+  if (!s) { el("shadow").innerHTML = '<p class="small muted">registry not available</p>'; return; }
+  if (!s.active) {
+    el("shadow").innerHTML = `<p class="small" style="margin:0">No staging version of the classifier, so nothing is running in shadow.</p>
+      <p class="small muted">Put a candidate in staging (versions → to staging) and it runs on a copy of every analysed photograph in a background thread, never delaying the answer. Its agreement with production shows here before you promote it.</p>${s.error ? `<p class="small" style="color:var(--bad)">${esc(s.error)}</p>` : ""}`;
+    return;
+  }
+  const r = s.results || {};
+  el("shadow").innerHTML = `<p class="small" style="margin:0 0 8px">Classifier v${esc(s.candidate_version)} (staging) beside production v${esc(r.production ?? "?")}.</p>
+    <div class="kpis"><div><div class="label">compared</div><div class="v num" style="font-size:1.3rem">${r.compared || 0}</div></div>
+    <div><div class="label">agreement</div><div class="v num" style="font-size:1.3rem">${pct(r.agreement)}</div></div>
+    <div><div class="label">candidate p95</div><div class="v num" style="font-size:1.3rem">${r.candidate_p95_ms == null ? "—" : Math.round(r.candidate_p95_ms) + " ms"}</div></div></div>
+    ${Object.keys(r.disagreements || {}).length ? `<div class="small" style="margin-top:8px">Where they differ:<ul class="reasons">${Object.entries(r.disagreements).map(([k, v]) => `<li>${esc(k)} <span class="num">×${v}</span></li>`).join("")}</ul></div>` : ""}`;
+}
+
+let labels = [];
+async function loadQueue() {
+  const r = await keyed(() => API.get("/api/v1/mlops/al/queue?status=pending&limit=24"));
+  if (!r.ok) {
+    el("alHead").innerHTML = r.status === 401 ? `The queue holds fleet photographs (people and plates blurred), so it needs the operator key. <button id="alKey">Enter key</button>` : esc(r.data.error || r.status);
+    const k = document.getElementById("alKey"); if (k) k.onclick = () => { const v = prompt("Operator key:"); if (v) { setOperatorKey(v.trim()); loadQueue(); } };
+    return;
+  }
+  labels = r.data.labels;
+  const s = r.data.stats;
+  el("alHead").innerHTML = `<span class="num">${s.pending}</span> waiting · <span class="num">${s.labelled}</span> labelled · <span class="num">${s.exported}</span> exported` +
+    (s.classifier_agreed_with_labellers != null ? ` · classifier agreed with labellers on <span class="num">${pct(s.classifier_agreed_with_labellers)}</span> of ${s.labelled_for_agreement}` : "") +
+    ` <button id="alExport" style="margin-left:10px"${s.labelled ? "" : " disabled"}>Download labelled set (.zip)</button>
+    <div class="muted" style="margin-top:6px">Ranked by entropy, top-two margin, classifier-vs-measurement disagreement and novelty. Citizen photographs are never kept.</div>`;
+  el("alExport").onclick = exportSet;
+  el("al").innerHTML = r.data.items.map(it => `<div class="al-item" data-id="${esc(it.item_id)}"><img alt="queued photograph ${esc(it.item_id)}">
+    <div class="body"><div><strong>${esc((it.predicted || "—").split(" (")[0])}</strong> <span class="num muted">${n(it.confidence, 2)}</span> · score <span class="num">${n(it.score, 2)}</span></div>
+    <ul class="reasons">${it.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+    <select aria-label="label for ${esc(it.item_id)}"><option value="">label as…</option>${labels.map(l => `<option>${esc(l)}</option>`).join("")}</select></div></div>`).join("")
+    || '<p class="small muted">Nothing waiting. Photographs appear here as the engine analyses uploads, video and bus frames it is unsure about.</p>';
+  for (const it of r.data.items) loadImage(it.item_id);
+}
+async function loadImage(id) {
+  const path = `/api/v1/mlops/al/image?id=${encodeURIComponent(id)}`;
+  const base = await API.baseFor(path);
+  const res = await fetch(base + path, { headers: operatorKey() ? { "X-API-Key": operatorKey() } : {} });
+  if (!res.ok) return;
+  const img = document.querySelector(`.al-item[data-id="${CSS.escape(id)}"] img`);
+  if (img) img.src = URL.createObjectURL(await res.blob());
+}
+document.addEventListener("change", async (ev) => {
+  const sel = ev.target.closest(".al-item select");
+  if (!sel || !sel.value) return;
+  const card = sel.closest(".al-item");
+  const r = await keyed(() => API.post("/api/v1/mlops/al/label", { item_id: card.dataset.id, label: sel.value }));
+  if (r.ok) { sel.insertAdjacentHTML("afterend", `<div class="done">labelled: ${esc(sel.value)}</div>`); sel.remove(); }
+  else alert(r.data.error || r.status);
+});
+async function exportSet() {
+  const path = "/api/v1/mlops/al/export";
+  const base = await API.baseFor(path);
+  const res = await fetch(base + path, { method: "POST", headers: operatorKey() ? { "X-API-Key": operatorKey() } : {} });
+  if (!res.ok) { alert((await res.json().catch(() => ({}))).error || res.status); return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(await res.blob());
+  a.download = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || "labelled.zip";
+  a.click(); setTimeout(loadQueue, 500);
+}
+
+async function renderTraffic(t) {
+  if (!t) return;
+  const r = await API.get("/api/v1/traffic/cells");
+  const cells = r.ok ? r.data.cells.slice(0, 8) : [];
+  el("traffic").innerHTML = `<p class="small" style="margin:0 0 8px">Vehicles the COCO detector counts in bus frames, per 100 m road cell: density × the bus's speed = flow, expanded to a day by an assumed hour-of-day profile. A cell feeds the Priority Index once it has ${t.min_observations} observations across ${t.min_hours} different hours; until then the index uses the number of buses that reported the defect.</p>
+    <div class="small"><span class="num">${t.observations_30d}</span> observations · <span class="num">${t.cells_30d}</span> cells · <span class="num">${t.observations_with_flow}</span> with a moving bus (last 30 days)</div>
+    ${cells.length ? `<div class="table-wrap" style="margin-top:8px"><table><thead><tr><th>Cell</th><th>PCU / day</th><th>Obs.</th><th>Hours</th><th>Used</th></tr></thead><tbody>
+    ${cells.map(c => `<tr><td class="num small">${n(c.lat, 4)}, ${n(c.lon, 4)}</td><td class="num">${Math.round(c.daily_pcu_estimate).toLocaleString()}</td><td class="num">${c.observations}</td><td class="num">${c.hours_observed.length}</td><td>${c.usable_for_priority ? '<span class="badge measured">yes</span>' : '<span class="badge neutral">not yet</span>'}</td></tr>`).join("")}</tbody></table></div>`
+      : '<p class="small muted" style="margin-top:8px">No counts yet: they arrive as "trf" events from bus agents with the COCO detector, and from uploaded video with a GPS track.</p>'}`;
+}
+
+function renderRuns(runs) {
+  el("runs").querySelector("tbody").innerHTML = (runs || []).map(r => `<tr><td class="small mono">${esc(r.run_id)}<div class="muted">${when(r.started_at)}${r.git_commit ? " · " + esc(r.git_commit) : ""}</div></td>
+    <td class="small">${esc(r.experiment)}</td><td>${r.status === "FINISHED" ? '<span class="badge measured">finished</span>' : r.status === "FAILED" ? '<span class="badge bad">failed</span>' : `<span class="badge neutral">${esc(r.status.toLowerCase())}</span>`}${r.tags && r.tags.outcome ? `<div class="small muted">${esc(r.tags.outcome)}</div>` : ""}</td>
+    <td class="small">${metricsLine(r.metrics)}</td></tr>`).join("") || '<tr><td colspan="4" class="muted small">No runs recorded yet in this store.</td></tr>';
+}
+
+load();
+if (typeof EventSource !== "undefined") {
+  API.baseFor("/api/v1/live/stream").then(base => {
+    try {
+      const es = new EventSource(base + "/api/v1/live/stream");
+      ["model_registry", "model_drift"].forEach(k => es.addEventListener(k, () => setTimeout(load, 800)));
+    } catch {}
+  });
+}
+</script>
+</body>
+</html>

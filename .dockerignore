@@ -1,0 +1,12 @@
+.git
+.github
+mlops_store
+mlruns
+logs
+notebooks
+**/__pycache__
+*.docx
+*.pptx
+*.pdf
+checkpoints/road_shield.db*
+checkpoints/active_feedback_log.jsonl

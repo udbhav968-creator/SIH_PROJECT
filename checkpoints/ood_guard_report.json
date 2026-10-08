@@ -1,0 +1,82 @@
+{
+  "model": "OOD guard: Mahalanobis novelty + not-road logistic regression on MobileNetV2 embeddings (PCA 64)",
+  "version": "20261008-1507",
+  "trained_unix": 1791472044,
+  "thresholds": {
+    "maha": 10.741022,
+    "p_not_road": 0.648652,
+    "brightness_min": 32.42112,
+    "contrast_min": 10.21112,
+    "sharpness_min": 40.0,
+    "clipped_max": 0.25
+  },
+  "threshold_rule": "novelty at the 99% quantile of calibration road photographs; not-road at max(0.5, 99th percentile of calibration roads); quality limits from the 0.5% tails of calibration roads, loosened, with fixed floors",
+  "data": {
+    "backbone": "mobilenetv2",
+    "pca_dims": 64,
+    "novelty_quantile": 0.99,
+    "road_train": 900,
+    "road_calibration": 340,
+    "road_test": 321,
+    "everyday_train": 458,
+    "everyday_test": 484,
+    "ood_dir": "inet",
+    "everyday_classes_left_out_as_road_like": 58,
+    "corpus_policy": {
+      "enabled": true,
+      "excluded_sources": {
+        "kag_surface-crack": {
+          "reason": "227x227 close-ups of cracked concrete and plaster surfaces (SDNET-style texture patches). No road surface, no horizon and no camera geometry, so neither the region-of-interest rule nor the area model applies.",
+          "files_dropped": 0
+        }
+      },
+      "reproduce_unfiltered_with": "ROAD_SHIELD_NO_CORPUS_FILTER=1",
+      "not_deleted": "The files remain on disk; only this corpus excludes them."
+    }
+  },
+  "test": {
+    "novelty_only": {
+      "auroc": 0.9843,
+      "fpr_at_95_tpr": 0.0685,
+      "note": "never saw an everyday photograph in training"
+    },
+    "not_road_classifier": {
+      "auroc": 0.9947
+    },
+    "combined": {
+      "auroc": 0.9945,
+      "ood_caught_rate": 0.9669,
+      "in_distribution_flagged_rate": 0.0498,
+      "road_test_photos": 321,
+      "everyday_test_photos": 484
+    },
+    "refusals": {
+      "note": "what the citizen endpoint turns away (verdict not_road or poor_quality); 'unusual' is only a warning",
+      "road_photos_refused_rate": 0.0125,
+      "road_photos_warned_rate": 0.0374,
+      "everyday_photos_refused_rate": 0.9421,
+      "road_verdicts": {
+        "not_road": 3,
+        "ok": 305,
+        "poor_quality": 1,
+        "unusual": 12
+      }
+    },
+    "closeup_textures_flagged_rate": 0.4867,
+    "synthetic_corruptions": {
+      "dark": {
+        "photos": 150,
+        "flagged_rate": 1.0
+      },
+      "blur": {
+        "photos": 150,
+        "flagged_rate": 1.0
+      },
+      "overexposed": {
+        "photos": 150,
+        "flagged_rate": 1.0
+      }
+    }
+  },
+  "seconds": 79.3
+}

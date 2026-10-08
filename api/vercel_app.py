@@ -72,7 +72,7 @@ STATIC_TYPES = {
 }
 PAGE_ROUTES = {
     "/": "index.html", "/inspect": "inspect.html", "/video": "video.html",
-    "/corridor": "corridor.html", "/works": "works.html", "/report": "report.html", "/order": "order.html", "/models": "models.html",
+    "/corridor": "corridor.html", "/works": "works.html", "/report": "report.html", "/order": "order.html", "/mlops": "mlops.html", "/models": "models.html",
     "/data": "data.html", "/system": "system.html", "/architecture": "architecture.html",
     "/design": "design.html", "/api-docs": "api-docs.html", "/impact": "impact.html",
 }
@@ -91,6 +91,13 @@ NEEDS_ENGINE = {
     "/api/v1/fusion/gate": "run the Bayesian fusion gate",
     "/api/v1/training/launch": "train models",
     "/api/v1/privacy/redact": "blur people and number plates (needs the detector)",
+    "/api/v1/mlops/overview": "the model registry, production monitoring and labelling queue (they live with the engine)",
+    "/api/v1/mlops/drift": "production monitoring (lives with the engine)",
+    "/api/v1/mlops/versions": "the model registry (lives with the engine)",
+    "/api/v1/mlops/runs": "the training-run store (lives with the engine)",
+    "/api/v1/mlops/al/queue": "the labelling queue (lives with the engine)",
+    "/api/v1/traffic/cells": "the traffic estimate from bus cameras (lives with the engine)",
+    "/api/v1/traffic/estimate": "the traffic estimate from bus cameras (lives with the engine)",
 }
 
 

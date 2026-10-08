@@ -68,8 +68,9 @@ class OpenApiContract(unittest.TestCase):
 
     def test_every_documented_path_is_routed_by_the_engine(self):
         from api.openapi import spec
-        src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "api", "server.py"),
-                   encoding="utf-8").read()
+        api_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "api")
+        src = "".join(open(os.path.join(api_dir, f), encoding="utf-8").read()       # mlops_routes.py serves /mlops
+                      for f in ("server.py", "mlops_routes.py"))
         for p in spec()["paths"]:
             self.assertIn(f'"{p}"', src, p)
 

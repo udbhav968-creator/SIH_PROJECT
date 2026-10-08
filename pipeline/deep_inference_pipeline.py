@@ -161,6 +161,17 @@ class DeepInferencePipeline:
         self.rl_agent = AutomotiveADASPolicyAgent()
         self.telematics = AutomotiveTelematicsEngine(checkpoints_dir=self.ckpt_dir)
         self.traffic_net = UrbanTrafficNet()
+        # Is the photograph one these models can be trusted on at all? (models/ood_guard.py)
+        try:
+            from models.ood_guard import OODGuard
+            self.input_guard = OODGuard(checkpoints_dir=self.ckpt_dir)
+            if self.input_guard.is_ready:
+                print(f"  ✓ Input guard: {self.input_guard.meta.get('version')}")
+        except Exception as e:
+            print(f"[WARN] input guard unavailable: {e}")
+            self.input_guard = None
+        self.audit_hooks = []        # fn(img, result, source, projection, latency_ms): monitoring, active learning
+        self.model_versions = {}     # set by the server from the model registry
         try:
             from models.dan_dag_network import DANDAGNetwork
             self.dan_dag_net = DANDAGNetwork(
@@ -174,7 +185,48 @@ class DeepInferencePipeline:
     # ------------------------------------------------------------------
     # Single-image audit
     # ------------------------------------------------------------------
-    def audit_image(
+    def audit_image(self, image_input, corridor_id="NH-44", latitude=None, longitude=None, **kwargs):
+        """
+        Runs the full pipeline on one image (see _audit_core), after the input guard (models/ood_guard.py)
+        has said whether the photograph is one the models can be trusted on. The guard's answer is
+        reported in "input_check"; it does not stop the analysis here (the caller decides: the citizen
+        endpoint refuses photographs that are not of a road, an operator upload only shows the warning).
+        Hooks (model monitoring, active learning) get the decoded image and the result afterwards.
+        Pass _source="citizen" / "fleet" / "video" / "api" so the hooks know where it came from.
+        """
+        t0 = time.time()
+        source = kwargs.pop("_source", "api")
+        img = self.cv_detector.decode_image(image_input)
+        check, proj = None, None
+        guard = getattr(self, "input_guard", None)
+        if guard is not None and guard.is_ready:
+            try:
+                # the guard's limits and the monitoring reference were set on uploads as decoded here (640x480);
+                # bus and video frames arrive as arrays at camera resolution, so they are judged at the same size
+                gimg = img
+                if img.shape[0] != self.cv_detector.target_h or img.shape[1] != self.cv_detector.target_w:
+                    from PIL import Image as _Image
+                    gimg = np.asarray(_Image.fromarray(np.asarray(img, dtype=np.uint8)).resize(
+                        (self.cv_detector.target_w, self.cv_detector.target_h), _Image.Resampling.BILINEAR))
+                check = guard.check(gimg, with_projection=bool(getattr(self, "audit_hooks", None)))
+                proj = check.pop("projection", None)
+            except Exception as e:
+                check = {"available": False, "reason": f"input guard failed: {e}"}
+        res = self._audit_core(img, corridor_id=corridor_id, latitude=latitude, longitude=longitude, **kwargs)
+        res["input_check"] = check or {"available": False,
+                                       "reason": getattr(guard, "load_error", None) or "input guard not loaded"}
+        if getattr(self, "model_versions", None):
+            res["model_versions"] = dict(self.model_versions)
+        total_ms = round((time.time() - t0) * 1000.0, 2)
+        res["total_latency_ms"] = total_ms
+        for hook in list(getattr(self, "audit_hooks", None) or []):
+            try:
+                hook(img, res, source, proj, total_ms)
+            except Exception as e:
+                print(f"[pipeline] audit hook failed: {e}")
+        return res
+
+    def _audit_core(
         self,
         image_input,
         corridor_id="NH-44",
