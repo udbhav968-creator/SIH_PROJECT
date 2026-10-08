@@ -14,6 +14,7 @@ services:
       - "8000:8000"
     environment:
       ROAD_SHIELD_WRITABLE_DIR: /data
+      ROAD_SHIELD_MLOPS_DIR: /data/mlops_store          # model registry and training runs survive rebuilds
       ROAD_SHIELD_ACCESS_LOG: "1"
       ROAD_SHIELD_API_KEY: ${ROAD_SHIELD_API_KEY:-}
       ROAD_SHIELD_RATE_LIMIT: ${ROAD_SHIELD_RATE_LIMIT:-60}      # model requests per minute per client
@@ -25,5 +26,18 @@ services:
     restart: unless-stopped
     # Healthcheck (models loaded, not just port open) comes from the Dockerfile.
 
+  # Optional: an MLflow UI for the training runs (docker compose --profile mlflow up). Point training at it with
+  # MLFLOW_TRACKING_URI=http://localhost:5000 and `pip install mlflow`; mlops/tracking.py mirrors every run there.
+  mlflow:
+    profiles: ["mlflow"]
+    image: ghcr.io/mlflow/mlflow:v2.16.2
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow/mlflow.db --default-artifact-root /mlflow/artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow:/mlflow
+    restart: unless-stopped
+
 volumes:
   ledger:
+  mlflow:

@@ -110,13 +110,49 @@ class GPSTrack:
 class VideoIngestor:
     """Decodes a video and turns it into deduplicated defect reports."""
 
-    def __init__(self, pipeline, dedup_engine=None, hasher=None):
+    def __init__(self, pipeline, dedup_engine=None, hasher=None, traffic=None):
         self.pipeline = pipeline
         self.dedup = dedup_engine
+        self.traffic = traffic          # pipeline/traffic.TrafficEstimator: vehicle counts per road cell
+        self._trf = {}
         if hasher is None:
             from models.forensic_audit_engine import ForensicDuplicateHasher
             hasher = ForensicDuplicateHasher(hash_size=8)
         self.hasher = hasher
+
+    def _observe_traffic(self, result, track, t, pos, bus_id, recorded_at):
+        """Accumulate vehicle counts per road cell for this pass; _flush_traffic sends one observation per cell."""
+        from pipeline.traffic import cell_of, counts_from_audit
+        counts = counts_from_audit(result)
+        if counts is None:
+            return
+        before = track.position_at(max(0.0, t - 2.0))
+        speed = None
+        if before is not None and t >= 2.0:
+            speed = GPSTrack.haversine_m(before[0], before[1], pos[0], pos[1]) / 2.0 * 3.6
+        acc = self._trf.setdefault(cell_of(pos[0], pos[1]), {"n": 0, "lat": 0.0, "lon": 0.0, "speeds": [],
+                                                            "counts": {}, "t": t})
+        acc["n"] += 1
+        acc["lat"] += pos[0]
+        acc["lon"] += pos[1]
+        if speed is not None:
+            acc["speeds"].append(speed)
+        for k, v in counts.items():
+            acc["counts"][k] = acc["counts"].get(k, 0) + v
+
+    def _flush_traffic(self, bus_id, recorded_at):
+        """One observation per cell per video. Without the recording time the hour of day is unknown, so the
+        observation records density but no flow (expanding by the wrong hour can be off tenfold)."""
+        for acc in self._trf.values():
+            n = acc["n"]
+            try:
+                self.traffic.observe(acc["lat"] / n, acc["lon"] / n, {k: v / n for k, v in acc["counts"].items()},
+                                     speed_kmh=(sum(acc["speeds"]) / len(acc["speeds"])) if (acc["speeds"] and recorded_at) else None,
+                                     at=(recorded_at + acc["t"]) if recorded_at else None, frames=n, bus_id=bus_id,
+                                     source="video")
+            except ValueError:
+                pass
+        self._trf = {}
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -137,7 +173,7 @@ class VideoIngestor:
 
     def process(self, path, gps_track=None, bus_id="UNKNOWN", sample_every_s=1.0,
                 sample_every_m=8.0, max_frames=400, hash_distance=6,
-                min_confidence=0.35, device_id=None, progress=None):
+                min_confidence=0.35, device_id=None, progress=None, recorded_at=None):
         """
         Run a video through the pipeline.
 
@@ -189,8 +225,10 @@ class VideoIngestor:
             recent_hashes.append(digest)
             recent_hashes = recent_hashes[-12:]
 
-            result = self.pipeline.audit_image(image_input=rgb)
+            result = self.pipeline.audit_image(image_input=rgb, _source="video")
             analysed += 1
+            if self.traffic is not None and pos is not None:
+                self._observe_traffic(result, track, t, pos, bus_id, recorded_at)
             last_pos = pos or last_pos
             if progress and analysed % 10 == 0:
                 progress(analysed, frame_idx, info["frame_count"])
@@ -218,6 +256,8 @@ class VideoIngestor:
             frame_idx += 1
 
         cap.release()
+        if self.traffic is not None and self._trf:
+            self._flush_traffic(bus_id, recorded_at)
         defects = [d for d in detections if d["is_defect"]]
         unique = len({d["dedup"]["defect_id"] for d in defects if d.get("dedup")})
 

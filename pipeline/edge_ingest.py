@@ -79,6 +79,7 @@ class EdgeIngest:
         self.shocks = []
         self.camera_only = []
         self.position_listeners = []          # fn(bus_id, lat, lon, at): the repair workflow counts passes
+        self.event_listeners = []             # fn(bus_id, kind, event, at): traffic estimate, model monitoring
 
     @property
     def configured(self):
@@ -95,6 +96,17 @@ class EdgeIngest:
                             last_seen=excluded.last_seen, packets=packets+1""", (bus, epoch, seq, time.time()))
 
     def _apply(self, bus, event):
+        out = self._apply_event(bus, event)
+        ts = _num(event.get("ts"), 0, None, 0)
+        at = min(ts, time.time()) if ts else time.time()
+        for fn in list(self.event_listeners):
+            try:
+                fn(bus, event.get("t"), event, at)
+            except Exception as e:
+                print(f"[edge] event listener failed: {e}")
+        return out
+
+    def _apply_event(self, bus, event):
         kind = event.get("t")
         lat, lon = _num(event.get("lat"), -90, 90), _num(event.get("lon"), -180, 180)
         if lat is None or lon is None:
@@ -140,6 +152,14 @@ class EdgeIngest:
                 except Exception as e:
                     print(f"[edge] position listener failed: {e}")
             return {"type": "pos"}
+        if kind == "trf":
+            veh = event.get("veh")
+            if not isinstance(veh, dict) or len(veh) > 8:
+                raise crypto.PacketError("traffic event needs vehicle counts")
+            for k, v in veh.items():
+                if _num(v, 0, 100) is None:
+                    raise crypto.PacketError("bad vehicle count")
+            return {"type": "trf"}
         raise crypto.PacketError(f"unknown event type {kind!r}")
 
     def _camera_only(self, bus, lat, lon, ts, event):

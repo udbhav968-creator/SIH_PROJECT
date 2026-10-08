@@ -25,12 +25,16 @@ import unittest
 import urllib.error
 import urllib.request
 
+import numpy as np
+
 ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ENGINE_ROOT not in sys.path:
     sys.path.insert(0, ENGINE_ROOT)
 
 _TMP = tempfile.mkdtemp(prefix="road_shield_api_test_")
 os.environ["ROAD_SHIELD_WRITABLE_DIR"] = _TMP
+os.environ["ROAD_SHIELD_MLOPS_DIR"] = os.path.join(_TMP, "mlops_store")   # never the repository's model registry
+os.environ["ROAD_SHIELD_MLFLOW"] = "0"
 # Demo fixtures are opt-in since they are invented reports; these tests use
 # them to check deduplication end to end, so they switch them on explicitly.
 os.environ["ROAD_SHIELD_SEED_DEMO"] = "1"
@@ -723,8 +727,77 @@ class APIServerTest(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(set(lst["counts"]), {"PENDING", "CONFIRMED", "DISMISSED"})
 
+    def test_works_mlops_endpoints(self):
+        if srv.MLOPS is None:
+            self.skipTest("MLOps did not start")
+        img = _first_image("02_kaggle_pothole_600")
+        if img:
+            code, r = self.post_json("/api/v1/pipeline/deep-audit", {"image_base64": _b64(img)}, timeout=300)
+            self.assertEqual(code, 200)
+            self.assertIn("input_check", r)
+            self.assertIn("total_latency_ms", r)
+        code, o = self.get_json("/api/v1/mlops/overview")
+        self.assertEqual(code, 200)
+        for k in ("registry", "serving", "monitoring", "input_guard", "active_learning", "traffic", "runs"):
+            self.assertIn(k, o)
+        if img:
+            self.assertGreaterEqual(o["monitoring"]["samples"], 1)
+        code, d = self.get_json("/api/v1/mlops/drift?hours=24")
+        self.assertEqual(code, 200)
+        code, d = self.get_json("/api/v1/mlops/drift?hours=x")
+        self.assertEqual(code, 400)
+        code, q = self.get_json("/api/v1/mlops/al/queue?status=pending")
+        self.assertEqual(code, 200)
+        self.assertIn("Pothole Cavity", q["labels"])
+        code, q = self.get_json("/api/v1/mlops/al/image?id=nope")
+        self.assertEqual(code, 404)
+        code, r = self.post_json("/api/v1/mlops/promote", {"model": "no_such_model", "version": 1})
+        self.assertIn(code, (404, 409, 503))
+        code, r = self.post_json("/api/v1/mlops/al/label", {"item_id": "AL-0000000000", "label": "Pothole Cavity"})
+        self.assertEqual(code, 404)
+        code, r = self.get_json("/api/v1/traffic/estimate?lat=abc")
+        self.assertEqual(code, 400)
+
+    def test_works_traffic_events_feed_the_priority_index(self):
+        if srv.MLOPS is None:
+            self.skipTest("MLOps did not start")
+        from edge import crypto
+        import time as _time
+        key = crypto.load_key("traffic-key")
+        saved = srv.edge_ingest.key
+        srv.edge_ingest.key = key
+        try:
+            now = int(_time.time())
+            pkts = [crypto.pack({"t": "trf", "ts": now - h * 3 * 3600, "lat": 13.70001, "lon": 77.70001, "n": 5,
+                                 "spd": 25.0, "veh": {"Car": 2.0, "Two-Wheeler": 3.0}}, "TRF-BUS", h + 1, key, epoch="cd")
+                    for h in range(7)]
+            code, res = self.post_json("/api/v1/fleet/ingest-sealed", {"packets": pkts})
+            self.assertEqual(res["accepted_in_order"], 7, res)
+        finally:
+            srv.edge_ingest.key = saved
+        code, e = self.get_json("/api/v1/traffic/estimate?lat=13.70001&lon=77.70001")
+        self.assertTrue(e["estimate"]["usable_for_priority"], e)
+        self._report("TRF-BUS", 13.70002, 77.70002, pci=30, area=1.0, depth=5)
+        code, rk = self.get_json("/api/v1/priority/ranking")
+        rec = next(d for d in rk["defects"] if abs(d["lat"] - 13.70002) < 1e-4)
+        self.assertTrue(rec["priority"]["traffic_basis"].startswith("measured"), rec["priority"])
+
+    def test_works_citizen_photo_that_is_not_a_road_is_refused(self):
+        guard = getattr(srv.deep_pipeline, "input_guard", None)
+        if guard is None or not guard.is_ready:
+            self.skipTest("input guard not trained")
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.fromarray(np.zeros((480, 640, 3), np.uint8) + 8).save(buf, format="JPEG")
+        code, r = self.post_json("/api/v1/citizen/report", {"image_base64": base64.b64encode(buf.getvalue()).decode(),
+                                                            "lat": 13.8, "lon": 77.8}, timeout=120)
+        self.assertEqual(code, 422, r)
+        self.assertIn(r["input_check"]["verdict"], ("poor_quality", "not_road"))
+        self.assertFalse(r["photo_stored"])
+
     def test_works_new_pages_are_served(self):
-        for page, marker in (("/report", b"Report a pothole"), ("/order", b"WORK ORDER")):
+        for page, marker in (("/report", b"Report a pothole"), ("/order", b"WORK ORDER"), ("/mlops", b"MLOps")):
             code, _h, body = self._req("GET", page)
             self.assertEqual(code, 200, page)
             self.assertIn(marker, body)

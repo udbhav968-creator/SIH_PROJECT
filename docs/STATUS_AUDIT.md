@@ -44,7 +44,13 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | Classifier confidence calibration | Measurement done in code (8 Oct): ECE, NLL, Brier and a reliability table on the Indian held-out crops, with a temperature fitted on one half and reported on the other; served only if both NLL and ECE improve. Runs in Colab stage 5 | `scripts/measure_calibration.py` |
 | Citizen reports | Done (8 Oct): `/report` takes a phone photograph and a location (photo GPS first, else the phone's position); the engine must find a pothole or crack, then the report is pinned on the map as pending. It joins the ledger only when a bus reports the same class within 15 m or an operator promotes it, so one person cannot fill the repair list. The photograph is not stored; senders are a salted hash, 10 reports an hour each | `pipeline/citizen.py`, `web/report.html`, `tests/test_citizen_reports.py` |
 | Printable work order | Done (8 Oct): `/order?id=` renders the sealed order on A4 with the live seal check, the hash-chained history and signature lines; the browser's print dialog saves it as PDF | `web/order.html` |
-| Automated tests | 330+; pipeline suite OK on a fresh clone with scikit-learn 1.8 and the fine-tuned CNN served | `tests/`, `logs/tests_after.txt` |
+| MLOps: registry, tracking, retraining | Done (8 Oct): every model version is its files by SHA-256 in a blob store, with metrics from its own reports, the training run and the commit; promotion only through a per-model gate (floor + max drop vs production + guard metrics), atomic deploy into checkpoints/, in-place reload, rollback, event log; hand-copied files are never overwritten. `python -m mlops retrain` validates data, trains, registers the candidate, restores production and gates it. Runs tracked in SQLite, mirrored to MLflow when installed | `mlops/`, `docs/MLOPS.md`, `tests/test_mlops.py` |
+| Input guard (out-of-distribution model) | Done (8 Oct), trained here: Mahalanobis novelty + not-road classifier on MobileNetV2 embeddings + quality limits. Held out: AUROC 0.9945; 94.2% of everyday photographs refused, 1.25% of road photographs refused (4/321); dark, blurred and overexposed frames all caught. The citizen endpoint refuses not-a-road and unusable photographs | `models/ood_guard.py`, `training/train_ood_guard.py`, `checkpoints/ood_guard_report.json` |
+| Production monitoring | Done (8 Oct): per-photograph record (no image, no location); PSI drift with a chi-square check against the training reference, class-mix drift, OOD rate, latency percentiles, daily series; alert on drift; Prometheus gauges; rebaseline from the city's own fleet; shadow test of a staging classifier off the request path | `mlops/monitor.py`, `/mlops` |
+| Active learning | Done (8 Oct): uncertain and disagreeing photographs queued after people and plates are blurred (citizen photos never), near-duplicates dropped, labelled on the MLOps page, exported as a class-folder zip with a manifest | `mlops/active_learning.py` |
+| Traffic from bus cameras | Done (8 Oct), not calibrated: COCO vehicle counts per 100 m cell, density × bus speed, expanded by an assumed hour profile; feeds the Priority Index once a cell has 6 observations in 3 hours. Needs comparison with manual counts before it is relied on | `pipeline/traffic.py`, `edge/bus_agent.py` |
+| CI/CD for models | Done (8 Oct): model-quality gate on committed checkpoints, Docker build + container smoke test, image published to GHCR from master | `.github/workflows/models.yml`, `docker.yml`, `mlops/ci_check.py` |
+| Automated tests | 350+; pipeline suite OK on a fresh clone with scikit-learn 1.8 and the fine-tuned CNN served | `tests/`, `logs/tests_after.txt` |
 
 ## Left to do (not claimed as done)
 
@@ -60,6 +66,7 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | Field validation of PCI / deterioration / depth | Needs field surveys or depth ground truth |
 | More photographs for the four municipal classes | ~50 each; test scores rest on 7-8 images |
 | Pixel labels for water-filled potholes | Segmenter under-detects them; no labels exist |
+| Traffic estimate calibration | Needs classified manual counts (IRC:SP:41) on a few corridors to set the view length and hour profile |
 | Live GIS feed from real buses | The feed and the bus agent exist; there is no fleet yet, so the map shows replayed or demo buses |
 
 ## False or hard-coded items found and what was done
