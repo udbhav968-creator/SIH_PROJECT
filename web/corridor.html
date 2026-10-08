@@ -180,8 +180,18 @@ if (hasMap) {
   el("mapTools").hidden = false;
 }
 
-function potholeIcon(kind, band, area, confirmations) {
+const OPEN_ORDER = new Set(["ISSUED", "ASSIGNED", "IN_PROGRESS", "REOPENED"]);
+function potholeIcon(kind, band, area, confirmations, repair) {
+  if (repair === "VERIFIED") {
+    return L.divIcon({ className: "pothole-icon", iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -11],
+      html: `<svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true"><circle cx="16" cy="16" r="13.5" fill="#22c55e" stroke="#fff" stroke-width="2.4"/>
+             <path d="M10 16.5l4 4 8-9" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>` });
+  }
   const colour = band ? BAND_COLOUR[band] : CLASS_COLOUR[kind];
+  const ring = repair === "REPAIRED"
+    ? `<circle cx="16" cy="16" r="15" fill="none" stroke="#22c55e" stroke-width="2.4" stroke-dasharray="3 2.5"/>` : "";
+  const order = OPEN_ORDER.has(repair)
+    ? `<rect x="0.5" y="21" width="12" height="10" rx="2.5" fill="#111827" stroke="#fff" stroke-width="1"/><text x="6.5" y="28.8" text-anchor="middle" font-size="6.5" font-weight="800" fill="#fff" font-family="Inter,sans-serif">WO</text>` : "";
   const size = Math.round(22 + Math.min(Number(area) || 0, 4) * 4);
   const glyph = kind === "pothole"
     ? `<ellipse cx="16" cy="17" rx="7.5" ry="5" fill="#111827" opacity=".85"/><ellipse cx="16" cy="16" rx="5" ry="3" fill="#374151"/>`
@@ -193,7 +203,7 @@ function potholeIcon(kind, band, area, confirmations) {
   return L.divIcon({
     className: "pothole-icon", iconSize: [size, size], iconAnchor: [size / 2, size / 2], popupAnchor: [0, -size / 2],
     html: `<svg viewBox="0 0 32 32" width="${size}" height="${size}" aria-hidden="true">
-      <circle cx="16" cy="16" r="13.5" fill="${colour}" stroke="#fff" stroke-width="2.4"/>${glyph}${badge}</svg>`,
+      <circle cx="16" cy="16" r="13.5" fill="${colour}" stroke="#fff" stroke-width="2.4"/>${glyph}${ring}${order}${badge}</svg>`,
   });
 }
 
@@ -211,14 +221,44 @@ function defectPopup(d, pr) {
     <div class="pk"><span>first / last seen</span><span>${esc(when(d.first_seen_timestamp))}<br>${esc(when(d.last_seen_timestamp))}</span></div>
     ${d.address ? `<div style="margin-top:4px">${esc(d.address)}</div>` : ""}
     <div style="margin-top:6px;font-family:monospace;font-size:11px">${lat.toFixed(6)}, ${lon.toFixed(6)}</div>
+    <div style="margin-top:8px;padding-top:6px;border-top:1px solid #e5e7eb">${d.repair
+      ? `Repair: <strong>${esc(d.repair.status.replace("_", " ").toLowerCase())}</strong> · <a href="/works">${esc(d.repair.work_order_id)}</a>
+         ${["VERIFIED", "CANCELLED"].includes(d.repair.status) ? `<br><button class="issue-wo" data-id="${esc(d.defect_id)}" style="margin-top:6px">Issue a new work order</button>` : ""}`
+      : `<button class="issue-wo" data-id="${esc(d.defect_id)}" data-depth="${d.depth_cm ?? ""}">Issue work order</button>`}
+      <span class="issue-msg" style="display:block;font-size:12px;margin-top:4px"></span></div>
     <div style="margin-top:6px"><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${lat},${lon}">Google Maps</a> ·
       <a target="_blank" rel="noopener" href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}">Street View</a></div></div>`;
 }
 
 function visible(d) {
   const pr = priorityById.get(d.defect_id);
+  if (show.hideVerified && d.repair?.status === "VERIFIED") return false;
   return show.kinds.has(kindOf(d.defect_class || "")) && show.bands.has(pr ? pr.band : "none");
 }
+
+/* "Issue work order" inside a defect's card: the order takes the defect's own measurements. */
+document.addEventListener("click", async e => {
+  const b = e.target.closest && e.target.closest("button.issue-wo");
+  if (!b) return;
+  const msg = b.parentElement.querySelector(".issue-msg");
+  const body = { defect_id: b.dataset.id };
+  if (b.dataset.depth === "") {
+    const v = prompt("This defect has no depth on record. Depth measured on site (cm):");
+    if (v == null) return;
+    body.depth_cm = parseFloat(v);
+  }
+  b.disabled = true;
+  let r = await API.post("/api/v1/works/orders", body);
+  if (r.status === 401) {
+    const k = prompt("Operator key (printed in the window that started the engine):");
+    if (k) { setOperatorKey(k.trim()); r = await API.post("/api/v1/works/orders", body); }
+  }
+  b.disabled = false;
+  if (!r.ok) { msg.textContent = r.data.error || `HTTP ${r.status}`; return; }
+  msg.innerHTML = `Issued <a href="/works">${esc(r.data.work_order_id)}</a> · ${esc(r.data.priority || "")} · ${esc(fmt.inr(r.data.budget_inr))}`;
+  b.remove();
+  scheduleReload();
+});
 
 function drawDefects() {
   if (!hasMap) { drawFallback(allDefects.filter(visible)); return; }
@@ -229,7 +269,8 @@ function drawDefects() {
     const lat = Number(d.lat ?? d.latitude), lon = Number(d.lon ?? d.lng ?? d.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
     const pr = priorityById.get(d.defect_id);
-    const m = L.marker([lat, lon], { icon: potholeIcon(kindOf(d.defect_class || ""), pr?.band, d.area_m2, Number(d.confirmation_count) || 1),
+    const m = L.marker([lat, lon], { icon: potholeIcon(kindOf(d.defect_class || ""), pr?.band, d.area_m2,
+                                                       Number(d.confirmation_count) || 1, d.repair?.status),
                                      title: `${d.defect_class} · ${pr ? pr.band : "unranked"}`, riseOnHover: true })
       .bindPopup(defectPopup(d, pr), { autoPanPaddingTopLeft: L.point(20, 70), maxWidth: 320 });
     defectLayer.addLayer(m);
@@ -281,7 +322,9 @@ function chips() {
   el("classChips").innerHTML = Object.entries(KIND_LABEL).map(([k, v]) =>
     `<button class="chip ${show.kinds.has(k) ? "" : "off"}" data-kind="${k}" style="border-color:${CLASS_COLOUR[k]}">${v}</button>`).join(" ");
   el("bandChips").innerHTML = ["P1", "P2", "P3", "P4"].map(b =>
-    `<button class="chip ${show.bands.has(b) ? "" : "off"}" data-band="${b}" style="border-color:${BAND_COLOUR[b]}">${b}</button>`).join(" ");
+    `<button class="chip ${show.bands.has(b) ? "" : "off"}" data-band="${b}" style="border-color:${BAND_COLOUR[b]}">${b}</button>`).join(" ") +
+    ` <button class="chip ${show.hideVerified ? "off" : ""}" id="chipVerified" style="border-color:#22c55e">Verified repairs</button>`;
+  el("chipVerified").onclick = () => { show.hideVerified = !show.hideVerified; chips(); drawDefects(); };
   document.querySelectorAll("[data-kind]").forEach(b => b.onclick = () => {
     const k = b.dataset.kind; show.kinds.has(k) ? show.kinds.delete(k) : show.kinds.add(k); chips(); drawDefects(); });
   document.querySelectorAll("[data-band]").forEach(b => b.onclick = () => {

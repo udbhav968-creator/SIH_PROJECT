@@ -9,8 +9,14 @@ Every tick (default every 2 s, about what a Pi 4 can analyse):
 
     1. read a frame, the last second of accelerometer data (100 samples) and the GPS fix
     2. frame quality check (edge/frame_quality.py)
-         usable    -> full pipeline on the frame with the real IMU window, so the Bayesian gate fuses both
-         unusable  -> IMU only; a strong shock becomes an IMU-only sighting, labelled as such
+         usable    -> the vision pipeline on the frame. The camera sees the road about LOOKAHEAD_M ahead, so a
+                      candidate defect waits until the bus has driven that far (distance / speed, 0.5-4 s); the
+                      accelerometer second from THAT moment is fused with it (models/bayesian_fusion_gate.py), and
+                      the position at that moment, when the bus is over the defect, is the one reported
+                      felt or not contradicted -> "defect" event
+                      seen but not felt (another lane, the kerb side, or a shadow) -> "cam" event: the server
+                      keeps it apart and adds it to the ledger only when a second bus sees the same thing
+         unusable  -> IMU only; a shock the classifier calls a pothole becomes an IMU-only sighting
     3. a confirmed defect becomes a compact event (well under 1 KB), sealed with AES-256-GCM and queued
     4. a position heartbeat is queued every --position-every seconds, for the live map
     5. a background thread sends the queue to the server whenever there is a connection
@@ -34,8 +40,14 @@ from edge import crypto, frame_quality
 from edge.store_forward import StoreAndForward
 
 AREA_CLASS_IDS = {1, 2, 3}
+LOOKAHEAD_M = 8.0            # where a dashcam's lower frame meets the road, roughly; calibrate per mount
+LOOKAHEAD_MIN_S, LOOKAHEAD_MAX_S = 0.5, 4.0
+# An IMU-only sighting needs the trained shock classifier to say pothole (>= 0.85: 18% of 1-second windows on the
+# recorded pothole drives, 0% on plain road), or a jolt beyond anything plain road produced (models/
+# bayesian_fusion_gate.SEVERE_JOLT_MS2). A raw 6 m/s^2 jolt, the first rule here, fired on 78-96% of plain road.
+from models.bayesian_fusion_gate import SEVERE_JOLT_MS2
 SHOCK_MIN_PROBABILITY = 0.85
-SHOCK_MIN_DELTA_Z = 6.0
+SHOCK_MIN_DELTA_Z = SEVERE_JOLT_MS2
 
 
 def _r(x, nd):
@@ -50,19 +62,24 @@ def defect_event(audit, fix, now):
     if d.get("class_id") not in AREA_CLASS_IDS or not d.get("is_distress"):
         return None
     fusion = audit.get("bayesian_sensor_fusion") or {}
-    if fusion.get("verdict") == "REJECTED_OPTICAL_FALSE_ALARM":
-        return None
     pci = (audit.get("astm_d6433_pci") or {}).get("pci_score")
     area = d.get("surface_area_m2")
     if pci is None or area is None:
         return None
+    felt = fusion.get("imu_evidence_source", "").startswith("real_sensor_window")
+    kind = "cam" if fusion.get("verdict") == "REJECTED_OPTICAL_FALSE_ALARM" else "defect"
     return {
-        "t": "defect", "ts": int(now),
+        "t": kind, "ts": int(now),
         "lat": _r(fix["lat"], 6), "lon": _r(fix["lon"], 6),
         "cls": d.get("class_name"), "pci": _r(pci, 1), "area": _r(area, 3), "depth": _r(d.get("depth_cm"), 1),
         "conf": _r(d.get("confidence"), 3),
-        "fusion": fusion.get("verdict"), "imu": (fusion.get("imu_evidence_source") == "real_sensor_window"),
+        "fusion": fusion.get("verdict"), "imu": felt,
     }
+
+
+def lookahead_s(speed_kmh):
+    v = max(1.0, float(speed_kmh or 0.0) / 3.6)
+    return min(LOOKAHEAD_MAX_S, max(LOOKAHEAD_MIN_S, LOOKAHEAD_M / v))
 
 
 def shock_event(imu_report, fix, now, reasons):
@@ -110,8 +127,9 @@ class BusAgent:
         self.device_id = device_id or bus_id
         self.quality_thresholds = quality_thresholds
         self._last_pos = float("-inf")
+        self._pending = []           # camera candidates waiting for the bus to reach them
         self.counters = {"ticks": 0, "frames_usable": 0, "frames_unusable": 0, "defects": 0, "shocks": 0,
-                         "positions": 0, "skipped_no_gps": 0, "skipped_no_frame": 0, "errors": 0}
+                         "camera_only": 0, "positions": 0, "skipped_no_gps": 0, "skipped_no_frame": 0, "errors": 0}
 
     def _pipeline(self):
         if self.pipeline is None:
@@ -129,6 +147,40 @@ class BusAgent:
         red, _ = redact(frame, detector=detector)
         Image.fromarray(red).save(os.path.join(self.evidence_dir, f"{self.bus_id}_{int(now)}.jpg"), quality=85)
 
+    def _emit(self, audit, fix, now, frame, out):
+        ev = defect_event(audit, fix, now)
+        if not ev:
+            return
+        self.queue.put(ev)
+        if ev["t"] == "defect":
+            self.counters["defects"] += 1
+            self._keep_evidence(frame, now)
+            out.append("defect")
+        else:
+            self.counters["camera_only"] += 1
+            out.append("cam")
+
+    def _resolve_pending(self, now, fix, out, flush=False):
+        """Fuse each waiting camera candidate with the accelerometer second from when the bus reached it."""
+        keep = []
+        for c in self._pending:
+            if not flush and now - c["t"] < c["wait"]:
+                keep.append(c)
+                continue
+            audit = c["audit"]
+            window = self.imu.window(100) if self.imu is not None else None
+            pipe = self._pipeline()
+            gate = getattr(pipe, "bayesian_gate", None)
+            if window is not None and gate is not None:
+                rep = pipe._run_imu_stage(window)[0]
+                pv = ((audit.get("primary_distress") or {}).get("probabilities") or {}).get("Pothole Cavity", 0.05)
+                fused = gate.fuse(p_visual=pv, p_imu_shock=rep.get("pothole_shock_probability", 0.05),
+                                  delta_z_ms2=rep.get("peak_delta_z_ms2", 0.0))
+                fused["imu_evidence_source"] = "real_sensor_window_at_defect"
+                audit = dict(audit, bayesian_sensor_fusion=fused, imu_shock_telemetry=rep)
+            self._emit(audit, fix or c["fix"], c["t"], c["frame"], out)
+        self._pending = keep
+
     def tick(self, now=None):
         now = time.time() if now is None else now
         self.counters["ticks"] += 1
@@ -139,6 +191,11 @@ class BusAgent:
             self._last_pos = now
             self.counters["positions"] += 1
             out.append("pos")
+        if self._pending:
+            try:
+                self._resolve_pending(now, fix, out)
+            except crypto.PacketError:
+                self.counters["errors"] += 1
         frame = self.camera.frame() if self.camera is not None else None
         if frame is None:
             self.counters["skipped_no_frame"] += 1
@@ -151,16 +208,17 @@ class BusAgent:
         try:
             if q["usable"]:
                 self.counters["frames_usable"] += 1
+                # vision only here: the wheel has not reached what the camera sees yet
                 audit = self._pipeline().audit_image(frame, corridor_id=self.corridor, latitude=fix["lat"],
-                                                     longitude=fix["lon"], imu_series=window,
+                                                     longitude=fix["lon"], imu_series=None,
                                                      device_id=self.device_id,
                                                      vehicle_speed_kmh=fix.get("speed_kmh") or 30.0)
-                ev = defect_event(audit, fix, now)
-                if ev:
-                    self.queue.put(ev)
-                    self.counters["defects"] += 1
-                    self._keep_evidence(frame, now)
-                    out.append("defect")
+                if defect_event(audit, fix, now):
+                    if self.imu is None:
+                        self._emit(audit, fix, now, frame, out)
+                    else:
+                        self._pending.append({"audit": audit, "fix": fix, "t": now, "frame": frame,
+                                              "wait": lookahead_s(fix.get("speed_kmh"))})
             else:
                 self.counters["frames_unusable"] += 1
                 if window is not None:
@@ -198,6 +256,10 @@ class BusAgent:
                 time.sleep(max(0.0, interval - (time.time() - t0)))
         finally:
             stop.set()
+            try:
+                self._resolve_pending(time.time(), None, [], flush=True)
+            except Exception:
+                pass
             if sender is not None:
                 self.queue.flush(sender)
 

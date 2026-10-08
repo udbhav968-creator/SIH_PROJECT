@@ -4,6 +4,10 @@ Server side of the bus link: opens sealed packets (edge/crypto.py) and applies t
     defect   -> fleet ledger (deduplication, Priority Index inputs), published to the live map
     shock    -> IMU-only sighting: kept in a short list and shown on the map, not added to the ledger,
                 because a shock has no area or depth to price a repair from
+    cam      -> a camera sighting the wheel did not feel (another lane, the kerb side - or a shadow). Kept apart;
+                it enters the ledger when a second bus reports the same class within 8 m within 7 days, or
+                when the ledger already has that defect. A shadow rarely looks the same to two buses at
+                different times; a pothole outside the wheel path does
     pos      -> latest position of the bus, for the live map (dropped from it 10 minutes after the server
                 last heard from the bus, by the server's clock: a bus with a wrong clock still shows)
 
@@ -58,6 +62,9 @@ def _text(v, n=80):
     return None if v is None else str(v)[:n]
 POSITION_TTL_S = 600
 SHOCKS_KEPT = 500
+CAMERA_ONLY_KEPT = 2000
+CAMERA_MATCH_M = 8.0
+CAMERA_MATCH_S = 7 * 24 * 3600
 
 
 class EdgeIngest:
@@ -70,6 +77,8 @@ class EdgeIngest:
         self._db.executescript(SCHEMA)
         self.positions = {}
         self.shocks = []
+        self.camera_only = []
+        self.position_listeners = []          # fn(bus_id, lat, lon, at): the repair workflow counts passes
 
     @property
     def configured(self):
@@ -103,6 +112,8 @@ class EdgeIngest:
                             if d["defect_id"] == res["defect_id"]), None)
                 self.events.publish("defect", {"bus_id": bus, "result": res, "defect": rec, "via": "edge"})
             return {"type": "defect", **res}
+        if kind == "cam":
+            return self._camera_only(bus, lat, lon, ts, event)
         if kind == "shock":
             s = {"bus_id": bus, "lat": lat, "lon": lon, "ts": ts, "p": _num(event.get("p"), 0, 1, 3),
                  "dz": _num(event.get("dz"), 0, 1000, 2), "class": _text(event.get("cls")),
@@ -120,8 +131,49 @@ class EdgeIngest:
             self.positions[bus] = p
             if self.events:
                 self.events.publish("bus_position", p)
+            # the time the bus recorded the position (never later than now): a backlog uploaded after an
+            # outage carries its real times, so old positions are not counted as passes after a repair
+            at = min(ts, time.time()) if ts else time.time()
+            for fn in list(self.position_listeners):
+                try:
+                    fn(bus, lat, lon, at)
+                except Exception as e:
+                    print(f"[edge] position listener failed: {e}")
             return {"type": "pos"}
         raise crypto.PacketError(f"unknown event type {kind!r}")
+
+    def _camera_only(self, bus, lat, lon, ts, event):
+        from pipeline.fleet_deduplication_engine import FleetDeduplicationEngine as F
+        cls = _text(event.get("cls"))
+        if not cls:
+            raise crypto.PacketError("sighting has no class")
+        sighting = {"bus_id": bus, "lat": lat, "lon": lon, "ts": ts or time.time(), "cls": cls,
+                    "pci": event.get("pci"), "area": event.get("area"), "depth": _num(event.get("depth"), 0, 200)}
+        known = any(d.get("defect_class") == cls and F.haversine_distance(lat, lon, d["lat"], d["lon"]) <= CAMERA_MATCH_M
+                    for d in self.dedup.get_all_deduplicated_defects())
+        now = time.time()
+        match = None if known else next(
+            (c for c in self.camera_only if c["cls"] == cls and c["bus_id"] != bus
+             and now - c["ts"] <= CAMERA_MATCH_S
+             and F.haversine_distance(lat, lon, c["lat"], c["lon"]) <= CAMERA_MATCH_M), None)
+        if not known and match is None:
+            self.camera_only.append(sighting)
+            del self.camera_only[:-CAMERA_ONLY_KEPT]
+            if self.events:
+                self.events.publish("camera_only", {k: sighting[k] for k in ("bus_id", "lat", "lon", "cls", "ts")})
+            return {"type": "cam", "decision": "held until a second bus confirms it"}
+        promoted = []
+        for s_ in ([match] if match else []) + [sighting]:
+            res = self.dedup.ingest_fleet_detection(s_["bus_id"], s_["lat"], s_["lon"], s_["cls"], s_["pci"], s_["area"],
+                                                    image_timestamp=s_["ts"], depth_cm=s_["depth"], enrich_location=False)
+            promoted.append(res["defect_id"])
+            if self.events:
+                rec = next((d for d in self.dedup.get_all_deduplicated_defects() if d["defect_id"] == res["defect_id"]), None)
+                self.events.publish("defect", {"bus_id": s_["bus_id"], "result": res, "defect": rec, "via": "edge-camera"})
+        if match:
+            self.camera_only.remove(match)
+        return {"type": "cam", "decision": "added to the ledger", "defect_id": promoted[-1],
+                "confirmed_by": "existing defect" if known else f"second bus {match['bus_id']}"}
 
     def ingest(self, envelopes):
         if not self.configured:

@@ -20,11 +20,14 @@ const ENGINE_PATHS = new Set([
   "/api/v1/pedestrian/detect", "/api/v1/telemetry/imu",
   "/api/v1/fleet/telemetry", "/api/v1/gis/map-data", "/api/v1/ledger/defects", "/api/v1/fleet/live",
   "/api/v1/priority/ranking", "/api/v1/priority/score", "/api/v1/live/stream", "/api/v1/fleet/report-defect",
+  "/api/v1/works/orders", "/api/v1/works/order", "/api/v1/works/status", "/api/v1/ledger/export", "/api/v1/alerts",
+  "/api/v1/dispatch/work-order", "/api/v1/dispatch/verify-seal",
 ]);
 
 /* Endpoints that change stored state. When the engine locks them (public demo), the operator's key - typed
    once on the page, kept only for this browser tab - is sent with them, and only with them. */
-const KEYED_PATHS = new Set(["/api/v1/fleet/report-defect", "/api/v1/dispatch/work-order"]);
+const KEYED_PATHS = new Set(["/api/v1/fleet/report-defect", "/api/v1/dispatch/work-order",
+                             "/api/v1/works/orders", "/api/v1/works/status"]);
 function operatorKey() { try { return sessionStorage.getItem("roadShieldApiKey") || ""; } catch { return ""; } }
 function setOperatorKey(k) { try { k ? sessionStorage.setItem("roadShieldApiKey", k) : sessionStorage.removeItem("roadShieldApiKey"); } catch {} }
 
@@ -370,10 +373,11 @@ function setLoading(node, on, text = "working…") {
 }
 
 function errorCard(message, hint) {
+  const e = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   return `<div class="card notice bad">
     <div class="label">could not load</div>
-    <p class="small" style="margin:0">${message}</p>
-    ${hint ? `<p class="small muted" style="margin:.5rem 0 0">${hint}</p>` : ""}
+    <p class="small" style="margin:0">${e(message)}</p>
+    ${hint ? `<p class="small muted" style="margin:.5rem 0 0">${e(hint)}</p>` : ""}
   </div>`;
 }
 

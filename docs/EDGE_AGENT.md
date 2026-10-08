@@ -17,7 +17,7 @@ Neo-6M ─┘                       unusable ─────> IMU only ─> stro
 |---|---|---|
 | Frame quality | `edge/frame_quality.py` | Sharpness, brightness, clipping, contrast on the road part of the frame. Thresholds near the 1st percentile of 600 project road photographs: 6 of those 600 are rejected. Re-tune on real bus footage with `tune()`. |
 | Vision + IMU | `pipeline/deep_inference_pipeline.py` | The full pipeline with the last second of real accelerometer data, so the Bayesian gate fuses both sensors. A visual detection the gate rejects as an optical false alarm is not reported. |
-| IMU precedence | `edge/bus_agent.py` | When the camera cannot be used (dark, blurred, glare), a shock with pothole probability ≥ 0.85 or Δz ≥ 6 m/s² is reported as an **IMU-only sighting**, kept apart from the ledger (no area or depth to price). |
+| IMU precedence | `edge/bus_agent.py` | When the camera cannot be used (dark, blurred, glare), a shock the IMU classifier rates ≥ 0.85 pothole, or a jolt above 28 m/s² (beyond 99% of plain-road seconds in the drive logs), is reported as an **IMU-only sighting**, kept apart from the ledger (no area or depth to price). |
 | No GPS, no defect | `edge/bus_agent.py` | A defect without a location is never queued; the tick is counted under `skipped_no_gps`. |
 | Packet | `edge/crypto.py` | Compact JSON under 1 KB, AES-256-GCM. Bus id and sequence number are authenticated, so a packet cannot be relabelled or replayed. |
 | Offline queue | `edge/store_forward.py` | SQLite, sealed envelopes only (encrypted at rest). Sent oldest first; stops at the first failure; backs off 5 s → 5 min. Bounded: drops position heartbeats before events and counts every drop. A packet the server refuses 3 times (wrong key, corrupted row) moves to a dead-letter table so the rest keep flowing; a network outage never dead-letters anything. Each queue database has a random epoch, so a bus with a new SD card is not mistaken for a replay. |
@@ -50,6 +50,26 @@ queue grows on the "bus" and empties when the engine is back.
 
 `edge/samples/demo_route.csv` is a demonstration route along a 2 km stretch in central Bengaluru at
 25 km/h. It is not a recorded bus trip, and the photographs replayed along it were not taken there.
+
+## The whole city loop in one command
+
+`scripts/demo_city.py` runs three replayed buses on the demo route against a running engine and takes one
+repair from order to fleet verification while you watch the Road map and Works pages:
+
+```powershell
+# window 1
+$env:ROAD_SHIELD_FLEET_KEY = "demo-fleet-key"; $env:ROAD_SHIELD_VERIFY_MIN_HOURS = "0"; $env:ROAD_SHIELD_VERIFY_PASSES = "2"
+python -m api.server 8001
+# window 2
+$env:ROAD_SHIELD_FLEET_KEY = "demo-fleet-key"
+python -m scripts.demo_city --server http://127.0.0.1:8001 --buses 3 --minutes 8 --repair-demo
+```
+
+Measured here: 3 buses, 8 minutes, 24 defects in the ledger; the top defect's order went issued →
+assigned → in progress → repaired, and two bus passes plus the settle window verified it about 3 minutes
+after the repair. In another run a bus reported the same defect again after the repair and the order
+reopened instead; both are the system working. The two environment variables shorten verification for
+the demonstration (the default is 3 passes over 24 hours).
 
 ## On the Raspberry Pi
 

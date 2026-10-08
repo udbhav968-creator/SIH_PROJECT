@@ -100,6 +100,28 @@ def spec():
                 "responses": {"200": {"description": "text/event-stream",
                                       "content": {"text/event-stream": {"schema": STR}}},
                               "503": _json(OBJ, "too many open streams")}}},
+            "/api/v1/works/orders": {
+                "get": {"summary": "Work orders with SLA, overdue flag, fleet passes since repair; ?status=",
+                        "tags": ["works"], "responses": {"200": _json(OBJ), "400": ERR}},
+                "post": {"summary": "Issue a sealed work order for a ledger defect (its measured class, area, depth, "
+                                    "PCI and location)", "tags": ["works"], "security": secured,
+                         "requestBody": _body({"defect_id": STR, "depth_cm": NUM, "note": STR}, ["defect_id"]),
+                         "responses": {"200": _json(OBJ), "400": ERR, "401": AUTH_ERR,
+                                       "409": _json(OBJ, "the defect already has an open order")}}},
+            "/api/v1/works/order": {"get": {"summary": "One order with its hash-chained history (?id=)", "tags": ["works"],
+                                            "responses": {"200": _json(OBJ), "404": _json(OBJ)}}},
+            "/api/v1/works/status": {"post": {
+                "summary": "Move an order: ASSIGNED (needs contractor), IN_PROGRESS, REPAIRED, VERIFIED, REOPENED, "
+                           "CANCELLED; the fleet verifies or reopens repaired orders by itself", "tags": ["works"],
+                "security": secured,
+                "requestBody": _body({"work_order_id": STR, "status": STR, "contractor": STR, "note": STR, "actor": STR},
+                                     ["work_order_id", "status"]),
+                "responses": {"200": _json(OBJ), "401": AUTH_ERR, "404": _json(OBJ),
+                              "409": _json(OBJ, "not allowed from the current status")}}},
+            "/api/v1/ledger/export": {"get": {"summary": "The ledger for GIS: ?format=geojson or csv", "tags": ["fleet"],
+                                              "responses": {"200": {"description": "file download"}, "400": ERR}}},
+            "/api/v1/alerts": {"get": {"summary": "Recent alerts (P1 defects, overdue orders) and webhook status",
+                                       "tags": ["fleet"], "responses": {"200": _json(OBJ)}}},
             "/api/v1/fleet/telemetry": {"get": {"summary": "Ledger counts and deduplication rate", "tags": ["fleet"],
                                                 "responses": {"200": _json(OBJ)}}},
             "/api/v1/gis/map-data": {"get": {"summary": "Deduplicated defects for the map", "tags": ["fleet"],

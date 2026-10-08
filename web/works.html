@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Works &amp; costing — ROAD-SHIELD</title>
-<meta name="description" content="MoRTH Section 500 costing and SHA-256 sealed repair work orders.">
+<title>Works — ROAD-SHIELD</title>
+<meta name="description" content="Repair work orders from detection to a repair verified by the bus fleet: SLA, contractor, hash-chained history, sealed orders.">
 <meta name="theme-color" content="#0a0f17">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 4 5.5v6c0 4.8 3.3 8.9 8 10 4.7-1.1 8-5.2 8-10v-6z' fill='%23f0a92b'/%3E%3Cpath d='M10.2 17.5 11.2 7h1.6l1 10.5' fill='none' stroke='%230a0f17' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
 <meta property="og:site_name" content="ROAD-SHIELD">
@@ -14,146 +14,276 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="/web/app.css">
+<style>
+  .board { display: grid; grid-template-columns: repeat(7, minmax(160px, 1fr)); gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+  .col { background: var(--ink-950); border: 1px solid var(--ink-800); border-radius: 12px; padding: 10px; min-height: 140px; }
+  .col h3 { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--slate-400); margin: 0 0 8px;
+    display: flex; justify-content: space-between; }
+  .wo { background: var(--ink-900); border: 1px solid var(--ink-700); border-radius: 10px; padding: 9px 10px; margin-bottom: 8px;
+    cursor: pointer; font-size: 12.5px; line-height: 1.45; }
+  .wo:hover, .wo.sel { border-color: var(--accent); }
+  .wo .id { font-family: var(--mono); font-size: 11px; color: var(--slate-400); }
+  .wo .due.late { color: var(--bad); font-weight: 700; }
+  .timeline { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--ink-700); }
+  .timeline li { margin: 0 0 12px 12px; position: relative; font-size: 13px; }
+  .timeline li::before { content: ""; position: absolute; left: -19px; top: 4px; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent); }
+  .hash { font-family: var(--mono); font-size: 10.5px; color: var(--slate-400); word-break: break-all; }
+  .todo td { vertical-align: middle; }
+  #todo .table-wrap { max-height: 620px; overflow: auto; }
+  @media (max-width: 900px) { .board { grid-template-columns: repeat(7, 78vw); scroll-snap-type: x mandatory; } .col { scroll-snap-align: start; } }
+</style>
 </head>
 <body data-page="works">
-<div class="wrap">
+<div class="wrap wide">
   <div class="section-head" style="margin-top:6px">
-    <h1 style="font-size:1.9rem">Works &amp; costing</h1>
-    <span class="muted small">MoRTH Section 500 tonnage · SHA-256 sealed orders</span>
+    <h1 style="font-size:1.9rem">Works</h1>
+    <span class="muted small">from a detected defect to a repair the bus fleet has confirmed · sealed orders · SLA · audit trail</span>
   </div>
 
-  <div class="split">
-    <div>
-      <div class="card">
-        <div class="label">issue a work order</div>
+  <div class="grid c4" id="stats"></div>
+
+  <div class="card" id="keyBar" style="margin-top:14px" hidden>
+    <div class="label">operator key</div>
+    <p class="small muted" style="margin:0 0 8px">This engine only lets its operator issue or move orders. The key is printed in the
+      window that started the engine; it is kept in this browser tab only.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="opKey" type="password" autocomplete="off" placeholder="operator key" style="max-width:320px">
+      <button id="saveKey">Use key</button></div>
+  </div>
+
+  <div class="split" style="margin-top:16px">
+    <div class="card">
+      <div class="label" style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+        <span>defects waiting for an order — highest priority first</span>
+        <span><a class="small" id="expGeo" href="#">GeoJSON</a> · <a class="small" id="expCsv" href="#">CSV</a></span>
+      </div>
+      <div id="todo"><p class="small muted">loading…</p></div>
+    </div>
+    <div class="card" id="detail">
+      <div class="label">order</div>
+      <p class="small muted" style="margin:0">Pick an order on the board to see its history and move it on.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="label" style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+      <span>board</span><span class="small muted" id="rule"></span>
+    </div>
+    <div class="board" id="board"></div>
+  </div>
+
+  <details class="card" style="margin-top:16px">
+    <summary class="label" style="cursor:pointer">costing calculator and seal demonstration (not linked to the ledger)</summary>
+    <div class="split" style="margin-top:12px">
+      <div>
         <div class="grid c2">
           <div class="field"><label for="cls">Defect class</label>
-            <select id="cls">
-              <option>Pothole Cavity</option>
-              <option>Crack (Longitudinal / Transverse / Alligator)</option>
-              <option>Waterlogging / Flooding Hazard</option>
-            </select></div>
-          <div class="field"><label for="area">Surface area (m²)</label>
-            <input id="area" type="number" step="0.01" value="1.20"></div>
-          <div class="field"><label for="depth">Depth (cm)</label>
-            <input id="depth" type="number" step="0.5" value="6.0"></div>
-          <div class="field"><label for="pci">PCI</label>
-            <input id="pci" type="number" step="1" value="42"></div>
-          <div class="field"><label for="lat">Latitude</label>
-            <input id="lat" type="number" step="0.00001" placeholder="from the bus GPS (optional)"></div>
-          <div class="field"><label for="lon">Longitude</label>
-            <input id="lon" type="number" step="0.00001" placeholder="from the bus GPS (optional)"></div>
+            <select id="cls"><option>Pothole Cavity</option><option>Crack (Longitudinal / Transverse / Alligator)</option>
+              <option>Waterlogging / Flooding Hazard</option></select></div>
+          <div class="field"><label for="area">Surface area (m²)</label><input id="area" type="number" step="0.01" value="1.20"></div>
+          <div class="field"><label for="depth">Depth (cm)</label><input id="depth" type="number" step="0.5" value="6.0"></div>
+          <div class="field"><label for="pci">PCI</label><input id="pci" type="number" step="1" value="42"></div>
         </div>
-        <button class="primary" id="issue">Generate sealed work order</button>
-      </div>
-
-      <div class="card" style="margin-top:16px">
-        <div class="label">tamper demonstration</div>
-        <p class="small muted" style="margin:0 0 10px">
-          Change a field on an issued order and re-verify. The seal is SHA-256 over
-          the order's own fields, so a contractor cannot quietly inflate a bill
-          after issue.
-        </p>
-        <div class="field"><label for="tamper">New budget figure (₹)</label>
+        <button class="primary" id="issueCalc">Generate sealed order</button>
+        <div class="field" style="margin-top:12px"><label for="tamper">Change the budget to (₹)</label>
           <input id="tamper" type="number" value="99999"></div>
         <div style="display:flex;gap:9px;flex-wrap:wrap">
           <button id="verify" disabled>Verify seal as issued</button>
           <button id="break" disabled>Tamper, then verify</button>
         </div>
-        <div id="sealout" style="margin-top:12px"></div>
       </div>
+      <div><div id="calcOut"></div><div id="sealout" style="margin-top:12px"></div></div>
     </div>
-
-    <div id="order">
-      <div class="card"><div class="label">no order yet</div>
-        <p class="small muted" style="margin:0">Issue one on the left.</p></div>
-    </div>
-  </div>
+  </details>
 </div>
 
 <script src="/web/config.js"></script>
 <script src="/web/app.js"></script>
 <script>
-let issued = null;
+const COLS = ["ISSUED", "ASSIGNED", "IN_PROGRESS", "REPAIRED", "REOPENED", "VERIFIED", "CANCELLED"];
+const LABEL = { ISSUED: "Issued", ASSIGNED: "Assigned", IN_PROGRESS: "In progress", REPAIRED: "Repaired — fleet checking",
+                REOPENED: "Reopened", VERIFIED: "Verified", CANCELLED: "Cancelled" };
+const bandBadge = { P1: "bad", P2: "warn", P3: "estimate", P4: "neutral" };
+let orders = [], selected = null;
 
-el("issue").addEventListener("click", async () => {
-  setLoading(el("order"), true, "computing tonnage and sealing…");
-  // Empty GPS boxes send nothing: the server then issues the order held
-  // (HELD_NO_GPS) instead of placing it at an invented coordinate.
-  const num = id => { const v = parseFloat(el(id).value); return Number.isFinite(v) ? v : null; };
-  const payload = {
-    distress_class: el("cls").value,
-    area_sqm: num("area"),
-    depth_cm: num("depth"),
-    pci_score: num("pci"),
-  };
-  if (num("lat") != null && num("lon") != null) { payload.latitude = num("lat"); payload.longitude = num("lon"); }
-  const r = await API.post("/api/v1/dispatch/work-order", payload);
-  if (!r.ok) { el("order").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`); return; }
-  issued = r.data;
-  el("verify").disabled = false;
-  el("break").disabled = false;
-  renderOrder(r.data);
-});
-
-function renderOrder(d) {
-  // Field names are the ones MoRTHDispatchAgent actually returns. The page used
-  // to read names the server never sends and fall back to the form inputs, so
-  // it displayed what was typed rather than what was sealed.
-  const wo = d;
-  const sealHex = wo.sha256_cryptographic_seal || "—";
-  const gps = wo.coordinates ? `${fmt.num(wo.coordinates.lat, 5)}, ${fmt.num(wo.coordinates.lon, 5)}` : "none - order held";
-  el("order").innerHTML = `
-    <div class="card accent">
-      <div class="label">work order · issued</div>
-      <h2 style="margin:2px 0 12px;font-size:1.15rem">${wo.work_order_id || "—"}</h2>
-      <div class="kv"><span>Defect</span><span>${wo.distress_type || "—"}</span></div>
-      <div class="kv"><span>Area</span><span>${fmt.num(wo.surface_area_sqm, 2)} m²</span></div>
-      <div class="kv"><span>Depth</span><span>${fmt.num(wo.depth_cm, 1)} cm</span></div>
-      <div class="kv"><span>PCI</span><span>${wo.pavement_pci ?? "—"}</span></div>
-      <div class="kv"><span>GPS</span><span>${gps}</span></div>
-      <div class="kv"><span>Dispatch</span><span>${wo.dispatch_status || "—"}</span></div>
-      <div class="kv"><span>Mix</span><span>${wo.asphalt_mix || "—"}</span></div>
-      <div class="kv"><span>Tonnage</span><span>${fmt.num(wo.required_mass_tonnes, 3)} t</span></div>
-      <div class="kv"><span>Budget</span><span>${fmt.inr(wo.allocated_budget_inr)}</span></div>
-      <div class="kv"><span>Priority</span><span>${wo.priority || "—"}</span></div>
-      <div class="kv"><span>SLA</span><span>${wo.sla_resolution_hours != null ? wo.sla_resolution_hours + " h" : "—"}</span></div>
-      <p class="small muted" style="margin:6px 0 0">${wo.rate_basis || ""}</p>
-      <div class="rule" style="margin:12px 0"></div>
-      <div class="label">SHA-256 seal</div>
-      <pre style="word-break:break-all;white-space:pre-wrap">${sealHex}</pre>
-      <p class="small muted" style="margin:9px 0 0">
-        Computed over the order's own fields. Any change to any field produces a
-        different digest, which is what makes the tamper test on the left meaningful.
-      </p>
-    </div>
-    <div class="card" style="margin-top:14px">
-      <div class="label">full response</div>
-      <pre style="max-height:280px;overflow:auto">${JSON.stringify(d, null, 2)}</pre>
-    </div>`;
+function esc(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
+const when = t => t ? new Date(t * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—";
+function dueText(o) {
+  if (!o.due_at) return "";
+  if (o.met_sla === true) return "met SLA";
+  if (o.met_sla === false) return "missed SLA";
+  const h = (o.due_at - Date.now() / 1000) / 3600;
+  return o.overdue ? `<span class="due late">overdue ${Math.abs(h).toFixed(0)} h</span>` : `<span class="due">due in ${h.toFixed(0)} h</span>`;
 }
 
+async function writeCall(path, body) {
+  const r = await API.post(path, body);
+  if (r.status === 401) { el("keyBar").hidden = false; el("opKey").focus(); }
+  return r;
+}
+el("saveKey").onclick = () => { setOperatorKey(el("opKey").value.trim()); el("keyBar").hidden = true; };
+
+async function loadStats(summary) {
+  const s = summary || {}, by = s.by_status || {};
+  const open = ["ISSUED", "ASSIGNED", "IN_PROGRESS", "REPAIRED", "REOPENED"].reduce((a, k) => a + (by[k] || 0), 0);
+  el("stats").innerHTML = `
+    <div class="card accent"><div class="label">open orders</div><div class="stat">${esc(open)}</div>
+      <div class="stat-sub">${esc(by.REPAIRED || 0)} repaired, waiting for the fleet to confirm</div></div>
+    <div class="card"><div class="label">overdue</div><div class="stat" style="color:${s.overdue ? "var(--bad)" : "var(--ok)"}">${esc(s.overdue ?? 0)}</div>
+      <div class="stat-sub">past their SLA and not yet repaired</div></div>
+    <div class="card"><div class="label">verified repairs</div><div class="stat" style="color:var(--ok)">${esc(by.VERIFIED || 0)}</div>
+      <div class="stat-sub">${s.met_sla_pct != null ? esc(s.met_sla_pct) + "% met their SLA" : "no closed order yet"}</div></div>
+    <div class="card"><div class="label">open budget</div><div class="stat sm">${esc(fmt.inr(s.budget_open_inr || 0))}</div>
+      <div class="stat-sub">indicative MoRTH rates, sealed on each order</div></div>`;
+  const v = s.verify_rule;
+  el("rule").textContent = v ? `A repair is verified after ${v.passes} bus passes within ${v.pass_radius_m} m over at least ` +
+                                `${v.min_hours} h with no new sighting; a new sighting reopens it.` : "";
+}
+
+async function loadTodo() {
+  const r = await API.get("/api/v1/priority/ranking");
+  if (!r.ok || !r.data.defects) { el("todo").innerHTML = `<p class="small muted">The live engine is not connected.</p>`; return; }
+  const waiting = r.data.defects.filter(d => !d.repair || ["VERIFIED", "CANCELLED"].includes(d.repair.status));
+  if (!waiting.length) { el("todo").innerHTML = `<p class="small muted">Every defect in the ledger has an order.</p>`; return; }
+  el("todo").innerHTML = `<div class="table-wrap"><table class="todo"><thead><tr><th>#</th><th>defect</th><th class="num">priority</th>
+    <th class="num">m² / cm</th><th></th></tr></thead><tbody>${waiting.slice(0, 40).map(d => `<tr>
+      <td class="num">${esc(d.rank)}</td>
+      <td>${esc(String(d.defect_class).slice(0, 24))}<br><span class="small muted">${esc(d.defect_id)}${d.repair ? " · last order " + esc(d.repair.status.toLowerCase()) : ""}</span></td>
+      <td class="num"><span class="badge ${bandBadge[d.priority.band] || "neutral"}">${esc(d.priority.band)}</span> ${esc(fmt.num(d.priority.priority_index, 1))}</td>
+      <td class="num">${esc(fmt.num(d.area_m2, 2))} / ${d.depth_cm != null ? esc(fmt.num(d.depth_cm, 1)) : "<span class='muted'>no depth</span>"}</td>
+      <td><button class="issue" data-id="${esc(d.defect_id)}" data-depth="${d.depth_cm ?? ""}">Issue order</button></td></tr>`).join("")}
+    </tbody></table></div>`;
+  document.querySelectorAll("button.issue").forEach(b => b.onclick = async () => {
+    const body = { defect_id: b.dataset.id };
+    if (!b.dataset.depth) {
+      const v = prompt("This defect has no depth on record. Depth measured on site (cm):");
+      if (v == null) return;
+      body.depth_cm = parseFloat(v);
+    }
+    b.disabled = true; b.textContent = "issuing…";
+    const r = await writeCall("/api/v1/works/orders", body);
+    if (!r.ok) { b.disabled = false; b.textContent = "Issue order"; if (r.status !== 401) alert(r.data.error || `HTTP ${r.status}`); return; }
+    selected = r.data.work_order_id;
+    await refresh();
+  });
+}
+
+function renderBoard() {
+  el("board").innerHTML = COLS.map(c => {
+    const list = orders.filter(o => o.status === c);
+    return `<div class="col"><h3><span>${LABEL[c]}</span><span>${list.length}</span></h3>${list.map(o => `
+      <div class="wo ${o.work_order_id === selected ? "sel" : ""}" data-id="${esc(o.work_order_id)}">
+        <div class="id">${esc(o.work_order_id)}</div>
+        <div><strong>${esc(String(o.defect_class).slice(0, 22))}</strong></div>
+        <div class="small">${esc(o.priority || "")} · ${esc(fmt.inr(o.budget_inr))}</div>
+        <div class="small">${o.contractor ? esc(o.contractor) + " · " : ""}${dueText(o)}</div>
+        ${o.status === "REPAIRED" ? `<div class="small muted">fleet passes ${esc(o.fleet_passes_since_repair)} / ${esc(o.passes_needed)}</div>` : ""}
+      </div>`).join("") || `<p class="small muted" style="margin:0">—</p>`}</div>`;
+  }).join("");
+  document.querySelectorAll(".wo").forEach(c => c.onclick = () => { selected = c.dataset.id; renderBoard(); loadDetail(); });
+}
+
+async function loadDetail() {
+  if (!selected) return;
+  const r = await API.get(`/api/v1/works/order?id=${encodeURIComponent(selected)}`);
+  if (!r.ok) { el("detail").innerHTML = errorCard(r.data.error || "not found"); return; }
+  const o = r.data, wo = o.work_order || {};
+  const actions = (o.allowed_next || []).map(s => `<button class="act ${s === "CANCELLED" ? "" : "primary"}" data-s="${s}">${LABEL[s] || s}</button>`).join(" ");
+  el("detail").innerHTML = `
+    <div class="label">order · ${esc(LABEL[o.status] || o.status)}</div>
+    <h2 style="margin:2px 0 6px;font-size:1.05rem" class="mono">${esc(o.work_order_id)}</h2>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <span class="badge ${o.seal_status === "SEAL_VERIFIED_AUTHENTIC" ? "measured" : "bad"}">seal: ${esc(o.seal_status)}</span>
+      <span class="badge ${o.history_chain_intact ? "measured" : "bad"}">history ${o.history_chain_intact ? "intact" : "ALTERED"}</span>
+      <span class="badge neutral">${esc(o.seal_algorithm)}</span></div>
+    <div class="kv"><span>Defect</span><span>${esc(o.defect_class)} · <a href="/corridor?focus=${encodeURIComponent(o.defect_id)}">${esc(o.defect_id)} on the map</a></span></div>
+    <div class="kv"><span>Area / depth / PCI</span><span>${esc(fmt.num(o.area_m2, 2))} m² / ${esc(fmt.num(o.depth_cm, 1))} cm / ${esc(o.pci)}</span></div>
+    <div class="kv"><span>Mix / tonnage</span><span>${esc(wo.asphalt_mix)} / ${esc(fmt.num(o.tonnes, 3))} t</span></div>
+    <div class="kv"><span>Budget</span><span>${esc(fmt.inr(o.budget_inr))}</span></div>
+    <div class="kv"><span>SLA</span><span>${esc(o.sla_hours)} h · ${dueText(o) || "—"}</span></div>
+    <div class="kv"><span>Contractor</span><span>${esc(o.contractor || "—")}</span></div>
+    ${o.status === "REPAIRED" ? `<div class="kv"><span>Fleet check</span><span>${esc(o.fleet_passes_since_repair)} of ${esc(o.passes_needed)} passes</span></div>` : ""}
+    ${actions ? `<div class="rule" style="margin:12px 0"></div>
+      <div class="grid c2"><div class="field" style="margin:0"><label for="contractor">Contractor</label>
+        <input id="contractor" value="${esc(o.contractor || "")}" placeholder="needed to assign"></div>
+      <div class="field" style="margin:0"><label for="note">Note</label><input id="note" placeholder="optional"></div></div>
+      <div class="actions">${actions}</div><p class="small muted" id="actMsg" style="margin:6px 0 0"></p>` :
+      `<p class="small muted" style="margin:12px 0 0">This order is closed${o.status === "VERIFIED" ? "; a new sighting of the defect would reopen it" : ""}.</p>`}
+    <div class="rule" style="margin:12px 0"></div>
+    <div class="label">history (each step hashed onto the previous one)</div>
+    <ul class="timeline">${o.history.map(h => `<li><strong>${esc(LABEL[h.status] || h.status)}</strong>
+      <span class="small muted">· ${esc(h.actor)} · ${esc(when(h.at))}</span>
+      ${h.note ? `<div class="small">${esc(h.note)}</div>` : ""}
+      ${h.evidence && h.evidence.passes ? `<div class="small muted">passes: ${h.evidence.passes.map(p => esc(p.bus_id)).join(", ")}</div>` : ""}
+      <div class="hash">${esc(h.hash.slice(0, 32))}…</div></li>`).join("")}</ul>`;
+  document.querySelectorAll("button.act").forEach(b => b.onclick = async () => {
+    const body = { work_order_id: o.work_order_id, status: b.dataset.s };
+    const c = el("contractor").value.trim(), n = el("note").value.trim();
+    if (c) body.contractor = c;
+    if (n) body.note = n;
+    b.disabled = true;
+    const r = await writeCall("/api/v1/works/status", body);
+    b.disabled = false;
+    if (!r.ok) { el("actMsg").textContent = r.status === 401 ? "Enter the operator key above, then try again." : (r.data.error || `HTTP ${r.status}`); return; }
+    await refresh();
+  });
+}
+
+async function refresh() {
+  const r = await API.get("/api/v1/works/orders");
+  if (!r.ok || !r.data.orders) {
+    el("board").innerHTML = `<p class="small muted">The live engine is not connected, so there are no orders to show.</p>`;
+    loadStats(null); loadTodo(); return;
+  }
+  orders = r.data.orders;
+  loadStats(r.data.summary);
+  renderBoard();
+  loadTodo();
+  if (selected) loadDetail();
+}
+
+(async () => {
+  el("expGeo").href = await API.urlFor("/api/v1/ledger/export?format=geojson");
+  el("expCsv").href = await API.urlFor("/api/v1/ledger/export?format=csv");
+  await refresh();
+  if (typeof EventSource !== "undefined") {
+    try {
+      const es = new EventSource(await API.urlFor("/api/v1/live/stream"));
+      let t = null;
+      const later = () => { clearTimeout(t); t = setTimeout(refresh, 800); };
+      es.addEventListener("work_order", later);
+      es.addEventListener("defect", later);
+    } catch {}
+  }
+})();
+
+/* ---------------------------------------------- costing calculator ---- */
+let issued = null;
+el("issueCalc").addEventListener("click", async () => {
+  const num = id => { const v = parseFloat(el(id).value); return Number.isFinite(v) ? v : null; };
+  const r = await writeCall("/api/v1/dispatch/work-order", { distress_class: el("cls").value, area_sqm: num("area"),
+                                                            depth_cm: num("depth"), pci_score: num("pci") });
+  if (!r.ok) { el("calcOut").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`); return; }
+  issued = r.data;
+  el("verify").disabled = false; el("break").disabled = false;
+  el("calcOut").innerHTML = `<div class="card"><div class="label">sealed order (not stored)</div>
+    <div class="kv"><span>Mix</span><span>${esc(issued.asphalt_mix)}</span></div>
+    <div class="kv"><span>Tonnage</span><span>${esc(fmt.num(issued.required_mass_tonnes, 3))} t</span></div>
+    <div class="kv"><span>Budget</span><span>${esc(fmt.inr(issued.allocated_budget_inr))}</span></div>
+    <div class="kv"><span>Priority / SLA</span><span>${esc(issued.priority)} / ${esc(issued.sla_resolution_hours)} h</span></div>
+    <div class="label" style="margin-top:8px">seal (${esc(issued.seal_algorithm)})</div>
+    <div class="hash">${esc(issued.sha256_cryptographic_seal)}</div></div>`;
+});
 async function doVerify(tampered) {
   if (!issued) return;
   const wo = JSON.parse(JSON.stringify(issued));
   if (tampered) wo.allocated_budget_inr = parseFloat(el("tamper").value);
   const r = await API.post("/api/v1/dispatch/verify-seal", { work_order: wo });
-  const ok = r.ok && (r.data.seal_valid ?? r.data.valid ?? r.data.is_valid);
+  const ok = r.ok && r.data.is_valid;
   el("sealout").innerHTML = `<div class="card" style="border-color:${ok ? "rgba(52,211,153,.45)" : "rgba(251,113,133,.5)"}">
-    <div class="label" style="color:${ok ? "var(--ok)" : "var(--bad)"}">
-      ${tampered ? "after tampering" : "as issued"}</div>
-    <div class="stat sm" style="color:${ok ? "var(--ok)" : "var(--bad)"}">
-      ${ok ? "SEAL VALID" : "SEAL BROKEN"}</div>
-    <p class="small muted" style="margin:6px 0 0">${
-      tampered
-        ? (ok ? "Unexpected — the seal should not survive an edited field."
-              : "The budget was changed after issue and the digest no longer matches. This is the point.")
-        : (ok ? "Unmodified order verifies against its digest."
-              : "Unexpected — an unmodified order should verify.")}</p>
-    <pre style="margin-top:9px;max-height:180px;overflow:auto">${JSON.stringify(r.data, null, 2)}</pre>
-  </div>`;
+    <div class="stat sm" style="color:${ok ? "var(--ok)" : "var(--bad)"}">${ok ? "SEAL VALID" : "SEAL BROKEN"}</div>
+    <p class="small muted" style="margin:6px 0 0">${esc(r.data.status || "")}${tampered && !ok ? " — the budget was changed after issue." : ""}</p></div>`;
 }
-
 el("verify").addEventListener("click", () => doVerify(false));
 el("break").addEventListener("click", () => doVerify(true));
 </script>
