@@ -82,7 +82,7 @@ def sample(folders, n, seed):
         # RDD2022 training crops (rddin_*) are tight cut-outs written into these
         # folders on a training machine: no horizon, no road geometry. Same
         # exclusion as the pipeline tests, so every machine samples road scenes.
-        files = [p for p in files if not os.path.basename(p).startswith("rddin_")]
+        files = [p for p in files if not os.path.basename(p).startswith(("rddin_", "rddw_"))]
         for k, v in dropped.items():
             DROPPED[k] = DROPPED.get(k, 0) + v
         if not files:

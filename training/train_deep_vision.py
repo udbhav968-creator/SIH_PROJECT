@@ -85,8 +85,9 @@ def group_key(filename):
     for suffix in ("_RAW", "_CRACK", "_POTHOLE", "_LANE"):
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
-    if stem.startswith("rddin_"):          # rddin_<RDD photo>_<box>: one group per photograph
-        return "rddin_" + "_".join(stem.split("_")[1:-1])
+    for pre in ("rddin_", "rddw_"):         # rdd*_<RDD photo>_<box>: one group per photograph
+        if stem.startswith(pre):
+            return pre + "_".join(stem.split("_")[1:-1])
     if stem.startswith("cpr_"):
         parts = stem.split("_")
         if len(parts) >= 2:

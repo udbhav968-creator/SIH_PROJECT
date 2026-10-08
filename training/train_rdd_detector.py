@@ -6,6 +6,13 @@ held-out photographs, and export it to ONNX for CPU serving.
     python -m training.train_rdd_detector                    # T4: ~45-70 min
     python -m training.train_rdd_detector --epochs 2 --fraction 0.05 --model yolov8n.pt   # smoke
 
+Multi-country: --data-dir datasets/rdd2022_world --tag world (scripts/prepare_rdd2022_world.py) trains on
+RDD2022 India plus Japan, Czech, United States and China. Its outputs are written under their own names
+(damage_rdd2022_world.*, road_damage_detector_world_report.json), so the served India-only detector is never
+overwritten here; scripts/select_rdd_detector.py decides between them on India validation photographs. In that
+layout the serving confidence and the reported "validation" use India's validation photographs
+(images/valid_india) and "test" is India's test photographs - the same ones the India-only model was scored on.
+
 Long runs: Ultralytics saves runs/rdd_india/weights/last.pt after every epoch.
 If a session ends mid-training, running the same command again resumes from it
 (link runs/rdd_india to Google Drive so it survives the session). --fresh
@@ -98,8 +105,15 @@ def unfinished(last_pt):
     return run_state(last_pt) == "unfinished"
 
 
-def count_split(split):
-    d = os.path.join(DATA_DIR, "images", split)
+def names_for(tag):
+    """(onnx, meta, report) file names: the India-only model keeps the names the server loads."""
+    if tag == "india":
+        return ONNX_NAME, META_NAME, REPORT_NAME
+    return f"damage_rdd2022_{tag}.onnx", f"damage_rdd2022_{tag}.json", f"road_damage_detector_{tag}_report.json"
+
+
+def count_split(split, data_dir=DATA_DIR):
+    d = os.path.join(data_dir, "images", split)
     return len([f for f in os.listdir(d) if f.lower().endswith(".jpg")]) if os.path.isdir(d) else 0
 
 
@@ -114,21 +128,34 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--out", default=CKPT_DIR)
     ap.add_argument("--fresh", action="store_true", help="start again even if an unfinished run can be resumed")
-    ap.add_argument("--run-name", default="rdd_india",
-                    help="folder under runs/ (smoke runs use their own, so they never touch the real run)")
+    ap.add_argument("--run-name", default=None,
+                    help="folder under runs/ (default rdd_<tag>; smoke runs use their own, so they never touch the real run)")
+    ap.add_argument("--data-dir", default=DATA_DIR, help="YOLO dataset folder (default: RDD2022 India)")
+    ap.add_argument("--tag", default="india", help="'india' writes the served file names; anything else writes candidates")
     a = ap.parse_args(argv)
+    a.run_name = a.run_name or f"rdd_{a.tag}"
+    data_dir = os.path.abspath(a.data_dir)
+    onnx_name, meta_name, report_name = names_for(a.tag)
 
-    if not os.path.isdir(os.path.join(DATA_DIR, "images", "train")):
-        sys.exit(f"No YOLO data at {DATA_DIR}. It is written by step 2 of scripts/colab_train_all.sh "
-                 f"(scripts/prepare_rdd2022_voc.py); run this in the same session.")
+    if not os.path.isdir(os.path.join(data_dir, "images", "train")):
+        sys.exit(f"No YOLO data at {data_dir}. It is written by scripts/prepare_rdd2022_voc.py "
+                 f"(or prepare_rdd2022_world.py); run this in the same session.")
     from ultralytics import YOLO
 
     # Absolute-path dataset file, so the result does not depend on the working directory.
-    yaml_path = os.path.join(DATA_DIR, "data_abs.yaml")
+    yaml_path = os.path.join(data_dir, "data_abs.yaml")
     with open(yaml_path, "w") as fh:
-        fh.write(f"path: {DATA_DIR}\ntrain: images/train\nval: images/valid\ntest: images/test\n"
+        fh.write(f"path: {data_dir}\ntrain: images/train\nval: images/valid\ntest: images/test\n"
                  f"nc: {len(CLASS_NAMES)}\nnames: [{', '.join(CLASS_NAMES)}]\n")
-    n = {s: count_split(s) for s in ("train", "valid", "test")}
+    # Multi-country layout: India's validation photographs choose the confidence and are reported as
+    # "validation"; India's test photographs are "test". Single-country: the usual valid/test.
+    eval_yaml = yaml_path
+    if os.path.isdir(os.path.join(data_dir, "images", "valid_india")):
+        eval_yaml = os.path.join(data_dir, "india_eval_abs.yaml")
+        with open(eval_yaml, "w") as fh:
+            fh.write(f"path: {data_dir}\ntrain: images/train\nval: images/valid_india\ntest: images/test\n"
+                     f"nc: {len(CLASS_NAMES)}\nnames: [{', '.join(CLASS_NAMES)}]\n")
+    n = {s: count_split(s, data_dir) for s in ("train", "valid", "valid_india", "test") if count_split(s, data_dir)}
     print(f"[rdd-detector] photographs train {n['train']} | valid {n['valid']} | test {n['test']} "
           f"(split by photograph; test scored once)")
 
@@ -164,43 +191,61 @@ def main(argv=None):
         sys.exit(f"[rdd-detector] no best.pt in {run_dir}: training did not finish an epoch")
     best = YOLO(best_pt)
 
-    val = best.val(data=yaml_path, split="val", imgsz=a.imgsz, batch=a.batch, plots=False, verbose=False)
+    val = best.val(data=eval_yaml, split="val", imgsz=a.imgsz, batch=a.batch, plots=False, verbose=False)
     conf = _best_conf_on_valid(val)
-    test = best.val(data=yaml_path, split="test", imgsz=a.imgsz, batch=a.batch, plots=False, verbose=False)
+    test = best.val(data=eval_yaml, split="test", imgsz=a.imgsz, batch=a.batch, plots=False, verbose=False)
     val_m, test_m = _metrics(val), _metrics(test)
+    val_all = None
+    if eval_yaml != yaml_path:
+        val_all = _metrics(best.val(data=yaml_path, split="val", imgsz=a.imgsz, batch=a.batch, plots=False,
+                                    verbose=False))
     print(f"  VAL  mAP50 {val_m['map50']}  mAP50-95 {val_m['map50_95']}  (serving confidence {conf}, chosen here)")
     print(f"  TEST mAP50 {test_m['map50']}  mAP50-95 {test_m['map50_95']}  P {test_m['precision']}  "
           f"R {test_m['recall']}  per class {test_m['per_class']}")
 
     exported = best.export(format="onnx", imgsz=a.imgsz, opset=12, dynamic=False, simplify=False)
     os.makedirs(a.out, exist_ok=True)
-    onnx_path = os.path.join(a.out, ONNX_NAME)
+    onnx_path = os.path.join(a.out, onnx_name)
     shutil.copy(str(exported), onnx_path)
     size_mb = round(os.path.getsize(onnx_path) / 1e6, 1)
 
+    world = eval_yaml != yaml_path
+    countries = None
+    if world and os.path.exists(os.path.join(data_dir, "manifest.json")):
+        with open(os.path.join(data_dir, "manifest.json"), encoding="utf-8") as fh:
+            countries = sorted((json.load(fh).get("countries") or {}).keys())
     report = {
-        "model": f"YOLOv8 ({a.model}, COCO-pretrained) fine-tuned on RDD2022 India, all layers trained",
+        "model": (f"YOLOv8 ({a.model}, COCO-pretrained) fine-tuned on RDD2022 "
+                  f"{'+'.join(countries) if countries else ('several countries' if world else 'India')}, all layers trained"),
+        "tag": a.tag,
         "classes": {c: CLASS_LABELS[c] for c in CLASS_NAMES},
-        "data": {"source": "RDD2022 India (CRDDC 2022 official release, smartphone images)",
-                 "split": "labelled photographs 70/15/15 by photograph, seed 42 (official test split has "
-                          "no public labels)", "photographs": n, "fraction_of_train_used": a.fraction},
+        "data": {"source": ("RDD2022 " + (", ".join(countries) if countries else "India")
+                            + " (CRDDC 2022 official release, smartphone/vehicle cameras)"),
+                 "split": ("India: labelled photographs 70/15/15 by photograph, seed 42 (official test split has no "
+                           "public labels)" + ("; other countries 90/10 train/valid by photograph, none in any test set"
+                                               if world else "")),
+                 "photographs": n, "fraction_of_train_used": a.fraction},
         "training": {"epochs_requested": a.epochs, "imgsz": a.imgsz, "batch": a.batch,
                      "patience": a.patience, "minutes_this_session": train_min, "resumed": resumed,
                      "selection": "best.pt by validation fitness; test scored once"},
-        "serving_confidence": conf, "serving_confidence_chosen_on": "validation split (max mean F1)",
+        "serving_confidence": conf,
+        "serving_confidence_chosen_on": ("India validation photographs (max mean F1)" if world
+                                         else "validation split (max mean F1)"),
         "validation": val_m, "test": test_m,
-        "onnx": {"file": ONNX_NAME, "size_mb": size_mb, "opset": 12},
+        "validation_all_countries": val_all,
+        "test_photographs": "RDD2022 India held-out 15% - identical for every detector trained here",
+        "onnx": {"file": onnx_name, "size_mb": size_mb, "opset": 12},
         "not_claimed": ("Smartphone photographs from RDD2022 India, not bus-camera frames. Boxes locate damage; "
                         "area and cost still come from the segmentation mask."),
         "trained_at_unix": int(time.time()),
     }
     meta = {"class_names": CLASS_NAMES, "class_labels": CLASS_LABELS, "input_size": a.imgsz,
             "conf_threshold": conf, "iou_threshold": 0.45, "test": test_m}
-    with open(os.path.join(a.out, META_NAME), "w", encoding="utf-8") as fh:
+    with open(os.path.join(a.out, meta_name), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2)
-    with open(os.path.join(a.out, REPORT_NAME), "w", encoding="utf-8") as fh:
+    with open(os.path.join(a.out, report_name), "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2)
-    print(f"  exported {onnx_path} ({size_mb} MB); wrote {META_NAME} and {REPORT_NAME}")
+    print(f"  exported {onnx_path} ({size_mb} MB); wrote {meta_name} and {report_name}")
     return report
 
 

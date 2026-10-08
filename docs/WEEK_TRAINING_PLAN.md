@@ -75,9 +75,31 @@ session and run the **same cell** again. It continues from the last checkpoint. 
 | Step | Time | Note |
 |---|---|---|
 | U-Net | 3–5 h | ResNet-34, up to 80 epochs; early stopping usually ends it sooner |
-| YOLOv8s | 2.5–4 h | Up to 100 epochs |
+| YOLOv8s, India | 2.5–4 h | Up to 100 epochs |
+| Multi-country data | ~1 h, once | Downloads the full RDD2022 release (~13 GB) and prepares Japan, Czech, USA and China; ~4–5 GB cached in Drive |
+| YOLOv8s, multi-country | 5–7 h | About 4× the photographs, up to 50 epochs; resumes across sessions |
+| Image classifier | 3–4 h | Three architectures, up to 40 epochs each; every finished one is kept in Drive |
 
-That is 2–4 sessions in total.
+That is 5–8 sessions in total. To skip a stage, set `TRAIN_YOLO_WORLD = False` or `TRAIN_CLASSIFIER = False`.
+
+**What the two new stages add, and when they are served.** Each newly trained model is a *candidate*. It
+replaces the served one only under a rule fixed before it is scored:
+
+- **Multi-country detector** (`scripts/select_rdd_detector.py`): served only if its mAP@0.5 on India's
+  validation photographs is higher than the India-only detector's on the same photographs. India's
+  train/validation/test split is copied unchanged, so the comparison is like for like. India's test
+  photographs are reported and never used to choose. If it wins but its exported file fails the artefact
+  check, the India-only detector stays.
+- **Image classifier** (`scripts/select_vision_candidate.py`): the Indian held-out crops are split by
+  photograph into a *selection* half and a *report* half. The candidate is served only if its accuracy and
+  its macro-F1 are both higher on the selection half. The number published for it comes from the report
+  half.
+
+If a candidate loses, nothing changes. Both outcomes are recorded (`rdd_detector_selection.json`,
+`vision_candidate_selection.json`).
+
+**Not retrained:** the IMU model. No public dataset matches its sensor setup, so more data would have to
+come from your own recorded rides.
 
 **If you get stuck:**
 
