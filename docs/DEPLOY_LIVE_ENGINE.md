@@ -37,6 +37,8 @@ The script:
 5. keeps the laptop awake while it runs, restarts the engine if it stops, and opens a new tunnel if the
    link dies. A new tunnel means a new link, which is printed, copied and opened again.
 
+Some networks (campus and office networks especially) block Cloudflare tunnels, whose port 7844 is closed. The script then says so and uses localhost.run, whose free links change about every 20 minutes. The script follows each change and opens the new link. For a demo, connect the laptop to a phone hotspot first: Cloudflare links there last for hours.
+
 Links go in the **browser** address bar, never in PowerShell. Keep the window open, and the lid open. Each
 run gives a new address, so for a demo start the script a few minutes before and check the link on your
 phone (on mobile data). Behind the tunnel, each visitor gets their own 20 analyses per minute: the engine

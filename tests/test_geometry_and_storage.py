@@ -459,7 +459,7 @@ class FalsePositiveGate(unittest.TestCase):
         # scripts/ingest_rdd2022_india.py on a training machine; sampling them
         # made the proposals test fail because the horizon rule (correctly)
         # discards a cut-out, not because the pipeline was wrong.
-        files = [p for p in files if not os.path.basename(p).startswith("rddin_")]
+        files = [p for p in files if not os.path.basename(p).startswith(("rddin_", "rddw_"))]
         random.Random(seed).shuffle(files)
         return files[:n]
 

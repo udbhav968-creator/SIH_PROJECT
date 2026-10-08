@@ -19,6 +19,9 @@ checkpoints/cnn_backbone_resnet50.onnx
 
 # Logs
 *.log
+logs/tunnel_*
+logs/engine_public_*
+logs/go_live_pids.txt
 daemon_server.log
 server_stdout.log
 server_stderr.log
