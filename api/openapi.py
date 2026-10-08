@@ -86,23 +86,52 @@ def spec():
                                      ["bus_id", "lat", "lon", "defect_class", "area_m2", "severity_pci"]),
                 "responses": {"200": _json(OBJ, "action REGISTERED_NEW_DEFECT or DEDUPLICATED_AND_UPDATED, with the defect"), "400": ERR,
                               "401": AUTH_ERR}}},
+            "/api/v1/fleet/ingest-sealed": {"post": {
+                "summary": "Encrypted packets from bus agents (AES-256-GCM, edge/crypto.py); applied in order, "
+                           "replays acknowledged but not applied", "tags": ["fleet"],
+                "requestBody": _body({"packets": {"type": "array", "items": OBJ}}, ["packets"]),
+                "responses": {"200": _json(OBJ, "accepted_in_order tells the bus how many to drop from its queue"),
+                              "400": ERR, "503": _json(OBJ, "ROAD_SHIELD_FLEET_KEY not set on the server")}}},
+            "/api/v1/fleet/live": {"get": {"summary": "Bus positions (last 10 min), IMU-only shocks, recent events",
+                                           "tags": ["fleet"], "responses": {"200": _json(OBJ)}}},
+            "/api/v1/live/stream": {"get": {
+                "summary": "Server-sent events: bus_position, defect, shock, work_order; resumes from Last-Event-ID",
+                "tags": ["fleet"],
+                "responses": {"200": {"description": "text/event-stream",
+                                      "content": {"text/event-stream": {"schema": STR}}},
+                              "503": _json(OBJ, "too many open streams")}}},
             "/api/v1/fleet/telemetry": {"get": {"summary": "Ledger counts and deduplication rate", "tags": ["fleet"],
                                                 "responses": {"200": _json(OBJ)}}},
             "/api/v1/gis/map-data": {"get": {"summary": "Deduplicated defects for the map", "tags": ["fleet"],
                                              "responses": {"200": _json(OBJ)}}},
             "/api/v1/dispatch/work-order": {"post": {
-                "summary": "Issue a SHA-256-sealed repair work order", "tags": ["works"], "security": secured,
+                "summary": "Issue a sealed repair work order (HMAC-SHA256 when the server holds "
+                           "ROAD_SHIELD_SEAL_KEY, plain SHA-256 otherwise)", "tags": ["works"], "security": secured,
                 "requestBody": _body({"corridor_id": STR, "distress_class": STR, "area_sqm": NUM, "depth_cm": NUM,
                                       "pci_score": NUM, "latitude": NUM, "longitude": NUM},
                                      ["distress_class", "area_sqm", "depth_cm", "pci_score"]),
                 "responses": {"200": _json(OBJ, "order with quantities, cost, seal; HELD_NO_GPS without a location"),
                               "400": ERR, "401": AUTH_ERR}}},
             "/api/v1/dispatch/verify-seal": {"post": {
-                "summary": "Re-hash an order and say whether it was altered", "tags": ["works"],
+                "summary": "Re-compute an order's seal and say whether it was altered", "tags": ["works"],
                 "requestBody": _body({"work_order": OBJ}, ["work_order"]),
                 "responses": {"200": _json({"type": "object", "properties": {
-                    "is_valid": {"type": "boolean"}, "work_order_id": STR,
-                    "status": {**STR, "enum": ["SEAL_VERIFIED_AUTHENTIC", "CORRUPTED_OR_TAMPERED"]}}})}}},
+                    "is_valid": {"type": "boolean"}, "work_order_id": STR, "seal_algorithm": STR,
+                    "status": {**STR, "enum": ["SEAL_VERIFIED_AUTHENTIC", "CORRUPTED_OR_TAMPERED",
+                                               "KEY_REQUIRED_TO_VERIFY", "UNKEYED_SEAL_REJECTED",
+                                               "MALFORMED_WORK_ORDER"]}}})}}},
+            "/api/v1/priority/score": {"post": {
+                "summary": "Repair Priority Index for one defect: PI = w1(100-PCI) + w2 Vol + w3 Traffic",
+                "tags": ["works"],
+                "requestBody": _body({"pci": NUM, "area_m2": NUM, "depth_cm": NUM, "volume_m3": NUM,
+                                      "traffic_pcu_per_day": NUM, "reporting_buses": {"type": "array", "items": STR},
+                                      "weights": {"type": "array", "items": NUM}}, ["pci"]),
+                "responses": {"200": _json(OBJ, "index, band, each term, weights applied, missing terms"),
+                              "400": ERR}}},
+            "/api/v1/priority/ranking": {"get": {
+                "summary": "The ledger in repair order by Priority Index; ?weights=w1,w2,w3 and ?stability=1 "
+                           "(Kendall tau under +/-0.1 weight shifts)", "tags": ["works"],
+                "responses": {"200": _json(OBJ), "400": ERR}}},
             "/api/v1/training/metrics": {"get": {"summary": "Held-out results of every served model",
                                                  "tags": ["models"], "responses": {"200": _json(OBJ)}}},
             "/api/v1/models/served": {"get": {"summary": "Model registry: artefacts with SHA-256, metrics, serving "

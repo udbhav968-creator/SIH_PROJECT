@@ -18,7 +18,15 @@ const ENGINE_PATHS = new Set([
   "/api/v1/pipeline/deep-audit", "/api/v1/vision/analyze-photo", "/api/v1/vision/analyze-custom-photo",
   "/api/v1/privacy/redact", "/api/v1/detect/vision", "/api/v1/vision/predict", "/api/v1/detect/objects",
   "/api/v1/pedestrian/detect", "/api/v1/telemetry/imu",
+  "/api/v1/fleet/telemetry", "/api/v1/gis/map-data", "/api/v1/ledger/defects", "/api/v1/fleet/live",
+  "/api/v1/priority/ranking", "/api/v1/priority/score", "/api/v1/live/stream", "/api/v1/fleet/report-defect",
 ]);
+
+/* Endpoints that change stored state. When the engine locks them (public demo), the operator's key - typed
+   once on the page, kept only for this browser tab - is sent with them, and only with them. */
+const KEYED_PATHS = new Set(["/api/v1/fleet/report-defect", "/api/v1/dispatch/work-order"]);
+function operatorKey() { try { return sessionStorage.getItem("roadShieldApiKey") || ""; } catch { return ""; } }
+function setOperatorKey(k) { try { k ? sessionStorage.setItem("roadShieldApiKey", k) : sessionStorage.removeItem("roadShieldApiKey"); } catch {} }
 
 const API = {
   // Empty means "same origin". ?api=http://host:8000 (remembered for the
@@ -46,11 +54,13 @@ const API = {
   _healthOnce: null,
 
   async get(path) { return this._go("GET", path); },
+  /** Absolute URL for a streaming endpoint (EventSource cannot go through _go). */
+  async urlFor(path) { return (await this.baseFor(path)) + path; },
   async post(path, body) { return this._go("POST", path, body); },
 
   /** Base URL for a path: the live engine for model endpoints on the static site, else this site. */
   async baseFor(path) {
-    if (this.base || !this.engineUrl || !ENGINE_PATHS.has(path)) return this.base;
+    if (this.base || !this.engineUrl || !ENGINE_PATHS.has(path.split("?")[0])) return this.base;
     if (this.siteIsStatic === null && this._healthOnce) await this._healthOnce;
     return this.siteIsStatic ? this.engineUrl : this.base;
   },
@@ -60,9 +70,11 @@ const API = {
     const base = await this.baseFor(path);
     const toEngine = base && base === this.engineUrl;
     try {
+      const headers = body ? { "Content-Type": "application/json" } : {};
+      if (method === "POST" && KEYED_PATHS.has(path.split("?")[0]) && operatorKey()) headers["X-API-Key"] = operatorKey();
       const res = await fetch(base + path, {
         method,
-        headers: body ? { "Content-Type": "application/json" } : undefined,
+        headers: Object.keys(headers).length ? headers : undefined,
         body: body ? JSON.stringify(body) : undefined,
       });
       const text = await res.text();
@@ -131,7 +143,7 @@ const PAGES = [
   { href: "/",             id: "home",         label: "Overview",     group: "product" },
   { href: "/inspect",      id: "inspect",      label: "Inspection",   group: "product" },
   { href: "/video",        id: "video",        label: "Video",        group: "product" },
-  { href: "/corridor",     id: "corridor",     label: "Corridor",     group: "product" },
+  { href: "/corridor",     id: "corridor",     label: "Road map",     group: "product" },
   { href: "/works",        id: "works",        label: "Works",        group: "product" },
   { href: "/models",       id: "models",       label: "Models",       group: "evidence", note: "accuracy, IoU, model card" },
   { href: "/data",         id: "data",         label: "Data",         group: "evidence", note: "datasets and lineage" },

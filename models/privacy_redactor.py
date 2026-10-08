@@ -15,10 +15,16 @@ and does not guarantee is stated here rather than implied:
   * blur    - Gaussian, kernel scaled to the region (at least 15 x 15 px), so the
               result cannot be read back by sharpening.
 
-NOT claimed: a recall figure. There is no annotated face / plate set in this
-project to measure one against, so a missed face or plate is possible. The
-returned report lists which detectors actually ran.
+Recall is measured by scripts/measure_redactor_recall.py on public annotated
+sets (WIDER FACE validation for faces, a Roboflow licence-plate set for plates)
+and written to checkpoints/privacy_redaction_report.json; every redaction
+report quotes it when that file exists. A missed face or plate is still
+possible - the measured figure says how often. The returned report lists
+which detectors actually ran.
 """
+import json
+import os
+
 import numpy as np
 
 try:
@@ -60,15 +66,40 @@ def _haar_faces(rgb):
     return [tuple(map(int, r)) for r in cascade.detectMultiScale(gray, 1.1, 5, minSize=(16, 16))]
 
 
-def redact(image_rgb, detections=None, detector=None, plate_locator=None):
+RECALL_REPORT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checkpoints",
+                             "privacy_redaction_report.json")
+
+
+def measured_recall():
+    try:
+        with open(RECALL_REPORT, encoding="utf-8") as fh:
+            rep = json.load(fh)
+        return {k: rep[k]["recall"] for k in ("faces", "plates") if k in rep}, rep.get("measured_on")
+    except (OSError, ValueError, KeyError, TypeError):
+        return None, None
+
+
+def redact(image_rgb, detections=None, detector=None, plate_locator=None, return_regions=False):
     """
     Returns (redacted_copy, report). `detections` is the COCO detector's output
     for this frame (pass it if the pipeline already ran the detector); otherwise
     `detector` is called if it is ready. The input array is never modified.
+    With return_regions, report["regions"] lists every blurred (x, y, w, h, kind).
     """
     img = np.array(image_rgb, dtype=np.uint8, copy=True)
+    recall, measured_on = measured_recall()
     report = {"people_blurred": 0, "faces_blurred": 0, "plates_blurred": 0,
-              "detectors_used": [], "recall_measured": False}
+              "detectors_used": [], "recall_measured": recall is not None}
+    if recall is not None:
+        report["measured_recall"] = recall
+        report["measured_on"] = measured_on
+    regions = []
+
+    def blur(x, y, w, h, kind):
+        if _blur(img, x, y, w, h):
+            regions.append((int(x), int(y), int(w), int(h), kind))
+            return True
+        return False
 
     if detections is None and detector is not None and getattr(detector, "is_ready", False):
         detections = detector.detect(img)
@@ -81,14 +112,14 @@ def redact(image_rgb, detections=None, detector=None, plate_locator=None):
     for d in detections or []:
         x, y, w, h = d["bbox_pixels"]
         if d["class_name"] == "person":
-            if _blur(img, x, y, w, max(2, h * HEAD_FRACTION)):
+            if blur(x, y, w, max(2, h * HEAD_FRACTION), "person_head"):
                 report["people_blurred"] += 1
         elif d["class_name"] in VEHICLES:
             crop = img[max(0, y):y + h, max(0, x):x + w]
             box = plate_locator(crop) if crop.size else None
             if box is not None:
                 px, py, pw, ph = box
-                if _blur(img, x + px, y + py, pw, ph):
+                if blur(x + px, y + py, pw, ph, "plate"):
                     report["plates_blurred"] += 1
     if detections is not None:
         report["detectors_used"].append("contour_plate_localiser")
@@ -97,9 +128,11 @@ def redact(image_rgb, detections=None, detector=None, plate_locator=None):
     if faces is not None:
         report["detectors_used"].append("haar_frontal_face")
         for (x, y, w, h) in faces:
-            if _blur(img, x, y, w, h):
+            if blur(x, y, w, h, "face"):
                 report["faces_blurred"] += 1
     if not report["detectors_used"]:
         report["warning"] = ("No detector was available, so nothing could be found to redact. "
                              "Do not transmit this image as if it had been redacted.")
+    if return_regions:
+        report["regions"] = regions
     return img, report

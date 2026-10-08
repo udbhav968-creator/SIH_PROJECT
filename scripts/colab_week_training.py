@@ -8,6 +8,8 @@
 #      the India-only detector on India's validation photographs (scripts/select_rdd_detector.py)
 #   4. image classifier retrained with crops from those countries too; served only if it beats the current
 #      classifier on the selection half of the Indian held-out crops (scripts/select_vision_candidate.py)
+#   5. measurements, no training: privacy-redactor recall on WIDER FACE + a licence-plate set, and the
+#      classifier's confidence calibration (temperature fitted on one half, reported on the other)
 #
 # What takes long lives in Google Drive (MyDrive/road_shield_week): the prepared datasets, the checkpoints
 # (saved every 30 minutes and whenever a session pauses), and the finished results. The U-Net pauses cleanly
@@ -44,6 +46,8 @@ TRAIN_CLASSIFIER = True   # stage 4
 CLS_ARCHS = "mobilenet_v3_large,efficientnet_b0,efficientnet_b2"
 CLS_EPOCHS = 40
 CLS_MAX_PER_CLASS = 3000
+
+MEASURE = True           # stage 5 (~410 MB download once, ~20 min)
 
 SESSION_HOURS = 3.5       # U-Net pauses before this many hours in one session (free Colab often ends at 3-4 h)
 SAVE_EVERY_MIN = 30       # how often checkpoints are copied to Drive
@@ -598,13 +602,41 @@ elif TRAIN_CLASSIFIER:
         else:
             STATUS["classifier"] = f"stopped (exit {code}) - run the cell again; finished architectures are kept"
 
-# ---------------------------------------------------------------- 5. results
-step("5. results")
+# ---------------------------------------------------------------- 5. measurements
+meas_done = load_json(f"{RESULTS}/measure_done.json")
+if MEASURE and meas_done:
+    print(f"\nMeasurements already finished in this run ({meas_done.get('finished')}); skipping.")
+    STATUS["measure"] = "done earlier"
+elif MEASURE and any(STATUS.get(k, "done").startswith(("paused", "waiting", "stopped")) for k in ("unet", "yolo_world", "classifier")):
+    print("\nMeasurements wait for the training stages. Run this cell again.")
+    STATUS["measure"] = "waiting for earlier stages"
+elif MEASURE:
+    step("5a. privacy redactor recall (WIDER FACE validation + licence plates)")
+    run(f"{sys.executable} -m pip -q install huggingface_hub")
+    red = run("python -m scripts.measure_redactor_recall", keep=["[redaction]", "Error", "WARNING"])
+    step("5b. classifier confidence calibration (Indian held-out crops)")
+    cal = 1
+    if ensure_rdd_india() and (os.path.isdir("datasets/_eval_rdd2022_india")
+                               or run("python -m scripts.ingest_rdd2022_india", keep=["RDD India", "Error"]) == 0):
+        cal = run("python -m scripts.measure_calibration --apply", keep=["[calibration]", "Error"])
+    names = ["privacy_redaction_report.json", "vision_calibration_report.json"]
+    names += [os.path.basename(p) for p in glob.glob("checkpoints/deep_vision_*.json")]
+    for f in names:
+        if os.path.exists(f"checkpoints/{f}"):
+            shutil.copy(f"checkpoints/{f}", f"{RESULTS}/{f}")
+    if red == 0 and cal == 0:
+        save_json(f"{RESULTS}/measure_done.json", {"finished": time.strftime("%Y-%m-%d %H:%M")})
+        STATUS["measure"] = "done"
+    else:
+        STATUS["measure"] = f"failed (redaction exit {red}, calibration exit {cal}) - see above; run the cell again"
+
+# ---------------------------------------------------------------- 6. results
+step("6. results")
 files = [f for f in sorted(os.listdir(RESULTS)) if not f.endswith(".pt")]
 print("finished files in Drive:", files)
 everything_done = all(STATUS.get(k, "done").startswith("done") for k, on in
                       (("unet", TRAIN_UNET), ("yolo", TRAIN_YOLO), ("yolo_world", TRAIN_YOLO_WORLD),
-                       ("classifier", TRAIN_CLASSIFIER)) if on)
+                       ("classifier", TRAIN_CLASSIFIER), ("measure", MEASURE)) if on)
 zip_path = (f"/content/road_shield_{RUN_NAME}_results.zip" if os.path.isdir("/content")
             else f"/tmp/road_shield_{RUN_NAME}_results.zip")
 if everything_done and files:

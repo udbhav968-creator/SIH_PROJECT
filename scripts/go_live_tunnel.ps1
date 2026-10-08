@@ -75,18 +75,22 @@ public static extern uint SetThreadExecutionState(uint esFlags);
 $port = 8001
 while (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { $port++ }
 $script:engineRuns = 0
+# Operator key for the write endpoints (adding a defect to the map, issuing a work order). Visitors can analyse
+# photographs without it; only the person running this window, who sees the key below, can change the ledger.
+$OPERATOR_KEY = if ($env:ROAD_SHIELD_API_KEY) { $env:ROAD_SHIELD_API_KEY } else { -join ((48..57) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ }) }
 
 function Start-Engine {
     $script:engineRuns++
     $n = $script:engineRuns
     $env:ROAD_SHIELD_PUBLIC = "1"
+    $env:ROAD_SHIELD_API_KEY = $OPERATOR_KEY
     $env:ROAD_SHIELD_RATE_LIMIT = "20"
     $env:ROAD_SHIELD_MAX_BODY_MB = "12"
     $env:ROAD_SHIELD_WRITABLE_DIR = Join-Path $env:TEMP "road_shield_public"
     $p = Start-Process python -ArgumentList "-m", "api.server", "$port" -WorkingDirectory $proj -PassThru `
          -WindowStyle Hidden -RedirectStandardOutput "logs\engine_public_$n.log" -RedirectStandardError "logs\engine_public_$n.err"
     Track $p
-    foreach ($v in "ROAD_SHIELD_PUBLIC", "ROAD_SHIELD_RATE_LIMIT", "ROAD_SHIELD_MAX_BODY_MB", "ROAD_SHIELD_WRITABLE_DIR") {
+    foreach ($v in "ROAD_SHIELD_PUBLIC", "ROAD_SHIELD_API_KEY", "ROAD_SHIELD_RATE_LIMIT", "ROAD_SHIELD_MAX_BODY_MB", "ROAD_SHIELD_WRITABLE_DIR") {
         Remove-Item "Env:$v" -ErrorAction SilentlyContinue
     }
     for ($i = 0; $i -lt 60; $i++) {
@@ -287,6 +291,8 @@ function Show-Links($t) {
     Write-Host "      $link"
     Write-Host "    The engine's own full site:" -ForegroundColor Green
     Write-Host "      $($t.Url)"
+    Write-Host "    Operator key (only for 'Add to map' and work orders; do not share it):" -ForegroundColor Green
+    Write-Host "      $OPERATOR_KEY"
     Write-Host ""
     try { Set-Clipboard $link } catch { }
     try { Start-Process $link } catch { }

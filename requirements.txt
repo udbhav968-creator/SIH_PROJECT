@@ -16,3 +16,5 @@ joblib>=1.3.0
 # package the embedder falls back to cv2.dnn, whose outputs are close to but not
 # identical with the vectors the head learned from.
 onnxruntime>=1.17
+# Encrypted bus-to-server packets (edge/crypto.py) and the bus agent's offline queue.
+cryptography>=41

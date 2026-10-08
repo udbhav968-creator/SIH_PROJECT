@@ -266,7 +266,8 @@ class PrivacyRedaction(unittest.TestCase):
         self.assertGreater(np.abs(out[pl].astype(int) - img[pl].astype(int)).mean(), 10)
         untouched = (slice(200, 240), slice(0, 100))
         self.assertTrue(np.array_equal(out[untouched], img[untouched]))
-        self.assertFalse(rep["recall_measured"])
+        from models.privacy_redactor import measured_recall
+        self.assertEqual(rep["recall_measured"], measured_recall()[0] is not None)
 
     def test_input_is_not_modified(self):
         from models.privacy_redactor import redact
