@@ -544,5 +544,22 @@ class Measurements(unittest.TestCase):
         self.assertIn("onnxruntime", device_info())
 
 
+
+class HotspotNeedsTwoSources(unittest.TestCase):
+    def test_same_source_twice_is_not_verification(self):
+        from pipeline.fleet_deduplication_engine import FleetDeduplicationEngine
+        e = FleetDeduplicationEngine(store=None)
+        args = dict(lat=12.9, lon=77.6, defect_class="Pothole Cavity", severity_pci=40, area_m2=1.0,
+                    enrich_location=False)
+        e.ingest_fleet_detection("photo-upload", **args)
+        r = e.ingest_fleet_detection("photo-upload", **args)
+        self.assertEqual(r["confirmations"], 2)
+        self.assertFalse(r["is_hotspot"], "one source repeating itself")
+        r = e.ingest_fleet_detection("BMTC-201", **args)
+        self.assertTrue(r["is_hotspot"])
+        with self.assertRaises(ValueError):
+            e.ingest_fleet_detection("BMTC-201", **dict(args, severity_pci=float("nan")))
+
+
 if __name__ == "__main__":
     unittest.main()

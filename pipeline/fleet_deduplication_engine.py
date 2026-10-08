@@ -122,7 +122,9 @@ class FleetDeduplicationEngine:
                 rec["depth_cm"] = round(max(float(rec.get("depth_cm") or 0.0), float(depth_cm)), 1)
             if traffic_pcu_per_day is not None:
                 rec["traffic_pcu_per_day"] = float(traffic_pcu_per_day)
-            rec["is_verified_hotspot"] = (rec["confirmation_count"] >= 2)
+            # Verified means seen by two different sources; the same bus (or the same photo uploaded twice)
+            # repeating itself is not independent confirmation.
+            rec["is_verified_hotspot"] = len(set(rec["reporting_buses"])) >= 2
             if self.store is not None:
                 self.store.upsert_defect(rec)
                 self.store.record_report(bus_id, lat, lon, defect_class, area_m2, severity_pci,

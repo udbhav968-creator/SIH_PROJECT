@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Corridor — ROAD-SHIELD</title>
+<title>Road Map — ROAD-SHIELD</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<meta name="description" content="Fleet defect reports merged by GPS proximity on a corridor map.">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<meta name="description" content="Every detected pothole and crack on a street-level map, ranked by repair priority, live as buses report.">
 <meta name="theme-color" content="#0a0f17">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 4 5.5v6c0 4.8 3.3 8.9 8 10 4.7-1.1 8-5.2 8-10v-6z' fill='%23f0a92b'/%3E%3Cpath d='M10.2 17.5 11.2 7h1.6l1 10.5' fill='none' stroke='%230a0f17' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
 <meta property="og:site_name" content="ROAD-SHIELD">
@@ -15,19 +17,75 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="/web/app.css">
+<style>
+  #map { height: 72vh; min-height: 480px; }
+  .map-shell { position: relative; padding: 0; overflow: hidden; }
+  .map-shell.full { position: fixed; inset: 0; z-index: 2000; border-radius: 0; }
+  .map-shell.full #map { height: 100vh; border-radius: 0; }
+  .map-tools { position: absolute; top: 10px; left: 56px; z-index: 900; display: flex; gap: 6px; flex-wrap: wrap; max-width: calc(100% - 120px); }
+  .map-tools button, .chip { font: 600 12px/1 Inter, sans-serif; padding: 7px 10px; border-radius: 999px; border: 1px solid var(--ink-700);
+    background: rgba(10, 15, 23, .86); color: var(--slate-200); cursor: pointer; backdrop-filter: blur(6px); }
+  .chip.off { opacity: .45; text-decoration: line-through; }
+  .map-legend { background: rgba(10, 15, 23, .9); color: var(--slate-200); padding: 9px 11px; border-radius: 10px;
+    border: 1px solid var(--ink-700); font: 12px/1.6 Inter, sans-serif; }
+  .map-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .pothole-icon { background: none; border: none; }
+  .leaflet-popup-content { font: 13px/1.5 Inter, sans-serif; min-width: 220px; }
+  .leaflet-popup-content .pk { display: flex; justify-content: space-between; gap: 14px; padding: 2px 0;
+    border-bottom: 1px solid #e5e7eb; color: #111827; }
+  .leaflet-popup-content .pk span:first-child { color: #6b7280; }
+  .leaflet-popup-content .pk span:last-child { text-align: right; font-weight: 600; }
+  .leaflet-popup-content { color: #111827; }
+  .leaflet-popup-content a { color: #2563eb; }
+  .leaflet-control-layers { color: #111827; font: 13px/1.4 Inter, sans-serif; }
+  .leaflet-control-layers label { display: flex !important; align-items: center; gap: 7px; margin: 3px 0;
+    text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; color: #111827; }
+  .leaflet-control-layers label > span, .leaflet-control-layers label > div { display: flex; align-items: center; gap: 7px; }
+  .leaflet-control-layers input { width: auto !important; margin: 0; padding: 0; accent-color: #2563eb; }
+  tr.rowlink { cursor: pointer; }
+  tr.rowlink:hover td { background: var(--ink-800); }
+  #btnFilters { display: none; }
+  @media (max-width: 600px) {
+    #map { height: 64vh; }
+    .map-tools { left: 50px; max-width: calc(100% - 110px); }
+    #btnFilters { display: inline-block; }
+    #classChips, #bandChips { display: none; }
+    .map-tools.open #classChips, .map-tools.open #bandChips { display: inline; }
+    #stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+    #stats .card { padding: 12px; }
+    #stats .stat { font-size: 1.45rem; }
+  }
+</style>
 </head>
 <body data-page="corridor">
 <div class="wrap wide">
   <div class="section-head" style="margin-top:6px">
-    <h1 style="font-size:1.9rem">Corridor</h1>
-    <span class="muted small">fleet reports merged by GPS proximity, ranked by the repair Priority Index, live as buses report</span>
+    <h1 style="font-size:1.9rem">Road map</h1>
+    <span class="muted small">every detected pothole and crack at street level, ranked by repair priority, live as buses report</span>
   </div>
 
   <div class="grid c4" id="stats"></div>
 
+  <div class="card map-shell" id="mapShell" style="margin-top:16px">
+    <div id="map" role="region" aria-label="Map of detected road defects"></div>
+    <div class="map-tools" id="mapTools" hidden>
+      <button id="btnFull" title="Full screen">⤢ full screen</button>
+      <button id="btnLocate" title="Show where I am">◎ my location</button>
+      <button id="btnFilters" aria-expanded="false">⚲ filters</button>
+      <span id="classChips"></span>
+      <span id="bandChips"></span>
+    </div>
+  </div>
+
   <div class="split" style="margin-top:16px">
-    <div class="card" style="padding:0;overflow:hidden">
-      <div id="map"></div>
+    <div class="card">
+      <div class="label">repair order — Priority Index</div>
+      <p class="small muted" style="margin:0 0 10px">
+        PI = w1·(100 − PCI) + w2·Vol + w3·Traffic, each term on 0–100. No ward, road name or "VIP" input:
+        the order follows measured damage and use. <span id="pi-weights"></span> Click a row to go to it on the map.
+      </p>
+      <div id="list"></div>
+      <p class="small muted" id="pi-stability" style="margin:8px 0 0"></p>
     </div>
     <div>
       <div class="card">
@@ -37,17 +95,9 @@
         <p class="small muted" style="margin:0 0 8px">
           Bus positions, defects, IMU-only shocks and work orders as they arrive. Buses send sealed
           (AES-256-GCM) packets; a bus that was out of coverage catches up when it reconnects.
+          A pothole found on the <a href="/inspect">Inspection</a> page can be added here too.
         </p>
-        <ul id="feed" class="small" style="list-style:none;margin:0;padding:0;max-height:180px;overflow:auto"></ul>
-      </div>
-      <div class="card" style="margin-top:14px">
-        <div class="label">repair order — Priority Index</div>
-        <p class="small muted" style="margin:0 0 10px">
-          PI = w1·(100 − PCI) + w2·Vol + w3·Traffic, each term on 0–100. No ward, road name or "VIP" input:
-          the order follows measured damage and use. <span id="pi-weights"></span>
-        </p>
-        <div id="list"></div>
-        <p class="small muted" id="pi-stability" style="margin:8px 0 0"></p>
+        <ul id="feed" class="small" style="list-style:none;margin:0;padding:0;max-height:220px;overflow:auto"></ul>
       </div>
       <div class="card" style="margin-top:14px">
         <div class="label">why the raw sightings are kept</div>
@@ -55,7 +105,7 @@
           Storing only merged defects loses the evidence that merging happened — and
           that evidence is exactly what a contractor disputes. Every raw sighting is
           written with a foreign key to the defect it merged into, so the dedup rate
-          below is a database query, not a counter that can drift from reality.
+          is a database query, not a counter that can drift from reality.
         </p>
       </div>
     </div>
@@ -63,22 +113,205 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="/web/config.js"></script>
 <script src="/web/app.js"></script>
 <script>
-const colours = { "Pothole Cavity": "#fb7185", "Crack": "#f0a92b", "Waterlogging / Flooding Hazard": "#56a8f5" };
-const colourFor = cls => Object.entries(colours).find(([k]) => (cls || "").startsWith(k.split(" ")[0]))?.[1] || "#a3e635";
+const BAND_COLOUR = { P1: "#ef4444", P2: "#f59e0b", P3: "#a78bfa", P4: "#94a3b8" };
+const CLASS_COLOUR = { pothole: "#ef4444", crack: "#f59e0b", water: "#38bdf8", other: "#a3e635" };
 const bandBadge = { P1: "bad", P2: "warn", P3: "estimate", P4: "neutral" };
+const kindOf = cls => /pothole/i.test(cls) ? "pothole" : /crack/i.test(cls) ? "crack" : /water/i.test(cls) ? "water" : "other";
+const KIND_LABEL = { pothole: "Potholes", crack: "Cracks", water: "Waterlogging", other: "Other" };
+const show = { kinds: new Set(["pothole", "crack", "water", "other"]), bands: new Set(["P1", "P2", "P3", "P4", "none"]) };
 const hasMap = typeof L !== "undefined";
-const map = hasMap ? L.map("map").setView([12.9716, 77.5946], 14) : null;
-if (hasMap) L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
-const defectMarkers = new Map(), busMarkers = new Map();
-let rows = [], fitted = false, lastDefects = [];
+const focusId = new URLSearchParams(location.search).get("focus");
+let map = null, defectLayer = null, busLayer = null, shockLayer = null, heatLayer = null, myLocation = null;
+const defectMarkers = new Map(), busMarkers = new Map(), priorityById = new Map();
+let allDefects = [], rows = [], fitted = false;
 const fallbackBuses = new Map(), fallbackShocks = [];
 
-function esc(t) { return String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+function esc(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
+function num(v, d = 2) { const n = Number(v); return Number.isFinite(n) ? n.toFixed(d) : "—"; }
 
+/* ------------------------------------------------------------------ map -- */
+if (hasMap) {
+  const z = { maxZoom: 22 };
+  const streets = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { ...z, maxNativeZoom: 19, attribution: "© OpenStreetMap contributors" });
+  const esri = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+  const imagery = L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    { ...z, maxNativeZoom: 19, attribution: "Imagery: Esri, Vantor, Earthstar Geographics, GIS User Community" });
+  const roads = L.tileLayer(esri + "Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}",
+    { ...z, maxNativeZoom: 19, attribution: "Roads: Esri, HERE, Garmin, © OpenStreetMap contributors" });
+  const places = L.tileLayer(esri + "Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    { ...z, maxNativeZoom: 19 });
+  const dark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    { ...z, maxNativeZoom: 20, subdomains: "abcd", attribution: "© OpenStreetMap contributors © CARTO" });
+  const satellite = L.layerGroup([imagery, roads, places]);
+
+  map = L.map("map", { maxZoom: 22, zoomSnap: 0.5, preferCanvas: false }).setView([12.9716, 77.5946], 13);
+  streets.addTo(map);
+  defectLayer = L.markerClusterGroup
+    ? L.markerClusterGroup({ maxClusterRadius: 45, disableClusteringAtZoom: 18, showCoverageOnHover: false,
+        iconCreateFunction: c => L.divIcon({ className: "pothole-icon", iconSize: [38, 38],
+          html: `<svg viewBox="0 0 38 38" width="38" height="38"><circle cx="19" cy="19" r="16" fill="#ef4444" fill-opacity=".85" stroke="#fff" stroke-width="2"/>
+                 <text x="19" y="23.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="Inter,sans-serif">${c.getChildCount()}</text></svg>` }) })
+    : L.layerGroup();
+  busLayer = L.layerGroup();
+  shockLayer = L.layerGroup();
+  heatLayer = L.heatLayer ? L.heatLayer([], { radius: 28, blur: 20, maxZoom: 17, minOpacity: .35 }) : null;
+  defectLayer.addTo(map); busLayer.addTo(map); shockLayer.addTo(map);
+  const overlays = { "Potholes & cracks": defectLayer, "Buses (live)": busLayer, "IMU-only shocks": shockLayer };
+  if (heatLayer) overlays["Priority heatmap"] = heatLayer;
+  L.control.layers({ "Streets": streets, "Satellite + roads": satellite, "Dark": dark }, overlays, { collapsed: window.innerWidth < 700 }).addTo(map);
+  L.control.scale({ imperial: false, maxWidth: 160 }).addTo(map);
+
+  const legend = L.control({ position: "bottomright" });
+  legend.onAdd = () => {
+    const d = L.DomUtil.create("div", "map-legend");
+    d.innerHTML = `<strong>Repair priority</strong><br>` +
+      Object.entries(BAND_COLOUR).map(([b, c]) => `<i style="background:${c}"></i>${b}`).join(" &nbsp;") +
+      `<br><i style="background:#3b82f6;border:2px solid #fff"></i>bus &nbsp;<i style="border:2px dashed #a78bfa"></i>IMU-only` +
+      `<br><span style="opacity:.7">marker size = defect area</span>`;
+    return d;
+  };
+  legend.addTo(map);
+  el("mapTools").hidden = false;
+}
+
+function potholeIcon(kind, band, area, confirmations) {
+  const colour = band ? BAND_COLOUR[band] : CLASS_COLOUR[kind];
+  const size = Math.round(22 + Math.min(Number(area) || 0, 4) * 4);
+  const glyph = kind === "pothole"
+    ? `<ellipse cx="16" cy="17" rx="7.5" ry="5" fill="#111827" opacity=".85"/><ellipse cx="16" cy="16" rx="5" ry="3" fill="#374151"/>`
+    : kind === "crack"
+      ? `<path d="M9 9 l5 5 -2 3 5 4 -1 3 4 3" fill="none" stroke="#111827" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`
+      : `<circle cx="16" cy="16" r="4" fill="#111827"/>`;
+  const badge = confirmations > 1
+    ? `<circle cx="26" cy="6" r="6" fill="#111827" stroke="#fff" stroke-width="1.2"/><text x="26" y="9" text-anchor="middle" font-size="8" font-weight="700" fill="#fff" font-family="Inter,sans-serif">${Math.min(confirmations, 99)}</text>` : "";
+  return L.divIcon({
+    className: "pothole-icon", iconSize: [size, size], iconAnchor: [size / 2, size / 2], popupAnchor: [0, -size / 2],
+    html: `<svg viewBox="0 0 32 32" width="${size}" height="${size}" aria-hidden="true">
+      <circle cx="16" cy="16" r="13.5" fill="${colour}" stroke="#fff" stroke-width="2.4"/>${glyph}${badge}</svg>`,
+  });
+}
+
+function defectPopup(d, pr) {
+  const lat = Number(d.lat), lon = Number(d.lon ?? d.lng);
+  const buses = (d.reporting_buses || []).map(esc).join(", ") || "—";
+  const when = t => t ? new Date(Number(t) * 1000).toLocaleString() : "—";
+  return `<div><strong style="font-size:14px">${esc(d.defect_class)}</strong>
+    ${pr ? `<div style="margin:4px 0 6px"><span style="background:${BAND_COLOUR[pr.band]};color:#111;font-weight:700;padding:1px 7px;border-radius:9px">${esc(pr.band)}</span>
+      priority ${esc(num(pr.priority_index, 1))} · ${esc(pr.action)}</div>` : ""}
+    <div class="pk"><span>PCI</span><span>${esc(num(d.severity_pci, 0))}</span></div>
+    <div class="pk"><span>area</span><span>${esc(num(d.area_m2, 2))} m²</span></div>
+    <div class="pk"><span>depth</span><span>${d.depth_cm != null ? esc(num(d.depth_cm, 1)) + " cm" : "—"}</span></div>
+    <div class="pk"><span>reports</span><span>${esc(d.confirmation_count ?? 1)} (${buses})</span></div>
+    <div class="pk"><span>first / last seen</span><span>${esc(when(d.first_seen_timestamp))}<br>${esc(when(d.last_seen_timestamp))}</span></div>
+    ${d.address ? `<div style="margin-top:4px">${esc(d.address)}</div>` : ""}
+    <div style="margin-top:6px;font-family:monospace;font-size:11px">${lat.toFixed(6)}, ${lon.toFixed(6)}</div>
+    <div style="margin-top:6px"><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${lat},${lon}">Google Maps</a> ·
+      <a target="_blank" rel="noopener" href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}">Street View</a></div></div>`;
+}
+
+function visible(d) {
+  const pr = priorityById.get(d.defect_id);
+  return show.kinds.has(kindOf(d.defect_class || "")) && show.bands.has(pr ? pr.band : "none");
+}
+
+function drawDefects() {
+  if (!hasMap) { drawFallback(allDefects.filter(visible)); return; }
+  defectLayer.clearLayers();
+  defectMarkers.clear();
+  const heat = [];
+  allDefects.filter(visible).forEach(d => {
+    const lat = Number(d.lat ?? d.latitude), lon = Number(d.lon ?? d.lng ?? d.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const pr = priorityById.get(d.defect_id);
+    const m = L.marker([lat, lon], { icon: potholeIcon(kindOf(d.defect_class || ""), pr?.band, d.area_m2, Number(d.confirmation_count) || 1),
+                                     title: `${d.defect_class} · ${pr ? pr.band : "unranked"}`, riseOnHover: true })
+      .bindPopup(defectPopup(d, pr), { autoPanPaddingTopLeft: L.point(20, 70), maxWidth: 320 });
+    defectLayer.addLayer(m);
+    defectMarkers.set(d.defect_id, m);
+    heat.push([lat, lon, pr ? Math.max(.15, pr.priority_index / 100) : .3]);
+  });
+  if (heatLayer) heatLayer.setLatLngs(heat);
+  if (!fitted && defectMarkers.size) {
+    const target = focusId && defectMarkers.get(focusId);
+    if (target) focusOn(focusId);
+    else map.fitBounds(L.latLngBounds([...defectMarkers.values()].map(m => m.getLatLng())), { padding: [50, 50], maxZoom: 17 });
+    fitted = true;
+  }
+}
+
+function focusOn(id) {
+  const m = defectMarkers.get(id);
+  if (!m || !hasMap) return;
+  el("mapShell").scrollIntoView({ behavior: "smooth", block: "center" });
+  const go = () => { m.openPopup(); };
+  if (defectLayer.zoomToShowLayer) defectLayer.zoomToShowLayer(m, () => { map.setView(m.getLatLng(), Math.max(map.getZoom(), 19)); go(); });
+  else { map.setView(m.getLatLng(), 19); go(); }
+}
+
+function drawBus(p) {
+  if (p.lat == null) return;
+  if (!hasMap) { fallbackBuses.set(p.bus_id, p); drawFallback(allDefects.filter(visible)); return; }
+  const label = `<strong>${esc(p.bus_id)}</strong><br>${p.speed_kmh != null ? esc(num(p.speed_kmh, 0)) + " km/h<br>" : ""}` +
+                `${p.queued_on_bus ? esc(p.queued_on_bus) + " packets waiting on the bus" : "queue empty"}`;
+  const ll = [Number(p.lat), Number(p.lon)];
+  const m = busMarkers.get(p.bus_id);
+  if (m) { m.setLatLng(ll).setPopupContent(label); return; }
+  busMarkers.set(p.bus_id, L.marker(ll, { zIndexOffset: 1000, icon: L.divIcon({ className: "pothole-icon", iconSize: [26, 26],
+      html: `<svg viewBox="0 0 26 26" width="26" height="26"><circle cx="13" cy="13" r="11" fill="#3b82f6" stroke="#fff" stroke-width="3"/>
+             <rect x="8" y="8.5" width="10" height="8" rx="1.5" fill="#fff"/><rect x="9.5" y="10" width="7" height="3" fill="#3b82f6"/></svg>` }) })
+    .addTo(busLayer).bindPopup(label).bindTooltip(esc(p.bus_id), { direction: "top", offset: [0, -12] }));
+}
+
+function drawShock(s) {
+  if (s.lat == null) return;
+  if (!hasMap) { fallbackShocks.push(s); drawFallback(allDefects.filter(visible)); return; }
+  L.circleMarker([Number(s.lat), Number(s.lon)], { radius: 6, color: "#a78bfa", weight: 2, fillOpacity: .1, dashArray: "3 3" })
+    .addTo(shockLayer).bindPopup(`<strong>IMU-only shock</strong><br>${esc(s.class || "")}<br>` +
+      `Δz ${esc(s.dz ?? "—")} m/s² · p ${esc(s.p ?? "—")}<br>camera unusable: ${esc(s.camera_unusable_because || "—")}`);
+}
+
+/* ------------------------------------------------------------ controls -- */
+function chips() {
+  el("classChips").innerHTML = Object.entries(KIND_LABEL).map(([k, v]) =>
+    `<button class="chip ${show.kinds.has(k) ? "" : "off"}" data-kind="${k}" style="border-color:${CLASS_COLOUR[k]}">${v}</button>`).join(" ");
+  el("bandChips").innerHTML = ["P1", "P2", "P3", "P4"].map(b =>
+    `<button class="chip ${show.bands.has(b) ? "" : "off"}" data-band="${b}" style="border-color:${BAND_COLOUR[b]}">${b}</button>`).join(" ");
+  document.querySelectorAll("[data-kind]").forEach(b => b.onclick = () => {
+    const k = b.dataset.kind; show.kinds.has(k) ? show.kinds.delete(k) : show.kinds.add(k); chips(); drawDefects(); });
+  document.querySelectorAll("[data-band]").forEach(b => b.onclick = () => {
+    const k = b.dataset.band; show.bands.has(k) ? show.bands.delete(k) : show.bands.add(k); chips(); drawDefects(); });
+}
+if (hasMap) {
+  chips();
+  el("btnFull").onclick = () => {
+    const shell = el("mapShell"); shell.classList.toggle("full");
+    el("btnFull").textContent = shell.classList.contains("full") ? "✕ exit full screen" : "⤢ full screen";
+    setTimeout(() => map.invalidateSize(), 60);
+  };
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && el("mapShell").classList.contains("full")) el("btnFull").click(); });
+  el("btnFilters").onclick = () => {
+    const open = el("mapTools").classList.toggle("open");
+    el("btnFilters").setAttribute("aria-expanded", String(open));
+  };
+  el("btnLocate").onclick = () => {
+    if (!navigator.geolocation) { feed("map:this browser cannot share its location", "neutral"); return; }
+    navigator.geolocation.getCurrentPosition(p => {
+      const ll = [p.coords.latitude, p.coords.longitude];
+      if (myLocation) myLocation.remove();
+      myLocation = L.layerGroup([L.circle(ll, { radius: p.coords.accuracy, color: "#22c55e", weight: 1, fillOpacity: .08 }),
+                                 L.circleMarker(ll, { radius: 7, color: "#fff", weight: 3, fillColor: "#22c55e", fillOpacity: 1 })]).addTo(map);
+      map.setView(ll, 18);
+    }, err => feed(`map:location not available (${err.message})`, "neutral"), { enableHighAccuracy: true, timeout: 10000 });
+  };
+}
+
+/* ---------------------------------------------------------------- data -- */
 function feed(text, kind) {
   const li = document.createElement("li");
   li.style.cssText = "padding:4px 0;border-bottom:1px solid var(--ink-800)";
@@ -88,52 +321,19 @@ function feed(text, kind) {
   while (el("feed").children.length > 60) el("feed").lastChild.remove();
 }
 
-function drawDefect(d) {
-  const lat = d.lat ?? d.latitude, lon = d.lon ?? d.lng ?? d.longitude;
-  if (lat == null || lon == null || !hasMap) return;
-  const cls = String(d.defect_class ?? d.class_name ?? "defect"), conf = Number(d.confirmation_count) || 1, colour = colourFor(cls);
-  const popup = `<strong>${esc(cls)}</strong><br>${conf} bus report${conf > 1 ? "s" : ""}<br>` +
-    `${d.area_m2 != null ? fmt.num(d.area_m2, 2) + " m²<br>" : ""}` +
-    `<span style="font-family:monospace;font-size:11px">${Number(lat).toFixed(5)}, ${Number(lon).toFixed(5)}</span>`;
-  const m = defectMarkers.get(d.defect_id);
-  if (m) { m.setLatLng([lat, lon]).setRadius(7 + Math.min(conf, 5) * 2).setPopupContent(popup); return; }
-  defectMarkers.set(d.defect_id, L.circleMarker([lat, lon], {
-    radius: 7 + Math.min(conf, 5) * 2, color: colour, weight: 2, fillColor: colour, fillOpacity: .35,
-  }).addTo(map).bindPopup(popup));
-}
-
-function drawBus(p) {
-  if (p.lat == null) return;
-  if (!hasMap) { fallbackBuses.set(p.bus_id, p); drawFallback(lastDefects); return; }
-  const label = `<strong>${esc(p.bus_id)}</strong><br>${p.speed_kmh != null ? esc(fmt.num(p.speed_kmh, 0)) + " km/h<br>" : ""}` +
-                `${p.queued_on_bus ? esc(p.queued_on_bus) + " packets waiting on the bus" : "queue empty"}`;
-  const m = busMarkers.get(p.bus_id);
-  if (m) { m.setLatLng([p.lat, p.lon]).setPopupContent(label); return; }
-  busMarkers.set(p.bus_id, L.circleMarker([p.lat, p.lon], { radius: 6, color: "#e5e7eb", weight: 3,
-    fillColor: "#56a8f5", fillOpacity: 1 }).addTo(map).bindPopup(label).bindTooltip(esc(p.bus_id)));
-}
-
-function drawShock(s) {
-  if (s.lat == null) return;
-  if (!hasMap) { fallbackShocks.push(s); drawFallback(lastDefects); return; }
-  L.circleMarker([s.lat, s.lon], { radius: 4, color: "#9b7cf0", weight: 2, fillOpacity: .1, dashArray: "2 3" })
-    .addTo(map).bindPopup(`<strong>IMU-only shock</strong><br>${esc(s.class || "")}<br>` +
-      `Δz ${esc(s.dz ?? "—")} m/s² · p ${esc(s.p ?? "—")}<br>camera unusable: ${esc(s.camera_unusable_because || "—")}`);
-}
-
 async function loadStats() {
   const tel = await API.get("/api/v1/fleet/telemetry");
   if (!tel.ok) return;
   const t = tel.data, p = t.persisted || {};
   el("stats").innerHTML = `
     <div class="card accent"><div class="label">unique defects</div>
-      <div class="stat">${t.unique_defects_registered ?? "—"}</div>
+      <div class="stat">${esc(t.unique_defects_registered ?? "—")}</div>
       <div class="stat-sub">after GPS deduplication</div></div>
     <div class="card"><div class="label">raw sightings</div>
-      <div class="stat" style="color:var(--sky)">${p.total_reports ?? t.total_reports_ingested ?? "—"}</div>
-      <div class="stat-sub">${p.merged_reports != null ? p.merged_reports + " merged into an existing defect" : ""}</div></div>
+      <div class="stat" style="color:var(--sky)">${esc(p.total_reports ?? t.total_reports_ingested ?? "—")}</div>
+      <div class="stat-sub">${p.merged_reports != null ? esc(p.merged_reports) + " merged into an existing defect" : ""}</div></div>
     <div class="card"><div class="label">deduplication rate</div>
-      <div class="stat" style="color:var(--violet)">${p.deduplication_rate_pct ?? t.deduplication_efficiency_pct ?? "—"}%</div>
+      <div class="stat" style="color:var(--violet)">${esc(p.deduplication_rate_pct ?? t.deduplication_efficiency_pct ?? "—")}%</div>
       <div class="stat-sub">reports that were a repeat sighting</div></div>
     <div class="card"><div class="label">storage</div>
       <div class="stat sm" style="color:${t.storage === "sqlite" ? "var(--ok)" : "var(--warn)"}">
@@ -144,13 +344,14 @@ async function loadStats() {
 
 async function loadLedger() {
   const [gis, pr] = await Promise.all([API.get("/api/v1/gis/map-data"), API.get("/api/v1/priority/ranking?stability=1")]);
-  const defects = (gis.ok && (gis.data.deduplicated_defects || gis.data.defects)) || [];
-  lastDefects = defects;
-  defects.forEach(drawDefect);
+  allDefects = (gis.ok && (gis.data.deduplicated_defects || gis.data.defects)) || [];
   rows = (pr.ok && pr.data.defects) || [];
+  priorityById.clear();
+  rows.forEach(r => priorityById.set(r.defect_id, r.priority));
+  drawDefects();
   if (pr.ok && pr.data.weights) {
     const w = pr.data.weights;
-    el("pi-weights").textContent = `Weights in use: ${w.severity} / ${w.volume} / ${w.traffic}.`;   // textContent: no markup
+    el("pi-weights").textContent = `Weights in use: ${w.severity} / ${w.volume} / ${w.traffic}.`;
   }
   const st = pr.ok && pr.data.rank_stability;
   el("pi-stability").textContent = !(st && st.defects > 1) ? ""
@@ -160,37 +361,35 @@ async function loadLedger() {
         ` (mean ${st.mean_kendall_tau}); the top defect changes in ${st.top_priority_changes_in} of ${st.trials.length} variations.`;
   if (rows.length) {
     el("list").innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th class="num">#</th><th>class</th><th class="num">PI</th><th class="num">PCI</th><th class="num">buses</th></tr></thead>
-      <tbody>${rows.map(r => `<tr title="${esc((r.priority.missing || []).length ? "missing: " + r.priority.missing.join(", ") : "all three terms measured")} · traffic: ${esc(r.priority.traffic_basis || "—")}">
+      <thead><tr><th class="num">#</th><th>class</th><th class="num">priority</th><th class="num">PCI</th><th class="num">m²</th><th class="num">reports</th></tr></thead>
+      <tbody>${rows.map(r => `<tr class="rowlink" data-id="${esc(r.defect_id)}" title="${esc((r.priority.missing || []).length ? "missing: " + r.priority.missing.join(", ") : "all three terms measured")} · traffic: ${esc(r.priority.traffic_basis || "—")}">
         <td class="num">${esc(r.rank)}</td>
-        <td>${esc(String(r.defect_class ?? "").slice(0, 24))}</td>
-        <td class="num"><span class="badge ${bandBadge[r.priority.band] || "neutral"}">${esc(r.priority.band)}</span> ${esc(fmt.num(r.priority.priority_index, 1))}</td>
+        <td>${esc(String(r.defect_class ?? "").slice(0, 26))}</td>
+        <td class="num"><span class="badge ${bandBadge[r.priority.band] || "neutral"}">${esc(r.priority.band)}</span> ${esc(num(r.priority.priority_index, 1))}</td>
         <td class="num">${esc(r.severity_pci ?? "—")}</td>
+        <td class="num">${esc(num(r.area_m2, 2))}</td>
         <td class="num">${esc(r.confirmations ?? 1)}</td></tr>`).join("")}</tbody></table></div>`;
+    document.querySelectorAll("tr.rowlink").forEach(tr => tr.onclick = () => focusOn(tr.dataset.id));
   } else {
-    el("list").innerHTML = `<p class="small muted">No defects in the ledger yet${pr.ok ? "" : " (the live engine is not connected)"}.</p>`;
+    el("list").innerHTML = `<p class="small muted">No defects yet${pr.ok ? "" : " (the live engine is not connected)"}. Analyse a photograph on
+      <a href="/inspect">Inspection</a> and press <strong>Add to map</strong>, or run a bus agent (docs/EDGE_AGENT.md).</p>`;
   }
-  if (hasMap && !fitted && defectMarkers.size) {
-    map.fitBounds([...defectMarkers.values()].map(m => m.getLatLng()), { padding: [45, 45] });
-    fitted = true;
-  }
-  if (!hasMap) drawFallback(defects);
 }
 
 let reloadTimer = null;
-function scheduleReload() { clearTimeout(reloadTimer); reloadTimer = setTimeout(() => { loadLedger(); loadStats(); }, 1500); }
+function scheduleReload() { clearTimeout(reloadTimer); reloadTimer = setTimeout(() => { loadLedger(); loadStats(); }, 1200); }
 
 function handle(type, ev, replay = false) {
   const d = ev.data || {};
-  if (replay && type === "shock") { feed(`shock:IMU-only from ${d.bus_id} (camera ${d.camera_unusable_because || "unusable"})`, "estimate"); return; }
   if (type === "bus_position") drawBus(d);
   else if (type === "defect") {
-    if (d.defect) drawDefect(d.defect);
     feed(`defect:${d.result?.action === "DEDUPLICATED_AND_UPDATED" ? "confirmed again" : "new"} ` +
          `${d.defect?.defect_class || ""} by ${d.bus_id}`, "bad");
     if (!replay) scheduleReload();
-  } else if (type === "shock") { drawShock(d); feed(`shock:IMU-only from ${d.bus_id} (camera ${d.camera_unusable_because || "unusable"})`, "estimate"); }
-  else if (type === "work_order") feed(`order:${d.work_order_id} · ${d.priority || ""} · ${d.seal_algorithm || ""}`, "measured");
+  } else if (type === "shock") {
+    if (!replay) drawShock(d);
+    feed(`shock:IMU-only from ${d.bus_id} (camera ${d.camera_unusable_because || "unusable"})`, "estimate");
+  } else if (type === "work_order") feed(`order:${d.work_order_id} · ${d.priority || ""} · ${d.seal_algorithm || ""}`, "measured");
 }
 
 async function startLive() {
@@ -211,7 +410,7 @@ async function startLive() {
     (snap.data.imu_only_shocks || []).forEach(drawShock);
     (snap.data.recent_events || []).filter(e => e.type !== "bus_position").slice(-15)
       .forEach(e => { lastId = Math.max(lastId, e.id); handle(e.type, e, true); });
-  }
+  } else { setState("engine off", "neutral"); }
   if (typeof EventSource === "undefined") { polling = setInterval(poll, 10000); return poll(); }
   const base = await API.urlFor("/api/v1/live/stream");
   const open = () => {
@@ -231,29 +430,32 @@ loadStats();
 loadLedger();
 startLive();
 
+/* ------------------------------------- offline fallback (no map tiles) -- */
 function drawFallback(defects) {
   const pts = defects.map(d => ({ lat: Number(d.lat ?? d.latitude), lon: Number(d.lon ?? d.lng ?? d.longitude),
-                                  cls: String(d.defect_class ?? "defect"), conf: Number(d.confirmation_count) || 1 }))
+                                  cls: String(d.defect_class ?? "defect"), conf: Number(d.confirmation_count) || 1,
+                                  band: priorityById.get(d.defect_id)?.band }))
                      .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
   const finite = p => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lon));
   const buses = [...fallbackBuses.values()].filter(finite), shocks = fallbackShocks.slice(-50).filter(finite);
   const all = pts.concat(buses, shocks);
-  if (!all.length) { el("map").innerHTML = `<p class="small muted" style="padding:18px">Map tiles unavailable offline.</p>`; return; }
-  const W = 600, H = 420, pad = 40;
-  const lats = all.map(r => r.lat), lons = all.map(r => r.lon);
+  if (!all.length) { el("map").innerHTML = `<p class="small muted" style="padding:18px">Map tiles unavailable offline, and no defects yet.</p>`; return; }
+  const W = 900, H = 520, pad = 40;
+  const lats = all.map(r => Number(r.lat)), lons = all.map(r => Number(r.lon));
   const [la0, la1] = [Math.min(...lats), Math.max(...lats)];
   const [lo0, lo1] = [Math.min(...lons), Math.max(...lons)];
   const sx = v => pad + (lo1 > lo0 ? (v - lo0) / (lo1 - lo0) : .5) * (W - 2 * pad);
   const sy = v => H - pad - (la1 > la0 ? (v - la0) / (la1 - la0) : .5) * (H - 2 * pad);
-  el("map").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" role="img"
+  const colour = r => r.band ? BAND_COLOUR[r.band] : CLASS_COLOUR[kindOf(r.cls)];
+  el("map").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" role="img" preserveAspectRatio="xMidYMid meet"
       aria-label="defect positions (map tiles unavailable)" style="display:block;background:var(--panel-2,#0f1620)">
     ${pts.map(r => `<circle cx="${sx(r.lon).toFixed(1)}" cy="${sy(r.lat).toFixed(1)}"
-        r="${7 + Math.min(r.conf, 5) * 2}" fill="${colourFor(r.cls)}" fill-opacity=".35" stroke="${colourFor(r.cls)}" stroke-width="2">
-        <title>${esc(r.cls)} · ${esc(r.conf)} report(s) · ${Number(r.lat).toFixed(5)}, ${Number(r.lon).toFixed(5)}</title></circle>`).join("")}
-    ${shocks.map(s => `<circle cx="${sx(s.lon).toFixed(1)}" cy="${sy(s.lat).toFixed(1)}" r="5" fill="none"
-        stroke="#9b7cf0" stroke-width="2" stroke-dasharray="2 3"><title>IMU-only shock · ${esc(s.bus_id)}</title></circle>`).join("")}
-    ${buses.map(b => `<g><circle cx="${sx(b.lon).toFixed(1)}" cy="${sy(b.lat).toFixed(1)}" r="6" fill="#56a8f5" stroke="#e5e7eb" stroke-width="3">
-        <title>${esc(b.bus_id)}</title></circle><text x="${(sx(b.lon) + 10).toFixed(1)}" y="${(sy(b.lat) + 4).toFixed(1)}"
+        r="${7 + Math.min(r.conf, 5) * 2}" fill="${colour(r)}" fill-opacity=".45" stroke="${colour(r)}" stroke-width="2">
+        <title>${esc(r.cls)} · ${esc(r.band || "unranked")} · ${esc(r.conf)} report(s) · ${r.lat.toFixed(5)}, ${r.lon.toFixed(5)}</title></circle>`).join("")}
+    ${shocks.map(s => `<circle cx="${sx(Number(s.lon)).toFixed(1)}" cy="${sy(Number(s.lat)).toFixed(1)}" r="5" fill="none"
+        stroke="#a78bfa" stroke-width="2" stroke-dasharray="2 3"><title>IMU-only shock · ${esc(s.bus_id)}</title></circle>`).join("")}
+    ${buses.map(b => `<g><circle cx="${sx(Number(b.lon)).toFixed(1)}" cy="${sy(Number(b.lat)).toFixed(1)}" r="6" fill="#3b82f6" stroke="#e5e7eb" stroke-width="3">
+        <title>${esc(b.bus_id)}</title></circle><text x="${(sx(Number(b.lon)) + 10).toFixed(1)}" y="${(sy(Number(b.lat)) + 4).toFixed(1)}"
         fill="currentColor" font-size="12">${esc(b.bus_id)}</text></g>`).join("")}
     <text x="12" y="${H - 12}" fill="currentColor" opacity=".6" font-size="12">
       map tiles unavailable — positions plotted by latitude/longitude</text></svg>`;

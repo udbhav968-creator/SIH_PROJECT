@@ -14,6 +14,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="/web/app.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body data-page="inspect">
 
@@ -98,11 +99,44 @@
   </div>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/web/config.js"></script>
 <script src="/web/app.js"></script>
 <script>
 let currentImage = null;   // { dataUrl, width, height }
 let lastResult = null;
+let photoGps = null;       // { lat, lon } from the photograph's EXIF, when the camera recorded one
+
+/* GPS position written by the phone or camera into the JPEG (EXIF GPS IFD). Read in the browser, so a
+   photograph's location is used for the map without being sent anywhere else. null when absent. */
+function exifGps(buf) {
+  const v = new DataView(buf);
+  if (v.byteLength < 4 || v.getUint16(0) !== 0xFFD8) return null;
+  let off = 2;
+  while (off + 4 < v.byteLength) {
+    const marker = v.getUint16(off), len = v.getUint16(off + 2);
+    if (marker === 0xFFE1 && v.getUint32(off + 4) === 0x45786966) {          // "Exif"
+      const t = off + 10, le = v.getUint16(t) === 0x4949;
+      const u16 = o => v.getUint16(t + o, le), u32 = o => v.getUint32(t + o, le);
+      const ifd = o => { const n = u16(o), out = {}; for (let i = 0; i < n; i++) { const e = o + 2 + i * 12; out[u16(e)] = e; } return out; };
+      const ifd0 = ifd(u32(4));
+      if (!(0x8825 in ifd0)) return null;
+      const g = ifd(u32(ifd0[0x8825] + 8));
+      const ref = tag => g[tag] != null ? String.fromCharCode(v.getUint8(t + g[tag] + 8)) : "";
+      const dms = tag => { if (g[tag] == null) return null; const p = u32(g[tag] + 8);
+        const r = k => { const d = u32(p + k * 8 + 4); return d ? u32(p + k * 8) / d : 0; };
+        return r(0) + r(1) / 60 + r(2) / 3600; };
+      let lat = dms(2), lon = dms(4);
+      if (lat == null || lon == null || (lat === 0 && lon === 0)) return null;
+      if (ref(1) === "S") lat = -lat;
+      if (ref(3) === "W") lon = -lon;
+      return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+    }
+    if ((marker & 0xFF00) !== 0xFF00 || marker === 0xFFDA) break;
+    off += 2 + len;
+  }
+  return null;
+}
 
 const cv = el("cv"), ctx = cv.getContext("2d");
 
@@ -119,6 +153,10 @@ dz.addEventListener("drop", e => {
 fileInput.addEventListener("change", e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
 
 function loadFile(f) {
+  photoGps = null;
+  const g = new FileReader();
+  g.onload = () => { try { photoGps = exifGps(g.result); } catch { photoGps = null; } };
+  g.readAsArrayBuffer(f.slice(0, 256 * 1024));
   const r = new FileReader();
   r.onload = () => setImage(r.result);
   r.readAsDataURL(f);
@@ -239,9 +277,10 @@ el("sample").addEventListener("click", async () => {
   const r = await API.post("/api/v1/vision/analyze-photo", { corridor_id: el("corridor").value });
   if (engineUnavailable(r)) { await showRecorded(); return; }
   if (!r.ok) { el("out").innerHTML = errorCard(r.data.error || "could not fetch", null); return; }
-  if (r.data.image_data_url) setImage(r.data.image_data_url);
+  if (r.data.image_data_url) { photoGps = null; setImage(r.data.image_data_url); }
   lastResult = r.data;
   render(r.data, r.ms);
+  offerMapAdd(r.data);
   setTimeout(draw, 60);
 });
 
@@ -257,6 +296,7 @@ async function runAnalysis() {
   };
   const dev = el("device").value;
   if (dev) payload.device_id = dev;
+  if (photoGps) { payload.latitude = photoGps.lat; payload.longitude = photoGps.lon; }
   const r = await API.post("/api/v1/pipeline/deep-audit", payload);
   const why = engineUnavailable(r);
   if (why === "waking") {
@@ -269,6 +309,7 @@ async function runAnalysis() {
   if (!r.ok) { el("out").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`, null); return; }
   lastResult = r.data;
   render(r.data, r.ms);
+  offerMapAdd(r.data);
   draw();
 }
 
@@ -595,6 +636,75 @@ function render(d, ms) {
       }</p>
     </div>`;
 }
+
+/* ------------------------------------------------------- add to map ---- */
+function offerMapAdd(d) {
+  const top = d.primary_distress || (d.all_detections || [])[0] || {};
+  if (!d.is_distress || ![1, 2, 3].includes(top.class_id)) return;
+  const pci = d.astm_d6433_pci?.pci_score;
+  const area = top.surface_area_m2;
+  const depth = top.depth_estimate?.depth_cm ?? top.depth_cm;
+  if (pci == null || area == null) return;
+  let loc = photoGps ? { ...photoGps, source: "GPS in the photograph" } : null, mini = null, pin = null;
+  el("out").insertAdjacentHTML("beforeend", `
+    <div class="card" id="mapAdd" style="margin-top:14px">
+      <div class="label">put this ${esc(top.class_name)} on the road map</div>
+      <p class="small" id="locText" style="margin:0 0 8px"></p>
+      <div class="actions" style="margin-top:0">
+        <button id="useMe">Use my location</button>
+        <button id="pickMap">Pick on the map</button>
+        <button class="primary" id="addMap" disabled>Add to map</button>
+      </div>
+      <div id="miniMap" style="height:260px;border-radius:10px;margin-top:10px" hidden></div>
+      <div id="keyRow" class="field" style="margin:10px 0 0" hidden>
+        <label for="opKey">This engine only accepts new defects with the operator key (shown when go_live started it)</label>
+        <input id="opKey" type="password" autocomplete="off" placeholder="operator key">
+      </div>
+      <p class="small muted" id="addMsg" style="margin:8px 0 0">The photograph itself is not stored, only the defect: class, PCI
+        ${esc(fmt.num(pci, 0))}, ${esc(fmt.num(area, 2))} m²${depth != null ? ", " + esc(fmt.num(depth, 1)) + " cm deep (estimate)" : ""} and the location.</p>
+    </div>`);
+  const showLoc = () => {
+    el("locText").innerHTML = loc
+      ? `Location: <span class="mono">${loc.lat.toFixed(6)}, ${loc.lon.toFixed(6)}</span> <span class="badge ${loc.source.startsWith("GPS") ? "measured" : "estimate"}">${esc(loc.source)}</span>`
+      : "This photograph has no GPS position. Use your location (if you are standing at the defect) or pick the spot on the map.";
+    el("addMap").disabled = !loc;
+    if (mini && loc) { if (pin) pin.setLatLng([loc.lat, loc.lon]); else pin = L.marker([loc.lat, loc.lon]).addTo(mini); }
+  };
+  showLoc();
+  el("useMe").onclick = () => {
+    if (!navigator.geolocation) { el("addMsg").textContent = "This browser cannot share its location."; return; }
+    navigator.geolocation.getCurrentPosition(p => { loc = { lat: p.coords.latitude, lon: p.coords.longitude,
+      source: `your location (±${Math.round(p.coords.accuracy)} m)` }; showLoc(); if (mini) mini.setView([loc.lat, loc.lon], 18); },
+      e => { el("addMsg").textContent = "Location not available: " + e.message; }, { enableHighAccuracy: true, timeout: 10000 });
+  };
+  el("pickMap").onclick = () => {
+    if (typeof L === "undefined") { el("addMsg").textContent = "Map tiles could not load here."; return; }
+    el("miniMap").hidden = false;
+    if (!mini) {
+      mini = L.map("miniMap", { maxZoom: 21 }).setView(loc ? [loc.lat, loc.lon] : [12.9716, 77.5946], loc ? 18 : 12);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 21, maxNativeZoom: 19,
+        attribution: "© OpenStreetMap contributors" }).addTo(mini);
+      mini.on("click", e => { loc = { lat: e.latlng.lat, lon: e.latlng.lng, source: "picked on the map" }; showLoc(); });
+      showLoc();
+    }
+  };
+  el("addMap").onclick = async () => {
+    if (!loc) return;
+    if (!el("keyRow").hidden && el("opKey").value.trim()) setOperatorKey(el("opKey").value.trim());
+    el("addMap").disabled = true; el("addMsg").textContent = "adding…";
+    const r = await API.post("/api/v1/fleet/report-defect", { bus_id: "photo-upload", lat: loc.lat, lon: loc.lon,
+      defect_class: top.class_name, severity_pci: pci, area_m2: area, depth_cm: depth ?? undefined });
+    el("addMap").disabled = false;
+    if (r.status === 401) { el("keyRow").hidden = false; el("addMsg").textContent = "Enter the operator key and press Add to map again."; return; }
+    if (engineUnavailable(r)) { el("addMsg").textContent = "The live engine is not connected, so there is no map to add to."; return; }
+    if (!r.ok) { el("addMsg").textContent = "Not added: " + (r.data.error || `HTTP ${r.status}`); return; }
+    const again = r.data.action === "DEDUPLICATED_AND_UPDATED";
+    el("addMsg").innerHTML = `<span class="badge measured">${again ? "matched an existing defect" : "added"}</span> ` +
+      `${esc(r.data.defect_id)}${again ? ` — now ${esc(r.data.confirmations)} reports` : ""}. ` +
+      `<a href="/corridor?focus=${encodeURIComponent(r.data.defect_id)}">See it on the road map →</a>`;
+  };
+}
+function esc(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
 
 /* -------------------------------------------------------- calibration ---- */
 (async () => {
