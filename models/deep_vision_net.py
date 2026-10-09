@@ -40,9 +40,10 @@ def _softmax(x):
 class DeepVisionNet(VisionDistressNet):
     """Fine-tuned CNN classifier with the same output contract as the baseline."""
 
-    def __init__(self, checkpoints_dir=None, img_size=224):
+    def __init__(self, checkpoints_dir=None, img_size=224, onnx_path=None):
         super().__init__()
         self.ckpt_dir = checkpoints_dir or CKPT_DIR
+        self._onnx_path = onnx_path        # a specific network (an ensemble member) instead of the served one
         self.img_size = img_size
         self.backend = None
         self.weights_path = None
@@ -61,6 +62,11 @@ class DeepVisionNet(VisionDistressNet):
         return matches[0] if matches else None
 
     def _served_onnx(self):
+        if self._onnx_path:
+            return self._onnx_path if os.path.exists(self._onnx_path) else None
+        return self._served_single()
+
+    def _served_single(self):
         """The network finetune_summary.json says is served, if that file is here; else the only/first one.
         (After a retrain on a different architecture an older deep_vision_*.onnx can still be on disk.)"""
         summ = os.path.join(self.ckpt_dir, "finetune_summary.json")
@@ -74,7 +80,9 @@ class DeepVisionNet(VisionDistressNet):
                     return cand
             except Exception:
                 pass
-        return self._find("deep_vision_*.onnx")
+        singles = [p for p in sorted(glob.glob(os.path.join(self.ckpt_dir, "deep_vision_*.onnx")))
+                   if not os.path.basename(p).startswith("deep_vision_ens_")]     # ensemble members are not the single net
+        return singles[0] if singles else None
 
     def _load(self):
         onnx_path = self._served_onnx()
@@ -357,6 +365,20 @@ def load_best_vision_model(checkpoints_dir=None, verbose=True):
     """
     ckpt = checkpoints_dir or CKPT_DIR
     sel = read_selection(ckpt) or {}
+
+    # An ensemble of fine-tuned CNNs and vision transformers, run as a confidence cascade, replaces the single
+    # network only when training/select_ensemble.py's validation rule chose it (checkpoints/vision_ensemble.json).
+    # It is still a deep CNN classifier to the rest of the pipeline, so it is reported as "deep_cnn".
+    if sel.get("served") == "deep_cnn" and os.path.exists(os.path.join(ckpt, "vision_ensemble.json")):
+        from models.ensemble_classifier import EnsembleClassifier
+        ens = EnsembleClassifier(checkpoints_dir=ckpt)
+        if ens.is_ready:
+            if verbose:
+                print(f"  ✓ Vision classifier: {ens.backend}")
+            return ens, "deep_cnn"
+        if verbose:
+            print(f"  ! vision_ensemble.json is present but the ensemble did not load ({ens.load_error}) - "
+                  "serving the single network")
 
     if sel.get("served") == "deep_cnn":
         deep = DeepVisionNet(checkpoints_dir=ckpt)

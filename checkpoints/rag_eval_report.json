@@ -1,0 +1,250 @@
+{
+ "questions": 24,
+ "chunks": 192,
+ "method": "hybrid",
+ "recall_at_1": 0.7917,
+ "recall_at_3": 0.8333,
+ "recall_at_6": 0.875,
+ "mrr": 0.8194,
+ "rows": [
+  {
+   "question": "Why do potholes appear during the monsoon?",
+   "expected": "genai/knowledge/road_maintenance.md / Why potholes form",
+   "rank": 2,
+   "top": "genai/knowledge/road_maintenance.md / Road maintenance notes for the ROAD-SHIELD assistant > Monsoon readiness"
+  },
+  {
+   "question": "What is the cut and patch method for repairing a pothole?",
+   "expected": "genai/knowledge/road_maintenance.md / Repairing a pothole",
+   "rank": 1,
+   "top": "genai/knowledge/road_maintenance.md / Road maintenance notes for the ROAD-SHIELD assistant > Repairing a pothole"
+  },
+  {
+   "question": "Which PCI range counts as poor?",
+   "expected": "genai/knowledge/road_maintenance.md / Pavement Condition Index",
+   "rank": 1,
+   "top": "genai/knowledge/road_maintenance.md / Road maintenance notes for the ROAD-SHIELD assistant > Pavement Condition Index (PCI)"
+  },
+  {
+   "question": "What is alligator cracking and what causes it?",
+   "expected": "genai/knowledge/road_maintenance.md / Kinds of distress",
+   "rank": 1,
+   "top": "genai/knowledge/road_maintenance.md / Road maintenance notes for the ROAD-SHIELD assistant > Kinds of distress"
+  },
+  {
+   "question": "What traffic management is needed at a repair site?",
+   "expected": "genai/knowledge/road_maintenance.md / Work-zone safety",
+   "rank": 1,
+   "top": "genai/knowledge/road_maintenance.md / Road maintenance notes for the ROAD-SHIELD assistant > Work-zone safety"
+  },
+  {
+   "question": "How should we prepare roads before the monsoon?",
+   "expected": "genai/knowledge/road_maintenance.md / Monsoon readiness",
+   "rank": 1,
+   "top": "genai/knowledge/road_maintenance.md / Road maintenance notes for the ROAD-SHIELD assistant > Monsoon readiness"
+  },
+  {
+   "question": "How is repair priority decided between defects?",
+   "expected": "genai/knowledge/road_maintenance.md / How urgent",
+   "rank": 1,
+   "top": "genai/knowledge/road_maintenance.md / Road maintenance notes for the ROAD-SHIELD assistant > How urgent is a repair?"
+  },
+  {
+   "question": "How does a new model version get promoted to production?",
+   "expected": "docs/MLOPS.md / Model registry",
+   "rank": 1,
+   "top": "docs/MLOPS.md / MLOps: the models after training > 2. Model registry (`mlops/registry.py`, `mlops/specs.py`)"
+  },
+  {
+   "question": "How is input drift measured in production?",
+   "expected": "docs/MLOPS.md / Production monitoring",
+   "rank": 1,
+   "top": "docs/MLOPS.md / MLOps: the models after training > 5. Production monitoring (`mlops/monitor.py`)"
+  },
+  {
+   "question": "Which photographs go into the labelling queue?",
+   "expected": "docs/MLOPS.md / Active learning",
+   "rank": 6,
+   "top": "docs/SYSTEM_DESIGN.md / ROAD-SHIELD \u2014 System Design > 9. Scaling and reliability"
+  },
+  {
+   "question": "How is traffic per day estimated from bus cameras?",
+   "expected": "docs/MLOPS.md / Traffic estimate",
+   "rank": 1,
+   "top": "docs/MLOPS.md / MLOps: the models after training > 7. Traffic estimate (`pipeline/traffic.py`)"
+  },
+  {
+   "question": "What does the input guard reject?",
+   "expected": "docs/MLOPS.md / Input guard",
+   "rank": 1,
+   "top": "docs/MLOPS.md / MLOps: the models after training > 4. Input guard: the out-of-distribution model (`models/ood_guard.py`)"
+  },
+  {
+   "question": "How do I roll back a bad model?",
+   "expected": "docs/MLOPS.md / Model registry",
+   "rank": null,
+   "top": "docs/DEPLOY_LIVE_ENGINE.md / Making the public website analyse photographs live > If something goes wrong"
+  },
+  {
+   "question": "What does the bus agent send to the server?",
+   "expected": "docs/EDGE_AGENT.md",
+   "rank": 1,
+   "top": "docs/EDGE_AGENT.md / The bus agent: from a camera on a bus to the live map > The whole city loop in one command"
+  },
+  {
+   "question": "How do I run the bus agent on a Raspberry Pi?",
+   "expected": "docs/EDGE_AGENT.md / Raspberry Pi",
+   "rank": 1,
+   "top": "docs/EDGE_AGENT.md / The bus agent: from a camera on a bus to the live map > On the Raspberry Pi"
+  },
+  {
+   "question": "How do I keep the engine online for free?",
+   "expected": "docs/HOSTING.md",
+   "rank": 1,
+   "top": "docs/HOSTING.md / Keeping the engine online"
+  },
+  {
+   "question": "How do I make the public website analyse photographs with a tunnel?",
+   "expected": "docs/DEPLOY_LIVE_ENGINE.md",
+   "rank": 1,
+   "top": "docs/DEPLOY_LIVE_ENGINE.md / Making the public website analyse photographs live > A. Laptop + Cloudflare tunnel (free)"
+  },
+  {
+   "question": "How accurate is the vision classifier on the held-out test?",
+   "expected": "docs/MODEL_CARD.md / Vision distress classifier",
+   "rank": 1,
+   "top": "docs/MODEL_CARD.md / ROAD-SHIELD model card > Vision distress classifier"
+  },
+  {
+   "question": "How are people and number plates blurred?",
+   "expected": "docs/MODEL_CARD.md / Privacy redaction",
+   "rank": null,
+   "top": "docs/MLOPS.md / MLOps: the models after training > 6. Active learning (`mlops/active_learning.py`)"
+  },
+  {
+   "question": "What has not been done yet in the project?",
+   "expected": "docs/STATUS_AUDIT.md / Left to do",
+   "rank": null,
+   "top": "docs/RESEARCH_GAPS.md / Research gaps this project works on"
+  },
+  {
+   "question": "What does the 90-day pilot involve?",
+   "expected": "docs/IMPACT_AND_RESPONSIBLE_AI.md / pilot",
+   "rank": 1,
+   "top": "docs/IMPACT_AND_RESPONSIBLE_AI.md / ROAD-SHIELD \u2014 Impact, Responsible AI, and the pilot > 5. The 90-day pilot"
+  },
+  {
+   "question": "What is the capacity estimate for the system?",
+   "expected": "docs/SYSTEM_DESIGN.md / Capacity",
+   "rank": 1,
+   "top": "docs/SYSTEM_DESIGN.md / ROAD-SHIELD \u2014 System Design > 2. Capacity estimate"
+  },
+  {
+   "question": "How many photographs should I take for training this week?",
+   "expected": "docs/WEEK_TRAINING_PLAN.md",
+   "rank": 1,
+   "top": "docs/WEEK_TRAINING_PLAN.md / One-week training plan > Day 1\u20132: take and outline photographs (\u2248 200\u2013400)"
+  },
+  {
+   "question": "How are false positives from zebra crossings controlled?",
+   "expected": "docs/MODEL_CARD.md",
+   "rank": 1,
+   "top": "docs/MODEL_CARD.md / ROAD-SHIELD model card > Region proposals and false-positive control"
+  }
+ ],
+ "generated_unix": 1791563295,
+ "fresh_questions": {
+  "questions": 14,
+  "recall_at_1": 0.7143,
+  "recall_at_3": 1.0,
+  "recall_at_6": 1.0,
+  "mrr": 0.8452,
+  "rows": [
+   {
+    "question": "How much does road damage cost according to official numbers?",
+    "expected": "docs/IMPACT_AND_RESPONSIBLE_AI.md / problem",
+    "rank": 1,
+    "top": "docs/IMPACT_AND_RESPONSIBLE_AI.md / ROAD-SHIELD \u2014 Impact, Responsible AI, and the pilot > 1. The problem, in official numbers"
+   },
+   {
+    "question": "Which IMU classifier is served and how accurate is it?",
+    "expected": "docs/MODEL_CARD.md / IMU shock classifier",
+    "rank": 2,
+    "top": "README.md / ROAD-SHIELD > Per class (served classifier)"
+   },
+   {
+    "question": "How does the system decide which model to serve?",
+    "expected": "docs/MODEL_CARD.md / How models are chosen",
+    "rank": 3,
+    "top": "docs/MODEL_CARD.md / ROAD-SHIELD model card > System at a glance"
+   },
+   {
+    "question": "What security measures protect the API and data?",
+    "expected": "docs/SYSTEM_DESIGN.md / Security",
+    "rank": 1,
+    "top": "docs/SYSTEM_DESIGN.md / ROAD-SHIELD \u2014 System Design > 10. Security and privacy"
+   },
+   {
+    "question": "What tables are in the data model?",
+    "expected": "docs/SYSTEM_DESIGN.md / Data model",
+    "rank": 1,
+    "top": "docs/SYSTEM_DESIGN.md / ROAD-SHIELD \u2014 System Design > 5. Data model"
+   },
+   {
+    "question": "What happens to one frame from the bus, step by step?",
+    "expected": "docs/SYSTEM_DESIGN.md / Request flow",
+    "rank": 1,
+    "top": "docs/SYSTEM_DESIGN.md / ROAD-SHIELD \u2014 System Design > 4. Request flow \u2014 one frame from a bus"
+   },
+   {
+    "question": "Which metrics can Prometheus scrape?",
+    "expected": "docs/MLOPS.md / Production monitoring",
+    "rank": 2,
+    "top": "docs/MLOPS.md / MLOps: the models after training"
+   },
+   {
+    "question": "When should a crack be sealed instead of waiting?",
+    "expected": "genai/knowledge/road_maintenance.md",
+    "rank": 1,
+    "top": "genai/knowledge/road_maintenance.md / Road maintenance notes for the ROAD-SHIELD assistant > Why potholes form"
+   },
+   {
+    "question": "What is throw and roll repair?",
+    "expected": "genai/knowledge/road_maintenance.md / Repairing a pothole",
+    "rank": 2,
+    "top": "genai/knowledge/road_maintenance.md / Road maintenance notes for the ROAD-SHIELD assistant > Monsoon readiness"
+   },
+   {
+    "question": "Which standard covers maintenance of bituminous roads in India?",
+    "expected": "genai/knowledge/road_maintenance.md / Repairing a pothole",
+    "rank": 1,
+    "top": "genai/knowledge/road_maintenance.md / Road maintenance notes for the ROAD-SHIELD assistant > Repairing a pothole"
+   },
+   {
+    "question": "How does the segmenter measure defect area?",
+    "expected": "docs/MODEL_CARD.md / Defect segmentation",
+    "rank": 1,
+    "top": "docs/MODEL_CARD.md / ROAD-SHIELD model card > Defect segmentation"
+   },
+   {
+    "question": "What does the CI pipeline check before merging a model?",
+    "expected": "docs/MLOPS.md / CI/CD",
+    "rank": 1,
+    "top": "docs/MLOPS.md / MLOps: the models after training > 8. CI/CD"
+   },
+   {
+    "question": "What are the ethical considerations of this system?",
+    "expected": "docs/MODEL_CARD.md / Ethical",
+    "rank": 1,
+    "top": "docs/MODEL_CARD.md / ROAD-SHIELD model card > Ethical considerations"
+   },
+   {
+    "question": "How would the system scale to more buses?",
+    "expected": "docs/SYSTEM_DESIGN.md / Scaling",
+    "rank": 1,
+    "top": "docs/SYSTEM_DESIGN.md / ROAD-SHIELD \u2014 System Design > 9. Scaling and reliability"
+   }
+  ]
+ },
+ "note": "'questions' were used while building the retriever. 'fresh_questions' were written afterwards and scored before one further change (synonym expansion in both retrievers, weight 0.4 -> 0.7, prompted by a unit test, not by these questions): recall@1 0.7143, @3 1.0, @6 1.0, MRR 0.8452 before. That change cost one fresh question ('data model' matched the synonym model ~ classifier), so the ambiguous 'model' synonym was removed; no further changes. The numbers below are after both"
+}

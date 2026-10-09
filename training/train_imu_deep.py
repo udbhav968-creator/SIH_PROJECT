@@ -1,6 +1,6 @@
 """
-Deep 1-D CNN for the 100 Hz IMU shock classifier, compared honestly with the
-served RandomForest on hand-crafted features.
+Deep models for the 100 Hz IMU shock classifier - a 1-D residual CNN at two widths and a small transformer
+encoder over 50 ms patches - compared honestly with the served RandomForest on hand-crafted features.
 
     python -m training.train_imu_deep            # GPU optional - the data is tiny
 
@@ -96,12 +96,63 @@ def build_net(width=32):
     return Net()
 
 
-def fit_cnn(Xtr, ytr, seed, epochs=120, width=32, device=None):
+def build_transformer(d=64, heads=4, layers=2, patch=5):
+    """Small transformer encoder over the 1-second window: a strided convolution cuts the 100 samples into
+    20 patches of 5 (50 ms each), learned position embeddings, pre-norm self-attention blocks, mean+max pooling.
+    Attention is written out (not nn.TransformerEncoder) so the ONNX export never meets a fused kernel."""
+    import torch
+    import torch.nn as nn
+
+    class Attn(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.qkv = nn.Linear(d, 3 * d)
+            self.out = nn.Linear(d, d)
+            self.h, self.dk = heads, d // heads
+
+        def forward(self, x):
+            b, t, _ = x.shape
+            q, k, v = self.qkv(x).reshape(b, t, 3, self.h, self.dk).permute(2, 0, 3, 1, 4)
+            a = torch.softmax((q @ k.transpose(-1, -2)) / (self.dk ** 0.5), dim=-1)
+            return self.out((a @ v).transpose(1, 2).reshape(b, t, d))
+
+    class Layer(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.n1, self.n2 = nn.LayerNorm(d), nn.LayerNorm(d)
+            self.attn = Attn()
+            self.ff = nn.Sequential(nn.Linear(d, 2 * d), nn.GELU(), nn.Dropout(0.1), nn.Linear(2 * d, d))
+            self.drop = nn.Dropout(0.1)
+
+        def forward(self, x):
+            x = x + self.drop(self.attn(self.n1(x)))
+            return x + self.drop(self.ff(self.n2(x)))
+
+    class Net(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.embed = nn.Conv1d(3, d, patch, stride=patch)
+            self.pos = nn.Parameter(torch.zeros(1, 100 // patch, d))
+            nn.init.trunc_normal_(self.pos, std=0.02)
+            self.layers = nn.Sequential(*[Layer() for _ in range(layers)])
+            self.norm = nn.LayerNorm(d)
+            self.drop = nn.Dropout(0.3)
+            self.fc = nn.Linear(2 * d, N_CLASSES)
+
+        def forward(self, x):
+            h = self.embed(x).transpose(1, 2) + self.pos
+            h = self.norm(self.layers(h))
+            return self.fc(self.drop(torch.cat([h.mean(dim=1), h.amax(dim=1)], dim=1)))
+
+    return Net()
+
+
+def fit_cnn(Xtr, ytr, seed, epochs=120, width=32, device=None, arch="cnn"):
     import torch
     import torch.nn as nn
     torch.manual_seed(seed); np.random.seed(seed)
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = build_net(width).to(device)
+    net = (build_transformer() if arch == "transformer" else build_net(width)).to(device)
     counts = np.bincount(ytr, minlength=N_CLASSES).astype(float)
     w = torch.tensor(np.where(counts > 0, (counts.sum() / np.maximum(counts, 1)) ** 0.5, 0.0),
                      dtype=torch.float32, device=device)
@@ -166,7 +217,7 @@ def main():
     groups = blocked_groups(len(ytr))
     skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
     folds = list(skf.split(Xtr_raw, ytr, groups))
-    cv = {"random_forest": [], "cnn_w32": [], "cnn_w48": []}
+    cv = {"random_forest": [], "cnn_w32": [], "cnn_w48": [], "transformer": []}
     t0 = time.time()
     for k, (a, b) in enumerate(folds):
         rf = IMUShockClassifier().fit(Xtr_raw[a], ytr[a])
@@ -174,21 +225,25 @@ def main():
         for width in (32, 48):
             probs = np.mean([cnn_predict(fit_cnn(Xtr[a], ytr[a], seed=s, width=width), Xtr[b]) for s in (0, 1, 2)], axis=0)
             cv[f"cnn_w{width}"].append(scores(ytr[b], probs.argmax(1)))
+        probs = np.mean([cnn_predict(fit_cnn(Xtr[a], ytr[a], seed=s, arch="transformer"), Xtr[b]) for s in (0, 1, 2)], axis=0)
+        cv["transformer"].append(scores(ytr[b], probs.argmax(1)))
         print(f"  fold {k + 1}/5 done ({time.time() - t0:.0f}s): " +
               ", ".join(f"{m} F1 {v[-1][1]:.3f}" for m, v in cv.items()), flush=True)
     cv_table = {m: {"cv_accuracy": round(float(np.mean([v[0] for v in r])), 4),
                     "cv_accuracy_std": round(float(np.std([v[0] for v in r])), 4),
                     "cv_macro_f1": round(float(np.mean([v[1] for v in r])), 4),
                     "cv_macro_f1_std": round(float(np.std([v[1] for v in r])), 4)} for m, r in cv.items()}
-    best_cnn = max(("cnn_w32", "cnn_w48"), key=lambda m: cv_table[m]["cv_macro_f1"])
+    # the deep candidate (1-D CNN at two widths, or the transformer) with the best CV macro-F1 faces the forest
+    best_cnn = max(("cnn_w32", "cnn_w48", "transformer"), key=lambda m: cv_table[m]["cv_macro_f1"])
     rf_cv, cnn_cv = cv_table["random_forest"], cv_table[best_cnn]
     serve_cnn = cnn_cv["cv_macro_f1"] > rf_cv["cv_macro_f1"] and cnn_cv["cv_accuracy"] > rf_cv["cv_accuracy"]
 
     # final fits on all training windows; held-out scored once each
     rf = IMUShockClassifier().fit(Xtr_raw, ytr)
     rf_pred = rf.predict(Xva_raw)[0]
-    width = int(best_cnn.split("w")[1])
-    nets = [fit_cnn(Xtr, ytr, seed=s, width=width) for s in (0, 1, 2)]
+    arch = "transformer" if best_cnn == "transformer" else "cnn"
+    width = int(best_cnn.split("w")[1]) if arch == "cnn" else None
+    nets = [fit_cnn(Xtr, ytr, seed=s, width=width or 32, arch=arch) for s in (0, 1, 2)]
     cnn_prob = np.mean([cnn_predict(n, Xva) for n in nets], axis=0)
     cnn_pred = cnn_prob.argmax(1)
 
@@ -225,13 +280,17 @@ def main():
     parity = float(np.max(np.abs(got - cnn_prob)))
     with open(os.path.join(CKPT, "imu_shock_cnn.json"), "w") as fh:
         json.dump({"axis_scale": scale.tolist(), "input": "(N, 3, 100): per-window mean removed, divided by axis_scale",
-                   "class_names": IMUShockClassifier.CLASS_NAMES, "ensemble_seeds": [0, 1, 2], "width": width}, fh, indent=1)
+                   "class_names": IMUShockClassifier.CLASS_NAMES, "ensemble_seeds": [0, 1, 2], "width": width,
+                   "arch": best_cnn}, fh, indent=1)
 
     report = {
         "data": {"train_windows": int(len(ytr)), "held_out_windows": int(len(yva)),
                  "source": "real 100 Hz drive logs (datasets/04_mobile_imu_telemetry_100hz), time-block split"},
         "cv_on_train_only": cv_table,
         "best_cnn_config": best_cnn,
+        "deep_candidate_note": ("the deep candidate is the best of three (CNN w32, CNN w48, transformer) on the same "
+                                "CV folds it is then compared on, which slightly favours it; the held-out windows "
+                                "are the check"),
         "decision_rule": "serve the CNN only if its mean 5-fold CV accuracy AND macro-F1 on the training windows "
                          "beat the RandomForest's; folds are contiguous time blocks of "
                          f"{BLOCK} windows (no neighbouring window on both sides); fixed before the held-out "
@@ -248,7 +307,7 @@ def main():
     with open(os.path.join(CKPT, "imu_deep_report.json"), "w") as fh:
         json.dump(report, fh, indent=1)
     with open(os.path.join(CKPT, "imu_model_selection.json"), "w") as fh:
-        json.dump({"served": report["served"], "rule": report["decision_rule"],
+        json.dump({"served": report["served"], "deep_arch": best_cnn, "rule": report["decision_rule"],
                    "cv": {"random_forest": rf_cv, "cnn": cnn_cv},
                    "held_out_for_reporting": {k: {"accuracy": v["accuracy"], "macro_f1": v["macro_f1"]}
                                               for k, v in report["held_out"].items()}}, fh, indent=1)

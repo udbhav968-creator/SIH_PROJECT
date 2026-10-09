@@ -112,10 +112,10 @@ def nms(boxes, scores, iou_threshold=0.45):
     return keep
 
 
-def decode_output(raw, n_classes, conf_threshold):
+def decode_output(raw, n_classes, conf_threshold, input_size=None):
     """
-    Normalises either YOLO output layout into (boxes_xywh, scores, class_ids)
-    in letterboxed pixel coordinates.
+    Normalises either YOLO output layout - or RT-DETR's (1, queries, 4 + classes) with boxes as fractions of the
+    input - into (boxes_xywh, scores, class_ids) in letterboxed pixel coordinates.
     """
     arr = np.asarray(raw)
     if arr.ndim == 3:
@@ -124,8 +124,11 @@ def decode_output(raw, n_classes, conf_threshold):
     if arr.shape[1] not in (4 + n_classes, 5 + n_classes) and arr.shape[0] in (4 + n_classes, 5 + n_classes):
         arr = arr.T
 
-    if arr.shape[1] == 4 + n_classes:          # v8/v9/v11: no objectness
+    if arr.shape[1] == 4 + n_classes:          # v8/v9/v11 and RT-DETR: no objectness
         boxes = arr[:, :4]
+        if input_size and boxes.size and float(np.nanmax(boxes)) <= 1.5:
+            # RT-DETR gives centre/size as fractions of the input; YOLO's are pixels (centres are never all < 2 px)
+            boxes = boxes * float(input_size)
         cls_scores = arr[:, 4:]
         conf = cls_scores.max(axis=1)
         cls_ids = cls_scores.argmax(axis=1)
@@ -223,7 +226,14 @@ class ONNXObjectDetector:
 
         arr = np.asarray(image_rgb, dtype=np.uint8)
         orig_h, orig_w = arr.shape[:2]
-        canvas, scale, pad_x, pad_y = letterbox(arr, self.input_size)
+        stretch = getattr(self, "resize_mode", "letterbox") == "stretch"
+        if stretch:
+            # models validated on inputs stretched to a square (RT-DETR in Ultralytics): no padding
+            from PIL import Image
+            canvas = Image.fromarray(arr).convert("RGB").resize((self.input_size, self.input_size), Image.BILINEAR)
+            scale, pad_x, pad_y = 1.0, 0, 0
+        else:
+            canvas, scale, pad_x, pad_y = letterbox(arr, self.input_size)
         blob = np.asarray(canvas, dtype=np.float32) / 255.0
         blob = np.transpose(blob, (2, 0, 1))[None, ...]
 
@@ -232,7 +242,7 @@ class ONNXObjectDetector:
         else:
             self._cv_net.setInput(blob)
             raw = self._cv_net.forward()
-        boxes_xywh, conf, cls_ids = decode_output(raw, len(self.class_names), conf_threshold)
+        boxes_xywh, conf, cls_ids = decode_output(raw, len(self.class_names), conf_threshold, self.input_size)
         if len(boxes_xywh) == 0:
             return []
 
@@ -244,7 +254,12 @@ class ONNXObjectDetector:
             if keep_classes and name not in keep_classes:
                 continue
             kept = nms(boxes[mask], conf[mask], self.iou_threshold)
-            sel_boxes = unletterbox(boxes[mask][kept], scale, pad_x, pad_y, orig_w, orig_h)
+            if stretch:
+                sel_boxes = boxes[mask][kept].astype(np.float64)
+                sel_boxes[:, [0, 2]] = (sel_boxes[:, [0, 2]] * orig_w / self.input_size).clip(0, orig_w)
+                sel_boxes[:, [1, 3]] = (sel_boxes[:, [1, 3]] * orig_h / self.input_size).clip(0, orig_h)
+            else:
+                sel_boxes = unletterbox(boxes[mask][kept], scale, pad_x, pad_y, orig_w, orig_h)
             sel_conf = conf[mask][kept]
             for (x1, y1, x2, y2), c in zip(sel_boxes, sel_conf):
                 w, h = x2 - x1, y2 - y1

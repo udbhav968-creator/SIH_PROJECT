@@ -35,6 +35,7 @@ _TMP = tempfile.mkdtemp(prefix="road_shield_api_test_")
 os.environ["ROAD_SHIELD_WRITABLE_DIR"] = _TMP
 os.environ["ROAD_SHIELD_MLOPS_DIR"] = os.path.join(_TMP, "mlops_store")   # never the repository's model registry
 os.environ["ROAD_SHIELD_MLFLOW"] = "0"
+os.environ["ROAD_SHIELD_LLM"] = "none"            # never call a paid or local model from the test suite
 # Demo fixtures are opt-in since they are invented reports; these tests use
 # them to check deduplication end to end, so they switch them on explicitly.
 os.environ["ROAD_SHIELD_SEED_DEMO"] = "1"
@@ -796,8 +797,36 @@ class APIServerTest(unittest.TestCase):
         self.assertIn(r["input_check"]["verdict"], ("poor_quality", "not_road"))
         self.assertFalse(r["photo_stored"])
 
+    def test_works_assistant_answers_from_documents_and_ledger(self):
+        code, st = self.get_json("/api/v1/assistant/status")
+        self.assertEqual(code, 200)
+        self.assertEqual(st["llm"]["provider"], "none")
+        self.assertGreater(st["knowledge_chunks"], 50)
+        code, r = self.post_json("/api/v1/assistant/ask", {"question": "How should a pothole be repaired?"})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(r["mode"], "extractive")
+        self.assertTrue(any(s["source"].endswith("road_maintenance.md") for s in r["sources"]))
+        code, r = self.post_json("/api/v1/assistant/ask", {"question": "How many defects are in the ledger by class?"})
+        self.assertIn("ledger:summary", [s["source"] for s in r["sources"]])
+        code, r = self.post_json("/api/v1/assistant/ask", {"question": ""})
+        self.assertEqual(code, 400)
+
+    def test_works_assistant_brief_and_second_opinion(self):
+        code, r = self._report("BRIEF-BUS", 13.91, 77.91, pci=35, area=1.2, depth=6)
+        did = r["defect_id"]
+        code, b = self.post_json("/api/v1/assistant/report", {"defect_id": did})
+        self.assertEqual(code, 200, b)
+        self.assertEqual(b["mode"], "template")
+        self.assertIn(did, b["text"])
+        code, b = self.post_json("/api/v1/assistant/report", {"work_order_id": "WO-NOPE"})
+        self.assertEqual(code, 404)
+        code, v = self.post_json("/api/v1/assistant/second-opinion", {"image_base64": "aGVsbG8="})
+        self.assertEqual(code, 200)
+        self.assertFalse(v["available"])
+
     def test_works_new_pages_are_served(self):
-        for page, marker in (("/report", b"Report a pothole"), ("/order", b"WORK ORDER"), ("/mlops", b"MLOps")):
+        for page, marker in (("/report", b"Report a pothole"), ("/order", b"WORK ORDER"), ("/mlops", b"MLOps"),
+                             ("/assistant", b"Assistant")):
             code, _h, body = self._req("GET", page)
             self.assertEqual(code, 200, page)
             self.assertIn(marker, body)

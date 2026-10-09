@@ -62,6 +62,7 @@ class RoadDamageDetector(ONNXObjectDetector):
                          iou_threshold=float(meta.get("iou_threshold", 0.45)),
                          class_names=meta.get("class_names") or DEFAULT_CLASSES,
                          weights_path=path if os.path.exists(path) else "__missing__")
+        self.resize_mode = meta.get("resize", "letterbox")     # RT-DETR candidates were validated stretched
 
     @property
     def blocked_by(self):

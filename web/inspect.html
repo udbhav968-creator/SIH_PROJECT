@@ -436,6 +436,7 @@ function draw() {
 
 /* --------------------------------------------------------------- render -- */
 function render(d, ms) {
+  window.__lastAudit = d;
   const dets = d.all_detections || [];
   const top = dets[0] || {};
   const calib = d.camera_calibration || {};
@@ -547,12 +548,17 @@ function render(d, ms) {
       const top3 = Object.entries(fc.probabilities || {}).sort((a, b) => b[1] - a[1]).slice(0, 3);
       return `<div class="card" style="margin-top:14px;${disagree ? "border-color:rgba(240,169,43,.55)" : ""}">
         <div class="label">whole-frame classifier · ${fc.model === "deep_cnn" ? "fine-tuned CNN" : "CNN head"}</div>
-        <div class="kv"><span>Top class</span><span>${fc.class_name} · ${(fc.confidence * 100).toFixed(1)}%</span></div>
-        ${top3.slice(1).map(([k, v]) => `<div class="kv"><span class="muted">${k}</span><span class="muted">${(v * 100).toFixed(1)}%</span></div>`).join("")}
-        ${disagree ? `<p class="small" style="margin:8px 0 0;color:var(--warn)">The classifier sees <strong>${fc.class_name.split(" (")[0]}</strong>
+        <div class="kv"><span>Top class</span><span>${esc(fc.class_name)} · ${(fc.confidence * 100).toFixed(1)}%</span></div>
+        ${top3.slice(1).map(([k, v]) => `<div class="kv"><span class="muted">${esc(k)}</span><span class="muted">${(v * 100).toFixed(1)}%</span></div>`).join("")}
+        ${disagree ? `<p class="small" style="margin:8px 0 0;color:var(--warn)">The classifier sees <strong>${esc(fc.class_name.split(" (")[0])}</strong>
           in this frame, but no region could be measured${(d.segmentation && d.segmentation.available === false) ? " (the segmenter is not loaded on this machine)" : ""}.
           No area, depth or cost is issued from a whole-frame opinion.</p>` :
-          `<p class="small muted" style="margin:8px 0 0">${fc.role}</p>`}
+          `<p class="small muted" style="margin:8px 0 0">${esc(fc.role)}</p>`}
+        ${fc.cascade ? `<p class="small muted" style="margin:6px 0 0">Ensemble cascade: ${fc.cascade.escalated
+            ? `the first network was unsure (${(fc.cascade.first_confidence * 100).toFixed(0)}%), so all ${fc.cascade.networks.length} networks voted`
+            : "the first network was confident, so it answered alone"} · ${fc.cascade.ms} ms</p>` : ""}
+        <div style="margin-top:10px"><button id="vlmBtn" style="padding:5px 11px;font-size:12.5px">Second opinion from a vision language model</button>
+          <div id="vlm" class="small" style="margin-top:8px"></div></div>
       </div>`;
     })() : ""}
 
@@ -693,6 +699,26 @@ function esc(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;
 })();
 window.addEventListener("resize", draw);
 document.addEventListener("DOMContentLoaded", () => setTimeout(renderBanner, 50));
+
+document.addEventListener("click", async (e) => {
+  if (!e.target.closest || !e.target.closest("#vlmBtn")) return;
+  const out = el("vlm"), btn = el("vlmBtn");
+  if (!currentImage) return;
+  btn.disabled = true; out.textContent = "asking…";
+  const fc = (window.__lastAudit && window.__lastAudit.frame_classification) || null;
+  let r = await API.post("/api/v1/assistant/second-opinion", { image_base64: currentImage.dataUrl.split(",")[1], classifier: fc });
+  if (r.status === 401) {
+    const k = prompt("Operator key (the second opinion calls a paid model):");
+    if (k) { setOperatorKey(k.trim()); r = await API.post("/api/v1/assistant/second-opinion", { image_base64: currentImage.dataUrl.split(",")[1], classifier: fc }); }
+  }
+  btn.disabled = false;
+  const v = r.data || {};
+  const safe = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  out.innerHTML = !r.ok ? safe(v.error || `HTTP ${r.status}`) : !v.available ? `<span class="muted">${safe(v.reason)}</span>` :
+    `<strong>${safe(v.class_name)}</strong>${v.confidence != null ? ` · ${Math.round(v.confidence * 100)}%` : ""} — ${safe(v.reason)}
+     ${v.agrees_with_classifier === undefined ? "" : `<span class="badge ${v.agrees_with_classifier ? "measured" : "warn"}" style="margin-left:6px">${v.agrees_with_classifier ? "agrees with the classifier" : "disagrees with the classifier"}</span>`}
+     <div class="muted" style="margin-top:4px">${safe(v.provider)} ${safe(v.model || "")} · advisory only: it does not change any measurement</div>`;
+});
 </script>
 </body>
 </html>

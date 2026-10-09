@@ -184,15 +184,16 @@ class PavementConditionIndexEngine:
     @staticmethod
     def get_rating_category(pci_score):
         """The published ASTM D6433 rating scale."""
-        if pci_score >= 85:
+        # ASTM D6433 bands: 86-100, 71-85, 56-70, 41-55, 26-40, then failed (a 1-point fix: 85 used to read Excellent)
+        if pci_score > 85:
             return "EXCELLENT", "Optimal surface texture; routine monitoring only."
-        elif pci_score >= 70:
+        elif pci_score > 70:
             return "SATISFACTORY", "Minor hairline cracks; schedule preventive seal coating."
-        elif pci_score >= 55:
+        elif pci_score > 55:
             return "FAIR", "Moderate distress; bituminous patch repair required within 30 days."
-        elif pci_score >= 40:
+        elif pci_score > 40:
             return "POOR", "Significant alligator fatigue; structural overlay needed."
-        elif pci_score >= 25:
+        elif pci_score > 25:
             return "VERY_POOR", "Severe sub-base pumping; axle load failure hazard."
         else:
             return "FAILED", "Complete structural collapse; emergency full-depth reconstruction mandatory."

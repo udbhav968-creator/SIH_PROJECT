@@ -37,6 +37,24 @@ def served_classifier_summary(ckpt, require_files=True):
     (Vercel excludes *.onnx); the summary then follows the recorded selection."""
     sel = _read(ckpt, "vision_model_selection.json") or {}
     ft = _read(ckpt, "finetune_summary.json")
+    ens, ens_rep = _read(ckpt, "vision_ensemble.json"), _read(ckpt, "ensemble_report.json")
+    if (sel.get("served") == "deep_cnn" and ens and ens.get("served") and ens_rep
+            and ((not require_files) or all(os.path.exists(os.path.join(ckpt, f"deep_vision_ens_{m}.onnx"))
+                                            for m in ens.get("members") or []))):
+        # the ensemble cascade is what serves (models/deep_vision_net.load_best_vision_model): report its numbers
+        c = ens_rep.get("cascade") or {}
+        test = c.get("test") or {}
+        return {
+            "kind": "ensemble_cascade",
+            "label": "ensemble of " + ", ".join(ens.get("members") or []) + f" (cascade from {ens.get('first')})",
+            "held_out_test_accuracy": test.get("accuracy"),
+            "held_out_test_macro_f1": test.get("macro_f1"),
+            "held_out_test_images": ens_rep.get("test_images"),
+            "cascade_escalation_rate": c.get("test_escalation_rate"),
+            "test_gain_over_best_single": ens_rep.get("test_gain_of_cascade_over_single"),
+            "selection": ens_rep.get("rule"),
+            "evidence": "checkpoints/ensemble_report.json",
+        }
     has_deep = (not require_files) or bool(glob.glob(os.path.join(ckpt, "deep_vision_*.onnx")))
     if sel.get("served") == "deep_cnn" and ft and has_deep:
         rep = _read(ckpt, f"finetune_{ft['served']}_report.json") or {}
@@ -221,7 +239,10 @@ def model_registry(ckpt, hash_files=True):
     imu = _read(ckpt, "imu_shock_report.json") or {}
     hfr = imu_sel.get("held_out_for_reporting") or {}
     if hfr.get("cnn"):
-        add("IMU 1-D CNN", "vibration shock classification, 4 classes", "deep 1-D CNN ensemble, from scratch",
+        transformer = imu_sel.get("deep_arch") == "transformer"
+        add("IMU transformer" if transformer else "IMU 1-D CNN", "vibration shock classification, 4 classes",
+            "transformer encoder over 50 ms patches, 3-seed ensemble, from scratch" if transformer
+            else "deep 1-D CNN ensemble, from scratch",
             ["imu_shock_cnn.onnx"], {"held_out_accuracy": hfr["cnn"].get("accuracy"), "held_out_macro_f1": hfr["cnn"].get("macro_f1")},
             imu_sel.get("served") == "cnn", None, imu_sel.get("rule"), "checkpoints/imu_deep_report.json")
     if imu:

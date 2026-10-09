@@ -902,10 +902,15 @@ class DeepInferencePipeline:
                           "Pothole Cavity", "Waterlogging / Flooding Hazard", "Missing Zebra Crossing",
                           "Missing Road Divider", "Damaged Traffic Sign"])[:len(probs)]
             top = int(np.argmax(probs))
-            return {"class_name": names[top], "confidence": round(probs[top], 4),
-                    "probabilities": {n: round(p, 4) for n, p in zip(names, probs)},
-                    "model": self.vision_backend,
-                    "role": "whole-frame opinion of the classifier; does not set area, depth or cost"}
+            out = {"class_name": names[top], "confidence": round(probs[top], 4),
+                   "probabilities": {n: round(p, 4) for n, p in zip(names, probs)},
+                   "model": self.vision_backend,
+                   "role": "whole-frame opinion of the classifier; does not set area, depth or cost"}
+            route = getattr(self.vision_model, "last_route", None)
+            if route:                       # an ensemble served as a cascade: which networks answered
+                out["cascade"] = dict(route)
+                out["model_detail"] = getattr(self.vision_model, "backend", None)
+            return out
         except Exception as e:
             return {"error": f"frame classification failed: {e}"}
 

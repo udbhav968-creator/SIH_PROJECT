@@ -142,6 +142,7 @@ alerts = Alerts(live_events)
 # MLOps: model registry, production monitoring, shadow testing, active learning and the traffic estimate
 # (mlops/, pipeline/traffic.py, api/mlops_routes.py).
 from api import mlops_routes
+from api import assistant_routes
 
 
 def _reload_pipeline():
@@ -164,6 +165,11 @@ try:
 except Exception as _e:
     print(f"[WARN] MLOps unavailable: {_e}")
     MLOPS = None
+
+
+def _assistant_ctx():
+    """What the assistant reads: the ledger, the work orders, the priority score, the model reports."""
+    return {"dedup": fleet_dedup_engine, "works": works, "priority": _safe_priority, "ckpt": CKPT_DIR}
 
 
 def _upload_source():
@@ -270,6 +276,7 @@ PAGE_ROUTES = {
     "/report": "report.html",
     "/order": "order.html",
     "/mlops": "mlops.html",
+    "/assistant": "assistant.html",
     "/works": "works.html",
     "/models": "models.html",
     "/data": "data.html",
@@ -296,7 +303,7 @@ PROTECTED_POST = {
     "/api/v1/works/status",
     "/api/v1/video/ingest",            # writes sightings to the ledger, which can reopen repaired orders
     "/api/v1/citizen/review",
-} | mlops_routes.PROTECTED_POST
+} | mlops_routes.PROTECTED_POST | assistant_routes.PROTECTED_POST
 
 
 # Public demo (ROAD_SHIELD_PUBLIC=1, set by deploy/huggingface/Dockerfile): anyone on the internet can reach
@@ -968,6 +975,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         if mlops_routes.handle_get(self, MLOPS, path, full_path, _api_key_ok):
             return
 
+        if assistant_routes.handle_get(self, path, full_path, _assistant_ctx()):
+            return
+
         if path == "/api/v1/ledger/export":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
             fmt_ = (q.get("format") or ["geojson"])[0].lower()
@@ -1208,6 +1218,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             return
 
         if mlops_routes.handle_post(self, MLOPS, path, body, _actor(body)):
+            return
+
+        if assistant_routes.handle_post(self, path, body, _assistant_ctx(), _api_key_ok):
             return
 
         # ---------------- Google Maps (POST) ----------------

@@ -134,6 +134,23 @@ def spec():
                 "tags": ["fleet"], "security": secured,
                 "requestBody": _body({"report_id": STR, "action": STR}, ["report_id", "action"]),
                 "responses": {"200": _json(OBJ), "401": AUTH_ERR, "404": _json(OBJ), "409": _json(OBJ)}}},
+            "/api/v1/assistant/status": {"get": {"summary": "Which language model the assistant uses, and its retrieval evaluation",
+                                                 "tags": ["genai"], "responses": {"200": _json(OBJ)}}},
+            "/api/v1/assistant/ask": {"post": {
+                "summary": "Answer a question from the documents, the road-maintenance notes and the live ledger, with "
+                           "citations and a check that every number appears in a cited source", "tags": ["genai"],
+                "requestBody": _body({"question": STR}, ["question"]),
+                "responses": {"200": _json(OBJ), "400": ERR, "401": AUTH_ERR, "429": ERR}}},
+            "/api/v1/assistant/report": {"post": {
+                "summary": "Engineer's brief for a work order or defect, written from measured fields only (a draft "
+                           "with an unsupported number is replaced by the template)", "tags": ["genai"],
+                "security": secured, "requestBody": _body({"work_order_id": STR, "defect_id": STR}, []),
+                "responses": {"200": _json(OBJ), "400": ERR, "401": AUTH_ERR, "404": ERR}}},
+            "/api/v1/assistant/second-opinion": {"post": {
+                "summary": "A vision-language model's advisory class for a photograph (never changes a measurement)",
+                "tags": ["genai"], "security": secured,
+                "requestBody": _body({"image_base64": STR, "classifier": OBJ}, ["image_base64"]),
+                "responses": {"200": _json(OBJ), "400": ERR, "401": AUTH_ERR}}},
             "/api/v1/mlops/overview": {"get": {
                 "summary": "Model registry, what is serving, drift and OOD rate, shadow results, labelling queue, "
                            "traffic estimate and recent training runs", "tags": ["mlops"],

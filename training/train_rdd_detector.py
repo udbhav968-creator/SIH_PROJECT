@@ -5,6 +5,8 @@ held-out photographs, and export it to ONNX for CPU serving.
     pip install ultralytics
     python -m training.train_rdd_detector                    # T4: ~45-70 min
     python -m training.train_rdd_detector --epochs 2 --fraction 0.05 --model yolov8n.pt   # smoke
+    python -m training.train_rdd_detector --model rtdetr-l.pt --tag rtdetr --run-name rdd_rtdetr --batch 8
+                                                               # RT-DETR (transformer) as a candidate
 
 Multi-country: --data-dir datasets/rdd2022_world --tag world (scripts/prepare_rdd2022_world.py) trains on
 RDD2022 India plus Japan, Czech, United States and China. Its outputs are written under their own names
@@ -141,6 +143,11 @@ def main(argv=None):
         sys.exit(f"No YOLO data at {data_dir}. It is written by scripts/prepare_rdd2022_voc.py "
                  f"(or prepare_rdd2022_world.py); run this in the same session.")
     from ultralytics import YOLO
+    if "rtdetr" in os.path.basename(a.model).lower():
+        # RT-DETR: a transformer detector (DETR family, end to end, no NMS) through the same Ultralytics API.
+        # Use --tag other than india so it lands as a candidate; scripts/select_rdd_detector.py then compares it
+        # with the served YOLO on India validation photographs.
+        from ultralytics import RTDETR as YOLO  # noqa: N814 - one name for the class below
 
     # Absolute-path dataset file, so the result does not depend on the working directory.
     yaml_path = os.path.join(data_dir, "data_abs.yaml")
@@ -203,7 +210,11 @@ def main(argv=None):
     print(f"  TEST mAP50 {test_m['map50']}  mAP50-95 {test_m['map50_95']}  P {test_m['precision']}  "
           f"R {test_m['recall']}  per class {test_m['per_class']}")
 
-    exported = best.export(format="onnx", imgsz=a.imgsz, opset=12, dynamic=False, simplify=False)
+    rtdetr = "rtdetr" in os.path.basename(a.model).lower()
+    # RT-DETR's deformable attention needs grid_sample (opset >= 16); 17 is what ONNX Runtime >= 1.17 supports.
+    # YOLO keeps 12 for the edge runtime.
+    opset = 17 if rtdetr else 12
+    exported = best.export(format="onnx", imgsz=a.imgsz, opset=opset, dynamic=False, simplify=False)
     os.makedirs(a.out, exist_ok=True)
     onnx_path = os.path.join(a.out, onnx_name)
     shutil.copy(str(exported), onnx_path)
@@ -215,7 +226,7 @@ def main(argv=None):
         with open(os.path.join(data_dir, "manifest.json"), encoding="utf-8") as fh:
             countries = sorted((json.load(fh).get("countries") or {}).keys())
     report = {
-        "model": (f"YOLOv8 ({a.model}, COCO-pretrained) fine-tuned on RDD2022 "
+        "model": (f"{'RT-DETR' if rtdetr else 'YOLOv8'} ({a.model}, COCO-pretrained) fine-tuned on RDD2022 "
                   f"{'+'.join(countries) if countries else ('several countries' if world else 'India')}, all layers trained"),
         "tag": a.tag,
         "classes": {c: CLASS_LABELS[c] for c in CLASS_NAMES},
@@ -234,13 +245,16 @@ def main(argv=None):
         "validation": val_m, "test": test_m,
         "validation_all_countries": val_all,
         "test_photographs": "RDD2022 India held-out 15% - identical for every detector trained here",
-        "onnx": {"file": onnx_name, "size_mb": size_mb, "opset": 12},
+        "onnx": {"file": onnx_name, "size_mb": size_mb, "opset": opset},
+        # RT-DETR is validated on inputs stretched to a square; YOLO on letterboxed ones. Serving must match.
+        "resize": "stretch" if rtdetr else "letterbox",
         "not_claimed": ("Smartphone photographs from RDD2022 India, not bus-camera frames. Boxes locate damage; "
                         "area and cost still come from the segmentation mask."),
         "trained_at_unix": int(time.time()),
     }
     meta = {"class_names": CLASS_NAMES, "class_labels": CLASS_LABELS, "input_size": a.imgsz,
-            "conf_threshold": conf, "iou_threshold": 0.45, "test": test_m}
+            "conf_threshold": conf, "iou_threshold": 0.45, "test": test_m,
+            "resize": "stretch" if rtdetr else "letterbox"}
     with open(os.path.join(a.out, meta_name), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2)
     with open(os.path.join(a.out, report_name), "w", encoding="utf-8") as fh:

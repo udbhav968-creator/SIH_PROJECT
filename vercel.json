@@ -79,6 +79,13 @@
       }
     },
     {
+      "src": "/assistant",
+      "dest": "/web/assistant.html",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
+    {
       "src": "/mlops",
       "dest": "/web/mlops.html",
       "headers": {

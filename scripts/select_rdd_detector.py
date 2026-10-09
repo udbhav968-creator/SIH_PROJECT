@@ -26,6 +26,7 @@ ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CKPT = os.path.join(ENGINE_ROOT, "checkpoints")
 SERVED = ("damage_rdd2022_india.onnx", "damage_rdd2022_india.json", "road_damage_detector_report.json")
 SELECTION = "rdd_detector_selection.json"
+MAX_ONNX_MB = 95.0
 RULE = ("serve the multi-country detector only if its mAP@0.5 on RDD2022 India's validation photographs is "
         "higher than the served detector's on the same photographs; test numbers reported, never used to choose")
 
@@ -57,6 +58,10 @@ def decide(candidate, incumbent):
     if a and b and a != b:
         return "incumbent", (f"not comparable: the candidate was validated on {a} India photographs, the served "
                              f"detector on {b}")
+    size = float(((candidate or {}).get("onnx") or {}).get("size_mb") or 0)
+    if size > MAX_ONNX_MB:
+        return "incumbent", (f"the candidate's ONNX is {size} MB, over the {MAX_ONNX_MB} MB a committed file may be "
+                             f"(GitHub's limit is 100 MB); it is reported, not served")
     c, i = _map50(candidate, "validation"), _map50(incumbent, "validation")
     if c > i:
         return "candidate", f"India validation mAP@0.5 {c:.4f} > served {i:.4f}"
@@ -106,4 +111,7 @@ def main(argv=None, ckpt=CKPT, tag="world"):
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    _ap = argparse.ArgumentParser(description="Serve a candidate road-damage detector only if it wins on India validation")
+    _ap.add_argument("--tag", default="world", help="candidate tag: world (multi-country YOLO) or rtdetr")
+    main(tag=_ap.parse_args().tag)

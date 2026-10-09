@@ -35,7 +35,7 @@
 </style>
 </head>
 <body data-bare>
-<div class="bar"><a href="/works">← Works</a><button class="primary" onclick="window.print()">Print / save as PDF</button></div>
+<div class="bar"><a href="/works">← Works</a><button id="brief">Add engineer's brief</button><button class="primary" onclick="window.print()">Print / save as PDF</button></div>
 <div class="sheet" id="sheet"><p>loading…</p></div>
 
 <script src="/web/config.js"></script>
@@ -91,6 +91,8 @@ const STATUS = { ISSUED: "Issued", ASSIGNED: "Assigned", IN_PROGRESS: "In progre
         <div class="mono" style="color:var(--muted)">${esc(h.hash)}</div></td></tr>`).join("")}
     </table>
 
+    <div id="briefBox"></div>
+
     <div class="sign"><div>Issuing engineer — name, signature, date</div><div>Contractor — name, signature, date</div></div>
 
     <p class="foot">Any change to the quantities or budget above after issue breaks the seal; any edited or removed step
@@ -98,6 +100,24 @@ const STATUS = { ISSUED: "Issued", ASSIGNED: "Assigned", IN_PROGRESS: "In progre
       or send the order to /api/v1/dispatch/verify-seal. The repair is verified when buses on the route pass over the
       location ${esc(o.passes_needed)} times without seeing the defect again.</p>`;
 })();
+
+el("brief").onclick = async () => {
+  const id = new URLSearchParams(location.search).get("id") || "";
+  const b = el("brief");
+  b.disabled = true; b.textContent = "writing…";
+  let r = await API.post("/api/v1/assistant/report", { work_order_id: id });
+  if (r.status === 401) {
+    const k = prompt("Operator key:");
+    if (k) { setOperatorKey(k.trim()); r = await API.post("/api/v1/assistant/report", { work_order_id: id }); }
+  }
+  b.disabled = false; b.textContent = "Rewrite brief";
+  const d = r.data || {};
+  el("briefBox").innerHTML = !r.ok ? `<p class="foot">${esc(d.error || r.status)}</p>` :
+    `<h2>engineer's brief</h2><p style="margin:0;line-height:1.6">${esc(d.text)}</p>
+     <p class="foot" style="margin-top:6px">${d.mode === "generated" ? `Written by ${esc(d.provider)} from the fields above; every number in it (in digits) was checked against them and the repair guidance.`
+        : d.why ? `Template (a generated draft was not used: ${esc(d.why)}).` : "Written from the fields above (no language model configured)."}
+       Repair guidance from: ${esc((d.guidance_sources || []).join("; "))}.</p>`;
+};
 </script>
 </body>
 </html>

@@ -70,7 +70,7 @@ class OpenApiContract(unittest.TestCase):
         from api.openapi import spec
         api_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "api")
         src = "".join(open(os.path.join(api_dir, f), encoding="utf-8").read()       # mlops_routes.py serves /mlops
-                      for f in ("server.py", "mlops_routes.py"))
+                      for f in ("server.py", "mlops_routes.py", "assistant_routes.py"))
         for p in spec()["paths"]:
             self.assertIn(f'"{p}"', src, p)
 

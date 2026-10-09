@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant — ROAD-SHIELD</title>
+<meta name="description" content="Ask about the road network, the repair backlog, the models or road maintenance. Answers cite the documents and the live ledger they come from.">
+<meta name="theme-color" content="#0a0f17">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 4 5.5v6c0 4.8 3.3 8.9 8 10 4.7-1.1 8-5.2 8-10v-6z' fill='%23f0a92b'/%3E%3Cpath d='M10.2 17.5 11.2 7h1.6l1 10.5' fill='none' stroke='%230a0f17' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="/web/app.css">
+<style>
+  body[data-page="assistant"] { --accent: #a78bfa; --accent-soft: rgba(167,139,250,.14); }
+  .chat { display: grid; gap: 14px; max-width: 860px; }
+  .q { justify-self: end; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+       border-radius: 14px 14px 4px 14px; padding: 10px 14px; max-width: 85%; }
+  .a { background: var(--ink-900); border: 1px solid var(--ink-800); border-radius: 14px 14px 14px 4px; padding: 14px 16px; }
+  .a p { margin: 0 0 8px; line-height: 1.6; }
+  .cite { display: inline-block; font: 600 11px var(--mono); padding: 0 5px; border-radius: 5px; background: var(--ink-800);
+          color: var(--accent); cursor: help; vertical-align: 1px; }
+  .sources { margin-top: 10px; display: grid; gap: 6px; }
+  .src { font-size: 12.5px; color: var(--slate-300); border-left: 2px solid var(--ink-700); padding: 2px 0 2px 10px; }
+  .src b { color: var(--slate-200); font-family: var(--mono); }
+  .meta { font-size: 12px; color: var(--slate-400); margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  form.ask { display: flex; gap: 8px; max-width: 860px; position: sticky; bottom: 12px; margin-top: 16px;
+             background: var(--ink-950); padding: 8px; border: 1px solid var(--ink-800); border-radius: 14px; }
+  form.ask input { flex: 1; min-width: 0; font-size: 15px; padding: 10px 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; max-width: 860px; margin: 4px 0 16px; }
+  .chips button { font-size: 12.5px; padding: 6px 11px; border-radius: 99px; }
+  .thinking { color: var(--slate-400); font-size: 13px; }
+</style>
+</head>
+<body data-page="assistant">
+<div class="wrap" id="main">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">Assistant</h1>
+    <span class="muted small">questions about the road network, the repair backlog, the models or road maintenance, answered from the sources it cites</span>
+  </div>
+  <div id="status" class="small muted" style="margin:-4px 0 12px"></div>
+  <div class="chips" id="chips">
+    <button>Which defects are P1 and what is their repair status?</button>
+    <button>How should a deep pothole be repaired during the monsoon?</button>
+    <button>How accurate is the image classifier?</button>
+    <button>How many defects are in the ledger, by class?</button>
+    <button>What traffic management is needed at a repair site?</button>
+    <button>How does a new model get promoted to production?</button>
+  </div>
+  <div class="chat" id="chat"></div>
+  <form class="ask" id="ask">
+    <input id="q" autocomplete="off" maxlength="600" placeholder="Ask about a road, a defect, a work order or a method…" aria-label="Question">
+    <button class="primary" id="go">Ask</button>
+  </form>
+</div>
+
+<script src="/web/config.js"></script>
+<script src="/web/app.js"></script>
+<script>
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+function render(text, sources) {
+  // escape first, then turn [n] into citation chips and blank lines into paragraphs
+  const byN = Object.fromEntries((sources || []).map(s => [s.n, s]));
+  return esc(text).split(/\n\s*\n/).map(par => "<p>" + par.replace(/\n/g, "<br>").replace(/\[(\d{1,2})\]/g, (m, n) => (n = parseInt(n, 10),
+    byN[n]) ? `<span class="cite" title="${esc(byN[n].source + " — " + byN[n].title)}">${n}</span>` : `<span class="cite" style="color:var(--bad)">${n}?</span>`) + "</p>").join("");
+}
+
+async function status() {
+  const r = await API.get("/api/v1/assistant/status");
+  if (!r.ok) { el("status").textContent = engineUnavailable(r) ? "The engine is not running." : (r.data.error || ""); return; }
+  const l = r.data.llm, ev = (r.data.retrieval_eval || {}).fresh_questions;
+  el("status").innerHTML = (l.provider === "none"
+      ? `<span class="badge neutral">no language model</span> answers are quoted passages. ${esc(l.how_to_enable)}.`
+      : `<span class="badge measured">${esc(l.provider)}</span> ${esc(l.model)}`) +
+    ` · ${r.data.knowledge_chunks} passages from the project's documents and road-maintenance notes, plus the live ledger` +
+    (ev ? ` · retrieval on ${ev.questions} held-out questions: right passage in the top 3 for ${Math.round(ev.recall_at_3 * 100)}%` : "");
+}
+
+async function ask(question) {
+  const chat = el("chat");
+  chat.insertAdjacentHTML("beforeend", `<div class="q">${esc(question)}</div><div class="a thinking" id="pending">searching the documents and the ledger…</div>`);
+  el("pending").scrollIntoView({ behavior: "smooth", block: "end" });
+  let r = await API.post("/api/v1/assistant/ask", { question });
+  if (r.status === 401) {
+    const k = prompt("This deployment needs the operator key for the assistant:");
+    if (k) { setOperatorKey(k.trim()); r = await API.post("/api/v1/assistant/ask", { question }); }
+  }
+  const box = el("pending");
+  box.removeAttribute("id"); box.classList.remove("thinking");
+  if (!r.ok) { box.innerHTML = errorCard(r.data.error || `HTTP ${r.status}`); return; }
+  const d = r.data, g = d.grounding || {};
+  box.innerHTML = render(d.answer, d.sources) +
+    `<div class="meta">${d.mode === "generated" ? `<span class="badge measured">${esc(d.provider)}</span>` : '<span class="badge neutral">quoted passages</span>'}
+      ${g.grounded ? '<span class="badge measured">every number found in its sources</span>' :
+        (g.unsupported_numbers || []).length ? `<span class="badge bad">numbers not in the sources: ${esc(g.unsupported_numbers.join(", "))}</span>` :
+        (g.invalid_citations || []).length ? '<span class="badge bad">cites a source that does not exist</span>' : '<span class="badge warn">no citations</span>'}
+      <span>${d.ms} ms</span>${d.note ? `<span>${esc(d.note)}</span>` : ""}</div>
+    <details class="sources"><summary class="small muted" style="cursor:pointer">${d.sources.length} sources</summary>
+      ${d.sources.map(s => `<div class="src"><b>[${s.n}]</b> ${esc(s.source)} — ${esc(s.title)}<br>${esc(s.snippet)}…</div>`).join("")}</details>`;
+}
+
+el("ask").onsubmit = e => { e.preventDefault(); const q = el("q").value.trim(); if (q) { el("q").value = ""; ask(q); } };
+el("chips").onclick = e => { const b = e.target.closest("button"); if (b) ask(b.textContent); };
+status();
+</script>
+</body>
+</html>

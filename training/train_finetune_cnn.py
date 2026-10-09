@@ -9,6 +9,11 @@ in the headline number is a like-for-like comparison and not a new test set.
 
     python -m training.train_finetune_cnn --archs efficientnet_b0,efficientnet_b2,mobilenet_v3_large,resnet50 --epochs 40
     python -m training.train_finetune_cnn --smoke            # 2-minute sanity run
+    python -m training.train_finetune_cnn --archs deit_small,levit_256 --train-only   # vision transformers (timm)
+
+Every train-only network also leaves its ONNX and its validation/test logits in checkpoints/ensemble/, from
+which training/select_ensemble.py decides (on validation only) whether an ensemble of CNNs and transformers,
+run as a confidence cascade, should replace the single served network.
 
 Protocol (what makes the numbers trustworthy)
 ---------------------------------------------
@@ -54,6 +59,16 @@ INDIA_CLASSES = {"normal": 0, "crack": 1, "pothole": 2}
 MEAN = [0.485, 0.456, 0.406]
 STD = [0.229, 0.224, 0.225]
 
+# Vision transformers from timm (pip install timm; preinstalled on Colab). Only models pretrained with ImageNet
+# mean/std normalisation are listed, because every network here shares one preprocessing (MEAN/STD above) and
+# the serving code applies it; and only those whose ONNX stays under the 95 MB the selection rule allows.
+TIMM_ARCHS = {
+    # name: (timm model id, train/eval size)
+    "deit_small": ("deit_small_patch16_224", 224),     # ViT-S/16 trained the DeiT way on ImageNet: a pure transformer, ~22 M
+    "levit_256": ("levit_256", 224),                    # conv stem + attention stages: a hybrid built for CPU latency
+}
+ENSEMBLE_DIR = "ensemble"   # under the output folder: every train-only network's ONNX and val/test logits
+
 ARCHS = {
     # name: (torchvision builder, weights enum, train/eval size)
     "efficientnet_b0": ("efficientnet_b0", "EfficientNet_B0_Weights", 224),
@@ -82,8 +97,31 @@ def macro_report(y, p, n_classes):
     }
 
 
+class _Params:
+    """Gives a tuple of head modules (LeViT has two: head and distillation head) a .parameters()."""
+
+    def __init__(self, modules):
+        self.modules = [m for m in modules if m is not None]
+
+    def parameters(self):
+        for m in self.modules:
+            yield from m.parameters()
+
+
 def build(arch, n_classes):
     import torch.nn as nn
+    if arch in TIMM_ARCHS:
+        import timm
+        name, size = TIMM_ARCHS[arch]
+        m = timm.create_model(name, pretrained=True, num_classes=n_classes)
+        cfg = getattr(m, "pretrained_cfg", None) or getattr(m, "default_cfg", {}) or {}
+        mean, std = tuple(round(x, 3) for x in cfg.get("mean", MEAN)), tuple(round(x, 3) for x in cfg.get("std", STD))
+        if mean != tuple(round(x, 3) for x in MEAN) or std != tuple(round(x, 3) for x in STD):
+            raise ValueError(f"{arch} was pretrained with mean {mean} / std {std}; this script normalises every "
+                             f"network with ImageNet mean/std, so it is not a fair entry")
+        head = m.get_classifier()
+        head = _Params(head if isinstance(head, (tuple, list)) else [head])
+        return m, head, size
     from torchvision import models
     fn_name, w_name, size = ARCHS[arch]
     weights = getattr(models, w_name).DEFAULT
@@ -334,8 +372,12 @@ def train_arch(arch, splits, epochs, batch, lr, seed, workers, patience, out_dir
 
     if best["state"] is not None:
         model.load_state_dict(best["state"])
-    yv, pv, _ = predict(model, vl, device)
-    yt, pt_, _ = predict(model, testl, device)  # the single test-set scoring for this arch
+    # Some attention models (timm's LeViT) cache attention biases per device in eval mode and rebuild them only on
+    # train(True); without this the scores below would mix best-epoch weights with last-epoch biases.
+    model.train()
+    model.eval()
+    yv, pv, lv = predict(model, vl, device)
+    yt, pt_, lt = predict(model, testl, device)  # the single test-set scoring for this arch
     val_rep = macro_report(yv, pv, len(CLASS_NAMES))
     test_rep = macro_report(yt, pt_, len(CLASS_NAMES))
     india = india_eval(model, eval_tf, device)
@@ -346,6 +388,20 @@ def train_arch(arch, splits, epochs, batch, lr, seed, workers, patience, out_dir
     onnx_path = os.path.join(out_dir, f"deep_vision_{tag}.onnx")
     sample = next(iter(testl))[0][:8]
     parity = export_onnx(model, size, onnx_path, sample, device)
+    if not refit:
+        # A train-only network never saw validation, so its validation outputs can choose ensemble weights and a
+        # cascade threshold without leaking (training/select_ensemble.py); test outputs are kept for one scoring.
+        ens = os.path.join(out_dir, ENSEMBLE_DIR)
+        os.makedirs(ens, exist_ok=True)
+        np.savez_compressed(os.path.join(ens, f"{arch}_logits.npz"), val_logits=lv, val_y=yv, test_logits=lt,
+                            test_y=yt, val_groups=np.array([i[2] for i in val_items]),
+                            test_groups=np.array([i[2] for i in test_items]))
+        import shutil
+        shutil.copyfile(onnx_path, os.path.join(ens, f"deep_vision_{arch}.onnx"))
+        with open(os.path.join(ens, f"deep_vision_{arch}.json"), "w") as fh:
+            json.dump({"arch": arch, "img_size": size, "tta_flip": True, "mean": MEAN, "std": STD,
+                       "resize_ratio": 1.15, "class_names": CLASS_NAMES, "onnx": parity,
+                       "report": f"checkpoints/finetune_{arch}_report.json"}, fh, indent=1)
     report = {
         "model": f"{arch} (ImageNet-pretrained, fine-tuned end to end" + (", refit on train+val)" if refit else ")"),
         "refit_on_train_plus_val": refit,
@@ -378,6 +434,7 @@ def train_arch(arch, splits, epochs, batch, lr, seed, workers, patience, out_dir
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--archs", default="efficientnet_b0,efficientnet_b2,mobilenet_v3_large,resnet50")
+    # transformers: --archs ...,deit_small,levit_256 (needs `pip install timm`)
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--batch", type=int, default=48)
     ap.add_argument("--lr", type=float, default=2e-4)

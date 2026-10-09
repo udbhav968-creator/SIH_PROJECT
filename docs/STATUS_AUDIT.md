@@ -50,7 +50,11 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | Active learning | Done (8 Oct): uncertain and disagreeing photographs queued after people and plates are blurred (citizen photos never), near-duplicates dropped, labelled on the MLOps page, exported as a class-folder zip with a manifest | `mlops/active_learning.py` |
 | Traffic from bus cameras | Done (8 Oct), not calibrated: COCO vehicle counts per 100 m cell, density × bus speed, expanded by an assumed hour profile; feeds the Priority Index once a cell has 6 observations in 3 hours. Needs comparison with manual counts before it is relied on | `pipeline/traffic.py`, `edge/bus_agent.py` |
 | CI/CD for models | Done (8 Oct): model-quality gate on committed checkpoints, Docker build + container smoke test, image published to GHCR from master | `.github/workflows/models.yml`, `docker.yml`, `mlops/ci_check.py` |
-| Automated tests | 350+; pipeline suite OK on a fresh clone with scikit-learn 1.8 and the fine-tuned CNN served | `tests/`, `logs/tests_after.txt` |
+| Vision transformers + ensemble cascade | Code done (9 Oct), GPU run pending: DeiT-Small and LeViT-256 (timm) train beside the CNNs; an ensemble of train-only networks, served as a confidence cascade, is chosen on validation only and served only if it beats the best single network by 0.01; test scored once with a bootstrap interval. Not measured on this machine: its split differs from Colab's, so a local number would include training photographs | `training/train_finetune_cnn.py`, `training/select_ensemble.py`, `models/ensemble_classifier.py`, `scripts/colab_train_deep.sh` |
+| IMU transformer, RT-DETR candidate | Code done (9 Oct), GPU run pending: a transformer encoder joins the IMU comparison (served only if it beats the RandomForest on time-blocked CV); RT-DETR trains as a detector candidate decided on India validation mAP | `training/train_imu_deep.py`, `training/train_rdd_detector.py` |
+| Engineer's assistant (RAG) | Done (9 Oct): hybrid BM25 + character n-gram retrieval over the documents, road-maintenance notes and the live ledger; answers cite sources and every number is checked against them. Retrieval on 14 questions written afterwards: right passage in the top 3 for all 14 (MRR 0.85-0.88 as the docs change) | `genai/`, `/assistant`, `checkpoints/rag_eval_report.json` |
+| Engineer's brief, VLM second opinion | Done (9 Oct): briefs written only from the order's fields (a draft with an unsupported number is replaced by the template); a vision-language model's advisory class on Inspection. The VLM is not yet measured (needs an API key): `scripts/measure_vlm.py` | `genai/report_writer.py`, `genai/vlm.py` |
+| Automated tests | 380+; pipeline suite OK on a fresh clone with scikit-learn 1.8 and the fine-tuned CNN served | `tests/`, `logs/tests_after.txt` |
 
 ## Left to do (not claimed as done)
 
@@ -66,6 +70,8 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | Field validation of PCI / deterioration / depth | Needs field surveys or depth ground truth |
 | More photographs for the four municipal classes | ~50 each; test scores rest on 7-8 images |
 | Pixel labels for water-filled potholes | Segmenter under-detects them; no labels exist |
+| GPU run of transformers / ensemble / RT-DETR | `scripts/colab_train_deep.sh` is ready; results decide whether anything is served |
+| VLM second-opinion accuracy | `python -m scripts.measure_vlm --n 100` with an API key |
 | Traffic estimate calibration | Needs classified manual counts (IRC:SP:41) on a few corridors to set the view length and hour profile |
 | Live GIS feed from real buses | The feed and the bus agent exist; there is no fleet yet, so the map shows replayed or demo buses |
 

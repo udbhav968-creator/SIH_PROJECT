@@ -26,6 +26,7 @@ MAX_BODY_BYTES = int(float(os.environ.get("ROAD_SHIELD_MAX_BODY_MB", "25")) * 10
 
 # Endpoints that run a model on the request. Cheap reads and the static site are never limited.
 RATE_LIMITED = {
+    "/api/v1/assistant/ask", "/api/v1/assistant/report", "/api/v1/assistant/second-opinion",
     "/api/v1/pipeline/deep-audit", "/api/v1/vision/analyze-photo", "/api/v1/vision/analyze-custom-photo",
     "/api/v1/video/ingest", "/api/v1/detect/objects", "/api/v1/pedestrian/detect",
     "/api/v1/privacy/redact", "/api/v1/telemetry/imu", "/api/v1/pipeline/batch", "/api/v1/citizen/report",

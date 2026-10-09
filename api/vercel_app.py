@@ -72,7 +72,7 @@ STATIC_TYPES = {
 }
 PAGE_ROUTES = {
     "/": "index.html", "/inspect": "inspect.html", "/video": "video.html",
-    "/corridor": "corridor.html", "/works": "works.html", "/report": "report.html", "/order": "order.html", "/mlops": "mlops.html", "/models": "models.html",
+    "/corridor": "corridor.html", "/works": "works.html", "/report": "report.html", "/order": "order.html", "/mlops": "mlops.html", "/assistant": "assistant.html", "/models": "models.html",
     "/data": "data.html", "/system": "system.html", "/architecture": "architecture.html",
     "/design": "design.html", "/api-docs": "api-docs.html", "/impact": "impact.html",
 }
@@ -97,6 +97,7 @@ NEEDS_ENGINE = {
     "/api/v1/mlops/runs": "the training-run store (lives with the engine)",
     "/api/v1/mlops/al/queue": "the labelling queue (lives with the engine)",
     "/api/v1/traffic/cells": "the traffic estimate from bus cameras (lives with the engine)",
+    "/api/v1/assistant/status": "the engineer's assistant (retrieval over the ledger, which lives with the engine)",
     "/api/v1/traffic/estimate": "the traffic estimate from bus cameras (lives with the engine)",
 }
 
