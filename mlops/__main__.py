@@ -11,6 +11,8 @@ python -m mlops <command>
     promote MODEL VERSION [--force --reason TEXT]
     rollback MODEL                 put the previous production version back
     retrain MODEL [--promote] [--ood-dir DIR]
+    intake OUTPUTS.zip|DIR [--no-promote]
+                                   a training run's outputs (the Colab zip) in through register + gate + promote
     runs [--experiment NAME]       training runs and their metrics
     run RUN_ID                     one run in full
     events [MODEL]                 the registry's history
@@ -44,6 +46,8 @@ def main(argv=None):
     p = sub.add_parser("rollback"); p.add_argument("model"); p.add_argument("--reason")
     p = sub.add_parser("retrain"); p.add_argument("model"); p.add_argument("--promote", action="store_true")
     p.add_argument("--ood-dir")
+    p = sub.add_parser("intake"); p.add_argument("src"); p.add_argument("--no-promote", action="store_true")
+    p.add_argument("--note")
     p = sub.add_parser("runs"); p.add_argument("--experiment"); p.add_argument("--limit", type=int, default=20)
     p = sub.add_parser("run"); p.add_argument("run_id")
     p = sub.add_parser("events"); p.add_argument("model", nargs="?")
@@ -86,6 +90,11 @@ def main(argv=None):
             res = retrain(a.model, reg, promote=a.promote, ood_dir=a.ood_dir)
             print(json.dumps({k: v for k, v in res.items() if k != "steps"}, indent=2))
             return 0 if res.get("outcome") in ("staged", "promoted", "no_change") else 1
+        elif a.cmd == "intake":
+            from mlops.intake import intake, print_report
+            rep = intake(a.src, reg, promote=not a.no_promote, note=a.note)
+            print_report(rep)
+            return 1 if any(m["outcome"] == "error" for m in rep["models"].values()) else 0
         elif a.cmd == "runs":
             for r in tracking.list_runs(a.experiment, a.limit):
                 mets = ", ".join(f"{k}={v:.4g}" for k, v in list(r["metrics"].items())[:5])

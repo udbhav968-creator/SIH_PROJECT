@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Phone Dashcam — ROAD-SHIELD</title>
+<meta name="description" content="Use a phone on the windscreen as a ROAD-SHIELD dashcam: camera, GPS and accelerometer, analysed by the same logic as the bus agent.">
+<meta name="theme-color" content="#0a0f17">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 4 5.5v6c0 4.8 3.3 8.9 8 10 4.7-1.1 8-5.2 8-10v-6z' fill='%23f0a92b'/%3E%3Cpath d='M10.2 17.5 11.2 7h1.6l1 10.5' fill='none' stroke='%230a0f17' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="/web/app.css">
+<style>
+  .drive { display: grid; gap: 14px; max-width: 720px; }
+  .cam { position: relative; border-radius: 12px; overflow: hidden; background: var(--ink-950); aspect-ratio: 16 / 9; }
+  .cam video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cam .over { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .cam .idle { position: absolute; inset: 0; display: grid; place-items: center; color: var(--slate-400); font-size: 14px; text-align: center; padding: 16px; }
+  .big { width: 100%; padding: 15px; font-size: 17px; font-weight: 700; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+  .stat { background: var(--ink-900); border: 1px solid var(--ink-700); border-radius: 10px; padding: 10px; }
+  .stat b { display: block; font-family: var(--mono); font-size: 18px; }
+  .stat span { font-size: 12px; color: var(--slate-400); }
+  .log { font-family: var(--mono); font-size: 12px; max-height: 220px; overflow-y: auto; display: grid; gap: 4px; }
+  .log div { padding: 4px 6px; border-radius: 6px; background: var(--ink-900); overflow-wrap: anywhere; }
+  .seen { font-size: 15px; }
+</style>
+</head>
+<body data-page="drive">
+<div class="wrap">
+  <div class="section-head" style="margin-top:6px">
+    <h1 style="font-size:1.9rem">Phone dashcam</h1>
+    <span class="muted small">a phone on the windscreen does what the bus unit does: camera, GPS and accelerometer</span>
+  </div>
+
+  <div class="drive">
+    <div id="secure" class="card" hidden style="border-color:rgba(251,113,133,.45)">
+      <div class="label" style="color:var(--bad)">needs a secure page</div>
+      <p class="small" style="margin:0">Phones only share the camera, location and motion sensors with pages opened over
+        <code>https://</code>. Open this page through the engine's https address (a tunnel or the hosted engine).</p>
+    </div>
+
+    <div class="cam">
+      <video id="video" playsinline muted autoplay></video>
+      <div class="idle" id="idle">Fix the phone to the windscreen in landscape, rear camera facing the road, a little below the horizon. Then press Start.</div>
+      <div class="over" id="chips"></div>
+    </div>
+
+    <button class="primary big" id="start">Start driving</button>
+
+    <div class="card">
+      <div class="label">last frame</div>
+      <div class="seen" id="seen">Not started.</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><b id="sFrames">0</b><span>frames analysed</span></div>
+      <div class="stat"><b id="sDefects">0</b><span>defects felt + seen</span></div>
+      <div class="stat"><b id="sCam">0</b><span>seen, not felt (held)</span></div>
+      <div class="stat"><b id="sShocks">0</b><span>shocks, camera unusable</span></div>
+      <div class="stat"><b id="sGps">—</b><span>GPS accuracy</span></div>
+      <div class="stat"><b id="sImu">—</b><span>accelerometer</span></div>
+    </div>
+
+    <div class="card">
+      <div class="label">what was sent to the ledger</div>
+      <div class="log" id="log"><div class="muted">Nothing yet.</div></div>
+    </div>
+
+    <div class="card" id="keyCard" hidden>
+      <div class="label">operator key</div>
+      <p class="small" style="margin:0 0 8px">This engine only accepts sightings from people with its key. It is kept for this tab only.</p>
+      <input id="key" type="password" autocomplete="off" placeholder="X-API-Key" style="width:100%">
+      <button id="saveKey" style="margin-top:8px">Use key</button>
+    </div>
+
+    <div class="card">
+      <div class="label">how it works</div>
+      <p class="small" style="margin:0 0 8px">Every two seconds the phone sends one 640-pixel frame, its GPS fix and the
+        accelerometer readings since the last frame. The engine runs the same logic as the bus unit
+        (<code>edge/bus_agent.py</code>): a defect the camera sees ahead is checked against the second in which the
+        wheels reach it. Felt and seen, it joins the repair ledger. Seen but not felt, it waits until a second vehicle
+        sees the same thing. A frame the input check calls unusable or not a road is never reported.</p>
+      <p class="small muted" style="margin:0">The frame is analysed and dropped; it is not stored. Fixes worse than
+        ±30 m are not used for defects. Frames are not queued while there is no signal: they are skipped.
+        Not yet tested on a real drive. A phone in a holder shakes differently from a sensor bolted to a bus, so
+        treat its shock readings as indicative.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/web/config.js"></script>
+<script src="/web/app.js"></script>
+<script>
+const TICK_MS = 2000, KEEP_MS = 10000, MAX_READINGS = 1900;
+let running = false, stream = null, watchId = null, wakeLock = null, timer = null, inFlight = false;
+let fix = null, motion = [], frames = 0, lastGood = 0, sentUpTo = 0;
+const canvas = document.createElement("canvas");
+
+function esc(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
+function deviceId() {
+  let id = "";
+  try { id = localStorage.getItem("roadShieldPhoneId") || ""; } catch {}
+  if (!/^[A-Za-z0-9_-]{4,24}$/.test(id)) {
+    const a = new Uint8Array(6); crypto.getRandomValues(a);
+    id = Array.from(a, b => b.toString(16).padStart(2, "0")).join("");
+    try { localStorage.setItem("roadShieldPhoneId", id); } catch {}
+  }
+  return id;
+}
+const DEVICE = deviceId();
+
+function chip(text, cls) { return `<span class="badge ${cls}">${esc(text)}</span>`; }
+function chips() {
+  const gps = fix ? (fix.accuracy_m <= 30 ? chip(`GPS ±${Math.round(fix.accuracy_m)} m`, "measured") : chip(`GPS ±${Math.round(fix.accuracy_m)} m — too coarse`, "warn")) : chip("no GPS yet", "warn");
+  const hz = motionRate();
+  const imu = hz ? chip(`IMU ${hz} Hz`, hz >= 20 ? "measured" : "warn") : chip("no accelerometer", "warn");
+  el("chips").innerHTML = gps + imu + (running ? chip("● live", "bad") : "");
+  el("sGps").textContent = fix ? `±${Math.round(fix.accuracy_m)} m` : "—";
+  el("sImu").textContent = hz ? `${hz} Hz` : "—";
+}
+function motionRate() {
+  if (motion.length < 2) return 0;
+  const span = (motion[motion.length - 1][0] - motion[0][0]) / 1000;
+  return span > 0 ? Math.round((motion.length - 1) / span) : 0;
+}
+function log(html) {
+  const box = el("log");
+  if (box.firstElementChild && box.firstElementChild.classList.contains("muted")) box.innerHTML = "";
+  const d = document.createElement("div"); d.innerHTML = html; box.prepend(d);
+  while (box.children.length > 60) box.lastElementChild.remove();
+}
+
+function onMotion(e) {
+  const g = e.accelerationIncludingGravity;
+  if (!g || g.x == null) return;
+  const t = Date.now();
+  motion.push([t, +g.x, +g.y, +g.z]);
+  while (motion.length && t - motion[0][0] > KEEP_MS) motion.shift();
+}
+
+async function keepAwake() {
+  try { if ("wakeLock" in navigator && running) wakeLock = await navigator.wakeLock.request("screen"); } catch {}
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && running) keepAwake(); });
+
+async function start() {
+  el("start").disabled = true;
+  try {
+    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+      const p = await DeviceMotionEvent.requestPermission();      // iOS asks; it must follow a tap
+      if (p !== "granted") log("Motion sensors not allowed: shocks cannot be felt, so defects will only be held, not added.");
+    }
+    window.addEventListener("devicemotion", onMotion);
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+    el("video").srcObject = stream; el("idle").hidden = true;
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(p => {
+        fix = { lat: p.coords.latitude, lon: p.coords.longitude, accuracy_m: p.coords.accuracy,
+                speed_mps: p.coords.speed, heading_deg: p.coords.heading, at: Date.now() };
+        chips();
+      }, e => log(`Location: ${esc(e.message)}`), { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
+    }
+    running = true; keepAwake(); chips();
+    el("start").textContent = "Stop"; el("start").disabled = false;
+    timer = setInterval(tick, TICK_MS);
+  } catch (e) {
+    el("start").disabled = false;
+    el("seen").innerHTML = errorCard(`Could not start: ${e.message || e}`, "Allow the camera, location and motion sensors for this page.");
+    stopSensors();
+  }
+}
+
+function stopSensors() {
+  clearInterval(timer); timer = null;
+  window.removeEventListener("devicemotion", onMotion);
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  watchId = null;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; el("video").srcObject = null; el("idle").hidden = false;
+  try { wakeLock && wakeLock.release(); } catch {}
+  wakeLock = null;
+}
+
+async function stop() {
+  running = false; stopSensors(); chips();
+  el("start").textContent = "Start driving";
+  el("seen").textContent = `Stopping… ${frames} frames analysed.`;
+  const r = await API.post("/api/v1/fleet/phone-tick", { device_id: DEVICE, stop: true });
+  if (r.ok) showApplied(r.data.applied || []);
+  el("seen").textContent = r.ok ? `Stopped after ${frames} frames.`
+    : `Stopped after ${frames} frames. The engine did not confirm the stop, so sightings still waiting may not have been sent.`;
+}
+
+function grab() {
+  const v = el("video");
+  if (!v.videoWidth) return null;
+  const scale = 640 / Math.max(v.videoWidth, v.videoHeight);
+  canvas.width = Math.round(v.videoWidth * scale); canvas.height = Math.round(v.videoHeight * scale);
+  canvas.getContext("2d").drawImage(v, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+}
+
+function showApplied(applied) {
+  for (const a of applied) {
+    const what = a.type === "defect" ? `<b>${esc(a.action || "defect")}</b> ${esc(a.defect_id || "")}`
+      : a.type === "cam" ? (String(a.decision || "").startsWith("added")
+          ? `<b>added to the ledger</b> ${esc(a.defect_id || "")} · confirmed by ${esc(a.confirmed_by || "another vehicle")}`
+          : `seen, not felt: ${esc(a.decision || "held")}`)
+      : a.type === "shock" ? "IMU-only shock on the map"
+      : a.type === "trf" ? "traffic count for this road cell"
+      : a.type === "pos" ? null : esc(a.error || a.status);
+    if (what) log(`${new Date().toLocaleTimeString()} · ${what}`);
+  }
+}
+
+async function tick() {
+  if (!running || inFlight) return;
+  const frame = grab();
+  if (!frame) return;
+  inFlight = true;
+  // a fix is used while it is fresh, or for longer while the vehicle stands still (phones stop sending
+  // positions when nothing moves); a stale fix on a moving vehicle would put defects in the wrong place
+  const age = fix ? Date.now() - fix.at : Infinity;
+  const g = age < 3000 || (age < 30000 && (fix.speed_mps ?? 0) < 1) ? fix : null;
+  // every reading since the last frame that got through (at least the last 3 s), so the engine has an
+  // unbroken accelerometer record for the moment the wheels reach what the camera saw
+  const since = Math.min(sentUpTo, Date.now() - 3000) - 300;
+  const readings = motion.filter(m => m[0] > since).slice(-MAX_READINGS);
+  const r = await API.post("/api/v1/fleet/phone-tick", {
+    device_id: DEVICE, frame_base64: frame, sent_ms: Date.now(),
+    gps: g ? { lat: g.lat, lon: g.lon, accuracy_m: g.accuracy_m, speed_mps: g.speed_mps, heading_deg: g.heading_deg } : null,
+    imu: readings });
+  inFlight = false;
+  if (!running) { if (r.ok) showApplied(r.data.applied || []); return; }   // answered after Stop was pressed
+  if (r.status === 401) { el("keyCard").hidden = false; el("seen").innerHTML = errorCard("This engine needs the operator key.", "Enter it below."); return; }
+  if (!r.ok) {
+    el("seen").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`, engineUnavailable(r) ? "The engine is not reachable; frames are skipped until it is." : "");
+    return;
+  }
+  frames++; lastGood = Date.now();
+  if (readings.length) sentUpTo = readings[readings.length - 1][0];
+  const d = r.data, s = d.seen || {}, c = d.counters || {};
+  el("sFrames").textContent = frames;
+  el("sDefects").textContent = c.defects ?? 0;
+  el("sCam").textContent = c.camera_only ?? 0;
+  el("sShocks").textContent = c.shocks ?? 0;
+  let seen;
+  if (s.frame === "unusable") seen = `Frame unusable (${esc((s.reasons || []).join(", "))}) — the accelerometer still listens for shocks.`;
+  else if (s.frame === "analysed") {
+    const conf = s.confidence != null ? ` · ${Math.round(s.confidence * 100)}%` : "";
+    seen = `<strong>${esc(s.class || "—")}</strong>${conf}` +
+      (s.is_distress ? ` ${chip("defect", "bad")}` : ` ${chip("no defect", "measured")}`) +
+      (s.guard && s.guard !== "ok" ? ` ${chip("input check: " + s.guard, "warn")}` : "") +
+      (s.pci != null ? ` <span class="muted small">PCI ${esc(Math.round(s.pci))}</span>` : "") +
+      (s.vehicles ? ` <span class="muted small">· ${Object.values(s.vehicles).reduce((a, b) => a + b, 0)} vehicles</span>` : "");
+  } else seen = esc(s.frame || "");
+  if (d.gps && d.gps !== "ok") seen += `<div class="small muted">${esc(d.gps)}</div>`;
+  if (d.waiting_for_wheels) seen += `<div class="small muted">${d.waiting_for_wheels} sighting(s) waiting for the wheels to reach them</div>`;
+  if (d.imu && d.imu.camera_pitch_deg != null && Math.abs(d.imu.camera_pitch_deg) > 35)
+    seen += `<div class="small" style="color:var(--warn)">The camera is tilted ${Math.round(d.imu.camera_pitch_deg)}°; aim it at the road ahead.</div>`;
+  el("seen").innerHTML = seen;
+  showApplied(d.applied || []);
+}
+
+el("start").onclick = () => running ? stop() : start();
+el("saveKey").onclick = () => { setOperatorKey(el("key").value.trim()); el("key").value = ""; el("keyCard").hidden = true; };
+if (!window.isSecureContext) el("secure").hidden = false;
+chips();
+</script>
+</body>
+</html>

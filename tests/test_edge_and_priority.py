@@ -323,6 +323,48 @@ class EdgeIngestTest(unittest.TestCase):
             r = self.ing.ingest([self.env(dict(cam, lat=12.95001), 3, bus="B1")])
             self.assertEqual(r["results"][0]["confirmed_by"], "existing defect")
 
+    def test_per_bus_keys_and_revocation(self):
+        pos = {"t": "pos", "lat": 12.9, "lon": 77.6}
+        k1 = self.c.bus_key(self.key, "B1")
+        self.assertEqual(len(k1), 32)
+        self.assertNotEqual(k1, self.c.bus_key(self.key, "B2"))
+        r = self.ing.ingest([self.c.pack(pos, "B1", 1, k1)])
+        self.assertEqual((r["results"][0]["status"], r["results"][0]["key"]), ("applied", "bus"))
+        r = self.ing.ingest([self.c.pack(pos, "B1", 2, self.key)])
+        self.assertEqual(r["results"][0]["key"], "fleet", "the shared key still works until it is switched off")
+        r = self.ing.ingest([self.c.pack(pos, "B2", 1, k1)])
+        self.assertEqual(r["results"][0]["status"], "rejected", "one bus's key cannot speak for another bus")
+        with mock.patch.dict(os.environ, {"ROAD_SHIELD_ALLOW_FLEET_KEY": "0"}):
+            r = self.ing.ingest([self.c.pack(pos, "B1", 3, self.key)])
+            self.assertEqual(r["results"][0]["status"], "rejected")
+            self.assertIn("ROAD_SHIELD_ALLOW_FLEET_KEY", r["results"][0]["error"])
+            self.assertEqual(self.ing.ingest([self.c.pack(pos, "B1", 3, k1)])["results"][0]["status"], "applied")
+        self.ing.revoke("B1", "stolen", actor="test")
+        self.assertEqual([b["bus_id"] for b in self.ing.revoked()], ["B1"])
+        for key in (k1, self.key):
+            r = self.ing.ingest([self.c.pack(pos, "B1", 9, key)])
+            self.assertEqual(r["accepted_in_order"], 0)
+            self.assertIn("revoked", r["results"][0]["error"])
+        self.assertTrue(self.ing.reinstate("B1")["was_revoked"])
+        self.assertEqual(self.ing.ingest([self.c.pack(pos, "B1", 9, k1)])["results"][0]["status"], "applied")
+        with self.assertRaises(self.c.PacketError):
+            self.ing.revoke("<script>")
+        with self.assertRaises(self.c.PacketError):
+            self.c.bus_key(self.key, "bad id")
+
+    def test_provision_cli_prints_the_bus_key(self):
+        import contextlib
+        import io
+        from edge import provision
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, {"ROAD_SHIELD_FLEET_KEY": "ingest-test"}), contextlib.redirect_stdout(out):
+            self.assertEqual(provision.main(["B7"]), 0)
+        printed = out.getvalue().strip()
+        self.assertEqual(self.c.load_key(printed), self.c.bus_key(self.key, "B7"),
+                         "the printed hex loads back as exactly the derived key")
+        with mock.patch.dict(os.environ, {"ROAD_SHIELD_FLEET_KEY": ""}), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(provision.main(["B7"]), 2)
+
     def test_needs_a_key(self):
         from pipeline.edge_ingest import EdgeIngest
         with mock.patch.dict(os.environ, {"ROAD_SHIELD_FLEET_KEY": ""}):

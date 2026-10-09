@@ -87,13 +87,65 @@ Enable I²C and the serial port (`sudo raspi-config` → Interface Options), the
 ```bash
 git clone -b audit-2026-10-03 https://github.com/udbhav968-creator/SIH_PROJECT.git && cd SIH_PROJECT
 pip install -r requirements.txt -r edge/requirements-pi.txt
-export ROAD_SHIELD_FLEET_KEY=<the same key as the server>
+export ROAD_SHIELD_FLEET_KEY=<this bus's own key, from edge.provision - see below>
 python -m edge.bus_agent --bus BMTC-KA01-1234 --server https://<your engine> --evidence-dir evidence
 ```
 
 Mount the IMU rigidly to the chassis, not to a panel that rattles, with its z axis vertical. The
 calibration profile for the camera (`scripts/calibrate_camera.py`) is what turns pixels into square
 metres; without one, areas are labelled as estimates from an assumed mount.
+
+## No Raspberry Pi? A phone as the dashcam
+
+Open `/drive` on a phone (over https: a tunnel or the hosted engine), fix the phone to the windscreen in
+landscape with the rear camera on the road, and press Start. Every two seconds the page sends one 640-pixel
+frame, the GPS fix and the accelerometer readings since the last frame to `POST /api/v1/fleet/phone-tick`.
+The engine runs the bus agent's own logic on them (`pipeline/phone_fleet.py` gives each phone a
+`BusAgent` as `PHONE-<id>`):
+
+* the accelerometer readings are turned into the vehicle frame the shock model was trained on
+  (lateral, longitudinal, vertical with gravity, 100 per second), oriented by a running average of gravity
+  so braking does not tilt the axes;
+* a defect the camera sees ahead is fused with the second in which the wheels reach it; felt, it goes to
+  the ledger; not felt, or no readings for that second, it is held until a second vehicle sees it;
+* frames the input check calls not-a-road or unusable never produce a defect; fixes worse than ±30 m are
+  not used; the frame is not stored.
+
+A phone's id is chosen by the page, so the API key, not the id, decides who may send; revoking
+`PHONE-<id>` stops that id only. Phone positions show on the map but do not count as fleet passes that
+verify a repair. `GET /api/v1/fleet/phones` lists the phones driving. Tested with a simulated phone (headless browser with a recorded pothole video,
+synthetic motion events and a fixed position) and by unit tests (`tests/test_phone_fleet.py`); not yet on a
+real drive.
+
+## One key per bus, and revoking a bus
+
+The server's `ROAD_SHIELD_FLEET_KEY` is the fleet **master** key and never leaves the server. Each bus
+gets a key derived from it and its own id:
+
+```bash
+# on the server, with the master key in the environment
+python -m edge.provision BMTC-KA01-1234          # prints 64 hex characters: that bus's key only
+```
+
+Put the printed value in that bus's `ROAD_SHIELD_FLEET_KEY`. Its packets are sealed with it; the server
+derives the same key from the bus id in the packet, so nothing per bus is stored, and a key read off one
+stolen bus cannot send packets as any other bus.
+
+| | |
+|---|---|
+| `GET /api/v1/fleet/keys` | whether the shared master key is still accepted from buses; revoked buses |
+| `POST /api/v1/fleet/revoke {"bus_id", "reason"}` | refuse every packet from that bus, whatever key it uses (API key required) |
+| `POST /api/v1/fleet/reinstate {"bus_id"}` | accept it again |
+
+Each ingest result says `"key": "bus"` or `"key": "fleet"`. When no bus reports `fleet` any more,
+set `ROAD_SHIELD_ALLOW_FLEET_KEY=0` on the server; the master key is then refused from the road.
+
+Revocation is only as strong as the keys in the field: while the shared master key is still accepted, a
+stolen bus that holds it can label its packets with another bus's id. Re-provision every bus and switch the
+shared key off; after that, a revoked bus is refused whatever it claims. Before switching it off, let every
+bus upload its queue: packets it sealed earlier with the master key would otherwise be refused and, after
+three refusals, set aside in the bus's dead-letter table (`edge/store_forward.py`), where they can be read
+but are not resent.
 
 ## What has and has not been tested
 

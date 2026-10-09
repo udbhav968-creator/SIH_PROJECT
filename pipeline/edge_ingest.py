@@ -25,8 +25,15 @@ after the first succeeded, a resent packet is counted once more.
 
 Packets are applied in order and processing stops at the first one that fails authentication, so the bus
 keeps it and everything after it; accepted_in_order tells the bus how many to drop from its queue.
+
+Keys: ROAD_SHIELD_FLEET_KEY on the server is the fleet master key. A packet is opened with the key derived
+for the bus it names (edge/crypto.bus_key, given to that bus by `python -m edge.provision`), or with the
+master key itself while ROAD_SHIELD_ALLOW_FLEET_KEY is not 0. Each result says which ("key": "bus" or
+"fleet"), so an operator can see which buses still need re-provisioning before switching the shared key
+off. A revoked bus (table edge_revoked) is refused whatever key it uses, until it is reinstated.
 """
 import math
+import os
 import sqlite3
 import threading
 import time
@@ -41,6 +48,12 @@ CREATE TABLE IF NOT EXISTS edge_streams (
     last_seen  REAL    NOT NULL,
     packets    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (bus_id, epoch)
+);
+CREATE TABLE IF NOT EXISTS edge_revoked (
+    bus_id     TEXT PRIMARY KEY,
+    revoked_at REAL NOT NULL,
+    reason     TEXT,
+    actor      TEXT
 );
 """
 
@@ -61,6 +74,7 @@ def _num(v, lo=None, hi=None, nd=6):
 def _text(v, n=80):
     return None if v is None else str(v)[:n]
 POSITION_TTL_S = 600
+PHONE_PREFIX = "PHONE-"
 SHOCKS_KEPT = 500
 CAMERA_ONLY_KEPT = 2000
 CAMERA_MATCH_M = 8.0
@@ -84,6 +98,54 @@ class EdgeIngest:
     @property
     def configured(self):
         return self.key is not None
+
+    def _open(self, env):
+        """Decrypt with the claimed bus's own key, else (while allowed) the shared fleet key; refuse revoked buses."""
+        claimed = crypto.peek_bus(env)
+        if claimed and self.is_revoked(claimed):
+            raise crypto.PacketError(f"bus {claimed} has been revoked")
+        if claimed:
+            try:
+                return (*crypto.unpack(env, crypto.bus_key(self.key, claimed)), "bus")
+            except crypto.PacketError:
+                pass
+        if os.environ.get("ROAD_SHIELD_ALLOW_FLEET_KEY", "1") != "0":
+            return (*crypto.unpack(env, self.key), "fleet")
+        raise crypto.PacketError("authentication failed: not sealed with this bus's key (the shared fleet key is "
+                                 "switched off: ROAD_SHIELD_ALLOW_FLEET_KEY=0)")
+
+    def is_revoked(self, bus):
+        return self._db.execute("SELECT 1 FROM edge_revoked WHERE bus_id=?", (bus,)).fetchone() is not None
+
+    def revoke(self, bus, reason=None, actor="operator"):
+        crypto.check_ids(bus, "0")
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO edge_revoked(bus_id, revoked_at, reason, actor) VALUES(?,?,?,?)",
+                             (bus, time.time(), (reason or "")[:200], str(actor)[:40]))
+        return {"bus_id": bus, "revoked": True}
+
+    def reinstate(self, bus):
+        with self._lock:
+            n = self._db.execute("DELETE FROM edge_revoked WHERE bus_id=?", (bus,)).rowcount
+        return {"bus_id": bus, "revoked": False, "was_revoked": bool(n)}
+
+    def revoked(self):
+        with self._lock:
+            return [dict(zip(("bus_id", "revoked_at", "reason", "actor"), r))
+                for r in self._db.execute("SELECT bus_id, revoked_at, reason, actor FROM edge_revoked ORDER BY revoked_at")]
+
+    def apply_direct(self, bus, event, via="phone"):
+        """Apply one event that arrived over the API's own authenticated HTTPS request rather than as a sealed
+        packet (the phone dashcam, pipeline/phone_fleet.py). Same validation, same listeners, same revocation."""
+        crypto.check_ids(bus, "0")
+        with self._lock:
+            if self.is_revoked(bus):
+                raise crypto.PacketError(f"bus {bus} has been revoked")
+            try:
+                applied, status = self._apply(bus, event), "applied"
+            except (crypto.PacketError, KeyError, TypeError, ValueError) as e:
+                applied, status = {"error": str(e)}, "invalid_event"
+        return {"status": status, "bus": bus, "key": via, **applied}
 
     def _last_seq(self, bus, epoch):
         row = self._db.execute("SELECT last_seq FROM edge_streams WHERE bus_id=? AND epoch=?",
@@ -146,7 +208,9 @@ class EdgeIngest:
             # the time the bus recorded the position (never later than now): a backlog uploaded after an
             # outage carries its real times, so old positions are not counted as passes after a repair
             at = min(ts, time.time()) if ts else time.time()
-            for fn in list(self.position_listeners):
+            # phone dashcams (pipeline/phone_fleet.py) are on the map but do not count as fleet passes that
+            # verify a repair: their identity is not a provisioned device
+            for fn in ([] if bus.startswith(PHONE_PREFIX) else list(self.position_listeners)):
                 try:
                     fn(bus, lat, lon, at)
                 except Exception as e:
@@ -202,7 +266,7 @@ class EdgeIngest:
         with self._lock:
             for env in envelopes:
                 try:
-                    bus, epoch, seq, event = crypto.unpack(env, self.key)
+                    bus, epoch, seq, event, keyed = self._open(env)
                 except crypto.PacketError as e:
                     results.append({"status": "rejected", "error": str(e)})
                     break
@@ -216,7 +280,7 @@ class EdgeIngest:
                 except (crypto.PacketError, KeyError, TypeError, ValueError) as e:
                     applied, status = {"error": str(e)}, "invalid_event"
                 self._accept_seq(bus, epoch, seq)
-                results.append({"status": status, "bus": bus, "seq": seq, **applied})
+                results.append({"status": status, "bus": bus, "seq": seq, "key": keyed, **applied})
                 accepted += 1
         return {"accepted_in_order": accepted, "received": len(envelopes), "results": results}
 

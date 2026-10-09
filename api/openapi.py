@@ -92,6 +92,35 @@ def spec():
                 "requestBody": _body({"packets": {"type": "array", "items": OBJ}}, ["packets"]),
                 "responses": {"200": _json(OBJ, "accepted_in_order tells the bus how many to drop from its queue"),
                               "400": ERR, "503": _json(OBJ, "ROAD_SHIELD_FLEET_KEY not set on the server")}}},
+            "/api/v1/fleet/phone-tick": {"post": {
+                "summary": "Phone dashcam (/drive): one frame, GPS fix and accelerometer readings; the bus agent's "
+                           "logic runs on them and its events go to the ledger and live map",
+                "tags": ["fleet"], "security": secured,
+                "requestBody": _body({"device_id": STR, "frame_base64": STR, "sent_ms": NUM,
+                                      "gps": {"type": "object", "properties": {
+                                          "lat": NUM, "lon": NUM, "accuracy_m": NUM, "speed_mps": NUM,
+                                          "heading_deg": NUM}},
+                                      "imu": {"type": "array", "items": {"type": "array", "items": NUM},
+                                              "description": "[t_ms, x, y, z] accelerationIncludingGravity"},
+                                      "stop": {"type": "boolean"}}, ["device_id"]),
+                "responses": {"200": _json(OBJ, "what was seen, events emitted and how the ledger took them"),
+                              "400": ERR, "401": AUTH_ERR, "403": ERR, "409": ERR, "429": ERR, "500": ERR,
+                              "503": ERR}}},
+            "/api/v1/fleet/phones": {"get": {"summary": "Phones driving now, with their counters",
+                                             "tags": ["fleet"], "responses": {"200": _json(OBJ)}}},
+            "/api/v1/fleet/keys": {"get": {
+                "summary": "Per-bus key status: whether the shared master key is still accepted, revoked buses",
+                "tags": ["fleet"], "responses": {"200": _json(OBJ)}}},
+            "/api/v1/fleet/revoke": {"post": {
+                "summary": "Refuse every packet from one bus (stolen or retired); complete once the shared fleet key is "
+                           "switched off (ROAD_SHIELD_ALLOW_FLEET_KEY=0)",
+                "tags": ["fleet"], "security": secured,
+                "requestBody": _body({"bus_id": STR, "reason": STR, "actor": STR}, ["bus_id"]),
+                "responses": {"200": _json(OBJ), "400": ERR, "401": AUTH_ERR}}},
+            "/api/v1/fleet/reinstate": {"post": {
+                "summary": "Accept a revoked bus again", "tags": ["fleet"], "security": secured,
+                "requestBody": _body({"bus_id": STR}, ["bus_id"]),
+                "responses": {"200": _json(OBJ), "400": ERR, "401": AUTH_ERR}}},
             "/api/v1/fleet/live": {"get": {"summary": "Bus positions (last 10 min), IMU-only shocks, recent events",
                                            "tags": ["fleet"], "responses": {"200": _json(OBJ)}}},
             "/api/v1/live/stream": {"get": {

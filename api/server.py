@@ -211,6 +211,11 @@ citizen = CitizenReports(os.path.join(WRITABLE_DIR, "road_shield.db"), fleet_ded
 fleet_dedup_engine.listeners.append(citizen.on_sighting)
 edge_ingest.position_listeners.append(lambda bus, lat, lon, at=None: works.on_bus_position(bus, lat, lon, at=at))
 
+# A phone on the windscreen as the dashcam (/drive): the bus agent's logic on the phone's camera, GPS and
+# accelerometer. The getter reads the global, so a model reload (MLOps) is picked up on the next frame.
+from pipeline.phone_fleet import BusyError, PhoneFleet
+phones = PhoneFleet(edge_ingest, lambda: deep_pipeline)
+
 # Operational guard rails: body limit, rate limit, Prometheus metrics, readiness (api/ops.py).
 from api import ops
 try:
@@ -277,6 +282,7 @@ PAGE_ROUTES = {
     "/order": "order.html",
     "/mlops": "mlops.html",
     "/assistant": "assistant.html",
+    "/drive": "drive.html",
     "/works": "works.html",
     "/models": "models.html",
     "/data": "data.html",
@@ -303,6 +309,9 @@ PROTECTED_POST = {
     "/api/v1/works/status",
     "/api/v1/video/ingest",            # writes sightings to the ledger, which can reopen repaired orders
     "/api/v1/citizen/review",
+    "/api/v1/fleet/revoke",            # takes a bus off the encrypted link
+    "/api/v1/fleet/reinstate",
+    "/api/v1/fleet/phone-tick",        # a phone dashcam adds sightings to the ledger
 } | mlops_routes.PROTECTED_POST | assistant_routes.PROTECTED_POST
 
 
@@ -997,6 +1006,19 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_cors_headers()
             self.end_headers()
             self.wfile.write(body_bytes)
+            return
+
+        if path == "/api/v1/fleet/phones":
+            self._send_json(200, {"phones": phones.devices()})
+            return
+
+        if path == "/api/v1/fleet/keys":
+            self._send_json(200, {
+                "master_key": "configured" if edge_ingest.configured else "ROAD_SHIELD_FLEET_KEY not set",
+                "shared_fleet_key_accepted": os.environ.get("ROAD_SHIELD_ALLOW_FLEET_KEY", "1") != "0",
+                "revoked": edge_ingest.revoked(),
+                "provision": "python -m edge.provision <BUS-ID> on the server; the printed key goes to that bus only",
+            })
             return
 
         if path == "/api/v1/fleet/live":
@@ -2011,6 +2033,36 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(404 if str(e).startswith("no work order") else 409, {"error": str(e)})
                 return
             self._send_json(200, order)
+            return
+
+        if path == "/api/v1/fleet/phone-tick":
+            if not isinstance(body, dict):
+                self._send_json(400, {"error": "JSON object expected"})
+                return
+            try:
+                self._send_json(200, phones.tick(body))
+            except PermissionError as e:
+                self._send_json(403, {"error": str(e)})
+            except OverflowError as e:
+                self._send_json(503, {"error": str(e)})
+            except BusyError as e:
+                self._send_json(409, {"error": str(e)})
+            except ValueError as e:
+                self._send_json(429 if str(e).startswith("too fast") else 400, {"error": str(e)})
+            except Exception as e:
+                print(f"[phone-tick] {type(e).__name__}: {e}", flush=True)
+                self._send_json(500, {"error": "the engine failed on this frame; see the server log"})
+            return
+
+        if path in ("/api/v1/fleet/revoke", "/api/v1/fleet/reinstate"):
+            bus = str(_first(body, "bus_id", "bus") or "")
+            try:
+                out = (edge_ingest.revoke(bus, _text_or_none(body.get("reason"), 200), actor=_actor(body))
+                       if path.endswith("revoke") else edge_ingest.reinstate(bus))
+            except Exception as e:
+                self._send_json(400, {"error": str(e)})
+                return
+            self._send_json(200, out)
             return
 
         if path == "/api/v1/fleet/ingest-sealed":

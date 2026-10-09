@@ -27,7 +27,8 @@ const ENGINE_PATHS = new Set([
   "/api/v1/mlops/runs", "/api/v1/mlops/run", "/api/v1/mlops/promote", "/api/v1/mlops/rollback",
   "/api/v1/mlops/stage", "/api/v1/mlops/register", "/api/v1/mlops/reload", "/api/v1/mlops/al/queue",
   "/api/v1/mlops/al/image", "/api/v1/mlops/al/label", "/api/v1/mlops/al/export", "/api/v1/mlops/rebaseline",
-  "/api/v1/traffic/cells", "/api/v1/traffic/estimate",
+  "/api/v1/traffic/cells", "/api/v1/traffic/estimate", "/api/v1/fleet/phone-tick", "/api/v1/fleet/phones",
+  "/api/v1/fleet/keys", "/api/v1/fleet/revoke", "/api/v1/fleet/reinstate",
   "/api/v1/assistant/status", "/api/v1/assistant/ask", "/api/v1/assistant/report", "/api/v1/assistant/second-opinion",
 ]);
 
@@ -39,7 +40,8 @@ const KEYED_PATHS = new Set(["/api/v1/fleet/report-defect", "/api/v1/dispatch/wo
                              "/api/v1/mlops/register", "/api/v1/mlops/reload", "/api/v1/mlops/al/label",
                              "/api/v1/mlops/al/export", "/api/v1/mlops/al/queue", "/api/v1/mlops/al/image",
                              "/api/v1/mlops/rebaseline", "/api/v1/assistant/report",
-                             "/api/v1/assistant/second-opinion", "/api/v1/assistant/ask"]);
+                             "/api/v1/assistant/second-opinion", "/api/v1/assistant/ask",
+                             "/api/v1/fleet/phone-tick", "/api/v1/fleet/revoke", "/api/v1/fleet/reinstate"]);
 function operatorKey() { try { return sessionStorage.getItem("roadShieldApiKey") || ""; } catch { return ""; } }
 function setOperatorKey(k) { try { k ? sessionStorage.setItem("roadShieldApiKey", k) : sessionStorage.removeItem("roadShieldApiKey"); } catch {} }
 
@@ -161,6 +163,7 @@ const PAGES = [
   { href: "/corridor",     id: "corridor",     label: "Road map",     group: "product" },
   { href: "/works",        id: "works",        label: "Works",        group: "product" },
   { href: "/report",       id: "report",       label: "Report a pothole", group: "product" },
+  { href: "/drive",        id: "drive",        label: "Phone dashcam", group: "product" },
   { href: "/assistant",    id: "assistant",    label: "Assistant",    group: "product" },
   { href: "/mlops",        id: "mlops",        label: "MLOps",        group: "product" },
   { href: "/models",       id: "models",       label: "Models",       group: "evidence", note: "accuracy, IoU, model card" },

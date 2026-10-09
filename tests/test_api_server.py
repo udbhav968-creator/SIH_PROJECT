@@ -24,6 +24,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+from unittest import mock
 
 import numpy as np
 
@@ -602,6 +603,33 @@ class APIServerTest(unittest.TestCase):
             srv.live_events.unsubscribe(q)
             srv.edge_ingest.key = saved
 
+    def test_revoked_bus_is_refused_until_reinstated(self):
+        from edge import crypto
+        key = crypto.load_key("api-test-fleet-key")
+        saved = srv.edge_ingest.key
+        srv.edge_ingest.key = key
+        try:
+            bk = crypto.bus_key(key, "REVOKE-BUS")
+            code, r = self.post_json("/api/v1/fleet/ingest-sealed", {"packets": [
+                crypto.pack({"t": "pos", "lat": 12.9, "lon": 77.6}, "REVOKE-BUS", 1, bk)]})
+            self.assertEqual(r["results"][0]["key"], "bus")
+            code, r = self.post_json("/api/v1/fleet/revoke", {"bus_id": "REVOKE-BUS", "reason": "test"})
+            self.assertEqual(code, 200, r)
+            code, keys = self.get_json("/api/v1/fleet/keys")
+            self.assertIn("REVOKE-BUS", [b["bus_id"] for b in keys["revoked"]])
+            code, r = self.post_json("/api/v1/fleet/ingest-sealed", {"packets": [
+                crypto.pack({"t": "pos", "lat": 12.9, "lon": 77.6}, "REVOKE-BUS", 2, bk)]})
+            self.assertEqual(r["accepted_in_order"], 0)
+            code, r = self.post_json("/api/v1/fleet/revoke", {"bus_id": "<b>x"})
+            self.assertEqual(code, 400)
+            code, r = self.post_json("/api/v1/fleet/reinstate", {"bus_id": "REVOKE-BUS"})
+            self.assertTrue(r["was_revoked"])
+            with mock.patch.dict(os.environ, {"ROAD_SHIELD_API_KEY": "k-test"}):
+                code, r = self.post_json("/api/v1/fleet/revoke", {"bus_id": "REVOKE-BUS"})
+                self.assertEqual(code, 401, "revoking a bus is a write: it needs the API key when one is set")
+        finally:
+            srv.edge_ingest.key = saved
+
     def test_sealed_ingest_without_a_key_is_503(self):
         saved = srv.edge_ingest.key
         srv.edge_ingest.key = None
@@ -768,10 +796,13 @@ class APIServerTest(unittest.TestCase):
         saved = srv.edge_ingest.key
         srv.edge_ingest.key = key
         try:
-            now = int(_time.time())
-            pkts = [crypto.pack({"t": "trf", "ts": now - h * 3 * 3600, "lat": 13.70001, "lon": 77.70001, "n": 5,
-                                 "spd": 25.0, "veh": {"Car": 2.0, "Two-Wheeler": 3.0}}, "TRF-BUS", h + 1, key, epoch="cd")
-                    for h in range(7)]
+            # daytime hours of yesterday (local clock): counts from night hours are not expanded, so timestamps
+            # relative to "now" made this test depend on the time of day it ran
+            lt = _time.localtime(_time.time() - 86400)
+            midnight = int(_time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1)))
+            pkts = [crypto.pack({"t": "trf", "ts": midnight + hour * 3600, "lat": 13.70001, "lon": 77.70001, "n": 5,
+                                 "spd": 25.0, "veh": {"Car": 2.0, "Two-Wheeler": 3.0}}, "TRF-BUS", i + 1, key, epoch="cd")
+                    for i, hour in enumerate((7, 9, 11, 13, 15, 17, 19))]
             code, res = self.post_json("/api/v1/fleet/ingest-sealed", {"packets": pkts})
             self.assertEqual(res["accepted_in_order"], 7, res)
         finally:

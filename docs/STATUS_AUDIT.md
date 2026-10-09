@@ -54,7 +54,11 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | IMU transformer, RT-DETR candidate | Code done (9 Oct), GPU run pending: a transformer encoder joins the IMU comparison (served only if it beats the RandomForest on time-blocked CV); RT-DETR trains as a detector candidate decided on India validation mAP | `training/train_imu_deep.py`, `training/train_rdd_detector.py` |
 | Engineer's assistant (RAG) | Done (9 Oct): hybrid BM25 + character n-gram retrieval over the documents, road-maintenance notes and the live ledger; answers cite sources and every number is checked against them. Retrieval on 14 questions written afterwards: right passage in the top 3 for all 14 (MRR 0.85-0.88 as the docs change) | `genai/`, `/assistant`, `checkpoints/rag_eval_report.json` |
 | Engineer's brief, VLM second opinion | Done (9 Oct): briefs written only from the order's fields (a draft with an unsupported number is replaced by the template); a vision-language model's advisory class on Inspection. The VLM is not yet measured (needs an API key): `scripts/measure_vlm.py` | `genai/report_writer.py`, `genai/vlm.py` |
-| Automated tests | 380+; pipeline suite OK on a fresh clone with scikit-learn 1.8 and the fine-tuned CNN served | `tests/`, `logs/tests_after.txt` |
+| Per-bus keys and revocation | Done (9 Oct): each bus seals with HMAC-SHA256(master, bus id), printed by `python -m edge.provision`; a key from one bus cannot speak for another; revoke / reinstate a bus from the API; the shared master key can be switched off from the road (`ROAD_SHIELD_ALLOW_FLEET_KEY=0`) once every bus is re-provisioned | `edge/crypto.py`, `edge/provision.py`, `pipeline/edge_ingest.py` |
+| Phone as the dashcam | Done (9 Oct), not yet on a real drive: `/drive` sends camera frames, GPS and accelerometer readings; the bus agent's own logic runs on them (vehicle-frame IMU from a running gravity estimate, fusion at the moment the wheels reach the defect, unfelt sightings held for a second vehicle, input-guard refusals never reported). Checked with a headless phone browser on a recorded pothole video | `pipeline/phone_fleet.py`, `web/drive.html`, `tests/test_phone_fleet.py` |
+| One-click GPU training and intake | Done (9 Oct): `notebooks/train_everything.ipynb` runs every GPU stage in order (Run all, resumable through Drive) and packs one zip; `python -m mlops intake` takes it in model by model through register + gate + promote, so a worse model never replaces production | `notebooks/train_everything.ipynb`, `mlops/intake.py`, `scripts/apply_colab_outputs.ps1` |
+| scikit-learn 1.9 could not load the segmenter | Fixed (9 Oct): the 1.8 pickle names a Cython module "_loss" that 1.9 no longer registers, so on a machine with 1.9 the pipeline fell back to brightness proposals and reported pothole photographs as sound road. A loader shim fixes it; the pin `<1.9` stays because every report was measured on 1.8 | `models/sklearn_compat.py` |
+| Automated tests | 394, all passing (9 Oct, with the fixes above, under scikit-learn 1.9.1 as well as 1.8); pipeline suite OK on a fresh clone with scikit-learn 1.8 and the fine-tuned CNN served | `tests/`, `logs/tests_after.txt` |
 
 ## Left to do (not claimed as done)
 
@@ -65,7 +69,6 @@ the matching tracked changes under the author "Claude (audit 2026-10-03)".
 | Priority Index weights chosen by a municipality | The defaults are a stated policy choice, not a consultation result |
 | INT8 benchmark on Raspberry Pi 5 / Jetson | `scripts/benchmark_edge.py` is ready; needs the board |
 | Bus agent on real hardware | Tested by replay only; MPU-6050 and GPS readers not yet run on a Pi |
-| Per-bus keys | One fleet key today; per-bus keys need a key-distribution process |
 | Permanent hosting | Laptop tunnel for demos; options in `docs/HOSTING.md` |
 | Field validation of PCI / deterioration / depth | Needs field surveys or depth ground truth |
 | More photographs for the four municipal classes | ~50 each; test scores rest on 7-8 images |

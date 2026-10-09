@@ -65,7 +65,8 @@ On first start the server registers whatever is in `checkpoints/` as version 1 o
 
 ```
 python -m mlops status                       # every model: version, metrics, files match?
-python -m mlops register vision_classifier   # after copying Colab outputs into checkpoints/
+python -m mlops intake road_shield_all_outputs.zip   # Colab outputs: register + gate + promote each model
+python -m mlops register vision_classifier   # record what is in checkpoints/ now as a version
 python -m mlops gate vision_classifier 2
 python -m mlops promote vision_classifier 2
 python -m mlops rollback vision_classifier
@@ -85,8 +86,20 @@ depth, deterioration, input guard):
    (`train_civil_models.py` also rewrites the segmenter), so production keeps serving
 6. **gate**: pass → staging (→ production with `--promote`); fail → stays a candidate, with reasons
 
-GPU models (CNN, U-Net, YOLO) train in Colab; copy the outputs back and `register`, then `gate` and
-`promote`.
+GPU models (CNN, transformers, ensemble, U-Net, YOLO, RT-DETR) train in Colab with
+`notebooks/train_everything.ipynb` (Run all; resumable through Google Drive). Its zip comes back through
+**intake**, not by copying into `checkpoints/`:
+
+```
+python -m mlops intake road_shield_all_outputs.zip          # --no-promote to stop at staging
+```
+
+For each model with files in the zip, the candidate is production's files with the new ones laid over
+them; it is registered, gated against production and promoted only if it passes. A model that fails
+stays a candidate and production is untouched; the table printed says why. Logs and measurement reports
+are copied as they are; paths outside `checkpoints/`, `logs/` and the report are refused.
+`scripts/apply_colab_outputs.ps1` runs intake for every zip in Downloads, rebuilds the claims, runs the
+tests and asks before committing.
 
 ## 4. Input guard: the out-of-distribution model (`models/ood_guard.py`)
 
@@ -207,7 +220,7 @@ set the view length and hour profile from them.
 
 ## What is not done
 
-- No GPU retraining from the pipeline: Colab runs stay manual, then `register`.
+- No GPU retraining from the pipeline: the Colab notebook is started by hand (one Run all), then `intake`.
 - The traffic estimate is uncalibrated until compared with manual counts.
 - Drift reference is public-dataset photos until a city rebaselines on its own fleet.
 - Shadow testing covers the classifier only; the segmenter and detectors are judged offline.

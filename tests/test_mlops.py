@@ -152,6 +152,67 @@ class RegistryTest(_Tmp):
             reg.promote("ood_guard", v2["version"])
         self.assertIn("register them first", str(e.exception))
 
+    def test_intake_gates_each_model_and_copies_the_rest(self):
+        import zipfile
+        from mlops.intake import intake
+        self._model(0.95)
+        _write(os.path.join(self.ckpt, "monitoring_reference.json"), {"ref": 1})      # part of ood_guard too
+        _write(os.path.join(self.ckpt, "pci_model.joblib"), "pci-v1")
+        _write(os.path.join(self.ckpt, "pci_model_report.json"), {"held_out_r2": 0.95, "held_out_mae": 2.0})
+        reg = self._reg()
+        reg.bootstrap()
+        repo = os.path.join(self.tmp, "repo")
+        z = os.path.join(self.tmp, "outputs.zip")
+        with zipfile.ZipFile(z, "w") as f:
+            # a better input guard: only its npz and report were retrained; monitoring_reference must survive
+            f.writestr("checkpoints/ood_guard.npz", "v2")
+            f.writestr("checkpoints/ood_guard_report.json", json.dumps(
+                {"test": {"combined": {"auroc": 0.97, "in_distribution_flagged_rate": 0.04},
+                          "refusals": {"road_photos_refused_rate": 0.01}}}))
+            # a worse PCI model: must not replace production
+            f.writestr("checkpoints/pci_model.joblib", "pci-v2")
+            f.writestr("checkpoints/pci_model_report.json", json.dumps({"held_out_r2": 0.80, "held_out_mae": 3.0}))
+            f.writestr("checkpoints/privacy_redaction_report.json", json.dumps({"recall": 0.9}))
+            f.writestr("logs/colab_run.txt", "ok")
+            f.writestr("../outside.txt", "no")
+            f.writestr("api/server.py", "no")
+        rep = intake(z, reg, repo_root=repo)
+        self.assertEqual(rep["models"]["ood_guard"]["outcome"], "promoted")
+        self.assertEqual(rep["models"]["pci_regressor"]["outcome"], "kept_as_candidate")
+        with open(os.path.join(self.ckpt, "ood_guard.npz")) as fh:
+            self.assertEqual(fh.read(), "v2")
+        self.assertTrue(os.path.exists(os.path.join(self.ckpt, "monitoring_reference.json")),
+                        "files the run did not retrain are carried into the new version")
+        with open(os.path.join(self.ckpt, "pci_model.joblib")) as fh:
+            self.assertEqual(fh.read(), "pci-v1", "a model that fails its gate leaves production alone")
+        self.assertEqual(sorted(rep["copied"]), ["checkpoints/privacy_redaction_report.json", "logs/colab_run.txt"])
+        self.assertTrue(os.path.exists(os.path.join(self.ckpt, "privacy_redaction_report.json")))
+        self.assertTrue(os.path.exists(os.path.join(repo, "logs", "colab_run.txt")))
+        self.assertEqual(sorted(rep["refused"]), ["../outside.txt", "api/server.py"])
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "outside.txt")))
+        again = intake(z, reg, repo_root=repo)
+        self.assertEqual(again["models"]["ood_guard"]["outcome"], "unchanged")
+        self.assertEqual(reg.rollback("ood_guard")["version"], 1, "an intake can be rolled back like any promotion")
+
+        z2 = os.path.join(self.tmp, "weights_only.zip")
+        with zipfile.ZipFile(z2, "w") as f:
+            f.writestr("checkpoints/ood_guard.npz", "v3 without its report")
+            f.writestr("checkpoints/cnn_backbone_mobilenetv2.onnx", "weights no spec covers")
+        rep = intake(z2, reg, repo_root=repo)
+        self.assertEqual(rep["models"]["ood_guard"]["outcome"], "needs_report",
+                         "new weights are never judged on production's old report")
+        self.assertEqual(rep["skipped_weights"], ["checkpoints/cnn_backbone_mobilenetv2.onnx"])
+        self.assertFalse(os.path.exists(os.path.join(self.ckpt, "cnn_backbone_mobilenetv2.onnx")))
+        with open(os.path.join(self.ckpt, "ood_guard.npz")) as fh:
+            self.assertEqual(fh.read(), "v1")
+
+        _write(os.path.join(self.ckpt, "ood_guard.npz"), "edited by hand")       # not a registered version
+        rep = intake(z, reg, repo_root=repo)
+        self.assertEqual(rep["models"]["ood_guard"]["outcome"], "kept_as_candidate",
+                         "a hand-edited production file is neither carried into the candidate nor overwritten")
+        with open(os.path.join(self.ckpt, "ood_guard.npz")) as fh:
+            self.assertEqual(fh.read(), "edited by hand")
+
     def test_materialize_and_manual_gate(self):
         _write(os.path.join(self.ckpt, "road_shield_detector.onnx"), "coco")
         reg = self._reg()

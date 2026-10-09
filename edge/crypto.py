@@ -24,8 +24,15 @@ The same ciphertext is what the bus stores while it is offline (edge/store_forwa
 encrypted at rest on the device too: a stolen SD card does not expose the queue without the key.
 
 Key: ROAD_SHIELD_FLEET_KEY, either 64 hex characters / 44 base64 characters (32 raw bytes), or any other
-string, which is stretched with PBKDF2-HMAC-SHA256 (200,000 rounds, fixed salt). One key per fleet keeps a
-pilot simple; per-bus keys are the next step once a key-distribution process exists.
+string, which is stretched with PBKDF2-HMAC-SHA256 (200,000 rounds, fixed salt).
+
+Per-bus keys: the server holds the fleet MASTER key; each bus is given only its own key,
+bus_key(master, bus_id) = HMAC-SHA256(master, "road-shield-bus-key|" + bus_id), printed by
+`python -m edge.provision <BUS-ID>` and set as ROAD_SHIELD_FLEET_KEY on that bus. A stolen bus therefore
+exposes one bus's key, not the fleet's, and can be revoked on its own (pipeline/edge_ingest.py). The server
+tries the bus's derived key first; packets sealed with the master key itself are still accepted while
+ROAD_SHIELD_ALLOW_FLEET_KEY is not 0, so buses provisioned before per-bus keys keep working until they are
+re-provisioned.
 """
 import base64
 import hashlib
@@ -36,8 +43,8 @@ import re
 VERSION = 1
 MAX_PLAINTEXT_BYTES = 1024
 _SALT = b"road-shield-fleet-key-v1"
-BUS_ID = re.compile(r"^[A-Za-z0-9._-]{1,40}$")
-EPOCH = re.compile(r"^[0-9a-f]{1,32}$")
+BUS_ID = re.compile(r"[A-Za-z0-9._-]{1,40}")       # used with fullmatch: "$" would let a trailing newline in
+EPOCH = re.compile(r"[0-9a-f]{1,32}")
 
 
 class PacketError(ValueError):
@@ -73,14 +80,31 @@ def new_key_hex():
     return os.urandom(32).hex()
 
 
+def bus_key(master, bus_id):
+    """The key one bus seals with: derived from the master key and the bus id, so it is useless for any other bus."""
+    import hmac
+    if not BUS_ID.fullmatch(str(bus_id)):
+        raise PacketError("bus id must be 1-40 letters, digits, '.', '_' or '-'")
+    return hmac.new(master, b"road-shield-bus-key|" + str(bus_id).encode("utf-8"), hashlib.sha256).digest()
+
+
+def peek_bus(envelope):
+    """The bus id a packet claims (authenticated only after decryption), or None."""
+    try:
+        b = str(envelope.get("bus", ""))
+        return b if BUS_ID.fullmatch(b) else None
+    except Exception:
+        return None
+
+
 def _aad(bus_id, epoch, seq):
     return f"road-shield|v{VERSION}|{bus_id}|{epoch}|{int(seq)}".encode("utf-8")
 
 
 def check_ids(bus_id, epoch):
-    if not BUS_ID.match(str(bus_id)):
+    if not BUS_ID.fullmatch(str(bus_id)):
         raise PacketError("bus id must be 1-40 letters, digits, '.', '_' or '-'")
-    if not EPOCH.match(str(epoch)):
+    if not EPOCH.fullmatch(str(epoch)):
         raise PacketError("malformed epoch")
 
 
