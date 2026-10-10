@@ -65,6 +65,7 @@ const STATUS = { ISSUED: "Issued", ASSIGNED: "Assigned", IN_PROGRESS: "In progre
       <tr><th>Location</th><td>${c ? `${esc(c.lat)}, ${esc(c.lon)} — <a href="https://www.google.com/maps/search/?api=1&query=${esc(c.lat)},${esc(c.lon)}">map</a>` : "no GPS — order held"}
         <br>Corridor: ${esc(wo.corridor)} · Ledger ref ${esc(o.defect_id)}</td></tr>
       <tr><th>Measured</th><td>${esc(wo.surface_area_sqm)} m² · ${esc(wo.depth_cm)} cm deep · PCI ${esc(wo.pavement_pci)}</td></tr>
+      <tr id="ctxRow" hidden><th>Site context</th><td id="ctxCell"></td></tr>
     </table>
 
     <h2>work</h2>
@@ -99,7 +100,25 @@ const STATUS = { ISSUED: "Issued", ASSIGNED: "Assigned", IN_PROGRESS: "In progre
       breaks the history hashes. To check this order, open ${esc(location.origin)}/order?id=${esc(o.work_order_id)}
       or send the order to /api/v1/dispatch/verify-seal. The repair is verified when buses on the route pass over the
       location ${esc(o.passes_needed)} times without seeing the defect again.</p>`;
+  if (c) siteContext(c.lat, c.lon);
 })();
+
+// Road and rain at the site from public APIs (not part of the sealed order; shown for the crew)
+async function siteContext(lat, lon) {
+  const r = await API.get(`/api/v1/context?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`);
+  if (!r.ok || !r.data.enabled) return;
+  const rd = r.data.road || {}, rn = r.data.rain || {}, parts = [];
+  if (rd.available && rd.found)
+    parts.push(`${esc(rd.name || rd.ref || "unnamed road")} · ${esc(rd.highway)}` +
+      (rd.surface ? ` · ${esc(rd.surface)}` : "") + (rd.lanes ? ` · ${esc(rd.lanes)} lanes` : "") +
+      ` <span style="color:var(--muted)">(OpenStreetMap)</span>`);
+  if (rn.available)
+    parts.push(`rain: ${esc(rn.observed_last_30_days_mm)} mm in the last 30 days, about ${esc(Math.round(rn.expected_next_180_days_mm))} mm ` +
+      `expected over the next 180 days <span style="color:var(--muted)">(Open-Meteo, average of the last 3 years)</span>`);
+  if (!parts.length) return;
+  el("ctxCell").innerHTML = parts.join("<br>");
+  el("ctxRow").hidden = false;
+}
 
 el("brief").onclick = async () => {
   const id = new URLSearchParams(location.search).get("id") || "";

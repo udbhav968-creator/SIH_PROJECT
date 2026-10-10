@@ -44,6 +44,30 @@ camera geometry. Set `ROAD_SHIELD_NO_CORPUS_FILTER=1` to reproduce unfiltered nu
 `scripts/colab_train_all.sh` runs all of the regeneration steps, prints an
 inventory (`logs/corpus_inventory.json`) and retrains every model on the result.
 
+### Added October 2026
+
+| Source | How it arrives | What it is used for |
+|---|---|---|
+| DeepCrack (537 crack masks, Liu et al. 2019) — [yhlleo/DeepCrack](https://github.com/yhlleo/DeepCrack), non-commercial research and education | `python -m scripts.fetch_seg_datasets --only deepcrack` (git clone, so it works where Hugging Face is blocked) | crack verifier; U-Net / SegFormer training (top-down close-ups: they train, they never set a serving threshold) |
+| CrackForest / CFD (118 road crack masks, Shi et al. 2016) — [cuilimeng/CrackForest-dataset](https://github.com/cuilimeng/CrackForest-dataset), non-commercial research | `python -m scripts.fetch_seg_datasets --only crackforest` | same |
+
+Both go into `datasets/seg_multi/<source>/` (images 512x320, masks 0 sound / 1 crack), split 75/10/15 by image
+id, near-copies of the measurement photographs dropped (1 DeepCrack and 4 CFD images on this corpus), and
+images CrackSeg9k already supplied skipped, since CrackSeg9k contains both.
+
+## Fetching any dataset through its provider's API: `python -m data.hub`
+
+`data/hub.py` lists every dataset the project uses (`list`: task, licence, provider, whether a key is needed,
+which model uses it) and fetches from Hugging Face, Zenodo, Roboflow Universe, Kaggle, GitHub and Mapillary
+into `datasets/incoming/<provider>__<name>/` with a `MANIFEST.json`: reference, version or commit, licence as
+the provider states it, SHA-256 of every file, and a leakage check against the measurement photographs
+(near-copies go to `_quarantine/`). `verify <folder>` re-checks the files later. Keys (`HF_TOKEN`,
+`ROBOFLOW_API_KEY`, `MAPILLARY_TOKEN`, Kaggle's own file) come only from the environment and are never written.
+
+`python -m data.hub mapillary --bbox <lon,lat,lon,lat> --queue` pulls street-level photographs of an Indian
+area (CC BY-SA 4.0) and runs them through the pipeline; the uncertain ones join the labelling queue on the
+MLOps page, which is how real Indian streets become labelled training data.
+
 ## What this data cannot support
 
 - No image here was taken from a bus. Indian-road evidence comes from RDD2022

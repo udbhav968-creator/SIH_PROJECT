@@ -1,0 +1,72 @@
+{
+ "model": "logistic regression on L2-normalised MobileNetV2 ImageNet embeddings",
+ "task": "is the crop around a segmenter crack component a pavement crack",
+ "trained_on": {
+  "crack_images": {
+   "deepcrack": 536,
+   "crackforest": 114,
+   "crackseg9k": 0
+  },
+  "road_photographs": {
+   "train": 201,
+   "cal": 68,
+   "test": 94
+  },
+  "road_photographs_held_out_for_the_gate_decision_or_near_copies": 286,
+  "windows": {
+   "train": {
+    "crack": 3275,
+    "pavement": 1204,
+    "road": 804
+   },
+   "cal": {
+    "crack": 465,
+    "pavement": 181,
+    "road": 272
+   },
+   "test": {
+    "crack": 757,
+    "pavement": 275,
+    "road": 376
+   }
+  },
+  "sources": {
+   "deepcrack": "https://github.com/yhlleo/DeepCrack.git",
+   "crackforest": "https://github.com/cuilimeng/CrackForest-dataset.git",
+   "crackseg9k": null
+  }
+ },
+ "lambda_chosen_on_calibration": 0.01,
+ "threshold": 0.2397,
+ "threshold_rule": "highest threshold keeping 97% of calibration crack windows",
+ "calibration": {
+  "crack_windows": 465,
+  "crack_kept": 0.9699,
+  "pavement_windows": 181,
+  "pavement_rejected": 0.895,
+  "road_windows": 272,
+  "road_scene_rejected": 0.9559,
+  "auroc_crack_vs_pavement": 0.9677,
+  "auroc_crack_vs_road_scene": 0.9947
+ },
+ "test": {
+  "summary": {
+   "crack_windows": 757,
+   "crack_kept": 0.9696,
+   "pavement_windows": 275,
+   "pavement_rejected": 0.8364,
+   "road_windows": 376,
+   "road_scene_rejected": 0.9521,
+   "auroc_crack_vs_pavement": 0.9769,
+   "auroc_crack_vs_road_scene": 0.9941
+  },
+  "note": "windows from images and road photographs never used for training or for the threshold"
+ },
+ "caveats": [
+  "crack windows are top-down close-ups (DeepCrack, CrackForest); dashcam crack crops are seen from an angle - the end-to-end check decides whether that matters",
+  "the licences of both crack datasets allow non-commercial research and education only"
+ ],
+ "trained_unix": 1791585937,
+ "seconds": 129.4,
+ "serving_decision": "checkpoints/crack_verifier_selection.json, written by python -m scripts.select_crack_gate for this model file only (a retrained file needs a new decision)"
+}

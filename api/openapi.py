@@ -106,6 +106,12 @@ def spec():
                 "responses": {"200": _json(OBJ, "what was seen, events emitted and how the ledger took them"),
                               "400": ERR, "401": AUTH_ERR, "403": ERR, "409": ERR, "429": ERR, "500": ERR,
                               "503": ERR}}},
+            "/api/v1/context": {"get": {
+                "summary": "Rain (Open-Meteo: last 30 days, next-180-day climatology) and the road (OpenStreetMap: "
+                           "class, name, surface, lanes) at a location", "tags": ["maps"],
+                "parameters": [{"name": "lat", "in": "query", "required": True, "schema": NUM},
+                               {"name": "lon", "in": "query", "required": True, "schema": NUM}],
+                "responses": {"200": _json(OBJ), "400": ERR}}},
             "/api/v1/fleet/phones": {"get": {"summary": "Phones driving now, with their counters",
                                              "tags": ["fleet"], "responses": {"200": _json(OBJ)}}},
             "/api/v1/fleet/keys": {"get": {

@@ -35,6 +35,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 import os
+import threading
 import time
 import hashlib
 import numpy as np
@@ -161,6 +162,20 @@ class DeepInferencePipeline:
         self.rl_agent = AutomotiveADASPolicyAgent()
         self.telematics = AutomotiveTelematicsEngine(checkpoints_dir=self.ckpt_dir)
         self.traffic_net = UrbanTrafficNet()
+        # A second look at every crack component the segmenter proposes (models/crack_verifier.py). Loaded
+        # only when scripts/select_crack_gate.py measured that it removes false alarms without losing a
+        # detection; ROAD_SHIELD_CRACK_GATE=force|off overrides that for the measurement itself.
+        self.crack_verifier = None
+        gate_mode = os.environ.get("ROAD_SHIELD_CRACK_GATE", "auto")
+        if gate_mode != "off":
+            try:
+                from models.crack_verifier import CrackVerifier
+                cv_ = CrackVerifier(checkpoints_dir=self.ckpt_dir, require_served=(gate_mode != "force"))
+                self.crack_verifier = cv_ if cv_.is_ready else None
+                if cv_.is_ready:
+                    print(f"  ✓ Crack verifier: threshold {cv_.threshold:.3f}")
+            except Exception as e:
+                print(f"[WARN] crack verifier unavailable: {e}")
         # Is the photograph one these models can be trusted on at all? (models/ood_guard.py)
         try:
             from models.ood_guard import OODGuard
@@ -171,6 +186,7 @@ class DeepInferencePipeline:
             print(f"[WARN] input guard unavailable: {e}")
             self.input_guard = None
         self.audit_hooks = []        # fn(img, result, source, projection, latency_ms): monitoring, active learning
+        self._audit_lock = threading.RLock()
         self.model_versions = {}     # set by the server from the model registry
         try:
             from models.dan_dag_network import DANDAGNetwork
@@ -212,7 +228,26 @@ class DeepInferencePipeline:
                 proj = check.pop("projection", None)
             except Exception as e:
                 check = {"available": False, "reason": f"input guard failed: {e}"}
-        res = self._audit_core(img, corridor_id=corridor_id, latitude=latitude, longitude=longitude, **kwargs)
+        # _audit_core keeps the frame being analysed on the instance (segmenter output, paint mask, crack gate,
+        # forecast inputs), and the server shares one pipeline between request threads: one frame at a time,
+        # so a request never reads another's state. The models are CPU-bound, so little throughput is lost.
+        # rain at this location from Open-Meteo's history (services/road_context.py), when switched on; looked
+        # up before taking the lock below, so a slow network never holds up other requests' analysis
+        if kwargs.get("rain_mm") is None and latitude is not None and longitude is not None:
+            try:
+                from services import road_context
+                if road_context.enabled():
+                    mm, prov = road_context.default().forecast_rain_input(latitude, longitude)
+                    if mm is not None:
+                        kwargs["rain_mm"] = mm
+                        kwargs["_context_inputs"] = {"seasonal_rain_mm": prov}
+                    else:
+                        kwargs["_context_inputs"] = {"seasonal_rain_mm": {"unavailable": prov.get("reason")}}
+            except Exception as e:
+                kwargs["_context_inputs"] = {"seasonal_rain_mm": {"unavailable": str(e)[:120]}}
+        lock = self.__dict__.setdefault("_audit_lock", threading.RLock())
+        with lock:
+            res = self._audit_core(img, corridor_id=corridor_id, latitude=latitude, longitude=longitude, **kwargs)
         res["input_check"] = check or {"available": False,
                                        "reason": getattr(guard, "load_error", None) or "input guard not loaded"}
         if getattr(self, "model_versions", None):
@@ -258,6 +293,7 @@ class DeepInferencePipeline:
         # lists them under "modelling_assumptions", so a forecast built on
         # assumed inputs cannot pass as one built on measured ones.
         self._assumed_inputs = {}
+        self._context_inputs = dict(_extra.get("_context_inputs") or {})
         if traffic_esal is None:
             traffic_esal = self.DEFAULT_TRAFFIC_ESAL
             self._assumed_inputs["traffic_esal_per_day"] = traffic_esal
@@ -340,6 +376,8 @@ class DeepInferencePipeline:
             except Exception as e:
                 print(f"[WARN] semantic gate skipped: {e}")
         self._seg_out = seg_out
+        self._frame_rgb = img_np
+        self._crack_gate = None
         dag_exec.mark("N3_pixel_segmenter", "COMPLETED" if seg_out else "SKIPPED")
 
         # STAGE 3a: COCO object detection (people, vehicles, traffic control)
@@ -619,9 +657,11 @@ class DeepInferencePipeline:
             },
             "modelling_assumptions": {
                 "assumed_inputs": dict(self._assumed_inputs),
+                "inputs_from_public_apis": dict(getattr(self, "_context_inputs", {}) or {}),
                 "note": ("Inputs listed here were not supplied by the caller; typical "
                          "values were used for the deterioration forecast only.")
-                        if self._assumed_inputs else "All forecast inputs were supplied by the caller.",
+                        if self._assumed_inputs else ("No typical values were used: every forecast input came "
+                                                      "from the caller or from the public APIs listed."),
             },
             "cryptographic_work_order": work_order,
             "deep_forensic_intelligence": {
@@ -641,6 +681,8 @@ class DeepInferencePipeline:
             "road_damage_boxes": damage_boxes,
             "road_damage_summary": damage_summary,
             "frame_classification": frame_cls,
+            "crack_gate": getattr(self, "_crack_gate", None) or {
+                "applied": False, "reason": (None if getattr(self, "crack_verifier", None) else "crack verifier not served")},
             "markings": getattr(self, "_markings", {"found": False}),
             # Non-zero means at least one region could not be classified, so the
             # number of detections below is a floor, not a count.
@@ -1038,8 +1080,28 @@ class DeepInferencePipeline:
                 out.append([x0, y0, x1 - x0, y1 - y0, mean_p * area, kind,
                             "segmentation", round(mean_p, 4),
                             round(area / frame_px, 5), oversized])
+        out = self._verify_cracks(out)
         out.sort(key=lambda b: -b[4])
         return out[: self.MAX_COMPONENTS]
+
+    def _verify_cracks(self, boxes):
+        """Drop crack components the crack verifier does not see as a pavement crack (models/crack_verifier.py)."""
+        cv_ = getattr(self, "crack_verifier", None)
+        img = getattr(self, "_frame_rgb", None)
+        cracks = [b for b in boxes if b[5] == 1]
+        if cv_ is None or img is None or not cracks:
+            return boxes
+        from models.crack_verifier import crop_around
+        try:
+            p = cv_.proba([crop_around(img, b) for b in cracks])
+        except Exception as e:
+            self._crack_gate = {"applied": False, "error": str(e)[:200]}
+            return boxes
+        keep_ids = {id(b) for b, pi in zip(cracks, p) if pi >= cv_.threshold}
+        self._crack_gate = {"applied": True, "threshold": round(cv_.threshold, 4),
+                            "crack_components": len(cracks), "removed": len(cracks) - len(keep_ids),
+                            "probabilities": [round(float(x), 3) for x in p]}
+        return [b for b in boxes if b[5] != 1 or id(b) in keep_ids]
 
     @staticmethod
     def _boxes_overlap(a, b, thresh=0.30):

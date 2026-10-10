@@ -225,6 +225,9 @@ except Exception:
     _KNOWN_ROUTES = {"/metrics", "/api/v1/ready", "/api/v1/health"}
 METRICS = ops.Metrics(_KNOWN_ROUTES)
 LIMITER = ops.RateLimiter()
+# /api/v1/context calls Open-Meteo and Overpass for the client, so it is always limited, whatever
+# ROAD_SHIELD_RATE_LIMIT says: their fair-use limits apply to this server's address.
+CONTEXT_LIMITER = ops.RateLimiter(per_minute=int(os.environ.get("ROAD_SHIELD_CONTEXT_RATE", "30")))
 
 
 def _readiness():
@@ -685,6 +688,25 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": err})
                 return
             self._send_json(200, google_maps_service.reverse_geocode(lat, lon))
+            return
+
+        if path == "/api/v1/context":
+            # rain and road at a location from public APIs (services/road_context.py), cached
+            q_params = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
+            lat, lon, err = _require_latlon(q_params)
+            if err:
+                self._send_json(400, {"error": err})
+                return
+            from services import road_context
+            allowed, retry = CONTEXT_LIMITER.check(_client_key(self.headers, self.client_address))
+            if not allowed:
+                self._send_json(429, {"error": f"too many location lookups; retry in {retry} s"})
+                return
+            if not road_context.enabled():
+                self._send_json(200, {"enabled": False, "reason": "ROAD_SHIELD_CONTEXT_APIS is 0 on this server"})
+                return
+            ctx = road_context.default()
+            self._send_json(200, {"enabled": True, "rain": ctx.rainfall(lat, lon), "road": ctx.road(lat, lon)})
             return
 
         if path == "/api/v1/maps/elevation":
@@ -2221,5 +2243,8 @@ def start_server(port=8000, host="0.0.0.0"):
 
 
 if __name__ == "__main__":
+    # Rain (Open-Meteo) and road (OpenStreetMap) at a defect's location: on when the server is started, unless
+    # set to 0 (services/road_context.py). Importing this module (tests, scripts) leaves them off.
+    os.environ.setdefault("ROAD_SHIELD_CONTEXT_APIS", "1")
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
     start_server(port=port)

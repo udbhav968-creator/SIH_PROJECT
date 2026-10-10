@@ -12,6 +12,14 @@ import json
 import os
 
 
+
+def _crack_verifier_served(ckpt):
+    try:
+        from models.crack_verifier import serving_state
+        return bool(serving_state(ckpt)["served"])
+    except Exception:
+        return False
+
 def _read(ckpt, name):
     p = os.path.join(ckpt, name)
     if not os.path.exists(p):
@@ -209,7 +217,10 @@ def model_registry(ckpt, hash_files=True):
     px = _read(ckpt, "defect_segmenter_report.json") or {}
     un = _read(ckpt, "defect_segmenter_unet.json") or {}
     if un:
-        add("U-Net (ResNet-18 encoder)", "defect segmentation", "deep segmenter, ImageNet encoder, all layers trained",
+        segformer = str(un.get("arch", "")).startswith("segformer")
+        add(un.get("model", "SegFormer").split(" (")[0] if segformer else "U-Net (ResNet-18 encoder)", "defect segmentation",
+            "transformer segmenter, ImageNet encoder, all layers trained" if segformer
+            else "deep segmenter, ImageNet encoder, all layers trained",
             ["defect_segmenter_unet.onnx"],
             {"test_crack_iou": ((un.get("iou") or {}).get("crack") or {}).get("iou"),
              "test_pothole_iou": ((un.get("iou") or {}).get("pothole") or {}).get("iou")},
@@ -223,6 +234,17 @@ def model_registry(ckpt, hash_files=True):
              "clean_false_blob_rate": (px.get("false_positives_on_clean_roads") or {}).get("photo_rate_any_blob")},
             seg.get("kind") == "pixel_classifier", px.get("trained_at_unix"),
             "thresholds tuned on a calibration split", "checkpoints/defect_segmenter_report.json")
+    cvr = _read(ckpt, "crack_verifier_report.json") or {}
+    if cvr:
+        ts = (cvr.get("test") or {}).get("summary") or {}
+        add("Crack verifier", "is a proposed crack a pavement crack (gate on segmenter crack components)",
+            "logistic regression on MobileNetV2 embeddings, trained on DeepCrack + CrackForest + road scenes",
+            ["crack_verifier.npz"],
+            {"test_auroc_crack_vs_road_scene": ts.get("auroc_crack_vs_road_scene"), "test_crack_kept": ts.get("crack_kept"),
+             "test_road_scene_rejected": ts.get("road_scene_rejected")},
+            _crack_verifier_served(ckpt), cvr.get("trained_unix"),
+            "served only if, through the whole pipeline, it removes false alarms and loses no defect "
+            "(scripts/select_crack_gate.py)", "checkpoints/crack_verifier_report.json, checkpoints/crack_verifier_selection.json")
     det = _read(ckpt, "road_damage_detector_report.json") or {}
     if det:
         t = det.get("test") or {}

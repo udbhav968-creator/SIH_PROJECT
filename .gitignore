@@ -104,3 +104,11 @@ logs/engine_public.*
 # MLOps: model versions, runs and MLflow mirror (large; every version of every model)
 mlops_store/
 mlruns/
+
+# pixel-labelled segmentation sets (scripts/fetch_seg_datasets.py): images and raw clones stay local; manifest.json is tracked
+datasets/seg_multi/*/
+datasets/external/*/
+!datasets/external/*/MANIFEST.json
+checkpoints/segmenter_backup/
+checkpoints/segformer_candidate/*.onnx
+checkpoints/segformer_candidate/*.pt

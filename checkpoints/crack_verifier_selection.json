@@ -1,0 +1,29 @@
+{
+ "rule": "served only if fewer clean photographs get a defect report and no detected defect is lost",
+ "served": false,
+ "why": "without the gate 9/77 clean photographs had a false alarm and 62/70 defects were found; with it 6/77 and 61/70; it lost 1 detected defect(s)",
+ "without_gate": {
+  "false_positive_photos": 9,
+  "detected_photos": 62
+ },
+ "with_gate": {
+  "false_positive_photos": 6,
+  "detected_photos": 61
+ },
+ "clean_photographs": 77,
+ "defect_photographs": 70,
+ "false_alarms_removed": [
+  "datasets/05_morth_civil_hard_negatives/real_images/kag_pothole-mix_0_00214_293.jpg",
+  "datasets/05_morth_civil_hard_negatives/real_images/kag_pothole-mix_0_00255_330.jpg",
+  "datasets/11_missing_road_divider/real_images/real_11_FileBarrier Highway between Cobar and Wilcann.jpg"
+ ],
+ "false_alarms_added": [],
+ "detections_lost": [
+  "datasets/03_crack500_fatigue/real_images/1053880_DF_020_020BDF0070_06061_RAW.jpg"
+ ],
+ "model_sha16": "f0f88ece75a431e8",
+ "per_folder": 40,
+ "seed": 7,
+ "seconds": 618.8,
+ "decided_unix": 1791586557
+}

@@ -28,7 +28,7 @@ const ENGINE_PATHS = new Set([
   "/api/v1/mlops/stage", "/api/v1/mlops/register", "/api/v1/mlops/reload", "/api/v1/mlops/al/queue",
   "/api/v1/mlops/al/image", "/api/v1/mlops/al/label", "/api/v1/mlops/al/export", "/api/v1/mlops/rebaseline",
   "/api/v1/traffic/cells", "/api/v1/traffic/estimate", "/api/v1/fleet/phone-tick", "/api/v1/fleet/phones",
-  "/api/v1/fleet/keys", "/api/v1/fleet/revoke", "/api/v1/fleet/reinstate",
+  "/api/v1/fleet/keys", "/api/v1/fleet/revoke", "/api/v1/fleet/reinstate", "/api/v1/context",
   "/api/v1/assistant/status", "/api/v1/assistant/ask", "/api/v1/assistant/report", "/api/v1/assistant/second-opinion",
 ]);
 

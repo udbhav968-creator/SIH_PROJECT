@@ -20,6 +20,13 @@ cameras and weather. These public datasets have exactly that:
   pothole_mix    4,340 masks of potholes AND cracks from several sources
                  (Mendeley Data; download the zip in a browser and pass it with
                  --pothole-mix-zip, because Mendeley blocks scripted downloads)
+  deepcrack      537 crack images with binary masks (Liu et al., Neurocomputing 2019), cloned
+                 from github.com/yhlleo/DeepCrack; licence: non-commercial research and education
+  crackforest    118 urban road crack images with masks (CFD; Shi et al., IEEE T-ITS 2016), cloned
+                 from github.com/cuilimeng/CrackForest-dataset; licence: non-commercial research.
+                 Both arrive by `git clone`, so they work where Hugging Face or Kaggle are blocked.
+                 CrackSeg9k already contains them: images that match one already taken from another
+                 source are skipped, so a crack is never counted twice
   own_india      YOUR photographs of Indian roads, outlined in Roboflow, CVAT
                  or LabelMe (--own-photos <zip or folder>). Accepts a COCO
                  segmentation export, LabelMe JSON files, or images/ + masks/
@@ -112,9 +119,36 @@ def split_of(source, ident, seed=42):
     return "train" if h < 0.75 else ("cal" if h < 0.85 else "test")
 
 
+class SeenElsewhere:
+    """Hashes of the images other sources already put in seg_multi, so the same photograph from two
+    collections (CrackSeg9k includes DeepCrack and CFD) is kept once."""
+
+    def __init__(self, exclude_source, threshold=6):
+        import cv2
+        self.threshold = threshold
+        hashes = []
+        for p in glob.glob(os.path.join(OUT, "*", "img", "*.jpg")):
+            if os.path.basename(os.path.dirname(os.path.dirname(p))) == exclude_source:
+                continue
+            im = cv2.imread(p)
+            if im is not None:
+                hashes.append(dhash(cv2.cvtColor(im, cv2.COLOR_BGR2RGB)))
+        self.ref = np.array(hashes, dtype=np.uint64)
+
+    def is_dup(self, img_rgb):
+        import cv2
+        if not len(self.ref):
+            return False
+        small = cv2.resize(np.asarray(img_rgb, dtype=np.uint8), (IN_W, IN_H), interpolation=cv2.INTER_AREA)
+        x = np.bitwise_xor(self.ref, np.uint64(dhash(small)))
+        d = np.unpackbits(x.view(np.uint8).reshape(-1, 8), axis=1).sum(1)
+        return bool(d.min() <= self.threshold)
+
+
 class Writer:
-    def __init__(self, source, guard):
-        self.source, self.guard = source, guard
+    def __init__(self, source, guard, seen=None):
+        self.source, self.guard, self.seen = source, guard, seen
+        self.dropped_dup = 0
         self.dir_img = os.path.join(OUT, source, "img")
         self.dir_lab = os.path.join(OUT, source, "lab")
         os.makedirs(self.dir_img, exist_ok=True)
@@ -133,6 +167,9 @@ class Writer:
             return
         if self.guard.is_leak(img_rgb):
             self.dropped_leak += 1
+            return
+        if self.seen is not None and self.seen.is_dup(img_rgb):
+            self.dropped_dup += 1
             return
         img = cv2.resize(img_rgb, (IN_W, IN_H), interpolation=cv2.INTER_AREA)
         lab = cv2.resize(label.astype(np.uint8), (IN_W, IN_H), interpolation=cv2.INTER_NEAREST)
@@ -160,7 +197,8 @@ class Writer:
     def summary(self):
         sp = {s: sum(1 for i in self.items if i["split"] == s) for s in ("train", "cal", "test")}
         return {"kept": len(self.items), "splits": sp, "dropped_near_duplicate_of_measurement_set": self.dropped_leak,
-                "dropped_no_defect_pixels": self.dropped_empty, "dropped_unreadable": self.dropped_bad}
+                "dropped_no_defect_pixels": self.dropped_empty, "dropped_unreadable": self.dropped_bad,
+                "dropped_already_taken_from_another_source": self.dropped_dup}
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +243,7 @@ def fetch_crackseg9k(guard, limit=None):
     except ImportError:
         os.system(f"{sys.executable} -m pip install -q datasets")
         from datasets import load_dataset
-    w = Writer("crackseg9k", guard)
+    w = Writer("crackseg9k", guard, seen=SeenElsewhere("crackseg9k"))   # DeepCrack / CFD already taken by git
     for split in ("train", "test"):
         ds = load_dataset("rimvydasrub/crackseg9k", split=split)
         cols = ds.column_names
@@ -326,6 +364,100 @@ def fetch_pothole_mix(guard, zip_path):
     s["images_without_a_matching_mask"] = unpaired
     s["mask_colours_seen"] = {str(k): v for k, v in sorted(colours.items(), key=lambda kv: -kv[1])[:8]}
     s["colour_rule"] = "red-dominant pixels -> pothole, other coloured pixels -> crack"
+    return s
+
+
+# ---------------------------------------------------------------------------
+# public crack datasets that live in git repositories
+# ---------------------------------------------------------------------------
+GIT_SOURCES = {
+    "deepcrack": {"repo": "https://github.com/yhlleo/DeepCrack.git",
+                  "licence": "non-commercial research and educational use (authors' notice in the repository)",
+                  "cite": "Liu, Yao, Lu, Xie, Li. DeepCrack. Neurocomputing 338 (2019)"},
+    "crackforest": {"repo": "https://github.com/cuilimeng/CrackForest-dataset.git",
+                    "licence": "non-commercial research use (README of the repository)",
+                    "cite": "Shi, Cui, Qi, Meng, Chen. Automatic road crack detection using random structured "
+                            "forests. IEEE T-ITS 17(12), 2016"},
+}
+
+
+def git_clone(repo, dest):
+    """Shallow clone (or reuse an earlier one). Returns (path, commit) or raises."""
+    import subprocess
+    if not os.path.isdir(os.path.join(dest, ".git")):
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        subprocess.run(["git", "-c", "core.symlinks=false", "clone", "-q", "--depth", "1", repo, dest],
+                       check=True, timeout=900)
+    commit = subprocess.run(["git", "-C", dest, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    return dest, commit
+
+
+def deepcrack_pairs(root):
+    """(id, image path, mask path) for the DeepCrack zip's train_img/train_lab and test_img/test_lab."""
+    unz = os.path.join(root, "_unzipped")
+    if not os.path.isdir(unz):
+        with zipfile.ZipFile(os.path.join(root, "dataset", "DeepCrack.zip")) as z:
+            z.extractall(unz)
+    out = []
+    for part in ("train", "test"):
+        for ip in sorted(glob.glob(os.path.join(unz, "**", f"{part}_img", "*.jpg"), recursive=True)):
+            stem = os.path.splitext(os.path.basename(ip))[0]
+            lp = os.path.join(os.path.dirname(os.path.dirname(ip)), f"{part}_lab", stem + ".png")
+            if os.path.exists(lp):
+                out.append((f"{part}_{stem}", ip, lp))
+    return out
+
+
+def crackforest_pairs(root):
+    """(id, image path, .mat path); in the .mat, Segmentation == 2 marks crack pixels."""
+    out = []
+    for mp in sorted(glob.glob(os.path.join(root, "groundTruth", "*.mat"))):
+        stem = os.path.splitext(os.path.basename(mp))[0]
+        ip = os.path.join(root, "image", stem + ".jpg")
+        if os.path.exists(ip):
+            out.append((stem, ip, mp))
+    return out
+
+
+def read_crack_mask(path):
+    """Binary crack mask (1 = crack) from a DeepCrack .png or a CrackForest .mat."""
+    if path.endswith(".mat"):
+        from scipy.io import loadmat
+        g = loadmat(path)["groundTruth"][0, 0]
+        return (np.asarray(g["Segmentation"]) == 2).astype(np.uint8)
+    from PIL import Image
+    m = np.asarray(Image.open(path).convert("L"))
+    return (m > 127).astype(np.uint8)
+
+
+def fetch_git_source(name, guard, limit=None, raw_root=None):
+    from PIL import Image
+    info = GIT_SOURCES[name]
+    raw_root = raw_root or os.path.join(OUT, "_raw")
+    try:
+        root, commit = git_clone(info["repo"], os.path.join(raw_root, name))
+    except Exception as e:
+        return {"skipped": f"git clone failed: {str(e)[:160]}"}
+    pairs = deepcrack_pairs(root) if name == "deepcrack" else crackforest_pairs(root)
+    out_dir = os.path.join(OUT, name)
+    if os.path.isdir(out_dir):
+        shutil.rmtree(out_dir)                       # rebuilt from scratch, like pothole_mix
+    w = Writer(name, guard, seen=SeenElsewhere(name))
+    for ident, ip, mp in pairs:
+        if limit and len(w.items) >= limit:
+            break
+        try:
+            img = np.asarray(Image.open(ip).convert("RGB"))
+            lab = read_crack_mask(mp)
+        except Exception:
+            w.dropped_bad += 1
+            continue
+        if lab.shape != img.shape[:2] and lab.T.shape == img.shape[:2]:
+            lab = lab.T                              # a few masks are stored transposed
+        w.add(ident, img, lab)
+    s = w.summary()
+    s.update(repository=info["repo"], commit=commit, licence=info["licence"], cite=info["cite"],
+             pairs_found=len(pairs))
     return s
 
 
@@ -615,12 +747,13 @@ def main(argv=None):
     ap.add_argument("--pothole-mix-zip", default=None)
     ap.add_argument("--own-photos", default=None,
                     help="zip or folder of your own outlined road photographs (COCO, LabelMe or mask folders)")
-    ap.add_argument("--only", nargs="*", default=None, help="crackseg9k kaggle_pothole pothole_mix own_india")
+    ap.add_argument("--only", nargs="*", default=None,
+                    help="crackseg9k kaggle_pothole pothole_mix deepcrack crackforest own_india")
     ap.add_argument("--limit", type=int, default=None, help="max images per source (smoke runs)")
     a = ap.parse_args(argv)
 
     guard = LeakGuard()
-    want = set(a.only or ["crackseg9k", "kaggle_pothole", "pothole_mix", "own_india"])
+    want = set(a.only or ["crackseg9k", "kaggle_pothole", "pothole_mix", "deepcrack", "crackforest", "own_india"])
     report = {"leak_guard": {"measurement_photographs_hashed": int(len(guard.ref)), "hamming_threshold": guard.threshold,
                              "folders": EVAL_FOLDERS}, "sources": {}}
     if "crackseg9k" in want:
@@ -632,6 +765,9 @@ def main(argv=None):
         report["sources"]["kaggle_pothole"] = fetch_kaggle_pothole(guard)
     if "pothole_mix" in want:
         report["sources"]["pothole_mix"] = fetch_pothole_mix(guard, a.pothole_mix_zip)
+    for name in ("deepcrack", "crackforest"):          # after crackseg9k, so its copies are recognised
+        if name in want:
+            report["sources"][name] = fetch_git_source(name, guard, a.limit)
     if "own_india" in want:
         report["sources"]["own_india"] = fetch_own_photos(guard, a.own_photos)
 
@@ -657,6 +793,15 @@ def main(argv=None):
                     groups = json.load(fh)
             ids = [os.path.splitext(os.path.basename(p))[0] for p in sorted(glob.glob(os.path.join(d, "lab", "*.png")))]
             items[src] = [{"id": i, "split": split_of(src, groups.get(i, i))} for i in ids]
+    # sources fetched on another machine (not on this disk) keep their recorded items, so running one source
+    # here does not erase the record of the others
+    if os.path.exists(man_path):
+        try:
+            with open(man_path, "r", encoding="utf-8") as fh:
+                for src, its in (json.load(fh).get("items") or {}).items():
+                    items.setdefault(src, its)
+        except Exception:
+            pass
     report["items"] = items
     os.makedirs(OUT, exist_ok=True)
     with open(os.path.join(OUT, "manifest.json"), "w", encoding="utf-8") as fh:

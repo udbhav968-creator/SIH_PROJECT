@@ -5,6 +5,8 @@
 #   !bash scripts/colab_train_extra.sh 2>&1 | tee -a logs/colab_extra.txt
 #
 #   E1  U-Net deep segmenter on the DNIT polygons      (~20-35 min on a T4)
+#   E1c SegFormer-B1 candidate (transformer segmenter) on all pixel-labelled sets; replaces the U-Net only
+#       if better end to end (scripts/select_deep_segmenter.py)  (~40-60 min on a T4)
 #   E1b IMU 1-D CNN vs RandomForest, re-run with time-blocked CV folds (~5 min)
 #   E2  YOLOv8 road-damage detector on RDD2022 India   (~45-70 min on a T4)
 #
@@ -39,7 +41,7 @@ fi
 [ -f logs/.extra_start ] || touch logs/.extra_start
 
 step "E0. environment"
-pip install -q "scikit-learn>=1.8.0,<1.9" "opencv-python-headless>=4.8,<5" onnxruntime onnx onnxscript ultralytics 2>&1 | tail -2
+pip install -q "scikit-learn>=1.8.0,<1.9" "opencv-python-headless>=4.8,<5" onnxruntime onnx onnxscript ultralytics transformers scipy 2>&1 | tail -2
 python -c "import torch, ultralytics; print('torch', torch.__version__, '| ultralytics', ultralytics.__version__, '| GPU', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
 
 step "E1. U-Net deep segmenter (DNIT polygons, same 500 test photographs as the pixel classifier)"
@@ -55,6 +57,25 @@ if ! skip E1; then
     [ -f checkpoints/segmenter_selection.json ] && done_ E1
   else
     echo "U-Net smoke run FAILED - skipping the full run; the pixel classifier stays in service"
+  fi
+fi
+
+step "E1c. SegFormer candidate (transformer segmenter; CrackSeg9k, DeepCrack, CrackForest, Kaggle + DNIT)"
+if ! skip E1c; then
+  python -m scripts.fetch_seg_datasets --only crackseg9k deepcrack crackforest kaggle_pothole 2>&1 | tail -4
+  echo "--- smoke run (1 epoch, untrained weights, written to /tmp)"
+  if python -m training.train_unet_multi --arch "${SEGFORMER_ARCH:-segformer-b1}" --smoke --workers 0 \
+       --out /tmp/segformer_smoke 2>&1 | tail -4; then
+    echo "--- full run"
+    python -m training.train_unet_multi --arch "${SEGFORMER_ARCH:-segformer-b1}" --epochs "${SEGFORMER_EPOCHS:-30}" \
+        --out checkpoints/segformer_candidate ${STATE_DIR:+--ckpt-dir "$STATE_DIR/segformer"} --ckpt-every-min 30 \
+        2>&1 | tee logs/segformer.txt | grep -E "device|SegFormer|segformer|epoch +(1|5|10|15|20|25|30)/|early stop|thresholds|SELECTION|TEST|exported|Error|error"
+    if [ -f checkpoints/segformer_candidate/defect_segmenter_unet.onnx ]; then
+      # replaces the U-Net only if it is better end to end; then the usual check against the pixel classifier
+      python -m scripts.select_deep_segmenter --candidate checkpoints/segformer_candidate 2>&1 | tail -8 && done_ E1c
+    fi
+  else
+    echo "SegFormer smoke run FAILED - the served segmenter is unchanged"
   fi
 fi
 

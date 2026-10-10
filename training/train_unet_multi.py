@@ -64,7 +64,7 @@ MULTI = os.path.join(ENGINE_ROOT, "datasets", "seg_multi")
 PT_NAME = "defect_segmenter_unet.pt"
 # Close-up texture patches with no road scene, horizon or camera geometry. They teach what a crack looks
 # like, but the serving threshold is calibrated on what the bus camera sees (protocol v2).
-TEXTURE_PATCH_SOURCES = {"crackseg9k"}
+TEXTURE_PATCH_SOURCES = {"crackseg9k", "deepcrack", "crackforest"}   # top-down close-ups: train, never set thresholds
 PROTOCOL_V2 = {
     "version": 2,
     "change": "per-class thresholds tuned only on calibration photographs of road scenes (DNIT, Kaggle pothole, "
@@ -78,7 +78,7 @@ PROTOCOL_V2 = {
 }
 # share of each epoch drawn from each source (renormalised over the sources present)
 SHARES = {"dnit": 0.35, "dnit_clean": 0.10, "crackseg9k": 0.25, "pothole_mix": 0.20, "kaggle_pothole": 0.10,
-          "own_india": 0.25}
+          "own_india": 0.25, "deepcrack": 0.05, "crackforest": 0.03}
 RESUME_NAME, BEST_NAME, SPLIT_NAME = "unet_resume.pt", "unet_best_weights.pt", "dnit_split.json"
 PAUSED_EXIT = 3
 
@@ -93,11 +93,47 @@ def _atomic_save(obj, path):
 def resume_config(a):
     """The settings a resumed run must share with the run it continues."""
     return {"encoder": a.encoder, "min_crop_scale": a.min_crop_scale, "samples_per_epoch": a.samples_per_epoch,
-            "batch": a.batch, "lr": a.lr, "epochs": a.epochs, "seed": a.seed}
+            "batch": a.batch, "lr": a.lr, "epochs": a.epochs, "seed": a.seed, "arch": getattr(a, "arch", "unet")}
+
+
+SEGFORMER_VARIANTS = ("segformer-b0", "segformer-b1", "segformer-b2")
+
+
+def build_segformer(arch, n_classes=3, pretrained=True):
+    """SegFormer (Xie et al., NeurIPS 2021): a Mix Transformer encoder pretrained on ImageNet and a light MLP
+    decoder, from Hugging Face transformers. Wrapped so it takes the U-Net's input and returns logits at the
+    input resolution, which lets it use this script's loss, validation, thresholds, test and ONNX export
+    unchanged and be served by models/unet_segmenter.UNetSegmenter."""
+    import torch.nn as nn
+    import torch.nn.functional as F
+    try:
+        from transformers import SegformerConfig, SegformerForSemanticSegmentation
+    except ImportError:
+        os.system(f"{sys.executable} -m pip install -q transformers")
+        from transformers import SegformerConfig, SegformerForSemanticSegmentation
+    name = "nvidia/mit-" + arch.split("-")[1]
+    if pretrained:
+        net = SegformerForSemanticSegmentation.from_pretrained(name, num_labels=n_classes,
+                                                               ignore_mismatched_sizes=True)
+    else:
+        net = SegformerForSemanticSegmentation(SegformerConfig.from_pretrained(name, num_labels=n_classes))
+
+    class SegFormerSeg(nn.Module):
+        def __init__(self, m):
+            super().__init__()
+            self.net = m
+
+        def forward(self, x):
+            out = self.net(pixel_values=x).logits            # 1/4 of the input resolution
+            return F.interpolate(out, size=x.shape[-2:], mode="bilinear", align_corners=False)
+
+    return SegFormerSeg(net)
 
 
 def check_resume_config(saved, now):
     """None if the run can continue, else the reason it cannot (any of these changes the schedule or the experiment)."""
+    if saved.get("arch", "unet") != now.get("arch", "unet"):        # older checkpoints were always U-Nets
+        return f"the saved run trained a {saved.get('arch', 'unet')}, this one a {now.get('arch', 'unet')}"
     for k in ("encoder", "batch", "samples_per_epoch", "epochs", "lr", "min_crop_scale"):
         if k in saved and saved[k] != now[k]:
             return f"{k} was {saved[k]} in the saved run and is {now[k]} now"
@@ -237,11 +273,14 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--encoder", default="resnet18", choices=["resnet18", "resnet34"])
+    ap.add_argument("--arch", default="unet", choices=("unet",) + SEGFORMER_VARIANTS,
+                    help="unet (default) or a SegFormer candidate; a candidate must be written to its own --out folder "
+                         "and is served only through scripts/select_deep_segmenter.py")
     ap.add_argument("--min-crop-scale", type=float, default=0.75,
                     help="smallest random zoom-in crop as a share of the frame (0.35 teaches close-ups)")
     ap.add_argument("--samples-per-epoch", type=int, default=4000)
     ap.add_argument("--batch", type=int, default=8)
-    ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--lr", type=float, default=None, help="encoder learning rate (default 3e-4 U-Net, 6e-5 SegFormer)")
     ap.add_argument("--patience", type=int, default=8)
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--pixel-sample", type=int, default=100,
@@ -265,6 +304,13 @@ def main(argv=None):
     ap.add_argument("--smoke", action="store_true")
     a = ap.parse_args(argv)
     t_session = time.time()
+    segformer = a.arch in SEGFORMER_VARIANTS
+    if a.lr is None:
+        a.lr = 6e-5 if segformer else 3e-4
+    if segformer and os.path.abspath(a.out) == os.path.abspath(CKPT_DIR):
+        sys.exit("[unet-multi] a SegFormer candidate is written to its own folder (e.g. --out "
+                 "checkpoints/segformer_candidate), never over the served segmenter; "
+                 "scripts/select_deep_segmenter.py decides whether it replaces the U-Net")
 
     import cv2
     import torch
@@ -341,11 +387,20 @@ def main(argv=None):
     loader = torch.utils.data.DataLoader(train_set, batch_size=a.batch, sampler=sampler,
                                          num_workers=a.workers, drop_last=True, pin_memory=device.type == "cuda")
 
-    model = build_unet(pretrained=not a.smoke, encoder=a.encoder).to(device)
-    print(f"  encoder {a.encoder} | random zoom-in crops down to {a.min_crop_scale:.2f} of the frame")
-    enc = [p for n, p in model.named_parameters() if n.split(".")[0] in ("stem", "l1", "l2", "l3", "l4")]
-    dec = [p for n, p in model.named_parameters() if n.split(".")[0] not in ("stem", "l1", "l2", "l3", "l4")]
-    opt = torch.optim.AdamW([{"params": enc, "lr": a.lr}, {"params": dec, "lr": a.lr * 3}], weight_decay=1e-4)
+    if segformer:
+        model = build_segformer(a.arch, pretrained=not a.smoke).to(device)
+        print(f"  {a.arch} (MiT encoder, ImageNet) | random zoom-in crops down to {a.min_crop_scale:.2f} of the frame")
+    else:
+        model = build_unet(pretrained=not a.smoke, encoder=a.encoder).to(device)
+        print(f"  encoder {a.encoder} | random zoom-in crops down to {a.min_crop_scale:.2f} of the frame")
+
+    def is_encoder(n):
+        return n.split(".")[0] in ("stem", "l1", "l2", "l3", "l4") or ".encoder." in n
+
+    enc = [p for n, p in model.named_parameters() if is_encoder(n)]
+    dec = [p for n, p in model.named_parameters() if not is_encoder(n)]
+    opt = torch.optim.AdamW([{"params": enc, "lr": a.lr}, {"params": dec, "lr": a.lr * (10 if segformer else 3)}],
+                            weight_decay=1e-2 if segformer else 1e-4)
     steps = max(1, a.epochs * len(loader))
     warm = max(1, len(loader))
     sched = torch.optim.lr_scheduler.LambdaLR(
@@ -471,7 +526,7 @@ def main(argv=None):
     # IoU selection on DNIT calibration, exactly as the first U-Net
     from models.defect_segmenter import DefectSegmenter
     from training.train_segmenter import clean_false_positive_rate
-    pixel = DefectSegmenter(os.path.join(a.out, "defect_segmenter.joblib"))
+    pixel = DefectSegmenter(os.path.join(CKPT_DIR, "defect_segmenter.joblib"))     # the served pixel classifier
     val = {"unet": score(unet, sp["cal"])}
     val["unet"]["clean_false_blob_rate"] = (clean_false_positive_rate(unet, sp["neg_cal"]) or {}).get(
         "photo_rate_any_blob") if sp["neg_cal"] else None
@@ -488,7 +543,7 @@ def main(argv=None):
     # test, once: DNIT + every extra source
     test = {"dnit": {"unet": score(unet, sp["test"])}}
     test["dnit"]["unet"]["clean"] = clean_false_positive_rate(unet, sp["neg_test"]) if sp["neg_test"] else None
-    rp = os.path.join(a.out, "defect_segmenter_report.json")
+    rp = os.path.join(CKPT_DIR, "defect_segmenter_report.json")
     if os.path.exists(rp):
         with open(rp, "r", encoding="utf-8") as fh:
             prep = json.load(fh)
@@ -545,8 +600,10 @@ def main(argv=None):
     for src, d in extra.items():
         sources[src] = {k: len(v) for k, v in d.items()}
     meta = {
-        "model": f"U-Net, {a.encoder} encoder pretrained on ImageNet, all layers trained on several datasets",
-        "encoder": a.encoder, "min_crop_scale": a.min_crop_scale,
+        "model": (f"SegFormer-{a.arch.split('-')[1].upper()} (Mix Transformer encoder pretrained on ImageNet), all layers "
+                  f"trained on several datasets" if segformer else
+                  f"U-Net, {a.encoder} encoder pretrained on ImageNet, all layers trained on several datasets"),
+        "arch": a.arch, "encoder": a.arch if segformer else a.encoder, "min_crop_scale": a.min_crop_scale,
         "input_size": [IN_W, IN_H], "normalisation": "ImageNet mean/std", "tta_flip": True,
         "thresholds": unet.thresholds, "threshold_sources": thr_sources,
         "decision_rule": "per-class threshold tuned for IoU on the calibration photographs of " + ", ".join(thr_sources),

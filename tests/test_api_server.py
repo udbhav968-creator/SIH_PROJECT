@@ -37,6 +37,7 @@ os.environ["ROAD_SHIELD_WRITABLE_DIR"] = _TMP
 os.environ["ROAD_SHIELD_MLOPS_DIR"] = os.path.join(_TMP, "mlops_store")   # never the repository's model registry
 os.environ["ROAD_SHIELD_MLFLOW"] = "0"
 os.environ["ROAD_SHIELD_LLM"] = "none"            # never call a paid or local model from the test suite
+os.environ["ROAD_SHIELD_CONTEXT_APIS"] = "0"      # never call Open-Meteo or Overpass from the test suite
 # Demo fixtures are opt-in since they are invented reports; these tests use
 # them to check deduplication end to end, so they switch them on explicitly.
 os.environ["ROAD_SHIELD_SEED_DEMO"] = "1"

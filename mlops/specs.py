@@ -95,6 +95,18 @@ SPECS = {
         "gate": {"primary": "held_out_area_r2", "direction": "max", "floor": 0.8, "max_drop": 0.02},
         "train": ["python", "-m", "training.train_civil_models"],
     },
+    "crack_verifier": {
+        "title": "Crack verifier (gate on segmenter crack components)",
+        "task": "is the crop around a proposed crack a pavement crack",
+        "files": ["crack_verifier.npz", "crack_verifier_report.json"],
+        "metrics": {"crack_verifier_report.json": {"auroc_road_scene": "test.summary.auroc_crack_vs_road_scene",
+                                                   "crack_kept": "test.summary.crack_kept",
+                                                   "road_scene_rejected": "test.summary.road_scene_rejected"}},
+        "gate": {"primary": "auroc_road_scene", "direction": "max", "floor": 0.9, "max_drop": 0.02,
+                 "guards": {"crack_kept": {"direction": "max", "max_drop": 0.02}}},
+        "train": ["python", "-m", "training.train_crack_verifier"],
+        "note": "a retrained verifier is not served until python -m scripts.select_crack_gate measures it end to end",
+    },
     "ood_guard": {
         "title": "Input guard (out-of-distribution)",
         "task": "is this a usable road photograph",

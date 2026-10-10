@@ -64,6 +64,24 @@ India validation photographs beats the served YOLO, and only if its ONNX file is
 rtdetr-l exports at roughly 130 MB, so expect it to be measured and reported but not served. The ONNX decoder reads
 RT-DETR's normalised-box output, and serving resizes to a square the way RT-DETR was validated.
 
+## 4b. SegFormer segmenter candidate
+
+`training/train_unet_multi.py --arch segformer-b1 --out checkpoints/segformer_candidate` trains SegFormer
+(Mix Transformer encoder pretrained on ImageNet, MLP decoder; Xie et al., NeurIPS 2021) on exactly the U-Net's
+data, split, loss, thresholds and test, and exports it to the same ONNX contract, so the serving code is the
+same. It is a candidate: it is written to its own folder and `scripts/select_deep_segmenter.py` lets it replace
+the U-Net only if, through `audit_image()`, it finds at least as many defects with no more false alarms (and is
+strictly better on one, or on calibration IoU when tied). Then the usual check against the pixel classifier
+decides what is served. Colab stage E1c runs both steps.
+
+## 4c. Crack verifier (trained on CPU here)
+
+A second look at each crack the segmenter proposes: logistic regression on MobileNetV2 embeddings of the crop,
+trained on DeepCrack and CrackForest windows (also turned into a dashcam's tilted, blurred view) against
+crack-free pavement and road scenes. `scripts/select_crack_gate.py` serves it only if the whole pipeline,
+on the measurement photographs it never trained on, raises fewer false alarms and loses no detected defect.
+Numbers: `checkpoints/crack_verifier_report.json`; decision (tied to the model file by SHA-256): `checkpoints/crack_verifier_selection.json`. Measured here: false alarms 9 → 6 of 77 clean photographs, but one of 62 detected defects lost, so by the rule it is not served.
+
 ## Running the GPU part
 
 After `scripts/colab_train_all.sh` in the same Colab session:
