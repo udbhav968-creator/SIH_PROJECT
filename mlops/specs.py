@@ -66,6 +66,19 @@ SPECS = {
                                               "pothole_recall": "per_class_report.Pothole Impact.recall"}},
         "gate": {"primary": "held_out_macro_f1", "direction": "max", "floor": 0.6, "max_drop": 0.02,
                  "guards": {"pothole_recall": {"direction": "max", "max_drop": 0.05}}},
+        # which report holds the served model's numbers depends on which model imu_model_selection.json serves
+        "variants": {"selector": ["imu_model_selection.json", "served"], "default": "random_forest",
+                     "by_served": {
+                         "random_forest": {"weights": ["imu_shock_model.joblib"],
+                                           "metrics": {"imu_shock_report.json": {
+                                               "held_out_accuracy": "held_out_validation_accuracy",
+                                               "held_out_macro_f1": "per_class_report.macro avg.f1-score",
+                                               "pothole_recall": "per_class_report.Pothole Impact.recall"}}},
+                         "cnn": {"weights": ["imu_shock_cnn.onnx"],
+                                 "metrics": {"imu_deep_report.json": {
+                                     "held_out_accuracy": "held_out.cnn.accuracy",
+                                     "held_out_macro_f1": "held_out.cnn.macro_f1",
+                                     "pothole_recall": "held_out.cnn.per_class.Pothole Impact.recall"}}}}},
         "train": ["python", "-m", "training.train_imu"],
     },
     "pci_regressor": {
@@ -121,6 +134,34 @@ SPECS = {
         "train": ["python", "-m", "training.train_ood_guard", "--ood-dir", "{ood_dir}"],
     },
 }
+
+
+def _served_variant(name, root):
+    s = SPECS[name]
+    v = s.get("variants")
+    if not v:
+        return None
+    import json
+    import os
+    served = None
+    try:
+        with open(os.path.join(root, v["selector"][0]), encoding="utf-8") as fh:
+            served = json.load(fh).get(v["selector"][1])
+    except Exception:
+        pass
+    return v["by_served"].get(served) or v["by_served"][v["default"]]
+
+
+def metric_sources(name, root):
+    """{report file: {metric: path}} for the model this version serves (models with variants pick by selection)."""
+    var = _served_variant(name, root)
+    return var["metrics"] if var else spec(name).get("metrics", {})
+
+
+def served_weights(name, root, rel):
+    """Is rel a weight file of the model this version serves? (Every weight file, for models without variants.)"""
+    var = _served_variant(name, root)
+    return True if var is None else rel in var.get("weights", [])
 
 
 def spec(name):

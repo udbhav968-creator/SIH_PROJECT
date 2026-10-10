@@ -213,6 +213,46 @@ class RegistryTest(_Tmp):
         with open(os.path.join(self.ckpt, "ood_guard.npz")) as fh:
             self.assertEqual(fh.read(), "edited by hand")
 
+    def test_intake_gates_the_imu_model_that_is_served(self):
+        import zipfile
+        from mlops.intake import intake
+        rf = {"held_out_validation_accuracy": 0.87, "per_class_report": {
+            "macro avg": {"f1-score": 0.73}, "Pothole Impact": {"recall": 0.9}}}
+        deep = lambda f1, rec: {"served": "x", "held_out": {"cnn": {"accuracy": 0.8, "macro_f1": f1,  # noqa: E731
+                                                                     "per_class": {"Pothole Impact": {"recall": rec}}}}}
+        _write(os.path.join(self.ckpt, "imu_shock_model.joblib"), "rf")
+        _write(os.path.join(self.ckpt, "imu_shock_report.json"), rf)
+        _write(os.path.join(self.ckpt, "imu_model_selection.json"), {"served": "random_forest"})
+        _write(os.path.join(self.ckpt, "imu_shock_cnn.onnx"), "cnn-v1")
+        _write(os.path.join(self.ckpt, "imu_deep_report.json"), deep(0.60, 0.9))
+        reg = self._reg()
+        reg.bootstrap()
+        self.assertEqual(reg.production("imu_classifier")["metrics"]["held_out_macro_f1"], 0.73,
+                         "the random forest is served, so its report is the one gated")
+
+        def zipped(name, files):
+            z = os.path.join(self.tmp, name)
+            with zipfile.ZipFile(z, "w") as f:
+                for k, v in files.items():
+                    f.writestr("checkpoints/" + k, v if isinstance(v, str) else json.dumps(v))
+            return z
+        repo = os.path.join(self.tmp, "repo")
+        same = zipped("same.zip", {"imu_shock_cnn.onnx": "cnn-v1", "imu_model_selection.json":
+                                   open(os.path.join(self.ckpt, "imu_model_selection.json")).read()})
+        self.assertEqual(intake(same, reg, repo_root=repo)["models"]["imu_classifier"]["outcome"], "unchanged")
+        # a new CNN that is not served, with its report: judged on the served random forest, which did not change
+        notserved = zipped("ns.zip", {"imu_shock_cnn.onnx": "cnn-v2", "imu_deep_report.json": deep(0.62, 0.9)})
+        self.assertNotEqual(intake(notserved, reg, repo_root=repo)["models"]["imu_classifier"]["outcome"], "needs_report")
+        # the CNN becomes the served model but its report did not come: never judged on someone else's numbers
+        switch = zipped("sw.zip", {"imu_shock_cnn.onnx": "cnn-v3", "imu_model_selection.json": {"served": "cnn"}})
+        self.assertEqual(intake(switch, reg, repo_root=repo)["models"]["imu_classifier"]["outcome"], "needs_report")
+        # with its report, the CNN is gated on the CNN's own numbers (here worse than the forest: kept back)
+        full = zipped("full.zip", {"imu_shock_cnn.onnx": "cnn-v4", "imu_model_selection.json": {"served": "cnn"},
+                                   "imu_deep_report.json": deep(0.60, 1.0)})
+        r = intake(full, reg, repo_root=repo)["models"]["imu_classifier"]
+        self.assertEqual(r["metrics"]["held_out_macro_f1"], 0.60)
+        self.assertEqual(r["outcome"], "kept_as_candidate")
+
     def test_materialize_and_manual_gate(self):
         _write(os.path.join(self.ckpt, "road_shield_detector.onnx"), "coco")
         reg = self._reg()

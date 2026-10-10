@@ -89,22 +89,31 @@ def intake(src, reg=None, promote=True, repo_root=ENGINE_ROOT, actor="intake", n
                 continue
             claimed |= set(new_files)
             entry = {"new_files": sorted(new_files)}
-            # the gate reads the model's report; new weights next to production's old report would be judged
-            # on production's own numbers and pass, so a model whose report did not come with it is not taken in
-            missing = [f for f in SPECS[name].get("metrics", {}) if f not in new_files]
-            if missing:
-                report["models"][name] = dict(entry, outcome="needs_report", reason=(
-                    f"the run changed {', '.join(sorted(new_files)[:3])} but not {', '.join(missing)}, which the gate "
-                    f"reads; review it, then register and promote by hand if it should be served"))
+            prod = reg.production(name)
+            prod_sha = {f["path"]: f["sha256"] for f in (prod or {}).get("files", [])}
+            changed = {rel for rel, p in new_files.items() if sha256_file(p) != prod_sha.get(rel)}
+            if prod is not None and not changed:
+                report["models"][name] = dict(entry, outcome="unchanged", version=prod["version"])
                 continue
             cand_root = os.path.join(tmp, "cand_" + name)
             os.makedirs(cand_root)
-            prod = reg.production(name)
             if prod is not None:                                   # production's stored files first (not whatever
                 reg.materialize(name, prod["version"], cand_root)  # is in checkpoints/: a hand edit stays out) ...
             for rel, p in new_files.items():                       # ... with the run's files over them
                 os.makedirs(os.path.dirname(os.path.join(cand_root, rel)), exist_ok=True)
                 shutil.copyfile(p, os.path.join(cand_root, rel))
+            # The gate reads the report of the model the candidate SERVES (mlops/specs.metric_sources). New weights
+            # of that model next to its old report would be judged on production's own numbers and pass, so they
+            # are not taken in without their report. Changed reports or selection files alone are fine.
+            from mlops.specs import metric_sources, served_weights
+            sources = metric_sources(name, cand_root)
+            weights = [f for f in changed if f.lower().endswith(WEIGHT_EXT) and served_weights(name, cand_root, f)]
+            missing = [f for f in sources if f not in changed]
+            if weights and missing:
+                report["models"][name] = dict(entry, outcome="needs_report", reason=(
+                    f"the run changed {', '.join(sorted(weights)[:3])} but not {', '.join(missing)}, which the gate "
+                    f"reads for the model it serves; review it, then register and promote by hand if it should be served"))
+                continue
             try:
                 v = reg.register(name, root=cand_root, stage="candidate", source="intake", actor=actor,
                                  note=note or f"intake from {os.path.basename(str(src))}")

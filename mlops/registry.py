@@ -127,7 +127,8 @@ class Registry:
     def read_metrics(self, model, root=None):
         root = root or self.ckpt_dir
         out = {}
-        for fname, keys in spec(model).get("metrics", {}).items():
+        from mlops.specs import metric_sources
+        for fname, keys in metric_sources(model, root).items():
             p = os.path.join(root, fname)
             if not os.path.exists(p):
                 continue
