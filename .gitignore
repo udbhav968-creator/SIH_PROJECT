@@ -108,3 +108,4 @@ mlruns/
 *.db-wal
 *.db-shm
 *.onnx
+.env*

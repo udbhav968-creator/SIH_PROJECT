@@ -59,6 +59,7 @@ git push origin master:add-dan-dag
 
 # 6. Force-deploy to Vercel Production bypassing all build/CDN caches
 Write-Host "`n[5/5] Deploying to Vercel Production with --force (cache bypassed)..." -ForegroundColor Yellow
+vercel.ps1 link --project road-shield-ai-engine --yes
 vercel.ps1 --prod --force --yes
 
 Write-Host "`n=========================================================================" -ForegroundColor Green
