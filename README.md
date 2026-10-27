@@ -16,7 +16,7 @@ A road photograph goes in. A classified, outlined, measured and costed repair or
 | Road-condition classifier, 7 classes | **93.3%** accuracy, macro-F1 **0.828** | 630 held-out images from 567 photographs never seen in training, scored once |
 | Same classifier on **Indian roads** | **92.3%** accuracy, macro-F1 **0.922** (was 33.4% before Indian data was added) | 1,200 crops from held-out RDD2022 India photographs (normal / crack / pothole), never trained on |
 | Hand-crafted baseline (HOG + LBP + colour → SVM) | —, macro-F1 — | the identical split — the number the deep model has to beat |
-| Defect segmentation (pixel classifier) | crack IoU **0.231**, pothole IoU **0.144** | 500 held-out DNIT photographs |
+| Defect segmentation (U-Net) | crack IoU **0.284**, pothole IoU **0.605** | 500 held-out DNIT photographs |
 | CNN semantic gate on the segmenter | pothole IoU 0.102 → 0.271; clean roads with a false blob 8/50 → 2/50 | photographs the classifier never saw |
 | IMU shock classifier (RandomForest) | **87.2%** accuracy, macro-F1 0.729 | 164 held-out windows of real Indian-road drive logs, split by time block |
 
@@ -34,7 +34,7 @@ photo ─► classify ─► segment ─► project to ground ─► depth inter
 | Stage | How | Status |
 |---|---|---|
 | Classification | mobilenet_v3_large (ImageNet-pretrained), fine-tuned end to end on a Colab T4 GPU, ONNX Runtime on CPU, flip test-time augmentation | **measured**, 93.3% |
-| Segmentation | Pixel classifier (gradient boosting on 11 per-pixel features), trained on the DNIT hand-drawn polygons; per-class thresholds tuned on a calibration split | **measured**, IoU above |
+| Segmentation | U-Net, ResNet-18 encoder (ImageNet), all layers trained, trained on the DNIT hand-drawn polygons; per-class thresholds tuned on a calibration split | **measured**, IoU above |
 | Area | each mask pixel's own ground footprint, summed (inverse perspective mapping) | **measured** *if* the camera is calibrated — 30 cm of mount height moves area ~46% |
 | Depth | IRC band placed by measured extent / cavity contrast | **estimate**, always an interval |
 | Cost | MoRTH Section 500 bitumen tonnage (compaction factor 1.15) × rate | **range**, because depth is a range |
@@ -58,13 +58,13 @@ Measured on one photograph through the API: with an assumed camera mount the def
 | resnet50 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 89.5%, F1 0.857; India 91.9% | no (lost on validation) |
 | MobileNetV2 + mlp_512_256 | frozen CNN features + trained head | head only | 86.4%, F1 0.787 | fallback |
 | HOG/LBP + PCA + SVM | classical features | yes | — | fallback |
-| U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack 0.271, pothole 0.632 | no (won on masks, lost the end-to-end check; 18/24 end to end) |
-| Pixel segmenter | gradient boosting on 11 features | yes | crack 0.231, pothole 0.144 | **yes** |
+| U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack 0.284, pothole 0.605 | **yes** |
+| Pixel segmenter | gradient boosting on 11 features | yes | crack 0.231, pothole 0.144 | fallback |
 | YOLOv8n (COCO) | pretrained object detector | **no** — used as published | people, vehicles, signs | yes |
-| IMU 1-D CNN | deep, from scratch | yes (GPU) | 78.1% | no (lost in cross-validation) |
+| IMU 1-D CNN | deep, from scratch | yes (GPU) | 76.2% | no (lost in cross-validation) |
 | IMU RandomForest | classical, from scratch | yes | 87.2% | **yes** |
 
-**How a model gets served.** Each deep model replaces its classical counterpart only by a rule written before its test set is scored: the fine-tuned CNN must beat the frozen head on validation accuracy *and* macro-F1; the U-Net must beat the pixel classifier on crack *and* pothole IoU on calibration photographs without more false blobs on clean roads, and then hold up end to end - through the full pipeline on photographs from other datasets it must find at least as many defects with no more false alarms (`scripts/segmenter_deployment_check.py`; it did not: U-Net 18/24 defects found vs 24/24); the IMU CNN must win 5-fold cross-validation on accuracy *and* macro-F1. Losers are reported, not hidden. Pretrained ImageNet/COCO weights are the starting point (transfer learning); training then updates every layer on this project's data, except the frozen-head baseline.
+**How a model gets served.** Each deep model replaces its classical counterpart only by a rule written before its test set is scored: the fine-tuned CNN must beat the frozen head on validation accuracy *and* macro-F1; the U-Net must beat the pixel classifier on crack *and* pothole IoU on calibration photographs without more false blobs on clean roads, and then hold up end to end - through the full pipeline on photographs from other datasets it must find at least as many defects with no more false alarms (`scripts/segmenter_deployment_check.py`); the IMU CNN must win 5-fold cross-validation on accuracy *and* macro-F1. Losers are reported, not hidden. Pretrained ImageNet/COCO weights are the starting point (transfer learning); training then updates every layer on this project's data, except the frozen-head baseline.
 
 ### Per class (served classifier)
 
@@ -191,7 +191,7 @@ Main API endpoints (full reference at `/api-docs`): `POST /api/v1/pipeline/deep-
 - **No bus data yet.** Photographs are DNIT (Brazil), Kaggle and RDD2022 India smartphone images; IMU logs are from a car. A bus-mounted pilot is the next step.
 - **Four rare classes** (waterlogging, missing zebra crossing, missing divider, damaged sign) have ~50 photographs each, and their scores are unstable.
 - **The Indian test covers three classes** (normal, crack, pothole), not seven.
-- **Segmentation** (crack IoU 0.231, pothole IoU 0.144) is measured on DNIT photographs, not Indian or bus-camera frames; area and cost inherit its error.
+- **Segmentation** (crack IoU 0.284, pothole IoU 0.605) is measured on DNIT photographs, not Indian or bus-camera frames; area and cost inherit its error.
 - **Depth is an estimate**; PCI and deterioration reproduce engineering formulas and are not validated against field surveys.
 - **Privacy blur recall is not measured** — there is no annotated face/plate set.
 - **The live site serves results, not inference**: photograph and video analysis needs the engine.

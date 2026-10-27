@@ -9,10 +9,10 @@
    "cv_macro_f1_std": 0.0854
   },
   "cnn": {
-   "cv_accuracy": 0.7635,
-   "cv_accuracy_std": 0.0909,
-   "cv_macro_f1": 0.6622,
-   "cv_macro_f1_std": 0.1298
+   "cv_accuracy": 0.7626,
+   "cv_accuracy_std": 0.0884,
+   "cv_macro_f1": 0.6532,
+   "cv_macro_f1_std": 0.111
   }
  },
  "held_out_for_reporting": {
@@ -21,8 +21,8 @@
    "macro_f1": 0.7292
   },
   "cnn": {
-   "accuracy": 0.7805,
-   "macro_f1": 0.6037
+   "accuracy": 0.7622,
+   "macro_f1": 0.6273
   }
  }
 }

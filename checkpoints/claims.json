@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1793141175,
+  "generated_unix": 1793145176,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
@@ -7,7 +7,7 @@
       "name": "Vision distress classifier",
       "architecture": "mobilenet_v3_large (ImageNet-pretrained, fine-tuned end to end on the road corpus, refit on train+val), ONNX Runtime, flip TTA",
       "role": "7-class road condition classification",
-      "why": "Chosen over the frozen MobileNetV2 + scikit-learn head by a rule fixed before the test set was read: it had to beat the head on both accuracy and macro-F1 on non-test data. fine-tuned mobilenet_v3_large: validation accuracy 0.9182, macro-F1 0.8807; frozen head: grouped-CV accuracy 0.8234, macro-F1 0.7520",
+      "why": "Chosen over the frozen MobileNetV2 + scikit-learn head by a rule fixed before the test set was read: it had to beat the head on both accuracy and macro-F1 on non-test data. fine-tuned mobilenet_v3_large: validation accuracy 0.9182, macro-F1 0.8807; frozen head: grouped-CV accuracy 0.8214, macro-F1 0.7480",
       "rejected_alternative": "Frozen-embedding head (kept as the fallback); other fine-tuned architectures lost on validation - see finetune_summary.json.",
       "measured": {
         "served_model": "mobilenet_v3_large_refit",
@@ -65,23 +65,24 @@
     {
       "id": "M_SEG",
       "name": "Defect segmentation",
-      "architecture": "HistGradientBoosting pixel classifier on 11 vectorised features, trained on defect polygons AND clean-road photographs, with hard-negative mining",
+      "architecture": "U-Net with a ResNet-18 encoder (ImageNet-pretrained, all layers trained on the DNIT polygons), flip TTA, ONNX Runtime; per-class thresholds tuned on the calibration split",
       "role": "Per-pixel crack/pothole mask, which is what the AREA is computed from",
-      "why": "A bounding box around a diagonal crack overstates its area by about 13x, and area drives tonnage which drives cost. A per-pixel mask gives the defect's own footprint. It also decides where a defect IS, which is the proposal stage for the whole pipeline.",
-      "rejected_alternative": "argmax over the three classes. With ~97% of pixels sound road that floods the mask; per-class thresholds are tuned for IoU on a split the test set never sees.",
+      "why": "Chosen by a rule fixed before the test set was scored: U-Net served only if, on the calibration photographs, its crack IoU AND pothole IoU both exceed the pixel classifier's, and its clean-road false-blob rate is no more than 5 points worse. Decided before the test set was scored. calibration IoU crack 0.268 vs 0.214, pothole 0.646 vs 0.119; clean false-blob rate 0.0 vs 0.1807",
+      "rejected_alternative": "HistGradientBoosting pixel classifier on 11 hand-designed features (kept as the fallback). Held-out test (same 500 photographs): U-Net crack IoU 0.2842, pothole IoU 0.605; pixel classifier crack 0.2314, pothole 0.1437.",
       "measured": {
-        "crack_iou": 0.2314,
-        "pothole_iou": 0.1437,
-        "crack_dice": 0.3758,
-        "pothole_dice": 0.2513,
-        "clean_road_false_blob_rate": 0.2333,
+        "crack_iou": 0.2842,
+        "pothole_iou": 0.605,
+        "crack_dice": 0.4426,
+        "pothole_dice": 0.7539,
+        "clean_road_false_blob_rate": 0.0,
         "clean_photographs_scored": 120,
         "test_photographs": 500,
-        "training_pixels": 3692729
+        "pixel_classifier_crack_iou": 0.2314,
+        "pixel_classifier_pothole_iou": 0.1437
       },
-      "evidence": "checkpoints/defect_segmenter_report.json, checkpoints/segmenter_selection.json",
-      "reproduce": "python -m training.train_segmenter --images 2000",
-      "not_claimed": "IoU of 0.2314 (crack) and 0.1437 (pothole) is a working model, not a solved problem. On held-out clean roads the segmenter alone draws a false blob on 23.3% of 120 photographs. The CNN semantic gate in front of it reduced clean roads with a false blob from 8/50 to 2/50 and raised pothole IoU from 0.1024 to 0.2706 (checkpoints/semantic_gate_report.json, measured with the frozen-embedding classifier). Water-filled potholes are still under-detected.",
+      "evidence": "checkpoints/defect_segmenter_unet.json, checkpoints/segmenter_selection.json, training/train_unet_segmenter.py",
+      "reproduce": "python -m training.train_unet_segmenter",
+      "not_claimed": "IoU of 0.2842 (crack) and 0.605 (pothole) on DNIT (Brazilian) photographs; not measured on Indian or bus-camera frames. On held-out clean roads it draws a false blob on 0.0% of 120 photographs.",
       "status_endpoint": "/api/v1/segmentation/status",
       "deep_alternative_tried": "A U-Net (ResNet-18 encoder) was trained on DNIT plus public outline datasets (crackseg9k, kaggle_pothole, pothole_mix) and did NOT replace this model: calibration IoU crack 0.255 vs 0.214, pothole 0.640 vs 0.119; clean false-blob rate 0.0241 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 18/24 defects with 3/36 false positives; the pixel classifier found 24/24 with 3/36 Held-out test (same 500 photographs): U-Net crack IoU 0.2712, pothole IoU 0.6317; pixel classifier crack 0.2314, pothole 0.1437."
     },
@@ -121,10 +122,10 @@
               "cv_macro_f1_std": 0.0854
             },
             "cnn": {
-              "cv_accuracy": 0.7635,
-              "cv_accuracy_std": 0.0909,
-              "cv_macro_f1": 0.6622,
-              "cv_macro_f1_std": 0.1298
+              "cv_accuracy": 0.7626,
+              "cv_accuracy_std": 0.0884,
+              "cv_macro_f1": 0.6532,
+              "cv_macro_f1_std": 0.111
             }
           },
           "held_out": {
@@ -133,8 +134,8 @@
               "macro_f1": 0.7292
             },
             "cnn": {
-              "accuracy": 0.7805,
-              "macro_f1": 0.6037
+              "accuracy": 0.7622,
+              "macro_f1": 0.6273
             }
           }
         }
