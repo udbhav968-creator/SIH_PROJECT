@@ -229,6 +229,37 @@ def model_registry(ckpt, hash_files=True):
             ["imu_shock_model.joblib"], {"held_out_accuracy": imu.get("held_out_validation_accuracy")},
             imu_sel.get("served") != "cnn", imu.get("trained_at_unix"), imu_sel.get("rule"),
             "checkpoints/imu_shock_report.json")
+    dan = _read(ckpt, "dan_dag_report.json") or {}
+    if dan:
+        add("DAN-DAG (PAM/CAM + 21-node Decision DAG)", "road-condition classification + attention + pairwise DAG",
+            "Dual Attention Network + Directed Acyclic Graph", ["dan_dag_model.joblib"],
+            {"test_accuracy": dan.get("held_out_accuracy"), "test_macro_f1": dan.get("held_out_macro_f1")},
+            True, dan.get("trained_at_unix"), "runs alongside primary classifier",
+            "checkpoints/dan_dag_report.json")
+    pci = _read(ckpt, "pci_model_report.json") or {}
+    if pci:
+        add("ASTM D6433-20 PCI Regressor", "pavement condition index (0-100)",
+            "GradientBoostingRegressor on detector + black-hat features vs human COCO polygons",
+            ["pci_model.joblib"], {"held_out_r2": pci.get("held_out_r2"), "held_out_mae": pci.get("held_out_mae")},
+            True, pci.get("trained_at_unix"), "route-grouped split on 4,042 real highway photos",
+            "checkpoints/pci_model_report.json")
+    det_m = _read(ckpt, "deterioration_model_report.json") or {}
+    if det_m:
+        add("HDM-4 / IRC:37-2018 Deterioration Forecaster", "12-month area & depth progression",
+            "Dual GradientBoostingRegressor on sequential highway frames",
+            ["deterioration_model.joblib"],
+            {"held_out_area_r2": det_m.get("held_out_area_r2"), "held_out_depth_r2": det_m.get("held_out_depth_r2")},
+            True, det_m.get("trained_at_unix"), "route-grouped split across 254 highway blocks",
+            "checkpoints/deterioration_model_report.json")
+    dep_m = _read(ckpt, "depth_estimator_report.json") or {}
+    if dep_m:
+        add("Monocular Photometric & Hydraulic Depth Estimator", "pothole & crack depth (cm)",
+            "GradientBoostingRegressor on bbox contrast/gradient vs rasterized 60-vertex COCO polygon depth",
+            ["depth_estimator_model.joblib"],
+            {"pothole_r2": dep_m.get("held_out_pothole_r2"), "pothole_mae_cm": dep_m.get("held_out_pothole_mae_cm"),
+             "crack_r2": dep_m.get("held_out_crack_r2"), "crack_mae_cm": dep_m.get("held_out_crack_mae_cm")},
+            True, dep_m.get("trained_at_unix"), "route-grouped split on 2,485 human-annotated defect polygons",
+            "checkpoints/depth_estimator_report.json")
     return {"models": out, "serving": [m["name"] for m in out if m["serving"]],
             "classifier_selection": vsel or None,
             "note": "sha256 identifies the exact artefact; reports name the run that produced it"}

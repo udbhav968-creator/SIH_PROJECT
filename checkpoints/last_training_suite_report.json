@@ -277,7 +277,631 @@
         }
       },
       "data_provenance": "Real field-recorded 100-sample tri-axial accelerometer windows (Ax, Ay, Az in m/s^2) from Indian road vehicular drives in VishalSingh25/Pothole-Project (10 CSV drive logs, 205,491 raw samples across smooth road, unmarked speed bumps/joints, marked speed breakers/rumble strips, and pothole corridors), split with a strict temporal block boundary and guard gap between train and held-out validation.",
-      "trained_at_unix": 1792904705
+      "trained_at_unix": 1793049861
+    },
+    "pci": {
+      "astm_density_grid": [
+        0.0,
+        0.5,
+        1.0,
+        2.5,
+        5.0,
+        10.0,
+        20.0,
+        35.0,
+        50.0,
+        75.0,
+        100.0
+      ],
+      "feature_names": [
+        "crack_density_pct",
+        "crack_severity_num",
+        "pothole_count",
+        "pothole_density_pct",
+        "pothole_severity_num",
+        "excess_rutting_mm",
+        "excess_iri_m_km",
+        "excess_age_yr"
+      ],
+      "held_out_r2": 0.7316,
+      "held_out_mae": 3.4852,
+      "held_out_rmse": 7.3645,
+      "sklearn_version": "1.8.0",
+      "trained_at_unix": 1793134121,
+      "n_real_images_used": 4042,
+      "train_records": 3472,
+      "held_out_test_records": 570,
+      "distinct_route_groups": 263,
+      "basis": "Ground-truth ASTM D6433-20 PCI computed from 2235 human-annotated COCO segmentation polygons (datasets/incoming/cracks_potholes_dnit/coco.json) + 1807 clean road photographs, predicted from coarse bounding-box & morphological features and evaluated on 570 unseen route-separated photographs."
+    },
+    "deterioration": {
+      "feature_names": [
+        "init_area_m2",
+        "depth_cm",
+        "esal_trucks",
+        "rain_mm",
+        "age_yr",
+        "horizon_days"
+      ],
+      "irc_calibration": {
+        "source": "IRC:37-2018 Table 3 + CSIR-CRRI Research Paper 267 + DNIT Longitudinal Highway Survey",
+        "k_area_base": 0.00165,
+        "k_area_esal": 0.00048,
+        "k_area_rain": 0.00078,
+        "k_depth_base": 0.0014,
+        "k_depth_esal": 0.00038,
+        "k_depth_rain": 0.00065
+      },
+      "held_out_area_r2": 0.9879,
+      "held_out_area_mae": 0.1638,
+      "held_out_depth_r2": 0.9895,
+      "held_out_depth_mae": 0.0663,
+      "sklearn_version": "1.8.0",
+      "trained_at_unix": 1793134139,
+      "train_records": 11935,
+      "held_out_test_records": 3696,
+      "distinct_route_groups": 254,
+      "basis": "Human-annotated polygon defect areas and hydraulic depths along sequential DNIT highway survey corridors paired with IRC:37-2018 Table 3 / CSIR-CRRI Paper 267 empirical progression constants, split by highway route block."
+    },
+    "depth_estimator": {
+      "real_road_crops_used": 564,
+      "real_crack_images_used": 1921,
+      "held_out_pothole_r2": 0.3897,
+      "held_out_pothole_mae_cm": 0.7683,
+      "held_out_crack_r2": 0.8603,
+      "held_out_crack_mae_cm": 0.0589,
+      "sklearn_version": "1.8.0",
+      "trained_at_unix": 1793134239,
+      "synthetic_grid_removed": true,
+      "train_records": 454,
+      "held_out_test_records": 110,
+      "basis": "Coarse bounding-box contrast & gradient features mapped to rasterized human-drawn COCO polygon mask interior/rim contrast and metric hydraulic radius R_h across 564 pothole polygons and 1921 crack frames, split by highway route block. Zero synthetic grid padding."
+    },
+    "dan_dag": {
+      "model": "DAN-DAG Deep Network (mobilenetv2 + PAM/CAM Dual-Attention + 21-Node Decision DAG)",
+      "architecture": {
+        "dan": {
+          "position_attention_module": "8x8 Spatial Grid Scaled Dot-Product Self-Attention (16-D PAM)",
+          "channel_attention_module": "1280 -> 160 -> 1280 Squeeze-Excitation + Fisher Channel Salience",
+          "domain_adaptation": "Multi-Domain Alignment (Dry Asphalt / Wet Reflective / Low-Light Shadow)"
+        },
+        "dag": {
+          "feature_fusion_dag": "Skip-Connection Fusion (Node L1 16-D PAM + Node L3 1280-D DAN -> 1296-D)",
+          "decision_dag_nodes": 21,
+          "decision_dag_levels": 6,
+          "deep_residual_mlp": "1296 -> 512 (LayerNorm+SiLU) -> 256 (Skip+LayerNorm+SiLU) -> 7"
+        }
+      },
+      "backbone": "mobilenetv2",
+      "fit_images_with_multiscale_crops": 4117,
+      "held_out_test_images": 508,
+      "held_out_test_photographs": 489,
+      "held_out_test_accuracy": 0.878,
+      "held_out_test_macro_f1": 0.7571,
+      "mean_21_node_pairwise_dag_accuracy": 0.9459,
+      "sub_models_compared": {
+        "dag_21_node_classifier": {
+          "accuracy": 0.8524,
+          "macro_f1": 0.678
+        },
+        "dan_deep_residual_mlp": {
+          "accuracy": 0.8878,
+          "macro_f1": 0.7962
+        },
+        "dan_dag_fused_ensemble": {
+          "accuracy": 0.878,
+          "macro_f1": 0.7571,
+          "blend_mlp": 0.55
+        }
+      },
+      "pairwise_dag_edges": {
+        "0_vs_1": {
+          "pair": "Normal Road / Sound Pa vs Crack (Longitudinal / ",
+          "held_out_pairwise_accuracy": 1.0,
+          "held_out_samples": 261
+        },
+        "0_vs_2": {
+          "pair": "Normal Road / Sound Pa vs Pothole Cavity",
+          "held_out_pairwise_accuracy": 0.9792,
+          "held_out_samples": 288
+        },
+        "0_vs_3": {
+          "pair": "Normal Road / Sound Pa vs Waterlogging / Floodin",
+          "held_out_pairwise_accuracy": 0.9419,
+          "held_out_samples": 86
+        },
+        "0_vs_4": {
+          "pair": "Normal Road / Sound Pa vs Missing Zebra Crossing",
+          "held_out_pairwise_accuracy": 0.8953,
+          "held_out_samples": 86
+        },
+        "0_vs_5": {
+          "pair": "Normal Road / Sound Pa vs Missing Road Divider",
+          "held_out_pairwise_accuracy": 0.8721,
+          "held_out_samples": 86
+        },
+        "0_vs_6": {
+          "pair": "Normal Road / Sound Pa vs Damaged Traffic Sign",
+          "held_out_pairwise_accuracy": 0.9651,
+          "held_out_samples": 86
+        },
+        "1_vs_2": {
+          "pair": "Crack (Longitudinal /  vs Pothole Cavity",
+          "held_out_pairwise_accuracy": 0.8962,
+          "held_out_samples": 395
+        },
+        "1_vs_3": {
+          "pair": "Crack (Longitudinal /  vs Waterlogging / Floodin",
+          "held_out_pairwise_accuracy": 1.0,
+          "held_out_samples": 193
+        },
+        "1_vs_4": {
+          "pair": "Crack (Longitudinal /  vs Missing Zebra Crossing",
+          "held_out_pairwise_accuracy": 1.0,
+          "held_out_samples": 193
+        },
+        "1_vs_5": {
+          "pair": "Crack (Longitudinal /  vs Missing Road Divider",
+          "held_out_pairwise_accuracy": 1.0,
+          "held_out_samples": 193
+        },
+        "1_vs_6": {
+          "pair": "Crack (Longitudinal /  vs Damaged Traffic Sign",
+          "held_out_pairwise_accuracy": 1.0,
+          "held_out_samples": 193
+        },
+        "2_vs_3": {
+          "pair": "Pothole Cavity vs Waterlogging / Floodin",
+          "held_out_pairwise_accuracy": 0.9909,
+          "held_out_samples": 220
+        },
+        "2_vs_4": {
+          "pair": "Pothole Cavity vs Missing Zebra Crossing",
+          "held_out_pairwise_accuracy": 0.9909,
+          "held_out_samples": 220
+        },
+        "2_vs_5": {
+          "pair": "Pothole Cavity vs Missing Road Divider",
+          "held_out_pairwise_accuracy": 1.0,
+          "held_out_samples": 220
+        },
+        "2_vs_6": {
+          "pair": "Pothole Cavity vs Damaged Traffic Sign",
+          "held_out_pairwise_accuracy": 1.0,
+          "held_out_samples": 220
+        },
+        "3_vs_4": {
+          "pair": "Waterlogging / Floodin vs Missing Zebra Crossing",
+          "held_out_pairwise_accuracy": 0.7778,
+          "held_out_samples": 18
+        },
+        "3_vs_5": {
+          "pair": "Waterlogging / Floodin vs Missing Road Divider",
+          "held_out_pairwise_accuracy": 0.9444,
+          "held_out_samples": 18
+        },
+        "3_vs_6": {
+          "pair": "Waterlogging / Floodin vs Damaged Traffic Sign",
+          "held_out_pairwise_accuracy": 0.8889,
+          "held_out_samples": 18
+        },
+        "4_vs_5": {
+          "pair": "Missing Zebra Crossing vs Missing Road Divider",
+          "held_out_pairwise_accuracy": 0.7778,
+          "held_out_samples": 18
+        },
+        "4_vs_6": {
+          "pair": "Missing Zebra Crossing vs Damaged Traffic Sign",
+          "held_out_pairwise_accuracy": 0.9444,
+          "held_out_samples": 18
+        },
+        "5_vs_6": {
+          "pair": "Missing Road Divider vs Damaged Traffic Sign",
+          "held_out_pairwise_accuracy": 1.0,
+          "held_out_samples": 18
+        }
+      },
+      "training_history": [
+        {
+          "epoch": 1,
+          "loss": 0.9874
+        },
+        {
+          "epoch": 15,
+          "loss": 0.2805
+        },
+        {
+          "epoch": 30,
+          "loss": 0.2479
+        },
+        {
+          "epoch": 45,
+          "loss": 0.2363
+        },
+        {
+          "epoch": 65,
+          "loss": 0.2335
+        }
+      ],
+      "confusion_matrix": [
+        [
+          64,
+          1,
+          1,
+          1,
+          3,
+          6,
+          1
+        ],
+        [
+          0,
+          165,
+          19,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          19,
+          191,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          6,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          1,
+          8,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          8
+        ]
+      ],
+      "per_class_report": {
+        "Normal Road / Sound Pavement": {
+          "precision": 0.9411764705882353,
+          "recall": 0.8311688311688312,
+          "f1-score": 0.8827586206896552,
+          "support": 77.0
+        },
+        "Crack (Longitudinal / Transverse / Alligator)": {
+          "precision": 0.8918918918918919,
+          "recall": 0.8967391304347826,
+          "f1-score": 0.8943089430894309,
+          "support": 184.0
+        },
+        "Pothole Cavity": {
+          "precision": 0.9009433962264151,
+          "recall": 0.9052132701421801,
+          "f1-score": 0.9030732860520094,
+          "support": 211.0
+        },
+        "Waterlogging / Flooding Hazard": {
+          "precision": 0.6666666666666666,
+          "recall": 0.6666666666666666,
+          "f1-score": 0.6666666666666666,
+          "support": 9.0
+        },
+        "Missing Zebra Crossing": {
+          "precision": 0.4444444444444444,
+          "recall": 0.4444444444444444,
+          "f1-score": 0.4444444444444444,
+          "support": 9.0
+        },
+        "Missing Road Divider": {
+          "precision": 0.5333333333333333,
+          "recall": 0.8888888888888888,
+          "f1-score": 0.6666666666666666,
+          "support": 9.0
+        },
+        "Damaged Traffic Sign": {
+          "precision": 0.8,
+          "recall": 0.8888888888888888,
+          "f1-score": 0.8421052631578947,
+          "support": 9.0
+        },
+        "accuracy": 0.8779527559055118,
+        "macro avg": {
+          "precision": 0.739779457592998,
+          "recall": 0.7888585886620975,
+          "f1-score": 0.7571462701095383,
+          "support": 508.0
+        },
+        "weighted avg": {
+          "precision": 0.8832239231243618,
+          "recall": 0.8779527559055118,
+          "f1-score": 0.8792375394625074,
+          "support": 508.0
+        }
+      },
+      "training_seconds": 499.3,
+      "trained_at_unix": 1793048597
+    },
+    "cnn_head_mobilenetv2": {
+      "model": "CNNHead (mobilenetv2 ImageNet embeddings -> ensemble_soft)",
+      "backbone": "mobilenetv2",
+      "head": "ensemble_soft",
+      "embedding_dim": 1000,
+      "class_names": [
+        "Normal Road / Sound Pavement",
+        "Crack (Longitudinal / Transverse / Alligator)",
+        "Pothole Cavity",
+        "Waterlogging / Flooding Hazard",
+        "Missing Zebra Crossing",
+        "Missing Road Divider",
+        "Damaged Traffic Sign"
+      ],
+      "fit_images": 2980,
+      "held_out_test_images": 508,
+      "held_out_test_photographs": 489,
+      "held_out_test_accuracy": 0.872,
+      "held_out_test_macro_f1": 0.742,
+      "random_guess_baseline": 0.1429,
+      "heads_compared": {
+        "logistic_C0.3|plain": {
+          "features": "plain",
+          "cv_accuracy": 0.8106,
+          "cv_accuracy_std": 0.0203,
+          "cv_macro_f1": 0.7268,
+          "cv_macro_f1_std": 0.0168,
+          "seconds": 22.6,
+          "score": 0.7687
+        },
+        "logistic_C1|plain": {
+          "features": "plain",
+          "cv_accuracy": 0.8047,
+          "cv_accuracy_std": 0.0152,
+          "cv_macro_f1": 0.7218,
+          "cv_macro_f1_std": 0.018,
+          "seconds": 20.1,
+          "score": 0.7632
+        },
+        "logistic_C3|plain": {
+          "features": "plain",
+          "cv_accuracy": 0.7962,
+          "cv_accuracy_std": 0.0188,
+          "cv_macro_f1": 0.7152,
+          "cv_macro_f1_std": 0.0222,
+          "seconds": 16.7,
+          "score": 0.7557
+        },
+        "sgd_huber|plain": {
+          "features": "plain",
+          "cv_accuracy": 0.7357,
+          "cv_accuracy_std": 0.0233,
+          "cv_macro_f1": 0.6596,
+          "cv_macro_f1_std": 0.0369,
+          "seconds": 66.6,
+          "score": 0.6976
+        },
+        "mlp_512_256|plain": {
+          "features": "plain",
+          "cv_accuracy": 0.8115,
+          "cv_accuracy_std": 0.0235,
+          "cv_macro_f1": 0.7371,
+          "cv_macro_f1_std": 0.029,
+          "seconds": 58.2,
+          "score": 0.7743
+        },
+        "logistic_C0.3|flip_tta": {
+          "features": "flip_tta",
+          "cv_accuracy": 0.8118,
+          "cv_accuracy_std": 0.0109,
+          "cv_macro_f1": 0.7264,
+          "cv_macro_f1_std": 0.0163,
+          "seconds": 21.0,
+          "score": 0.7691
+        },
+        "logistic_C1|flip_tta": {
+          "features": "flip_tta",
+          "cv_accuracy": 0.8098,
+          "cv_accuracy_std": 0.0112,
+          "cv_macro_f1": 0.7225,
+          "cv_macro_f1_std": 0.0155,
+          "seconds": 20.7,
+          "score": 0.7661
+        },
+        "logistic_C3|flip_tta": {
+          "features": "flip_tta",
+          "cv_accuracy": 0.8037,
+          "cv_accuracy_std": 0.0116,
+          "cv_macro_f1": 0.7155,
+          "cv_macro_f1_std": 0.011,
+          "seconds": 17.2,
+          "score": 0.7596
+        },
+        "sgd_huber|flip_tta": {
+          "features": "flip_tta",
+          "cv_accuracy": 0.7569,
+          "cv_accuracy_std": 0.0342,
+          "cv_macro_f1": 0.6882,
+          "cv_macro_f1_std": 0.0393,
+          "seconds": 73.2,
+          "score": 0.7226
+        },
+        "mlp_512_256|flip_tta": {
+          "features": "flip_tta",
+          "cv_accuracy": 0.8307,
+          "cv_accuracy_std": 0.0139,
+          "cv_macro_f1": 0.754,
+          "cv_macro_f1_std": 0.0231,
+          "seconds": 69.4,
+          "score": 0.7923
+        },
+        "ensemble_soft|flip_tta": {
+          "features": "flip_tta",
+          "members": {
+            "svc_C": 10.0,
+            "logistic_C": 0.3,
+            "mlp": "512-256"
+          },
+          "cv_accuracy": 0.8392,
+          "cv_accuracy_std": 0.0127,
+          "cv_macro_f1": 0.7626,
+          "cv_macro_f1_std": 0.017,
+          "seconds": 159.8,
+          "score": 0.8009
+        }
+      },
+      "selection": "5-fold StratifiedGroupKFold on the fit split, grouped by source photograph; score = mean(accuracy, macro-F1); test set scored once",
+      "features": "flip_tta",
+      "tta_flip": true,
+      "confusion_matrix": [
+        [
+          61,
+          1,
+          1,
+          1,
+          3,
+          9,
+          1
+        ],
+        [
+          0,
+          167,
+          17,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          19,
+          189,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          6,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          7,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          9
+        ]
+      ],
+      "per_class_report": {
+        "Normal Road / Sound Pavement": {
+          "precision": 0.8970588235294118,
+          "recall": 0.7922077922077922,
+          "f1-score": 0.8413793103448276,
+          "support": 77.0
+        },
+        "Crack (Longitudinal / Transverse / Alligator)": {
+          "precision": 0.893048128342246,
+          "recall": 0.907608695652174,
+          "f1-score": 0.9002695417789758,
+          "support": 184.0
+        },
+        "Pothole Cavity": {
+          "precision": 0.9130434782608695,
+          "recall": 0.8957345971563981,
+          "f1-score": 0.9043062200956937,
+          "support": 211.0
+        },
+        "Waterlogging / Flooding Hazard": {
+          "precision": 0.6666666666666666,
+          "recall": 0.6666666666666666,
+          "f1-score": 0.6666666666666666,
+          "support": 9.0
+        },
+        "Missing Zebra Crossing": {
+          "precision": 0.4,
+          "recall": 0.4444444444444444,
+          "f1-score": 0.42105263157894735,
+          "support": 9.0
+        },
+        "Missing Road Divider": {
+          "precision": 0.4375,
+          "recall": 0.7777777777777778,
+          "f1-score": 0.56,
+          "support": 9.0
+        },
+        "Damaged Traffic Sign": {
+          "precision": 0.8181818181818182,
+          "recall": 1.0,
+          "f1-score": 0.9,
+          "support": 9.0
+        },
+        "accuracy": 0.8720472440944882,
+        "macro avg": {
+          "precision": 0.7179284164258589,
+          "recall": 0.7834914248436075,
+          "f1-score": 0.7419534814950158,
+          "support": 508.0
+        },
+        "weighted avg": {
+          "precision": 0.8798182978413737,
+          "recall": 0.8720472440944882,
+          "f1-score": 0.8743580486383568,
+          "support": 508.0
+        }
+      },
+      "split_strategy": "grouped by source photograph; test set scored once",
+      "trained_at_unix": 1793134859
     }
-  }
+  },
+  "updated_at_unix": 1793135612
 }

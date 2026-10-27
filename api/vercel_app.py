@@ -128,6 +128,8 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -194,6 +196,10 @@ class handler(BaseHTTPRequestHandler):
         if path in ("/api/v1/health", "/api/health"):
             heads = list_reports("cnn_head_", "_report.json")
             seg = read_json("defect_segmenter_report.json")
+            pci_rep = read_json("pci_model_report.json")
+            det_rep = read_json("deterioration_model_report.json")
+            dep_rep = read_json("depth_estimator_report.json")
+            dan_rep = read_json("dan_dag_report.json")
             self._send(200, {
                 "service": "ROAD-SHIELD AI Engine",
                 "deployment": "vercel-static",
@@ -209,8 +215,14 @@ class handler(BaseHTTPRequestHandler):
                     "defect_segmenter": ("REPORTED - not loaded in this deployment"
                                          if seg else "NOT_TRAINED"),
                     "imu_shock_classifier": "REPORTED - not loaded in this deployment",
-                    "astm_d6433_pci_engine": "READY_FORMULA_BASED",
-                    "deterioration_forecaster": "READY_FORMULA_BASED",
+                    "astm_d6433_pci_engine": ("REPORTED - not loaded in this deployment"
+                                              if pci_rep else "READY_FORMULA_BASED"),
+                    "deterioration_forecaster": ("REPORTED - not loaded in this deployment"
+                                                 if det_rep else "READY_FORMULA_BASED"),
+                    "depth_estimator": ("REPORTED - not loaded in this deployment"
+                                        if dep_rep else "READY_FORMULA_BASED"),
+                    "dan_dag_network": ("REPORTED - not loaded in this deployment"
+                                        if dan_rep else "NOT_TRAINED"),
                 },
             })
             return
@@ -218,7 +230,11 @@ class handler(BaseHTTPRequestHandler):
         if path == "/api/v1/training/metrics":
             out = {"deployment": "vercel-static", "active_vision_backend": "not loaded here"}
             for name, key in (("vision_distress_report.json", "vision"),
-                              ("imu_shock_report.json", "imu")):
+                              ("imu_shock_report.json", "imu"),
+                              ("pci_model_report.json", "pci"),
+                              ("deterioration_model_report.json", "deterioration"),
+                              ("depth_estimator_report.json", "depth_estimator"),
+                              ("dan_dag_report.json", "dan_dag")):
                 r = read_json(name)
                 if r:
                     out[key] = r

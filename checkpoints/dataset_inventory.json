@@ -1,0 +1,58 @@
+{
+  "hub_version": "3.0-real-inventory",
+  "note": "Counts below are read from the actual files under datasets/ - not a fixed catalog figure.",
+  "labeled_photo_classes": {
+    "Normal Road / Sound Pavement": {
+      "class_id": 0,
+      "folder": "05_morth_civil_hard_negatives",
+      "usable_photos": 614,
+      "distinct_source_photos": 386
+    },
+    "Crack (Longitudinal / Transverse / Alligator)": {
+      "class_id": 1,
+      "folder": "03_crack500_fatigue",
+      "usable_photos": 1230,
+      "distinct_source_photos": 1230
+    },
+    "Pothole Cavity": {
+      "class_id": 2,
+      "folder": "02_kaggle_pothole_600",
+      "usable_photos": 1404,
+      "distinct_source_photos": 1404
+    },
+    "Waterlogging / Flooding Hazard": {
+      "class_id": 3,
+      "folder": "09_waterlogging_hazard",
+      "usable_photos": 60,
+      "distinct_source_photos": 60
+    },
+    "Missing Zebra Crossing": {
+      "class_id": 4,
+      "folder": "10_missing_zebra_crossing",
+      "usable_photos": 60,
+      "distinct_source_photos": 60
+    },
+    "Missing Road Divider": {
+      "class_id": 5,
+      "folder": "11_missing_road_divider",
+      "usable_photos": 60,
+      "distinct_source_photos": 60
+    },
+    "Damaged Traffic Sign": {
+      "class_id": 6,
+      "folder": "12_damaged_traffic_signs",
+      "usable_photos": 60,
+      "distinct_source_photos": 60
+    }
+  },
+  "unlabeled_holdout_photo_folders": {
+    "01_rdd2022_india": 27,
+    "06_astm_d6433_pci_benchmark": 12,
+    "07_monsoon_pavement_deterioration": 12
+  },
+  "total_labeled_photos": 3488,
+  "imu_telemetry_windows": {
+    "train": 688,
+    "val": 164
+  }
+}
