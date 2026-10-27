@@ -15,7 +15,7 @@ A road photograph goes in. A classified, outlined, measured and costed repair or
 |---|---|---|
 | Road-condition classifier, 7 classes | **93.3%** accuracy, macro-F1 **0.828** | 630 held-out images from 567 photographs never seen in training, scored once |
 | Same classifier on **Indian roads** | **92.3%** accuracy, macro-F1 **0.922** (was 33.4% before Indian data was added) | 1,200 crops from held-out RDD2022 India photographs (normal / crack / pothole), never trained on |
-| Hand-crafted baseline (HOG + LBP + colour → SVM) | 84.9%, macro-F1 0.558 | the identical split — the number the deep model has to beat |
+| Hand-crafted baseline (HOG + LBP + colour → SVM) | —, macro-F1 — | the identical split — the number the deep model has to beat |
 | Defect segmentation (pixel classifier) | crack IoU **0.231**, pothole IoU **0.144** | 500 held-out DNIT photographs |
 | CNN semantic gate on the segmenter | pothole IoU 0.102 → 0.271; clean roads with a false blob 8/50 → 2/50 | photographs the classifier never saw |
 | IMU shock classifier (RandomForest) | **87.2%** accuracy, macro-F1 0.729 | 164 held-out windows of real Indian-road drive logs, split by time block |
@@ -56,8 +56,8 @@ Measured on one photograph through the API: with an assumed camera mount the def
 | efficientnet_b2 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 91.4%, F1 0.828; India 91.7% | no (lost on validation) |
 | mobilenet_v3_large | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 91.4%, F1 0.840; India 90.8% | **yes** |
 | resnet50 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 89.5%, F1 0.857; India 91.9% | no (lost on validation) |
-| MobileNetV2 + ensemble_soft | frozen CNN features + trained head | head only | 87.9%, F1 0.745 | fallback |
-| HOG/LBP + PCA + SVM | classical features | yes | 84.9% | fallback |
+| MobileNetV2 + ensemble_soft | frozen CNN features + trained head | head only | 87.2%, F1 0.742 | fallback |
+| HOG/LBP + PCA + SVM | classical features | yes | — | fallback |
 | U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack 0.271, pothole 0.632 | no (won on masks, lost the end-to-end check; 18/24 end to end) |
 | Pixel segmenter | gradient boosting on 11 features | yes | crack 0.231, pothole 0.144 | **yes** |
 | YOLOv8n (COCO) | pretrained object detector | **no** — used as published | people, vehicles, signs | yes |
@@ -184,7 +184,7 @@ Main API endpoints (full reference at `/api-docs`): `POST /api/v1/pipeline/deep-
 | `web/` | the site (`web/config.js` names the live engine it sends photographs to) |
 | `deploy/` | the Hugging Face Space that hosts the public live engine |
 | `docs/` | system design and the claims-vs-repository audit |
-| `tests/` | 238 tests: models, pipeline, REST API, integrity fixes, Vercel entry point |
+| `tests/` | 353 tests: models, pipeline, REST API, integrity fixes, Vercel entry point |
 
 ## Limitations
 

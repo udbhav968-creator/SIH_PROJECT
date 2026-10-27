@@ -1484,7 +1484,7 @@ class DeepInferencePipeline:
             "depth_cm": 0.0,
             "morth_tonnage_t": 0.0,
             "repair_cost_inr": 0.0,
-            "probabilities": {"Normal Road / Sound Pavement": 0.99},
+            "probabilities": {},
             "bbox_pixels": None,
             "bbox_normalized": None,
         }
@@ -1723,7 +1723,13 @@ class DeepInferencePipeline:
         """Checks that the trained model artifacts this pipeline depends on actually exist on disk."""
         expected = [
             ("Model M1 VisionDistressNet", "vision_distress_model.joblib"),
+            ("Model M1-CNN MobileNetV2 Head", "cnn_head_mobilenetv2.joblib"),
+            ("Model DAN-DAG Dual Attention + 21-Node DAG", "dan_dag_model.joblib"),
+            ("Model M_SEG DefectSegmenter", "defect_segmenter.joblib"),
             ("Model M4 IMUShockClassifier", "imu_shock_model.joblib"),
+            ("Model M_PCI ASTM D6433-20 Regressor", "pci_model.joblib"),
+            ("Model M_DEGRADE HDM-4 Deterioration Forecaster", "deterioration_model.joblib"),
+            ("Model M_DEPTH Monocular Depth Estimator", "depth_estimator_model.joblib"),
         ]
         status = {}
         all_ok = True
@@ -1737,10 +1743,6 @@ class DeepInferencePipeline:
             else:
                 status[name] = {"status": "MISSING"}
                 all_ok = False
-        status["Model PCI / Deterioration engines"] = {
-            "status": "N/A_FORMULA_BASED",
-            "note": "Deterministic ASTM D6433 / growth-model engines have no trained weights to verify.",
-        }
         return {"all_models_verified": all_ok, "models": status}
 
     # ------------------------------------------------------------------

@@ -636,12 +636,21 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     "ipm_homography_engine": "READY",
                     "forensic_audit_engine": "READY",
                     "morth_dispatch_agent": "READY",
-                    "astm_d6433_pci_engine": ("LOADED (HistGradientBoostingRegressor+ASTM_D6433_20)"
+                    "astm_d6433_pci_engine": ("LOADED (GradientBoostingRegressor+ASTM_D6433_20)"
                                               if getattr(pci_model, "is_ready", False)
                                               else "READY_TABLE_LOOKUP"),
-                    "deterioration_forecaster": ("LOADED (HistGradientBoostingRegressor+HDM4_LTPP)"
+                    "deterioration_forecaster": ("LOADED (GradientBoostingRegressor+HDM4_IRC37)"
                                                  if getattr(degrade_model, "is_ready", False)
                                                  else "READY_FORMULA_FALLBACK"),
+                    "depth_estimator": ("LOADED (GradientBoostingRegressor+COCO_Polygon_Depth)"
+                                        if getattr(getattr(deep_pipeline, "depth", None), "is_ready", False)
+                                        else "READY_FORMULA_FALLBACK"),
+                    "dan_dag_network": ("LOADED (DualAttention+21Node_DAG)"
+                                        if getattr(getattr(deep_pipeline, "dan_dag", None), "is_ready", False)
+                                        else "NOT_TRAINED"),
+                    "defect_segmenter": ("LOADED"
+                                         if getattr(getattr(deep_pipeline, "segmenter", None), "is_ready", False)
+                                         else "NOT_TRAINED"),
                     "urban_traffic_net": "READY_FORMULA_BASED",
                 },
             })
@@ -1112,9 +1121,14 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/automotive/can-stream":
             scenario = self.path.split("scenario=")[1].split("&")[0] if "scenario=" in self.path else "highway_pothole"
             snapshot = automotive_telematics.get_simulated_telemetry_snapshot(scenario)
+            fused_conf = fusion_gate.fuse_evidence(
+                p_vision=0.85 if snapshot["hazard_class_id"] != 0 else 0.05,
+                accel_delta_z=snapshot["imu_z_shock_ms2"],
+                vehicle_speed_kmh=snapshot["vehicle_speed_kmh"],
+            )["posterior_probability"]
             rl_decision = rl_agent.evaluate_telemetry_state(
                 hazard_class_id=snapshot["hazard_class_id"],
-                confidence=0.96,
+                confidence=round(float(fused_conf), 4),
                 distance_m=snapshot["hazard_distance_m"],
                 vehicle_speed_kmh=snapshot["vehicle_speed_kmh"],
                 surface_friction_mu=snapshot["friction_mu"],
