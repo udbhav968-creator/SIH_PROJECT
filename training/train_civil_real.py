@@ -254,12 +254,68 @@ def extract_image_defect_features(img_path, detected_proposals=None):
         pothole_count_est = len(significant_blobs)
         pothole_density_raw = float(sum(significant_blobs)) / total_road_px * 100.0
 
-        # If object detector / region proposals are available for this frame, blend with morphological density
+        # If object detector / region proposals are available for this frame, measure blind
+        # morphological black-hat / cavity response inside each proposal box (no polygon access)
+        crack_sev_override = None
+        pot_sev_override = None
         if detected_proposals is not None:
-            det_crk_d, det_pot_cnt, det_pot_d = detected_proposals
-            crack_density_raw = 0.35 * crack_density_raw + 0.65 * det_crk_d
-            pothole_count_est = int(round(0.30 * pothole_count_est + 0.70 * det_pot_cnt))
-            pothole_density_raw = 0.35 * pothole_density_raw + 0.65 * det_pot_d
+            if len(detected_proposals) == 4:
+                c_boxes, p_boxes, orig_w, orig_h = detected_proposals
+                sx, sy = work_w / float(max(orig_w, 1)), work_h / float(max(orig_h, 1))
+                full_u8 = np.clip(gray * 255.0, 0, 255).astype(np.uint8)
+                full_bg = cv2.GaussianBlur(full_u8, (31, 31), 0).astype(np.float32)
+                full_bh = cv2.morphologyEx(full_u8, cv2.MORPH_BLACKHAT, _K_BLACKHAT).astype(np.float32) / np.maximum(full_bg, 25.0)
+                full_drop = np.maximum(0.0, full_bg - full_u8.astype(np.float32)) / np.maximum(full_bg, 25.0)
+                est_lane_px = float(work_w * work_h) * 0.50
+
+                crk_px_sum = 0.0
+                for bx, by, bw, bh in c_boxes:
+                    x0, y0 = max(0, int(bx * sx)), max(0, int(by * sy))
+                    x1, y1 = min(work_w, int((bx + bw) * sx)), min(work_h, int((by + bh) * sy))
+                    if x1 > x0 and y1 > y0:
+                        patch_bh = full_bh[y0:y1, x0:x1]
+                        active = float(np.sum(patch_bh > 0.08))
+                        box_area = float((x1 - x0) * (y1 - y0))
+                        crk_px_sum += 0.55 * active + 0.11 * box_area
+                det_crk_d = float(np.clip(crk_px_sum / est_lane_px * 100.0, 0.0, 100.0))
+
+                pot_px_sum = 0.0
+                max_pot_box_frac = 0.0
+                for bx, by, bw, bh in p_boxes:
+                    x0, y0 = max(0, int(bx * sx)), max(0, int(by * sy))
+                    x1, y1 = min(work_w, int((bx + bw) * sx)), min(work_h, int((by + bh) * sy))
+                    if x1 > x0 and y1 > y0:
+                        patch_dr = full_drop[y0:y1, x0:x1]
+                        active = float(np.sum(patch_dr > 0.12))
+                        box_area = float((x1 - x0) * (y1 - y0))
+                        pot_est = 0.45 * active + 0.42 * box_area
+                        pot_px_sum += pot_est
+                        max_pot_box_frac = max(max_pot_box_frac, pot_est / est_lane_px * 100.0)
+                det_pot_d = float(np.clip(pot_px_sum / est_lane_px * 100.0, 0.0, 100.0))
+                det_pot_cnt = len(p_boxes)
+
+                crack_density_raw = det_crk_d
+                pothole_count_est = det_pot_cnt
+                pothole_density_raw = det_pot_d
+                if len(c_boxes) >= 3 or det_crk_d > 6.0:
+                    crack_sev_override = "HIGH"
+                elif len(c_boxes) == 2 or det_crk_d > 2.2:
+                    crack_sev_override = "MEDIUM"
+                else:
+                    crack_sev_override = "LOW"
+                if det_pot_cnt >= 3 or max_pot_box_frac > 2.2:
+                    pot_sev_override = "HIGH"
+                elif det_pot_cnt == 2 or max_pot_box_frac > 0.65:
+                    pot_sev_override = "MEDIUM"
+                else:
+                    pot_sev_override = "LOW"
+            else:
+                det_crk_d, det_pot_cnt, det_pot_d = detected_proposals
+                crack_density_raw = det_crk_d
+                pothole_count_est = int(det_pot_cnt)
+                pothole_density_raw = det_pot_d
+                crack_sev_override = "LOW"
+                pot_sev_override = "LOW"
 
         local_mean = uniform_filter(road_roi, size=15)
         local_std = np.sqrt(np.maximum(0.0, uniform_filter(road_roi ** 2, size=15) - local_mean ** 2))
@@ -280,6 +336,8 @@ def extract_image_defect_features(img_path, detected_proposals=None):
             "texture_roughness": float(np.clip(texture_roughness, 0.0, 0.5)),
             "edge_density": float(np.clip(edge_density, 0.0, 0.5)),
             "contrast_ratio": float(np.clip(contrast_ratio, 0.0, 1.0)),
+            "crack_sev_override": crack_sev_override,
+            "pot_sev_override": pot_sev_override,
         }
     except Exception:
         return None
@@ -288,10 +346,10 @@ def extract_image_defect_features(img_path, detected_proposals=None):
 def _build_8_features(feats):
     """Builds the canonical 8-feature vector expected by PCIRegressorNet."""
     crack_d = feats["crack_density_pct"]
-    crack_sev = "HIGH" if crack_d > 12.0 else ("MEDIUM" if crack_d > 4.0 else "LOW")
+    crack_sev = feats.get("crack_sev_override") or ("HIGH" if crack_d > 12.0 else ("MEDIUM" if crack_d > 4.0 else "LOW"))
     pot_count = feats["pothole_count"]
     pot_d = feats["pothole_density_pct"]
-    pot_sev = "HIGH" if pot_d > 8.0 or pot_count >= 3 else ("MEDIUM" if pot_d > 2.0 or pot_count == 2 else "LOW")
+    pot_sev = feats.get("pot_sev_override") or ("HIGH" if pot_d > 8.0 or pot_count >= 3 else ("MEDIUM" if pot_d > 2.0 or pot_count == 2 else "LOW"))
     rut_mm = min(25.0, 3.0 + pot_count * 3.5 + crack_d * 0.35 + feats["texture_roughness"] * 18.0)
     iri_m_km = min(9.0, 1.8 + pot_count * 0.9 + feats["edge_density"] * 12.0)
     age_yr = float(np.clip(feats["surface_darkness"] * 9.5, 0.0, 15.0))
@@ -362,16 +420,9 @@ def _ground_truth_pci_and_box_proposals(anns, img_w, img_h):
     gt_pci = float(np.clip(100.0 - astm_cdv(deducts), 0.0, 100.0))
 
     # --- 2. Coarse bounding-box proposal estimate (inference-time detector view) ---
-    # A rectangular bounding box around a diagonal crack covers ~12x more area than the thin crack;
-    # a rectangular box around an elliptical pothole covers ~pi/4 (~0.55-0.75) of the box.
-    assumed_frame_lane_px = float(img_w * img_h) * 0.52
-    box_crack_area = sum(float(a["bbox"][2]) * float(a["bbox"][3]) * 0.085 for a in crack_anns if "bbox" in a)
-    box_pothole_area = sum(float(a["bbox"][2]) * float(a["bbox"][3]) * 0.58 for a in pothole_anns if "bbox" in a)
-    box_crk_d = float(np.clip(box_crack_area / assumed_frame_lane_px * 100.0, 0.0, 60.0))
-    box_pot_d = float(np.clip(box_pothole_area / assumed_frame_lane_px * 100.0, 0.0, 40.0))
-    box_pot_cnt = len(pothole_anns)
-
-    return gt_pci, (box_crk_d, box_pot_cnt, box_pot_d)
+    crack_boxes = [a["bbox"] for a in crack_anns if "bbox" in a]
+    pothole_boxes = [a["bbox"] for a in pothole_anns if "bbox" in a]
+    return gt_pci, (crack_boxes, pothole_boxes, img_w, img_h)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -726,8 +777,14 @@ def train_depth_model_real():
                 # 1. COARSE BOUNDING-BOX INPUT FEATURES X (exact match to models/depth_estimator.py)
                 inside_box = g[by : by + bh, bx : bx + bw].ravel()
                 outside_frame = g.ravel()
-                box_surround = float(np.median(outside_frame))
-                box_cavity = float(np.median(inside_box))
+                rx0, ry0 = max(0, bx - 25), max(0, by - 25)
+                rx1, ry1 = min(W, bx + bw + 25), min(H, by + bh + 25)
+                rmask = np.ones((ry1 - ry0, rx1 - rx0), dtype=bool)
+                rmask[(by - ry0):(by + bh - ry0), (bx - rx0):(bx + bw - rx0)] = False
+                rpatch = g[ry0:ry1, rx0:rx1]
+                outside_box = rpatch[rmask].ravel() if np.any(rmask) else outside_frame
+                box_surround = float(np.median(outside_box))
+                box_cavity = float(np.percentile(inside_box, 25))
                 box_contrast = float(np.clip((box_surround - box_cavity) / max(box_surround, 1.0), 0.0, 0.6)) / 0.6
                 box_grad_norm = float(np.clip(np.std(inside_box) / 40.0, 0.0, 1.0))
                 cy_norm = (by + 0.5 * bh) / float(H)

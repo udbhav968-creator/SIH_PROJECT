@@ -113,8 +113,16 @@ def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
         source = "segmentation mask"
     elif bbox is not None:
         x, y, w, h = (int(v) for v in bbox)
-        inside = g[max(0, y):y + h, max(0, x):x + w].ravel()
-        outside = g.ravel()
+        H, W = g.shape[:2]
+        x0, y0 = max(0, x), max(0, y)
+        x1, y1 = min(W, x + w), min(H, y + h)
+        inside = g[y0:y1, x0:x1].ravel()
+        rx0, ry0 = max(0, x0 - 25), max(0, y0 - 25)
+        rx1, ry1 = min(W, x1 + 25), min(H, y1 + 25)
+        ring_mask = np.ones((ry1 - ry0, rx1 - rx0), dtype=bool)
+        ring_mask[(y0 - ry0):(y1 - ry0), (x0 - rx0):(x1 - rx0)] = False
+        patch = g[ry0:ry1, rx0:rx1]
+        outside = patch[ring_mask].ravel() if np.any(ring_mask) else g.ravel()
         source = "bounding box"
     else:
         return _estimate(6.0, POTHOLE_PATCH_DEPTH_CM["low"], POTHOLE_PATCH_DEPTH_CM["high"],
@@ -129,7 +137,7 @@ def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
                          driver="empty region")
 
     surround = float(np.median(outside))
-    cavity = float(np.median(inside))
+    cavity = float(np.percentile(inside, 25) if source == 'bounding box' else np.median(inside))
     contrast = float(np.clip((surround - cavity) / max(surround, 1.0), 0.0, 0.6)) / 0.6
 
     lo, hi = POTHOLE_PATCH_DEPTH_CM["low"], POTHOLE_PATCH_DEPTH_CM["high"]
