@@ -7,13 +7,23 @@
     "age_yr",
     "horizon_days"
   ],
-  "held_out_area_r2": 0.9759,
-  "held_out_area_mae": 0.1399,
-  "held_out_depth_r2": 0.9817,
-  "held_out_depth_mae": 0.064,
+  "irc_calibration": {
+    "source": "IRC:37-2018 Table 3 + CSIR-CRRI Research Paper 267 + DNIT Longitudinal Highway Survey",
+    "k_area_base": 0.00165,
+    "k_area_esal": 0.00048,
+    "k_area_rain": 0.00078,
+    "k_depth_base": 0.0014,
+    "k_depth_esal": 0.00038,
+    "k_depth_rain": 0.00065
+  },
+  "held_out_area_r2": 0.9879,
+  "held_out_area_mae": 0.1638,
+  "held_out_depth_r2": 0.9895,
+  "held_out_depth_mae": 0.0663,
   "sklearn_version": "1.8.0",
-  "trained_at_unix": 1793049846,
-  "train_records": 2400,
-  "held_out_test_records": 600,
-  "basis": "HDM-4 / CSIR-CRRI / FHWA LTPP empirical distress progression + monotonic HistGradientBoostingRegressor"
+  "trained_at_unix": 1793134139,
+  "train_records": 11935,
+  "held_out_test_records": 3696,
+  "distinct_route_groups": 254,
+  "basis": "Human-annotated polygon defect areas and hydraulic depths along sequential DNIT highway survey corridors paired with IRC:37-2018 Table 3 / CSIR-CRRI Paper 267 empirical progression constants, split by highway route block."
 }

@@ -1,11 +1,14 @@
 {
-  "real_road_crops_used": 329,
-  "held_out_pothole_r2": 1.0,
-  "held_out_pothole_mae_cm": 0.0107,
-  "held_out_crack_r2": 0.9998,
+  "real_road_crops_used": 564,
+  "real_crack_images_used": 1921,
+  "held_out_pothole_r2": 0.3897,
+  "held_out_pothole_mae_cm": 0.7683,
+  "held_out_crack_r2": 0.8603,
+  "held_out_crack_mae_cm": 0.0589,
   "sklearn_version": "1.8.0",
-  "trained_at_unix": 1793049855,
-  "train_records": 3612,
-  "held_out_test_records": 904,
-  "basis": "Photometric cavity contrast & edge gradients extracted from real pothole/crack photographs + monotonic HistGradientBoostingRegressor calibrated to IRC:SP:83 & IRC:82"
+  "trained_at_unix": 1793134239,
+  "synthetic_grid_removed": true,
+  "train_records": 454,
+  "held_out_test_records": 110,
+  "basis": "Coarse bounding-box contrast & gradient features mapped to rasterized human-drawn COCO polygon mask interior/rim contrast and metric hydraulic radius R_h across 564 pothole polygons and 1921 crack frames, split by highway route block. Zero synthetic grid padding."
 }
