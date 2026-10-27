@@ -23,26 +23,26 @@
     "Waterlogging / Flooding Hazard": {
       "class_id": 3,
       "folder": "09_waterlogging_hazard",
-      "usable_photos": 60,
-      "distinct_source_photos": 60
+      "usable_photos": 96,
+      "distinct_source_photos": 96
     },
     "Missing Zebra Crossing": {
       "class_id": 4,
       "folder": "10_missing_zebra_crossing",
-      "usable_photos": 60,
-      "distinct_source_photos": 60
+      "usable_photos": 100,
+      "distinct_source_photos": 100
     },
     "Missing Road Divider": {
       "class_id": 5,
       "folder": "11_missing_road_divider",
-      "usable_photos": 60,
-      "distinct_source_photos": 60
+      "usable_photos": 100,
+      "distinct_source_photos": 100
     },
     "Damaged Traffic Sign": {
       "class_id": 6,
       "folder": "12_damaged_traffic_signs",
-      "usable_photos": 60,
-      "distinct_source_photos": 60
+      "usable_photos": 100,
+      "distinct_source_photos": 100
     }
   },
   "unlabeled_holdout_photo_folders": {
@@ -50,7 +50,7 @@
     "06_astm_d6433_pci_benchmark": 12,
     "07_monsoon_pavement_deterioration": 12
   },
-  "total_labeled_photos": 3488,
+  "total_labeled_photos": 3644,
   "imu_telemetry_windows": {
     "train": 688,
     "val": 164

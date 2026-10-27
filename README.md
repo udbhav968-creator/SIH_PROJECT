@@ -56,7 +56,7 @@ Measured on one photograph through the API: with an assumed camera mount the def
 | efficientnet_b2 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 91.4%, F1 0.828; India 91.7% | no (lost on validation) |
 | mobilenet_v3_large | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 91.4%, F1 0.840; India 90.8% | **yes** |
 | resnet50 | CNN, ImageNet-pretrained, fine-tuned end to end | yes (GPU) | 89.5%, F1 0.857; India 91.9% | no (lost on validation) |
-| MobileNetV2 + ensemble_soft | frozen CNN features + trained head | head only | 87.2%, F1 0.742 | fallback |
+| MobileNetV2 + mlp_512_256 | frozen CNN features + trained head | head only | 86.4%, F1 0.787 | fallback |
 | HOG/LBP + PCA + SVM | classical features | yes | — | fallback |
 | U-Net (ResNet-18 encoder) | deep segmenter, ImageNet encoder, all layers trained | yes (GPU) | crack 0.271, pothole 0.632 | no (won on masks, lost the end-to-end check; 18/24 end to end) |
 | Pixel segmenter | gradient boosting on 11 features | yes | crack 0.231, pothole 0.144 | **yes** |

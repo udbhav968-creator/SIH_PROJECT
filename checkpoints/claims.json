@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1793136992,
+  "generated_unix": 1793140610,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
@@ -43,20 +43,20 @@
         "held_out_accuracy": null,
         "held_out_macro_f1": null,
         "pca_components": 64,
-        "pca_variance_retained": 0.4151
+        "pca_variance_retained": 0.4139
       },
       "evidence": "checkpoints/cnn_head_mobilenetv2_report.json (scored on the identical split)",
-      "not_claimed": "PCA retains 41.5% of variance at 64 components, measured from the fitted model."
+      "not_claimed": "PCA retains 41.4% of variance at 64 components, measured from the fitted model."
     },
     {
       "id": "M1-edge",
       "name": "MobileNetV2 edge alternative",
-      "architecture": "MobileNetV2 (14 MB ONNX) -> ensemble_soft head",
+      "architecture": "MobileNetV2 (14 MB ONNX) -> mlp_512_256 head",
       "role": "Low-power edge deployment (Raspberry Pi, Jetson Nano)",
       "why": "Depthwise separable convolutions; 14 MB against ResNet-50's 98 MB.",
       "measured": {
-        "held_out_accuracy": 0.872,
-        "held_out_macro_f1": 0.742,
+        "held_out_accuracy": 0.8644,
+        "held_out_macro_f1": 0.7875,
         "backbone_size_mb": 14.0
       },
       "evidence": "checkpoints/cnn_head_mobilenetv2_report.json",
@@ -326,8 +326,8 @@
     },
     {
       "claim": "PCA retains 56% of variance",
-      "status": "CORRECTED to 41.5%",
-      "reason": "Measured from the fitted model: 64 components, explained_variance_ratio_.sum() = 0.4151."
+      "status": "CORRECTED to 41.4%",
+      "reason": "Measured from the fitted model: 64 components, explained_variance_ratio_.sum() = 0.4139."
     },
     {
       "claim": "ASTM D6433 implementation is legally certified",

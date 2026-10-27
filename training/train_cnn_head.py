@@ -158,6 +158,9 @@ def embed_items(embedder, items, label):
             # held-out test split) with their true class label so every class is
             # represented at both full-frame and region-proposal scales.
             if label == "training":
+                from data.augmentation_pipeline import CivilDataAugmentor
+                if not hasattr(embed_items, "_augmentor"):
+                    embed_items._augmentor = CivilDataAugmentor(seed=42)
                 H, W = img.shape[:2]
                 if H >= 96 and W >= 96:
                     if cls in (0, 3, 4, 5, 6):
@@ -175,6 +178,16 @@ def embed_items(embedder, items, label):
                                 cpam, _, ctel = DualAttentionModule.extract_spatial_attention(c_contig)
                                 pams.append(cpam)
                                 domains.append(ctel["domain_regime"])
+                        # For rare classes (3..6), also generate 3 full-frame photometric/geometric
+                        # augmented views strictly inside the training split (kept in the same group _grp).
+                        if cls in (3, 4, 5, 6):
+                            for _ in range(3):
+                                aug_im = np.ascontiguousarray(embed_items._augmentor.augment(img))
+                                imgs.append(aug_im)
+                                ys.append(cls)
+                                apam, _, atel = DualAttentionModule.extract_spatial_attention(aug_im)
+                                pams.append(apam)
+                                domains.append(atel["domain_regime"])
                     elif cls in (1, 2) and (idx % 6 == 0):
                         crop = img[int(0.35 * H):int(0.92 * H), int(0.10 * W):int(0.90 * W)]
                         if crop.shape[0] >= 24 and crop.shape[1] >= 24:
@@ -247,6 +260,33 @@ def build_candidate(name, seed=42, final=False, lsvc_C=10.0, logistic_C=1.0):
     return VotingClassifier([("sgd", sgd()), ("lr", logistic(logistic_C)), ("mlp", mlp())],
                             voting="soft")
 
+
+def smote_mixup_minority(X, y, target_min=450, k=5, seed=42):
+    """Leak-free intra-class nearest-neighbor SMOTE / Manifold Mixup strictly on training fold."""
+    rng = np.random.default_rng(seed)
+    X_out, y_out = [X], [y]
+    classes, counts = np.unique(y, return_counts=True)
+    for cls, cnt in zip(classes, counts):
+        if cnt < 2 or cnt >= target_min:
+            continue
+        need = int(target_min - cnt)
+        Xc = X[y == cls]
+        # Pairwise squared Euclidean distances within minority class
+        norms = np.sum(Xc * Xc, axis=1, keepdims=True)
+        dists = np.maximum(0.0, norms + norms.T - 2.0 * (Xc @ Xc.T))
+        np.fill_diagonal(dists, np.inf)
+        k_eff = min(k, len(Xc) - 1)
+        nn_idx = np.argsort(dists, axis=1)[:, :k_eff]
+        i_choices = rng.integers(0, len(Xc), size=need)
+        j_offsets = rng.integers(0, k_eff, size=need)
+        j_choices = nn_idx[i_choices, j_offsets]
+        lam = rng.uniform(0.25, 0.75, size=(need, 1)).astype(X.dtype)
+        X_syn = lam * Xc[i_choices] + (1.0 - lam) * Xc[j_choices]
+        X_out.append(X_syn)
+        y_out.append(np.full(need, cls, dtype=y.dtype))
+    return np.concatenate(X_out, axis=0), np.concatenate(y_out, axis=0)
+
+
 def cross_validate_candidates(features, y, groups, seed=42, folds=5):
     from sklearn.model_selection import StratifiedGroupKFold
     splitter = StratifiedGroupKFold(n_splits=folds, shuffle=True, random_state=seed)
@@ -263,7 +303,8 @@ def cross_validate_candidates(features, y, groups, seed=42, folds=5):
             accs, f1s, t0 = [], [], time.time()
             for tr, va in splits:
                 m = build_candidate(name, seed)
-                m.fit(X[tr], y[tr])
+                X_tr_aug, y_tr_aug = smote_mixup_minority(X[tr], y[tr], seed=seed)
+                m.fit(X_tr_aug, y_tr_aug)
                 pv = m.predict(X[va])
                 accs.append(accuracy_score(y[va], pv))
                 f1s.append(f1_score(y[va], pv, average="macro", zero_division=0))
@@ -290,7 +331,8 @@ def cross_validate_candidates(features, y, groups, seed=42, folds=5):
     accs, f1s, t0 = [], [], time.time()
     for tr, va in splits:
         m = build_candidate("ensemble_soft", seed, lsvc_C=svc_C, logistic_C=lr_C)
-        m.fit(X[tr], y[tr])
+        X_tr_aug, y_tr_aug = smote_mixup_minority(X[tr], y[tr], seed=seed)
+        m.fit(X_tr_aug, y_tr_aug)
         pv = m.predict(X[va])
         accs.append(accuracy_score(y[va], pv))
         f1s.append(f1_score(y[va], pv, average="macro", zero_division=0))
@@ -393,7 +435,8 @@ def run_training(backbone="resnet50", seed=42, max_per_class=1500, compare=False
     t0 = time.time()
     head = build_candidate(chosen, seed, final=True,
                            lsvc_C=_ENSEMBLE_MEMBERS[0], logistic_C=_ENSEMBLE_MEMBERS[1])
-    head.fit(Xtr, y_fit)
+    Xtr_aug, y_fit_aug = smote_mixup_minority(Xtr, y_fit, seed=seed)
+    head.fit(Xtr_aug, y_fit_aug)
     pred = head.predict(Xte)
     acc = float(accuracy_score(y_test, pred))
     f1 = float(f1_score(y_test, pred, average="macro", zero_division=0))

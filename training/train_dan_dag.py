@@ -1,3 +1,4 @@
+from training.train_cnn_head import smote_mixup_minority
 """
 Trains the Dual Attention Network (DAN) + 21-Node Directed Acyclic Graph (DAG)
 Deep Vision Classifier on the full road distress corpus.
@@ -303,8 +304,12 @@ def run_training(backbone="mobilenetv2", max_per_class=1500, epochs=65, seed=42)
     fisher_w = _compute_fisher_weights(X_fit_norm, y_fit, n_classes)
 
     print(f"  [Stage 2/3] Jointly training DAN Channel-Attention + Deep Residual MLP ({epochs} epochs) ...", flush=True)
+    XP_joint = np.hstack([X_fit_norm, P_fit_norm])
+    XP_aug, y_fit_mlp_aug = smote_mixup_minority(XP_joint, y_fit, target_min=450, k=5, seed=seed)
+    X_fit_norm_aug = XP_aug[:, :X_fit_norm.shape[1]]
+    P_fit_norm_aug = XP_aug[:, X_fit_norm.shape[1]:]
     cam_weights, mlp_weights, mlp_history = _train_joint_cam_and_residual_mlp(
-        X_fit_norm, P_fit_norm, fisher_w, y_fit, n_classes, epochs=epochs, seed=seed
+        X_fit_norm_aug, P_fit_norm_aug, fisher_w, y_fit_mlp_aug, n_classes, epochs=epochs, seed=seed
     )
 
     # Compute attended & fused representations for the 21-node Decision DAG
@@ -332,8 +337,9 @@ def run_training(backbone="mobilenetv2", max_per_class=1500, epochs=65, seed=42)
     ])
 
     print("  [Stage 3/3] Training 21-Node Rooted Pairwise Decision DAG ...", flush=True)
+    X_fit_fused_aug, y_fit_dag_aug = smote_mixup_minority(X_fit_fused, y_fit, target_min=450, k=5, seed=seed)
     dag_pairs, pair_metrics = _train_21_node_decision_dag(
-        X_fit_fused, y_fit, X_test_fused, y_test, n_classes, seed=seed
+        X_fit_fused_aug, y_fit_dag_aug, X_test_fused, y_test, n_classes, seed=seed
     )
     temp_net.state["dag_pairs"] = dag_pairs
 
