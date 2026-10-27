@@ -104,3 +104,7 @@ logs/engine_public.*
 # MLOps: model versions, runs and MLflow mirror (large; every version of every model)
 mlops_store/
 mlruns/
+
+*.db-wal
+*.db-shm
+*.onnx
