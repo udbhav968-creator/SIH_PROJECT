@@ -26,7 +26,7 @@
   "held_out_mae": 3.6289,
   "held_out_rmse": 6.6889,
   "sklearn_version": "1.8.0",
-  "trained_at_unix": 1790937934,
+  "trained_at_unix": 1793049844,
   "train_records": 2560,
   "held_out_test_records": 640,
   "basis": "Digitized ASTM D6433-20 empirical deduct curves + monotonic HistGradientBoostingRegressor"

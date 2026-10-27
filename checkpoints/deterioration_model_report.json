@@ -12,7 +12,7 @@
   "held_out_depth_r2": 0.9817,
   "held_out_depth_mae": 0.064,
   "sklearn_version": "1.8.0",
-  "trained_at_unix": 1790937934,
+  "trained_at_unix": 1793049846,
   "train_records": 2400,
   "held_out_test_records": 600,
   "basis": "HDM-4 / CSIR-CRRI / FHWA LTPP empirical distress progression + monotonic HistGradientBoostingRegressor"

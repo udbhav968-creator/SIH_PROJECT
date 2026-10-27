@@ -3,8 +3,8 @@
   "classifier": "StandardScaler -> RandomForestClassifier",
   "class_names": [
     "Smooth Asphalt",
-    "Expansion Joint",
-    "Rumble Strip",
+    "Unmarked Speed Breaker / Bump",
+    "Marked Speed Breaker",
     "Pothole Impact"
   ],
   "train_windows": 688,
@@ -44,13 +44,13 @@
       "f1-score": 0.9380530973451328,
       "support": 109.0
     },
-    "Expansion Joint": {
+    "Unmarked Speed Breaker / Bump": {
       "precision": 0.8518518518518519,
       "recall": 0.71875,
       "f1-score": 0.7796610169491526,
       "support": 32.0
     },
-    "Rumble Strip": {
+    "Marked Speed Breaker": {
       "precision": 0.5,
       "recall": 0.2727272727272727,
       "f1-score": 0.35294117647058826,
@@ -77,5 +77,5 @@
     }
   },
   "data_provenance": "Real field-recorded 100-sample tri-axial accelerometer windows (Ax, Ay, Az in m/s^2) from Indian road vehicular drives in VishalSingh25/Pothole-Project (10 CSV drive logs, 205,491 raw samples across smooth road, unmarked speed bumps/joints, marked speed breakers/rumble strips, and pothole corridors), split with a strict temporal block boundary and guard gap between train and held-out validation.",
-  "trained_at_unix": 1790935616
+  "trained_at_unix": 1793049861
 }

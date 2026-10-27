@@ -41,11 +41,11 @@ for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
 
 import joblib
 import numpy as np
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
+from sklearn.svm import SVC, LinearSVC
 
 from data.image_dataset import CLASS_NAMES, load_image
 from models.cnn_embedder import CNNEmbedder
@@ -72,10 +72,10 @@ def heads(seed=42):
             ("scale", StandardScaler()),
             ("clf", LogisticRegression(C=1.0, max_iter=3000, class_weight="balanced", random_state=seed)),
         ]),
-        "svc_rbf": Pipeline([
+        "lsvc_linear": Pipeline([
             ("scale", StandardScaler()),
-            ("clf", SVC(C=10.0, kernel="rbf", gamma="scale", probability=True,
-                        class_weight="balanced", random_state=seed)),
+            ("clf", LinearSVC(C=10.0, class_weight="balanced", max_iter=5000,
+                              dual="auto", random_state=seed)),
         ]),
         "mlp_deep": Pipeline([
             ("scale", StandardScaler()),
@@ -201,20 +201,24 @@ def embed_items(embedder, items, label):
 
 CANDIDATES = {
     # name: (family, params)
+    # NOTE: RBF SVC removed -- O(n^2-n^3) fitting hangs for hours on
+    # 4000+ samples x 1000-dim CNN embeddings. Logistic, SGD and MLP
+    # finish in seconds while retaining strong accuracy.
     "logistic_C0.3": ("logistic", {"C": 0.3}),
     "logistic_C1": ("logistic", {"C": 1.0}),
-    "svc_C3": ("svc", {"C": 3.0}),
-    "svc_C10": ("svc", {"C": 10.0}),
-    "svc_C30": ("svc", {"C": 30.0}),
+    "logistic_C3": ("logistic", {"C": 3.0}),
+    "sgd_huber": ("sgd", {}),
     "mlp_512_256": ("mlp", {}),
     "ensemble_soft": ("ensemble", {}),
 }
 
 
-def build_candidate(name, seed=42, final=False, svc_C=10.0, logistic_C=1.0):
-    """A fresh, unfitted head. SVC probabilities are only computed for the final
-    model or inside the ensemble - Platt scaling costs five extra fits and plain
-    predict() is all cross-validation needs."""
+def build_candidate(name, seed=42, final=False, lsvc_C=10.0, logistic_C=1.0):
+    """A fresh, unfitted head.
+
+    Uses SGDClassifier(modified_huber) / LogisticRegression / MLP instead of
+    RBF SVC to keep CV tractable on CPU.
+    """
     from sklearn.ensemble import VotingClassifier
     from sklearn.neural_network import MLPClassifier
     family, p = CANDIDATES[name]
@@ -223,9 +227,9 @@ def build_candidate(name, seed=42, final=False, svc_C=10.0, logistic_C=1.0):
         return Pipeline([("scale", StandardScaler()), ("clf", LogisticRegression(
             C=C, max_iter=3000, class_weight="balanced", random_state=seed))])
 
-    def svc(C, proba):
-        return Pipeline([("scale", StandardScaler()), ("clf", SVC(
-            C=C, kernel="rbf", gamma="scale", probability=proba,
+    def sgd():
+        return Pipeline([("scale", StandardScaler()), ("clf", SGDClassifier(
+            loss="modified_huber", alpha=1e-4, max_iter=2000,
             class_weight="balanced", random_state=seed))])
 
     def mlp():
@@ -235,14 +239,13 @@ def build_candidate(name, seed=42, final=False, svc_C=10.0, logistic_C=1.0):
 
     if family == "logistic":
         return logistic(p["C"])
-    if family == "svc":
-        return svc(p["C"], final)
+    if family == "sgd":
+        return sgd()
     if family == "mlp":
         return mlp()
     # soft vote of the three families at their CV-best settings
-    return VotingClassifier([("svc", svc(svc_C, True)), ("lr", logistic(logistic_C)), ("mlp", mlp())],
+    return VotingClassifier([("sgd", sgd()), ("lr", logistic(logistic_C)), ("mlp", mlp())],
                             voting="soft")
-
 
 def cross_validate_candidates(features, y, groups, seed=42, folds=5):
     from sklearn.model_selection import StratifiedGroupKFold
@@ -281,12 +284,12 @@ def cross_validate_candidates(features, y, groups, seed=42, folds=5):
 
     # ensemble on the better feature set, members at their CV-best settings
     top_feat = max(ranked)[2]
-    svc_C = best_params[("svc", top_feat)][1]["C"]
+    svc_C = best_params.get(("lsvc", top_feat), best_params.get(("sgd", top_feat), (0, {"C": 10.0})))[1].get("C", 10.0)
     lr_C = best_params[("logistic", top_feat)][1]["C"]
     X = features[top_feat][0]
     accs, f1s, t0 = [], [], time.time()
     for tr, va in splits:
-        m = build_candidate("ensemble_soft", seed, svc_C=svc_C, logistic_C=lr_C)
+        m = build_candidate("ensemble_soft", seed, lsvc_C=svc_C, logistic_C=lr_C)
         m.fit(X[tr], y[tr])
         pv = m.predict(X[va])
         accs.append(accuracy_score(y[va], pv))
@@ -389,7 +392,7 @@ def run_training(backbone="resnet50", seed=42, max_per_class=1500, compare=False
           f"(CV accuracy {best['cv_accuracy'] * 100:.1f}%, macro-F1 {best['cv_macro_f1']:.3f})", flush=True)
     t0 = time.time()
     head = build_candidate(chosen, seed, final=True,
-                           svc_C=_ENSEMBLE_MEMBERS[0], logistic_C=_ENSEMBLE_MEMBERS[1])
+                           lsvc_C=_ENSEMBLE_MEMBERS[0], logistic_C=_ENSEMBLE_MEMBERS[1])
     head.fit(Xtr, y_fit)
     pred = head.predict(Xte)
     acc = float(accuracy_score(y_test, pred))
