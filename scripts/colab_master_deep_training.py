@@ -154,7 +154,7 @@ def stage_unet_defect_segmenter(fast=False, epochs=30):
     return round(time.time() - t0, 1)
 
 
-def stage_vision_cnn_finetuning(fast=False, epochs=40, batch_size=48):
+def stage_vision_cnn_finetuning(fast=False, epochs=40, batch_size=48, archs="mobilenet_v3_large"):
     banner("STAGE 6: DEEP VISION CLASSIFIER FINE-TUNING (MobileNetV3, EfficientNet, ResNet)")
     t0 = time.time()
     if fast:
@@ -165,8 +165,8 @@ def stage_vision_cnn_finetuning(fast=False, epochs=40, batch_size=48):
         )
     else:
         run_subcommand(
-            f"End-to-End Fine-Tuning MobileNetV3-Large ({epochs} epochs)",
-            [sys.executable, "-m", "training.train_finetune_cnn", "--archs", "mobilenet_v3_large",
+            f"End-to-End Fine-Tuning Vision CNN: {archs} ({epochs} epochs)",
+            [sys.executable, "-m", "training.train_finetune_cnn", "--archs", archs,
              "--epochs", str(epochs), "--batch", str(batch_size), "--resume"],
             check=False
         )
@@ -346,7 +346,9 @@ def main():
     parser.add_argument("--epochs-cnn", type=int, default=40, help="Epochs for vision CNN (default: 40)")
     parser.add_argument("--epochs-unet", type=int, default=30, help="Epochs for U-Net segmenter (default: 30)")
     parser.add_argument("--epochs-dan", type=int, default=65, help="Epochs for DAN-DAG (default: 65)")
-    parser.add_argument("--batch-size", type=int, default=48, help="Batch size for GPU (default: 48)")
+    parser.add_argument("--batch-size", type=int, default=48, help="Batch size for GPU (default: 48)")
+    parser.add_argument("--archs", type=str, default="mobilenet_v3_large", help="Vision CNN architectures to fine-tune")
+    parser.add_argument("--all-archs", action="store_true", help="Train all 4 CNN backbones: mobilenet_v3_large,efficientnet_b0,efficientnet_b2,resnet50")
     parser.add_argument("--drive-dir", type=str, default=None, help="Google Drive destination directory")
     parser.add_argument("--skip", type=str, default="", help="Comma-separated stages to skip")
     parser.add_argument("--ood-dir", type=str, default=None, help="Directory containing ImageNet sample images for OOD training")
@@ -371,7 +373,8 @@ def main():
         timings["4. ResNet-34 U-Net Defect Segmenter"] = stage_unet_defect_segmenter(fast=args.fast, epochs=args.epochs_unet)
 
     if "cnn" not in skip_stages:
-        timings["5. Deep Vision CNN Fine-Tuning"] = stage_vision_cnn_finetuning(fast=args.fast, epochs=args.epochs_cnn, batch_size=args.batch_size)
+        active_archs = "mobilenet_v3_large,efficientnet_b0,efficientnet_b2,resnet50" if args.all_archs else args.archs
+        timings["5. Deep Vision CNN Fine-Tuning"] = stage_vision_cnn_finetuning(fast=args.fast, epochs=args.epochs_cnn, batch_size=args.batch_size, archs=active_archs)
 
     if "dan" not in skip_stages:
         timings["6. Flagship DAN-DAG Network"] = stage_dan_dag_network(epochs=args.epochs_dan)
