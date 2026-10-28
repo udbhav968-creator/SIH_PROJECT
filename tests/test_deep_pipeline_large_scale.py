@@ -196,7 +196,7 @@ def run_benchmark(target_count=50, auto_train=True):
             fname_str = (fname[:17] + "...") if len(fname) > 20 else fname
             cls_str = (cls_name[:17] + "...") if len(cls_name) > 20 else cls_name
 
-            print(f"{i:<4} | {src_str:<22} | {fname_str:<20} | {h_short:<8} | {cls_str:<20} | {conf:<6.2f} | {num_boxes:<5} | {area:<7.3f} | {cost:<10.1f} | {lat_ms:<6.1f}ms")
+            print(f"{i:<4} | {src_str:<22} | {fname_str:<20} | {h_short:<8} | {cls_str:<20} | {conf:<6.2f} | {num_boxes:<5} | {area:<7.3f} | {cost:<10.1f} | {lat_ms:<6.1f}ms", flush=True)
 
             results.append({
                 "index": i,
