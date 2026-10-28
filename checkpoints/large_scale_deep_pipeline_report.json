@@ -1,18 +1,18 @@
 {
-  "timestamp_utc": 1793191185,
-  "total_images_evaluated": 20,
-  "gatekeeper_real_pass_rate": 0.9,
+  "timestamp_utc": 1793191605,
+  "total_images_evaluated": 30,
+  "gatekeeper_real_pass_rate": 0.8667,
   "control_rejected": true,
   "clean_false_alarm_rate": 0.0,
-  "total_boxes_detected": 54,
-  "mean_latency_ms": 1874.51,
-  "throughput_fps": 0.53,
-  "total_remediation_inr": 1596.0,
+  "total_boxes_detected": 76,
+  "mean_latency_ms": 1760.08,
+  "throughput_fps": 0.57,
+  "total_remediation_inr": 1914.75,
   "class_distribution": {
     "Pothole Cavity": 2,
-    "Normal Road / Sound Pavement": 6,
-    "Crack (Longitudinal / Transverse / Alligator)": 10,
-    "REJECTED (Non-Pavement)": 2
+    "Normal Road / Sound Pavement": 8,
+    "Crack (Longitudinal / Transverse / Alligator)": 16,
+    "REJECTED (Non-Pavement)": 4
   },
   "results": [
     {
@@ -29,7 +29,7 @@
       "surface_area_m2": 0.033,
       "depth_cm": 5.6,
       "repair_cost_inr": 51.75,
-      "latency_ms": 4136.57
+      "latency_ms": 4206.35
     },
     {
       "index": 2,
@@ -45,7 +45,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1321.12
+      "latency_ms": 1296.55
     },
     {
       "index": 3,
@@ -61,7 +61,7 @@
       "surface_area_m2": 0.278,
       "depth_cm": 1.8,
       "repair_cost_inr": 162.0,
-      "latency_ms": 2032.51
+      "latency_ms": 1558.03
     },
     {
       "index": 4,
@@ -77,7 +77,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1403.07
+      "latency_ms": 1455.13
     },
     {
       "index": 5,
@@ -93,7 +93,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1459.17
+      "latency_ms": 1424.36
     },
     {
       "index": 6,
@@ -109,7 +109,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1662.15
+      "latency_ms": 1389.61
     },
     {
       "index": 7,
@@ -125,7 +125,7 @@
       "surface_area_m2": 0.017,
       "depth_cm": 1.8,
       "repair_cost_inr": 12.75,
-      "latency_ms": 1705.3
+      "latency_ms": 1610.49
     },
     {
       "index": 8,
@@ -141,7 +141,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1380.23
+      "latency_ms": 1518.01
     },
     {
       "index": 9,
@@ -157,7 +157,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1362.67
+      "latency_ms": 1463.72
     },
     {
       "index": 10,
@@ -173,7 +173,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1534.16
+      "latency_ms": 1333.75
     },
     {
       "index": 11,
@@ -189,7 +189,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1563.55
+      "latency_ms": 1447.99
     },
     {
       "index": 12,
@@ -205,10 +205,42 @@
       "surface_area_m2": 0.259,
       "depth_cm": 7.1,
       "repair_cost_inr": 409.5,
-      "latency_ms": 2057.07
+      "latency_ms": 1805.97
     },
     {
       "index": 13,
+      "source": "02_kaggle_pothole_600",
+      "filename": "kag_pothole-mix_2_00081_172.jpg",
+      "sha256": "e8fae327112fea374a75d9f766f24f1026ab6d39a674fb4870eea9afd91d0b28",
+      "status": "ANALYSIS_COMPLETE",
+      "gatekeeper_passed": true,
+      "is_control": false,
+      "predicted_class": "Normal Road / Sound Pavement",
+      "confidence": 0.0,
+      "boxes_detected": 1,
+      "surface_area_m2": 0.0,
+      "depth_cm": 0.0,
+      "repair_cost_inr": 0.0,
+      "latency_ms": 1556.65
+    },
+    {
+      "index": 14,
+      "source": "02_kaggle_pothole_600",
+      "filename": "cpr_8_20.jpg",
+      "sha256": "9e46dca3e43d3a7d5b7ccd80f1f342a36766818bfdf7687d1eb86f0a5d031cd9",
+      "status": "REJECTED_NON_ROAD",
+      "gatekeeper_passed": false,
+      "is_control": false,
+      "predicted_class": "REJECTED (Non-Pavement)",
+      "confidence": 0.0,
+      "boxes_detected": 0,
+      "surface_area_m2": 0.0,
+      "depth_cm": 0.0,
+      "repair_cost_inr": 0.0,
+      "latency_ms": 1465.88
+    },
+    {
+      "index": 15,
       "source": "03_crack500_fatigue",
       "filename": "cpr_724_1521.jpg",
       "sha256": "d667054ddc4c69306e5731b5350c8df4ea9e35e2446b19ff773b0e23e02f5bd1",
@@ -221,10 +253,10 @@
       "surface_area_m2": 0.097,
       "depth_cm": 1.8,
       "repair_cost_inr": 120.0,
-      "latency_ms": 2205.22
+      "latency_ms": 2383.98
     },
     {
-      "index": 14,
+      "index": 16,
       "source": "03_crack500_fatigue",
       "filename": "cpr_611_1282.jpg",
       "sha256": "8f449633d4dbe51a5550893b132200c130bf51342e18d79aee4810dffd31261a",
@@ -237,10 +269,10 @@
       "surface_area_m2": 1.941,
       "depth_cm": 2.0,
       "repair_cost_inr": 484.5,
-      "latency_ms": 2125.02
+      "latency_ms": 1923.26
     },
     {
-      "index": 15,
+      "index": 17,
       "source": "03_crack500_fatigue",
       "filename": "cpr_175_367.jpg",
       "sha256": "f8ce5ff9afde6009c95f5c03a5a50c2d2e3dae390b8ebfdf36334a3dba43295b",
@@ -253,10 +285,10 @@
       "surface_area_m2": 0.004,
       "depth_cm": 1.8,
       "repair_cost_inr": 58.5,
-      "latency_ms": 2432.23
+      "latency_ms": 2859.09
     },
     {
-      "index": 16,
+      "index": 18,
       "source": "03_crack500_fatigue",
       "filename": "cpr_43_91.jpg",
       "sha256": "c35fd60a30116d3aa0f5882c47f70d5c7232e715fa727a60aecfda6484211f7b",
@@ -269,10 +301,10 @@
       "surface_area_m2": 0.284,
       "depth_cm": 1.8,
       "repair_cost_inr": 268.5,
-      "latency_ms": 2435.57
+      "latency_ms": 2205.29
     },
     {
-      "index": 17,
+      "index": 19,
       "source": "03_crack500_fatigue",
       "filename": "cpr_1212_2553.jpg",
       "sha256": "3bbc2594b70659d08e0bd3c4b5f428c967b11a12260a76849fae830d741cd677",
@@ -285,10 +317,10 @@
       "surface_area_m2": 2.061,
       "depth_cm": 1.8,
       "repair_cost_inr": 11.25,
-      "latency_ms": 1860.86
+      "latency_ms": 1900.28
     },
     {
-      "index": 18,
+      "index": 20,
       "source": "03_crack500_fatigue",
       "filename": "cpr_811_1707.jpg",
       "sha256": "74c1e9c26f7de2892e93b3e3723e24d6d5cd467d087fbb98ab5c6c2b0e7ae37d",
@@ -301,10 +333,10 @@
       "surface_area_m2": 0.01,
       "depth_cm": 1.8,
       "repair_cost_inr": 3.75,
-      "latency_ms": 1794.99
+      "latency_ms": 1475.66
     },
     {
-      "index": 19,
+      "index": 21,
       "source": "03_crack500_fatigue",
       "filename": "cpr_555_1165.jpg",
       "sha256": "9d89d07f370f7aa5dcec11ced8d8d8d079a89576a309f0ad1b24d2721f23a8d1",
@@ -317,10 +349,10 @@
       "surface_area_m2": 0.015,
       "depth_cm": 1.8,
       "repair_cost_inr": 8.25,
-      "latency_ms": 1571.98
+      "latency_ms": 1668.79
     },
     {
-      "index": 20,
+      "index": 22,
       "source": "03_crack500_fatigue",
       "filename": "cpr_1002_2114.jpg",
       "sha256": "0b08a54c7dbe70113841d2c77c803c2fbebfc5b22b722146a3673be65cec08dd",
@@ -333,10 +365,138 @@
       "surface_area_m2": 0.014,
       "depth_cm": 1.8,
       "repair_cost_inr": 5.25,
-      "latency_ms": 1446.68
+      "latency_ms": 1609.89
     },
     {
-      "index": 21,
+      "index": 23,
+      "source": "03_crack500_fatigue",
+      "filename": "cpr_30_65.jpg",
+      "sha256": "a28ab1bac0687ed8f0dbe67f47c2f5bcef591498295a62f605b3f202a58ba7b2",
+      "status": "ANALYSIS_COMPLETE",
+      "gatekeeper_passed": true,
+      "is_control": false,
+      "predicted_class": "Crack (Longitudinal / Transverse / Alligator)",
+      "confidence": 0.9957,
+      "boxes_detected": 6,
+      "surface_area_m2": 0.188,
+      "depth_cm": 1.8,
+      "repair_cost_inr": 113.25,
+      "latency_ms": 2162.38
+    },
+    {
+      "index": 24,
+      "source": "03_crack500_fatigue",
+      "filename": "cpr_363_761.jpg",
+      "sha256": "457abfeabbfb6e49c3800e055aa686e83fe4502c9f4c5bbef3a1d716fcde163d",
+      "status": "REJECTED_NON_PAVEMENT",
+      "gatekeeper_passed": false,
+      "is_control": false,
+      "predicted_class": "REJECTED (Non-Pavement)",
+      "confidence": 0.0,
+      "boxes_detected": 0,
+      "surface_area_m2": 0.0,
+      "depth_cm": 0.0,
+      "repair_cost_inr": 0.0,
+      "latency_ms": 13.31
+    },
+    {
+      "index": 25,
+      "source": "03_crack500_fatigue",
+      "filename": "cpr_728_1529.jpg",
+      "sha256": "add9e5cb42b11f48ba410b297a5eda07eaa5b8751ea2d78242c93e1b76c936c0",
+      "status": "ANALYSIS_COMPLETE",
+      "gatekeeper_passed": true,
+      "is_control": false,
+      "predicted_class": "Crack (Longitudinal / Transverse / Alligator)",
+      "confidence": 0.9893,
+      "boxes_detected": 4,
+      "surface_area_m2": 0.151,
+      "depth_cm": 1.8,
+      "repair_cost_inr": 101.25,
+      "latency_ms": 1926.36
+    },
+    {
+      "index": 26,
+      "source": "03_crack500_fatigue",
+      "filename": "cpr_450_941.jpg",
+      "sha256": "f25effdb12ced7eb94af2f58ac57b000146288a1a632999e1de08410edb1815d",
+      "status": "ANALYSIS_COMPLETE",
+      "gatekeeper_passed": true,
+      "is_control": false,
+      "predicted_class": "Crack (Longitudinal / Transverse / Alligator)",
+      "confidence": 0.9974,
+      "boxes_detected": 5,
+      "surface_area_m2": 0.145,
+      "depth_cm": 1.8,
+      "repair_cost_inr": 84.0,
+      "latency_ms": 2416.31
+    },
+    {
+      "index": 27,
+      "source": "03_crack500_fatigue",
+      "filename": "cpr_428_897.jpg",
+      "sha256": "99048075adec7de4f11ce1e780c29a50b4f2778cadc43e88595814c480d2c141",
+      "status": "ANALYSIS_COMPLETE",
+      "gatekeeper_passed": true,
+      "is_control": false,
+      "predicted_class": "Normal Road / Sound Pavement",
+      "confidence": 0.0,
+      "boxes_detected": 1,
+      "surface_area_m2": 0.0,
+      "depth_cm": 0.0,
+      "repair_cost_inr": 0.0,
+      "latency_ms": 1409.25
+    },
+    {
+      "index": 28,
+      "source": "03_crack500_fatigue",
+      "filename": "cpr_1291_2723.jpg",
+      "sha256": "4e8203b15d22283faedef8ee18a846a4ee4d001f5d093ee7151d0ae7f724aacd",
+      "status": "ANALYSIS_COMPLETE",
+      "gatekeeper_passed": true,
+      "is_control": false,
+      "predicted_class": "Crack (Longitudinal / Transverse / Alligator)",
+      "confidence": 0.9093,
+      "boxes_detected": 3,
+      "surface_area_m2": 0.044,
+      "depth_cm": 1.8,
+      "repair_cost_inr": 20.25,
+      "latency_ms": 1716.96
+    },
+    {
+      "index": 29,
+      "source": "01_rdd2022_india",
+      "filename": "1051790_DF_020_020BDF0070_01724_RAW.jpg",
+      "sha256": "6c723be4c8accb7e7528975f036068e9f3ae7a0c5fa0d4fcb5e55ab7653cb1ac",
+      "status": "ANALYSIS_COMPLETE",
+      "gatekeeper_passed": true,
+      "is_control": false,
+      "predicted_class": "Crack (Longitudinal / Transverse / Alligator)",
+      "confidence": 0.8099,
+      "boxes_detected": 1,
+      "surface_area_m2": 0.021,
+      "depth_cm": 1.8,
+      "repair_cost_inr": 0.0,
+      "latency_ms": 1824.01
+    },
+    {
+      "index": 30,
+      "source": "01_rdd2022_india",
+      "filename": "1068350_DF_010_010BDF0018_04909_RAW.jpg",
+      "sha256": "335adb2ad0c815ded61cf61b42129047de5ef954171b5a501e5bed2f3cea160e",
+      "status": "ANALYSIS_COMPLETE",
+      "gatekeeper_passed": true,
+      "is_control": false,
+      "predicted_class": "Crack (Longitudinal / Transverse / Alligator)",
+      "confidence": 0.8574,
+      "boxes_detected": 1,
+      "surface_area_m2": 0.012,
+      "depth_cm": 1.8,
+      "repair_cost_inr": 0.0,
+      "latency_ms": 1775.12
+    },
+    {
+      "index": 31,
       "source": "NON_PAVEMENT_CONTROL",
       "filename": "_temp_flat_control.jpg",
       "sha256": "ed10160500695c6531280e7bf796e989068407b31b2e6f41b8b4f4677f28300f",
@@ -349,7 +509,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 17.03
+      "latency_ms": 9.83
     }
   ]
 }
