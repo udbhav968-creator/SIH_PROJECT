@@ -21,7 +21,7 @@
   "held_out_depth_r2": 0.9895,
   "held_out_depth_mae": 0.0663,
   "sklearn_version": "1.8.0",
-  "trained_at_unix": 1793195280,
+  "trained_at_unix": 1793196743,
   "train_records": 11935,
   "held_out_test_records": 3696,
   "distinct_route_groups": 254,

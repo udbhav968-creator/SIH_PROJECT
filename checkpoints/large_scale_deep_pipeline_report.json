@@ -1,12 +1,12 @@
 {
-  "timestamp_utc": 1793195408,
+  "timestamp_utc": 1793196879,
   "total_images_evaluated": 20,
   "gatekeeper_real_pass_rate": 0.9,
   "control_rejected": true,
   "clean_false_alarm_rate": 0.0,
   "total_boxes_detected": 54,
-  "mean_latency_ms": 1709.05,
-  "throughput_fps": 0.59,
+  "mean_latency_ms": 1951.24,
+  "throughput_fps": 0.51,
   "total_remediation_inr": 1596.0,
   "class_distribution": {
     "Pothole Cavity": 2,
@@ -29,7 +29,7 @@
       "surface_area_m2": 0.033,
       "depth_cm": 5.6,
       "repair_cost_inr": 51.75,
-      "latency_ms": 2024.15
+      "latency_ms": 2291.8
     },
     {
       "index": 2,
@@ -45,7 +45,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1297.61
+      "latency_ms": 1378.87
     },
     {
       "index": 3,
@@ -61,7 +61,7 @@
       "surface_area_m2": 0.278,
       "depth_cm": 1.8,
       "repair_cost_inr": 162.0,
-      "latency_ms": 1805.76
+      "latency_ms": 1966.58
     },
     {
       "index": 4,
@@ -77,7 +77,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1387.22
+      "latency_ms": 1557.26
     },
     {
       "index": 5,
@@ -93,7 +93,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1356.85
+      "latency_ms": 1549.21
     },
     {
       "index": 6,
@@ -109,7 +109,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1572.61
+      "latency_ms": 1833.49
     },
     {
       "index": 7,
@@ -125,7 +125,7 @@
       "surface_area_m2": 0.017,
       "depth_cm": 1.8,
       "repair_cost_inr": 12.75,
-      "latency_ms": 1616.43
+      "latency_ms": 1785.05
     },
     {
       "index": 8,
@@ -141,7 +141,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1276.44
+      "latency_ms": 1545.21
     },
     {
       "index": 9,
@@ -157,7 +157,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1506.34
+      "latency_ms": 1591.18
     },
     {
       "index": 10,
@@ -173,7 +173,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1405.69
+      "latency_ms": 1521.62
     },
     {
       "index": 11,
@@ -189,7 +189,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 1498.14
+      "latency_ms": 1642.15
     },
     {
       "index": 12,
@@ -205,7 +205,7 @@
       "surface_area_m2": 0.259,
       "depth_cm": 7.1,
       "repair_cost_inr": 409.5,
-      "latency_ms": 1855.98
+      "latency_ms": 2141.45
     },
     {
       "index": 13,
@@ -221,7 +221,7 @@
       "surface_area_m2": 0.097,
       "depth_cm": 1.8,
       "repair_cost_inr": 120.0,
-      "latency_ms": 2475.34
+      "latency_ms": 2639.69
     },
     {
       "index": 14,
@@ -237,7 +237,7 @@
       "surface_area_m2": 1.941,
       "depth_cm": 2.0,
       "repair_cost_inr": 484.5,
-      "latency_ms": 1915.49
+      "latency_ms": 2088.83
     },
     {
       "index": 15,
@@ -253,7 +253,7 @@
       "surface_area_m2": 0.004,
       "depth_cm": 1.8,
       "repair_cost_inr": 58.5,
-      "latency_ms": 2275.16
+      "latency_ms": 3326.07
     },
     {
       "index": 16,
@@ -269,7 +269,7 @@
       "surface_area_m2": 0.284,
       "depth_cm": 1.8,
       "repair_cost_inr": 268.5,
-      "latency_ms": 2211.68
+      "latency_ms": 2652.74
     },
     {
       "index": 17,
@@ -285,7 +285,7 @@
       "surface_area_m2": 2.061,
       "depth_cm": 1.8,
       "repair_cost_inr": 11.25,
-      "latency_ms": 1835.97
+      "latency_ms": 1920.29
     },
     {
       "index": 18,
@@ -301,7 +301,7 @@
       "surface_area_m2": 0.01,
       "depth_cm": 1.8,
       "repair_cost_inr": 3.75,
-      "latency_ms": 1552.0
+      "latency_ms": 1786.43
     },
     {
       "index": 19,
@@ -317,7 +317,7 @@
       "surface_area_m2": 0.015,
       "depth_cm": 1.8,
       "repair_cost_inr": 8.25,
-      "latency_ms": 1758.1
+      "latency_ms": 1864.37
     },
     {
       "index": 20,
@@ -333,7 +333,7 @@
       "surface_area_m2": 0.014,
       "depth_cm": 1.8,
       "repair_cost_inr": 5.25,
-      "latency_ms": 1554.06
+      "latency_ms": 1942.53
     },
     {
       "index": 21,
@@ -349,7 +349,7 @@
       "surface_area_m2": 0.0,
       "depth_cm": 0.0,
       "repair_cost_inr": 0.0,
-      "latency_ms": 15.15
+      "latency_ms": 13.31
     }
   ]
 }
