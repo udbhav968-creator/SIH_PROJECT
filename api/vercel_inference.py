@@ -164,7 +164,7 @@ def has_segmenter():
     return bool(s.get("segmenter"))
 
 
-def decode_base64_image(image_b64):
+def decode_base64_image(image_b64, max_dim=1280):
     import numpy as np
     from PIL import Image
     raw = str(image_b64 or "").strip()
@@ -172,8 +172,11 @@ def decode_base64_image(image_b64):
         raw = raw.split(",", 1)[1]
     img_bytes = base64.b64decode(raw)
     pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-    pil_std = pil_img.resize((640, 480), Image.Resampling.BILINEAR)
-    return np.asarray(pil_std, dtype=np.uint8)
+    w, h = pil_img.size
+    if max(w, h) > max_dim:
+        scale = float(max_dim) / float(max(w, h))
+        pil_img = pil_img.resize((int(w * scale), int(h * scale)), Image.Resampling.BILINEAR)
+    return np.asarray(pil_img, dtype=np.uint8)
 
 
 def _softmax(x):
