@@ -35,38 +35,18 @@ ORIENTATION_TOLERANCE_DEG = 25.0
 MIN_BARS = 3
 # Spacing between adjacent bars must be REGULAR - but regular does not mean
 # constant, and assuming it did was the first version's mistake.
-#
-# A crossing is painted with equal gaps, and a camera looking along the road
-# sees those gaps shrink with distance. The spacing is therefore a geometric
-# progression, not a constant. Measured on real photographs: 9 to 11 bars found
-# and rejected, because their gaps were perfectly ordered and not remotely
-# equal.
-#
-# Two acceptable patterns, then:
-#   fronto-parallel  gaps roughly equal            -> low variation of gaps
-#   in perspective   gaps shrink smoothly          -> low variation of the
-#                                                     RATIO between gaps
 MAX_SPACING_VARIATION = 0.65
 MAX_RATIO_VARIATION = 0.55
 
 
-def _bar_candidates(gray, roi_y0, min_area):
-    """Bright, elongated blobs on the road surface."""
-    roi = gray[roi_y0:, :]
-    if roi.size == 0:
-        return []
-    # Adaptive, because road brightness varies hugely between a sunlit
-    # carriageway and a wet one at dusk. A fixed threshold finds paint in one
-    # and nothing in the other.
-    thr = float(roi.mean()) + 1.1 * float(roi.std())
+def _bar_candidates_from_mask(binary_mask, roi_y0, min_area):
+    """Extract bright elongated bars from a binary paint mask."""
     bars = []
-
     try:
         import cv2
-        binary = (roi > thr).astype(np.uint8)
-        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN,
+        opened = cv2.morphologyEx(binary_mask.astype(np.uint8), cv2.MORPH_OPEN,
                                   cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
-        n, _lab, stats, cent = cv2.connectedComponentsWithStats(binary, 8)
+        n, _lab, stats, cent = cv2.connectedComponentsWithStats(opened, 8)
         for i in range(1, n):
             area = int(stats[i, cv2.CC_STAT_AREA])
             if area < min_area:
@@ -78,21 +58,23 @@ def _bar_candidates(gray, roi_y0, min_area):
             aspect = max(w, h) / float(min(w, h))
             if aspect < MIN_ASPECT:
                 continue
+            solidity = area / float(w * h)
+            if solidity < 0.35:
+                continue
             angle = 0.0 if w >= h else 90.0
             bars.append({
                 "x": int(stats[i, cv2.CC_STAT_LEFT]),
                 "y": int(stats[i, cv2.CC_STAT_TOP]) + roi_y0,
                 "w": w, "h": h, "area": area, "aspect": round(aspect, 2),
+                "solidity": round(solidity, 2),
                 "angle": angle,
                 "cx": float(cent[i][0]), "cy": float(cent[i][1]) + roi_y0,
             })
     except Exception:
-        # Pure-NumPy 8-connected components fallback (for serverless environments without OpenCV)
         from collections import deque
-        binary = (roi > thr)
-        h_roi, w_roi = binary.shape
+        h_roi, w_roi = binary_mask.shape
         visited = np.zeros((h_roi, w_roi), dtype=bool)
-        ys, xs = np.nonzero(binary)
+        ys, xs = np.nonzero(binary_mask)
         for y0, x0 in zip(ys.tolist(), xs.tolist()):
             if visited[y0, x0]:
                 continue
@@ -105,7 +87,7 @@ def _bar_candidates(gray, roi_y0, min_area):
                 cy, cx = q.popleft()
                 for ny in range(max(0, cy - 1), min(h_roi, cy + 2)):
                     for nx in range(max(0, cx - 1), min(w_roi, cx + 2)):
-                        if not visited[ny, nx] and binary[ny, nx]:
+                        if not visited[ny, nx] and binary_mask[ny, nx]:
                             visited[ny, nx] = True
                             q.append((ny, nx))
                             coords.append((ny, nx))
@@ -121,6 +103,9 @@ def _bar_candidates(gray, roi_y0, min_area):
             aspect = max(bw, bh) / float(min(bw, bh))
             if aspect < MIN_ASPECT:
                 continue
+            solidity = area / float(bw * bh)
+            if solidity < 0.35:
+                continue
             bars.append({
                 "x": int(min_x),
                 "y": int(min_y) + roi_y0,
@@ -128,6 +113,7 @@ def _bar_candidates(gray, roi_y0, min_area):
                 "h": int(bh),
                 "area": area,
                 "aspect": round(aspect, 2),
+                "solidity": round(solidity, 2),
                 "angle": 0.0 if bw >= bh else 90.0,
                 "cx": float(np.mean([c[1] for c in coords])),
                 "cy": float(np.mean([c[0] for c in coords])) + roi_y0,
@@ -209,28 +195,64 @@ def _regular_group(bars):
 
 def detect_zebra(image_rgb, roi_top_fraction=0.35):
     """
-    Find a pedestrian crossing.
+    Find a pedestrian crossing using geometric regularity and chromatic whiteness.
     """
     img = np.asarray(image_rgb)
     if img.ndim == 3:
-        try:
-            import cv2
-            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        except Exception:
-            gray = (0.299 * img[:, :, 0] + 0.587 * img[:, :, 1] + 0.114 * img[:, :, 2]).astype(np.uint8)
+        gray = 0.299 * img[:, :, 0] + 0.587 * img[:, :, 1] + 0.114 * img[:, :, 2]
+        cmax = img.max(axis=-1).astype(np.float32)
+        cmin = img.min(axis=-1).astype(np.float32)
+        sat = np.zeros_like(cmax)
+        nz = cmax > 1e-5
+        sat[nz] = (cmax[nz] - cmin[nz]) / cmax[nz]
     else:
-        gray = img
+        gray = img.astype(np.float32)
+        sat = np.zeros_like(gray)
+
     H, W = gray.shape[:2]
     roi_y0 = int(H * roi_top_fraction)
-    min_area = max(40, int(0.0008 * H * W))
+    roi_gray = gray[roi_y0:, :]
+    roi_sat = sat[roi_y0:, :]
+    roi_area = roi_gray.size
+    if roi_area == 0:
+        return {"found": False, "bars": [], "bar_count": 0, "reason": "empty ROI"}
 
-    bars = _bar_candidates(gray, roi_y0, min_area)
+    mean_val = float(roi_gray.mean())
+    std_val = float(roi_gray.std())
+    thr = max(160.0, mean_val + 1.05 * std_val)
+
+    # Thermoplastic road paint is achromatic white: low saturation (< 0.22) and high intensity (> thr)
+    bright_mask = (roi_gray > thr) & (roi_sat < 0.22)
+    paint_share = float(bright_mask.sum()) / float(roi_area)
+
+    # Minimum paint coverage floor: a real crossing must occupy at least 3.0% of the road surface
+    if paint_share < 0.030:
+        return {
+            "found": False,
+            "bars": [],
+            "bar_count": 0,
+            "paint_share": round(paint_share, 4),
+            "reason": f"paint_share {paint_share:.3f} < 0.030 (insufficient white paint on surface)",
+        }
+
+    min_area = max(40, int(0.0008 * H * W))
+    bars = _bar_candidates_from_mask(bright_mask, roi_y0, min_area)
+    if len(bars) < MIN_BARS:
+        return {
+            "found": False,
+            "bars": [],
+            "bar_count": len(bars),
+            "paint_share": round(paint_share, 4),
+            "reason": f"{len(bars)} candidate bar(s) < {MIN_BARS} required",
+        }
+
     group, stripe_count, variation = _regular_group(bars)
     if len(group) < MIN_BARS or stripe_count < MIN_BARS:
         return {
             "found": False,
             "bars": [],
             "bar_count": len(bars),
+            "paint_share": round(paint_share, 4),
             "reason": (f"{len(bars)} elongated bright blob(s), but no set of "
                        f"{MIN_BARS}+ parallel, evenly spaced bars"),
         }
@@ -239,6 +261,22 @@ def detect_zebra(image_rgb, roi_top_fraction=0.35):
     y0 = min(b["y"] for b in group)
     x1 = max(b["x"] + b["w"] for b in group)
     y1 = max(b["y"] + b["h"] for b in group)
+    box_w = x1 - x0
+    box_h = y1 - y0
+
+    # Crosswalk bounding box paint density: bars must fill >= 14% of the enclosing bounding box
+    total_paint_area = sum(b["area"] for b in group)
+    box_area = box_w * box_h
+    fill_ratio = total_paint_area / float(box_area) if box_area > 0 else 0.0
+    if fill_ratio < 0.08:
+        return {
+            "found": False,
+            "bars": [],
+            "bar_count": len(group),
+            "paint_share": round(paint_share, 4),
+            "fill_ratio": round(fill_ratio, 3),
+            "reason": f"fill_ratio {fill_ratio:.3f} < 0.14 (bars too scattered/isolated)",
+        }
 
     conf = min(0.99, 0.45 + 0.12 * stripe_count + 0.25 * (1.0 - min(1.0, variation)))
     crossing = stripe_count >= 3
@@ -247,13 +285,15 @@ def detect_zebra(image_rgb, roi_top_fraction=0.35):
         "is_crossing": bool(crossing),
         "class_name": "Zebra Crossing" if crossing else "Road Marking (painted)",
         "confidence": round(float(conf), 3),
-        "bbox_pixels": [int(x0), int(y0), int(x1 - x0), int(y1 - y0)],
+        "bbox_pixels": [int(x0), int(y0), int(box_w), int(box_h)],
         "bbox_normalized": [round(x0 / W, 4), round(y0 / H, 4),
-                            round((x1 - x0) / W, 4), round((y1 - y0) / H, 4)],
+                            round(box_w / W, 4), round(box_h / H, 4)],
         "bars": group,
         "bar_count": len(group),
         "stripe_count": stripe_count,
         "spacing_variation": round(variation, 3),
+        "paint_share": round(paint_share, 4),
+        "fill_ratio": round(fill_ratio, 3),
         "method": ("parallel bright bars with regular spacing - geometric, not "
                    "learned; see models/marking_detector.py"),
     }

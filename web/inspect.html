@@ -382,7 +382,7 @@ function draw() {
   }
 
   // Scene objects from the COCO detector: people, vehicles, traffic control.
-  const scene = lastResult.scene_objects || [];
+  const scene = (lastResult.scene_objects || []).filter(o => !o.is_marking);
   if (el("showScene").checked && scene.length) {
     scene.forEach(o => {
       const b = o.bbox_pixels;

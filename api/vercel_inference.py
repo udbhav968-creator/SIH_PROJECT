@@ -586,38 +586,13 @@ def _detect_scene_objects(img_np, H, W):
         "total_vehicles_detected": len(vehicle_detections),
     }
 
-    # Geometric Road Markings & Zebra Crossing Detection
+    # Geometric Road Markings & Zebra Crossing Analysis
     markings_res = {"found": False, "bars": []}
     try:
-        from models.marking_detector import detect_zebra, paint_mask
+        from models.marking_detector import detect_zebra
         z = detect_zebra(img_np)
         if z and z.get("found"):
             markings_res = z
-            bx, by, bw, bh = z["bbox_pixels"]
-            scene_objects.append({
-                "class_name": z["class_name"],
-                "confidence": z["confidence"],
-                "bbox_pixels": [bx, by, bw, bh],
-                "bbox_normalized": z["bbox_normalized"],
-                "detector": "geometric_marking_analyzer",
-                "color": "#38bdf8",
-                "is_distress": False,
-                "is_pedestrian": False,
-                "is_vehicle": False,
-                "is_marking": True,
-                "details": {
-                    "stripe_count": z.get("stripe_count", 0),
-                    "bar_count": z.get("bar_count", 0),
-                    "spacing_variation": z.get("spacing_variation", 0.0),
-                }
-            })
-            if scene_summary.get("available"):
-                counts = scene_summary.setdefault("counts_by_class", {})
-                counts[z["class_name"]] = counts.get(z["class_name"], 0) + 1
-                scene_summary["objects_detected"] = len(scene_objects)
-            # Mask paint bars so segmenter never claims paint as cavity
-            p_mask = paint_mask(img_np, z)
-            object_mask = object_mask | p_mask
     except Exception as e:
         markings_res = {"found": False, "reason": str(e)}
 
@@ -851,10 +826,55 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
 
     # STAGE 3: Whole-frame MobileNetV3-Large classification
     frame_cls_raw = classify_crop(img_np)
-    if markings_res.get("found") and frame_cls_raw.get("class_id") == 4:
-        # Intact zebra crossing is verified by geometry; override spurious missing crossing defect
-        frame_cls_raw["class_id"] = 0
-        frame_cls_raw["class_name"] = "Normal Road / Sound Pavement"
+    f_cls = frame_cls_raw.get("class_id")
+    f_conf = frame_cls_raw.get("confidence", 0.0)
+
+    # Semantic cross-verification: on severe distress roads (pothole cavity, waterlogging, or crack >= 0.70 conf),
+    # suppress zebra crossing detection unless paint_share >= 0.10 (real painted crossing)
+    if markings_res.get("found"):
+        p_share = markings_res.get("paint_share", 0.0)
+        if f_cls in (1, 2, 3) and f_conf >= 0.70 and p_share < 0.10:
+            markings_res = {
+                "found": False,
+                "bars": [],
+                "bar_count": 0,
+                "reason": f"suppressed by distress classifier (distress {CLASS_NAMES.get(f_cls)} conf {f_conf:.2f}, paint_share {p_share:.3f} < 0.10)",
+            }
+        else:
+            bx, by, bw, bh = markings_res["bbox_pixels"]
+            scene_objects.append({
+                "class_name": markings_res["class_name"],
+                "confidence": markings_res["confidence"],
+                "bbox_pixels": [bx, by, bw, bh],
+                "bbox_normalized": markings_res["bbox_normalized"],
+                "detector": "geometric_marking_analyzer",
+                "color": "#38bdf8",
+                "is_distress": False,
+                "is_pedestrian": False,
+                "is_vehicle": False,
+                "is_marking": True,
+                "details": {
+                    "stripe_count": markings_res.get("stripe_count", 0),
+                    "bar_count": markings_res.get("bar_count", 0),
+                    "spacing_variation": markings_res.get("spacing_variation", 0.0),
+                    "paint_share": p_share,
+                }
+            })
+            if scene_summary.get("available"):
+                counts = scene_summary.setdefault("counts_by_class", {})
+                counts[markings_res["class_name"]] = counts.get(markings_res["class_name"], 0) + 1
+                scene_summary["objects_detected"] = len(scene_objects)
+            try:
+                from models.marking_detector import paint_mask
+                p_mask = paint_mask(img_np, markings_res)
+                object_mask = object_mask | p_mask
+            except Exception:
+                pass
+            if f_cls == 4:
+                # Intact zebra crossing is verified by geometry; override spurious missing crossing defect
+                frame_cls_raw["class_id"] = 0
+                frame_cls_raw["class_name"] = "Normal Road / Sound Pavement"
+
     frame_cls = {
         "class_name": frame_cls_raw["class_name"],
         "confidence": frame_cls_raw["confidence"],
