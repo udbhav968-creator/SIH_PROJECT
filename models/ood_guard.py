@@ -40,8 +40,13 @@ def _gray_small(img_rgb, width=512):
         img = np.stack([img] * 3, axis=-1)
     h, w = img.shape[:2]
     if w > width:
-        import cv2
-        img = cv2.resize(img, (width, max(1, int(round(h * width / w)))), interpolation=cv2.INTER_AREA)
+        nh = max(1, int(round(h * width / w)))
+        try:
+            import cv2
+            img = cv2.resize(img, (width, nh), interpolation=cv2.INTER_AREA)
+        except ImportError:
+            from PIL import Image
+            img = np.asarray(Image.fromarray(img[:, :, :3].astype(np.uint8)).resize((width, nh), Image.Resampling.BOX))
     img = img[:, :, :3].astype(np.float32)
     return 0.299 * img[:, :, 0] + 0.587 * img[:, :, 1] + 0.114 * img[:, :, 2]
 
@@ -49,9 +54,13 @@ def _gray_small(img_rgb, width=512):
 def image_quality(img_rgb):
     """Brightness (0-255 mean), contrast (std), sharpness (variance of the Laplacian at 512 px wide)
     and the fraction of clipped-white pixels."""
-    import cv2
     g = _gray_small(img_rgb)
-    lap = cv2.Laplacian(g, cv2.CV_32F, ksize=3)
+    try:
+        import cv2
+        lap = cv2.Laplacian(g, cv2.CV_32F, ksize=3)
+    except ImportError:
+        p = np.pad(g, 1, mode="reflect")
+        lap = 2.0 * (p[:-2, :-2] + p[:-2, 2:] + p[2:, :-2] + p[2:, 2:]) - 8.0 * p[1:-1, 1:-1]
     return {
         "brightness": round(float(g.mean()), 2),
         "contrast": round(float(g.std()), 2),

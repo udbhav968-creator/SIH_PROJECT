@@ -320,9 +320,23 @@ function draw() {
 
   if (!lastResult) return;
   const dets = lastResult.all_detections || [];
+  const roadDets = dets.filter(d => d && d.is_distress && (d.bbox_pixels || d.bbox_normalized));
+
+  const maskUrl = (lastResult.segmentation || {}).mask_data_url;
+  if (el("showMask").checked && maskUrl) {
+    if (!lastResult._maskImg || lastResult._maskUrl !== maskUrl) {
+      const mImg = new Image();
+      mImg.onload = () => draw();
+      mImg.src = maskUrl;
+      lastResult._maskImg = mImg;
+      lastResult._maskUrl = maskUrl;
+    } else if (lastResult._maskImg.complete) {
+      ctx.drawImage(lastResult._maskImg, 0, 0, cv.width, cv.height);
+    }
+  }
 
   if (el("showBox").checked) {
-    dets.forEach(d => {
+    roadDets.forEach(d => {
       const b = d.bbox_pixels;
       const bn = d.bbox_normalized;
       if (!b && !bn) return;
@@ -424,7 +438,7 @@ function draw() {
 
   const s = lastResult.segmentation;
   const counts = [];
-  if (dets.length) counts.push(`${dets.length} road defect${dets.length > 1 ? "s" : ""}`);
+  counts.push(`${roadDets.length} road defect${roadDets.length === 1 ? "" : "s"}`);
   if (scene.length) counts.push(`${scene.length} scene object${scene.length > 1 ? "s" : ""}`);
   if (mk && mk.found) counts.push(`1 painted marking`);
   el("canvasNote").textContent =
@@ -436,8 +450,25 @@ function draw() {
 
 /* --------------------------------------------------------------- render -- */
 function render(d, ms) {
-  const dets = d.all_detections || [];
-  const top = dets[0] || {};
+  if (d.gatekeeper_passed === false || /^REJECTED/.test(d.status || "")) {
+    const ic = d.input_check || {};
+    el("out").innerHTML = `
+      <div class="card" style="border-color:rgba(244,63,94,.55)">
+        <div class="label" style="color:#fb7185">input guard refusal · ${ms != null ? ms + " ms round trip" : "recorded"}</div>
+        <h2 style="margin:2px 0 6px;color:#fb7185">Not a Road Photograph (Rejected)</h2>
+        <p class="small" style="margin:0 0 12px">${d.reason || "This image does not appear to be a road scene. No defect detection or repair pricing is run on non-road images."}</p>
+        ${ic.available ? `
+          <div class="rule" style="margin:12px 0"></div>
+          <div class="kv"><span>Guard verdict</span><span><span class="badge warn">${ic.verdict}</span></span></div>
+          <div class="kv"><span>Non-road probability</span><span>${ic.p_not_road != null ? (ic.p_not_road * 100).toFixed(1) + "%" : "—"} (threshold ${ic.p_not_road_threshold != null ? (ic.p_not_road_threshold * 100).toFixed(1) + "%" : "—"})</span></div>
+          <div class="kv"><span>Mahalanobis novelty</span><span>${ic.novelty_score ?? "—"} (threshold ${ic.novelty_threshold ?? "—"})</span></div>
+          <div class="kv"><span>Model</span><span class="mono">${ic.model || "ood_guard"}</span></div>
+        ` : ""}
+      </div>`;
+    return;
+  }
+  const dets = (d.all_detections || []).filter(x => x && !x.is_pedestrian && !x.is_vehicle);
+  const top = d.primary_distress || dets[0] || {};
   const calib = d.camera_calibration || {};
   const seg = d.segmentation || {};
   const pci = d.astm_d6433_pci || {};

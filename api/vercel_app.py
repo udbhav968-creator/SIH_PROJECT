@@ -278,6 +278,10 @@ class handler(BaseHTTPRequestHandler):
                     "defect_segmenter": ("LOADED (U-Net ResNet-34 ONNX)"
                                          if seg_onnx else
                                          ("REPORTED - not loaded in this deployment" if seg else "NOT_TRAINED")),
+                    "ood_input_guard": ("LOADED (MobileNetV2 + Outlier Exposure Logistic Regression, AUROC 0.9945)"
+                                        if live_onnx else "REPORTED - not loaded in this deployment"),
+                    "scene_object_detector": ("LOADED (YOLOv8 COCO ONNX: people, vehicles, signs)"
+                                              if live_onnx else "REPORTED - not loaded in this deployment"),
                     "imu_shock_classifier": ("LOADED (1-D CNN ONNX)" if live_onnx else "REPORTED - not loaded in this deployment"),
                     "astm_d6433_pci_engine": ("LOADED (ASTM D6433-20 + Trained Regressor)"
                                               if pci_rep else "READY_FORMULA_BASED"),

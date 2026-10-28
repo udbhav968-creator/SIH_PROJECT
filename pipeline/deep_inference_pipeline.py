@@ -215,6 +215,33 @@ class DeepInferencePipeline:
         res = self._audit_core(img, corridor_id=corridor_id, latitude=latitude, longitude=longitude, **kwargs)
         res["input_check"] = check or {"available": False,
                                        "reason": getattr(guard, "load_error", None) or "input guard not loaded"}
+        if check and check.get("verdict") == "not_road" and float(check.get("p_not_road", 0.0)) >= 0.75:
+            p_not = float(check.get("p_not_road", 0.0))
+            reason = f"Rejected by OOD Input Guard: this does not look like a photograph of a road (p_not_road = {p_not:.3f})."
+            placeholder = {
+                "class_id": 0,
+                "class_name": "Non-Road Scene (Rejected by OOD Guard)",
+                "is_distress": False,
+                "confidence": round(p_not, 4),
+                "decision_basis": reason,
+                "surface_area_m2": 0.0,
+                "depth_cm": 0.0,
+                "morth_tonnage_t": 0.0,
+                "repair_cost_inr": 0.0,
+                "bbox_pixels": None,
+                "bbox_normalized": None,
+            }
+            res["status"] = "REJECTED_NON_ROAD"
+            res["gatekeeper_passed"] = False
+            res["reason"] = reason
+            res["is_distress"] = False
+            res["primary_distress"] = placeholder
+            res["primary_detection"] = placeholder
+            res["all_detections"] = []
+            res["cryptographic_work_order"] = None
+            if isinstance(res.get("morth_civil_ledger"), dict):
+                res["morth_civil_ledger"]["total_bitumen_tonnage_t"] = 0.0
+                res["morth_civil_ledger"]["total_estimated_repair_inr"] = 0.0
         if getattr(self, "model_versions", None):
             res["model_versions"] = dict(self.model_versions)
         total_ms = round((time.time() - t0) * 1000.0, 2)
@@ -416,10 +443,13 @@ class DeepInferencePipeline:
         # windshields are not proposed as pavement cavities, while leaving the
         # bottom 18% tire-to-road contact strip unmasked.
         obj_mask = np.zeros((H, W), dtype=bool)
-        for obj in pedestrians + vehicle_detections:
+        for obj in pedestrians:
             ox, oy, ow, oh = obj["bbox_pixels"]
-            oy1 = max(oy, oy + int(oh * 0.82))
-            obj_mask[max(0, oy):min(H, oy1), max(0, ox):min(W, ox + ow)] = True
+            obj_mask[max(0, oy - 8):min(H, oy + oh + 8), max(0, ox - 8):min(W, ox + ow + 8)] = True
+        for obj in vehicle_detections:
+            ox, oy, ow, oh = obj["bbox_pixels"]
+            oy1 = max(oy, oy + int(oh * 0.85))
+            obj_mask[max(0, oy):min(H, oy1), max(0, ox - 6):min(W, ox + ow + 6)] = True
         self._object_mask = obj_mask if obj_mask.any() else None
 
         # Crack and pothole candidates come from the segmenter's mask; the

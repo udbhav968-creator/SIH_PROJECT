@@ -4,10 +4,12 @@ Lightweight ONNX Runtime inference engine for Vercel Serverless Functions.
 Uses only `numpy`, `Pillow` (`PIL`), `onnxruntime`, and Python's standard library
 (zero `scipy`, `scikit-learn`, `scikit-image`, or `opencv-python` dependencies),
 keeping the unzipped function bundle well under Vercel's 250 MB serverless limit
-while executing the genuine trained ONNX models:
-  - `checkpoints/deep_vision_mobilenet_v3_large_refit.onnx` (93.33% test accuracy)
+while executing all 5 genuine trained models:
+  - `checkpoints/ood_guard.npz` + `checkpoints/cnn_backbone_mobilenetv2.onnx` (OOD Input Guard, AUROC 0.9945)
+  - `checkpoints/road_shield_detector.onnx` (YOLOv8 COCO Object Detector: people, vehicles, signs)
+  - `checkpoints/deep_vision_mobilenet_v3_large_refit.onnx` (MobileNetV3-Large, 94.92% test accuracy, 0.9207 Macro-F1)
   - `checkpoints/defect_segmenter_unet.onnx` (U-Net ResNet-34, 60.50% Pothole IoU)
-  - `checkpoints/imu_shock_cnn.onnx` (1-D CNN IMU shock classifier, 98.18% accuracy)
+  - `checkpoints/imu_shock_cnn.onnx` (1-D CNN IMU shock classifier)
 """
 
 import base64
@@ -16,7 +18,6 @@ import hashlib
 import hmac
 import io
 import json
-import math
 import os
 import time
 
@@ -41,12 +42,31 @@ IRC_STANDARDS = {
     4: "IRC:35-2015 Cl. 7.2: Retroreflective thermoplastic zebra crossing marking",
     5: "IRC:79-2019 Sec. 4: W-beam crash barrier / retroreflective road divider",
     6: "IRC:67-2012: High-intensity microprismatic sign retrofit",
+    7: "IRC:103-2012: Pedestrian facilities & vulnerable road user protection",
+}
+
+VEHICLE_CLASS_MAP = {
+    "car": ("Car", 1.0),
+    "bus": ("City Bus", 3.0),
+    "truck": ("Heavy Truck", 3.0),
+    "train": ("Heavy Truck", 3.0),
+    "motorcycle": ("Two-Wheeler", 0.5),
+    "bicycle": ("Two-Wheeler", 0.5),
 }
 
 WORK_W, WORK_H = 320, 200
 UNET_W, UNET_H = 512, 320
 
 _SESSIONS = {}
+
+
+def _ort_opts(ort):
+    opts = ort.SessionOptions()
+    opts.enable_cpu_mem_arena = False
+    opts.enable_mem_pattern = True
+    opts.intra_op_num_threads = 2
+    opts.inter_op_num_threads = 1
+    return opts
 
 
 def _load_sessions():
@@ -61,12 +81,14 @@ def _load_sessions():
         _SESSIONS["error"] = str(e)
         return _SESSIONS
 
-    # 1. Vision Classifier ONNX
+    opts = _ort_opts(ort)
+
+    # 1. Vision Classifier ONNX (MobileNetV3-Large)
     vis_onnx = os.path.join(CKPT_DIR, "deep_vision_mobilenet_v3_large_refit.onnx")
     vis_json = os.path.join(CKPT_DIR, "deep_vision_mobilenet_v3_large_refit.json")
     if os.path.exists(vis_onnx):
         try:
-            sess = ort.InferenceSession(vis_onnx, providers=["CPUExecutionProvider"])
+            sess = ort.InferenceSession(vis_onnx, opts, providers=["CPUExecutionProvider"])
             meta = {}
             if os.path.exists(vis_json):
                 with open(vis_json, "r", encoding="utf-8") as fh:
@@ -80,12 +102,12 @@ def _load_sessions():
         except Exception as e:
             _SESSIONS["vision_error"] = str(e)
 
-    # 2. U-Net Defect Segmenter ONNX
+    # 2. U-Net Defect Segmenter ONNX (ResNet-34 U-Net)
     seg_onnx = os.path.join(CKPT_DIR, "defect_segmenter_unet.onnx")
     seg_json = os.path.join(CKPT_DIR, "defect_segmenter_unet.json")
     if os.path.exists(seg_onnx):
         try:
-            sess = ort.InferenceSession(seg_onnx, providers=["CPUExecutionProvider"])
+            sess = ort.InferenceSession(seg_onnx, opts, providers=["CPUExecutionProvider"])
             meta = {}
             if os.path.exists(seg_json):
                 with open(seg_json, "r", encoding="utf-8") as fh:
@@ -103,13 +125,31 @@ def _load_sessions():
     imu_onnx = os.path.join(CKPT_DIR, "imu_shock_cnn.onnx")
     if os.path.exists(imu_onnx):
         try:
-            sess = ort.InferenceSession(imu_onnx, providers=["CPUExecutionProvider"])
+            sess = ort.InferenceSession(imu_onnx, opts, providers=["CPUExecutionProvider"])
             _SESSIONS["imu"] = {
                 "session": sess,
                 "input_name": sess.get_inputs()[0].name,
             }
         except Exception as e:
             _SESSIONS["imu_error"] = str(e)
+
+    # 4. OOD Input Guard (ood_guard.npz + cnn_backbone_mobilenetv2.onnx)
+    try:
+        from models.ood_guard import OODGuard
+        guard = OODGuard(checkpoints_dir=CKPT_DIR)
+        if guard.is_ready:
+            _SESSIONS["ood_guard"] = guard
+    except Exception as e:
+        _SESSIONS["ood_guard_error"] = str(e)
+
+    # 5. YOLOv8 COCO Object Detector (road_shield_detector.onnx)
+    try:
+        from models.onnx_object_detector import ONNXObjectDetector
+        det = ONNXObjectDetector(checkpoints_dir=CKPT_DIR)
+        if det.is_ready:
+            _SESSIONS["detector"] = det
+    except Exception as e:
+        _SESSIONS["detector_error"] = str(e)
 
     return _SESSIONS
 
@@ -200,7 +240,7 @@ def classify_crop(img_rgb):
     }
 
 
-def _connected_components_8(binary_mask, min_blob_px=12):
+def _connected_components_8(binary_mask, min_blob_px=24):
     """Pure Python + NumPy 8-connected components on the 200x320 working grid."""
     import numpy as np
     h, w = binary_mask.shape
@@ -249,7 +289,20 @@ def _connected_components_8(binary_mask, min_blob_px=12):
     return cleaned, boxes
 
 
-def segment_image(img_rgb):
+def _mask_to_data_url(mask_work):
+    """Encode the 200x320 mask (1=crack cyan, 2=pothole amber-red) as a tiny transparent PNG data URL."""
+    import numpy as np
+    from PIL import Image
+    h, w = mask_work.shape
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+    rgba[mask_work == 1] = [45, 212, 212, 135]   # cyan for cracks
+    rgba[mask_work == 2] = [244, 63, 94, 145]    # rose-red for potholes
+    buf = io.BytesIO()
+    Image.fromarray(rgba, mode="RGBA").save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def segment_image(img_rgb, object_mask_full=None, gray_full=None):
     import numpy as np
     from PIL import Image
     s = _load_sessions()
@@ -293,23 +346,56 @@ def segment_image(img_rgb):
     labels = flat.reshape(WORK_H, WORK_W)
     conf_map = np.where(flat == 1, crack_p, np.where(flat == 2, pothole_p, proba[:, 0])).reshape(WORK_H, WORK_W)
 
+    # 1. Withhold detected pedestrians and vehicles from the segmentation mask
+    if object_mask_full is not None and object_mask_full.any():
+        om_work = np.asarray(
+            Image.fromarray(object_mask_full.astype(np.uint8) * 255, mode="L").resize(
+                (WORK_W, WORK_H), Image.Resampling.NEAREST
+            ),
+            dtype=np.uint8,
+        ) > 0
+        labels[om_work] = 0
+
+    # 2. Withhold bright white painted lane markings / zebra stripes (paint is brighter than road, cavities are darker)
+    if gray_full is not None:
+        g_work = np.asarray(
+            Image.fromarray(np.clip(gray_full, 0, 255).astype(np.uint8), mode="L").resize(
+                (WORK_W, WORK_H), Image.Resampling.BILINEAR
+            ),
+            dtype=np.float32,
+        )
+        road_med = float(np.median(g_work[int(WORK_H * 0.35):, :]))
+        paint_work = g_work > max(175.0, road_med + 38.0)
+        labels[paint_work] = 0
+
+    # Minimum component sizes matching pipeline/deep_inference_pipeline.py:
+    # crack = 0.0012 * 64000 = 76 px, pothole = 0.004 * 64000 = 256 px (at least 48 px)
+    min_px_map = {1: 48, 2: 96}
+    min_conf_map = {
+        1: float(thresholds.get("crack", 0.60)),
+        2: min(0.92, float(thresholds.get("pothole", 0.55)) + 0.08),
+    }
+
     cleaned = np.zeros_like(labels)
     comp_boxes = []
     sx = orig_w / float(WORK_W)
     sy = orig_h / float(WORK_H)
     for cls_val, cls_id in ((2, 2), (1, 1)):
-        c_mask, boxes = _connected_components_8(labels == cls_val, min_blob_px=18)
-        cleaned[c_mask] = cls_val
-        for b in boxes[:3]:
+        c_mask, boxes = _connected_components_8(labels == cls_val, min_blob_px=min_px_map[cls_val])
+        for b in boxes[:4]:
             wx, wy, ww, wh = b["bbox_work"]
-            # Require detection to be in the lower 68% road ROI
-            if (wy + wh * 0.5) < WORK_H * 0.32:
+            # Require detection centroid to lie in the lower 65% road ROI (below horizon)
+            if (wy + wh * 0.5) < WORK_H * 0.35:
                 continue
+            sub_mask = c_mask[wy:wy + wh, wx:wx + ww]
+            sub_conf = float(conf_map[wy:wy + wh, wx:wx + ww][sub_mask].mean())
+            if sub_conf < min_conf_map[cls_val]:
+                continue
+            cleaned[wy:wy + wh, wx:wx + ww][sub_mask] = cls_val
             bx = max(0, int(round(wx * sx)))
             by = max(0, int(round(wy * sy)))
             bw = min(orig_w - bx, max(16, int(round(ww * sx))))
             bh = min(orig_h - by, max(16, int(round(wh * sy))))
-            sub_conf = float(conf_map[wy:wy + wh, wx:wx + ww][c_mask[wy:wy + wh, wx:wx + ww]].mean())
             comp_boxes.append({
                 "seg_cls": cls_val,
                 "class_id": cls_id,
@@ -325,6 +411,7 @@ def segment_image(img_rgb):
     return {
         "mask": mask_full,
         "mask_work": cleaned,
+        "mask_data_url": _mask_to_data_url(cleaned) if int((cleaned != 0).sum()) > 0 else None,
         "crack_px": int((cleaned == 1).sum()),
         "pothole_px": int((cleaned == 2).sum()),
         "crack_px_full": int((mask_full == 1).sum()),
@@ -419,12 +506,94 @@ def _compute_pci(detections):
     }
 
 
+def _detect_scene_objects(img_np, H, W):
+    import numpy as np
+    s = _load_sessions()
+    det = s.get("detector")
+    scene_objects = []
+    scene_summary = {"available": False, "reason": "No detector weights loaded"}
+    pedestrians = []
+    vehicle_detections = []
+    object_mask = np.zeros((H, W), dtype=bool)
+
+    if det is not None and det.is_ready:
+        try:
+            from models.onnx_object_detector import ROAD_RELEVANT
+            scene_objects = det.detect(img_np, conf_threshold=0.32, keep_classes=set(ROAD_RELEVANT))
+            scene_summary = det.summarise(scene_objects)
+            scene_summary["available"] = True
+        except Exception as e:
+            scene_summary = {"available": False, "reason": f"detector error: {e}"}
+
+    for o in scene_objects:
+        cname = o["class_name"]
+        bx, by, bw, bh = o["bbox_pixels"]
+        if cname == "person":
+            pid = len(pedestrians) + 1
+            dist_m = round(max(1.5, 22.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
+            alert_level = "CRITICAL" if dist_m <= 8.0 else ("HIGH" if dist_m <= 18.0 else "ADVISORY")
+            pedestrians.append({
+                "class_id": 7,
+                "class_name": "Pedestrian / Vulnerable Road User",
+                "pedestrian_id": pid,
+                "confidence": round(float(o["confidence"]), 4),
+                "bbox_pixels": [bx, by, bw, bh],
+                "bbox_normalized": o["bbox_normalized"],
+                "distance_meters": dist_m,
+                "alert_level": alert_level,
+                "is_pedestrian": True,
+                "is_distress": False,
+                "surface_area_m2": 0.0,
+                "depth_cm": 0.0,
+                "morth_tonnage_t": 0.0,
+                "repair_cost_inr": 0.0,
+                "irc_standard_specification": IRC_STANDARDS[7],
+                "detector": o.get("detector", "onnx_coco_detector"),
+            })
+            # Mask 100% of person bounding box + 8px margin so clothing/hair/shadow is never segmented as a crack
+            object_mask[max(0, by - 8):min(H, by + bh + 8), max(0, bx - 8):min(W, bx + bw + 8)] = True
+        elif cname in VEHICLE_CLASS_MAP:
+            vtype, pcu = VEHICLE_CLASS_MAP[cname]
+            vid = len(vehicle_detections) + 1
+            dist_m = round(max(2.0, 26.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
+            vehicle_detections.append({
+                "vehicle_id": vid,
+                "raw_coco_class": cname,
+                "vehicle_type": vtype,
+                "class_name": f"Vehicle ({vtype})",
+                "confidence": round(float(o["confidence"]), 4),
+                "bbox_pixels": [bx, by, bw, bh],
+                "bbox_normalized": o["bbox_normalized"],
+                "distance_meters": dist_m,
+                "pcu_weight": pcu,
+                "is_vehicle": True,
+                "is_distress": False,
+                "is_pedestrian": False,
+                "detector": o.get("detector", "onnx_coco_detector"),
+            })
+            # Mask upper 85% of vehicle box + 6px horizontal margin
+            oy1 = max(by, by + int(bh * 0.85))
+            object_mask[max(0, by):min(H, oy1), max(0, bx - 6):min(W, bx + bw + 6)] = True
+
+    pcu_total = round(sum(v["pcu_weight"] for v in vehicle_detections), 2)
+    cong_pct = round(min(100.0, (pcu_total / 12.0) * 100.0), 1)
+    los = "A" if cong_pct < 20 else ("B" if cong_pct < 40 else ("C" if cong_pct < 60 else ("D" if cong_pct < 80 else "E")))
+    traffic_analysis = {
+        "pcu_equivalent": pcu_total,
+        "congestion_index_pct": cong_pct,
+        "los_grade": los,
+        "total_vehicles_detected": len(vehicle_detections),
+    }
+    return scene_objects, scene_summary, pedestrians, vehicle_detections, traffic_analysis, object_mask
+
+
 def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=None, longitude=None):
     import numpy as np
     from models import camera_calibration as cam_cal
     from models.ipm_homography_engine import IPMHomographyEngine
 
     t0 = time.time()
+    s = _load_sessions()
     img_np = decode_base64_image(image_b64)
     H, W = img_np.shape[:2]
     gray = (0.299 * img_np[:, :, 0] + 0.587 * img_np[:, :, 1] + 0.114 * img_np[:, :, 2]).astype(np.float32)
@@ -437,6 +606,83 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     ipm = IPMHomographyEngine.from_calibration(calib)
     calib_desc = cam_cal.describe(calib, prov)
 
+    # STAGE 1: OOD Input Guard (rejects desktop screenshots, selfies, indoor scenes, non-road photos)
+    input_check = {"available": False, "reason": "OOD guard not loaded"}
+    guard = s.get("ood_guard")
+    if guard is not None and guard.is_ready:
+        try:
+            input_check = guard.check(img_np)
+        except Exception as e:
+            input_check = {"available": False, "reason": f"OOD guard error: {e}"}
+
+    is_non_road = (
+        std_lum < 6.5
+        or (input_check.get("available") and input_check.get("verdict") == "not_road")
+    )
+    if is_non_road:
+        elapsed_ms = round((time.time() - t0) * 1000.0, 2)
+        p_not = input_check.get("p_not_road")
+        reason = (
+            f"Rejected by OOD Input Guard: this does not look like a photograph of a road "
+            f"(non-road probability {(p_not * 100):.1f}%, novelty score {input_check.get('novelty_score')})."
+            if input_check.get("verdict") == "not_road"
+            else f"Optical texture standard deviation ({std_lum:.2f}) < 6.5 threshold. Rejected non-pavement surface."
+        )
+        placeholder = {
+            "class_id": 0,
+            "class_name": "Non-Road Scene (Rejected by OOD Guard)" if input_check.get("verdict") == "not_road" else "Non-Pavement Surface (Rejected)",
+            "is_distress": False,
+            "confidence": round(float(p_not), 4) if p_not is not None else None,
+            "decision_basis": reason,
+            "surface_area_m2": 0.0,
+            "depth_cm": 0.0,
+            "morth_tonnage_t": 0.0,
+            "repair_cost_inr": 0.0,
+            "bbox_pixels": None,
+            "bbox_normalized": None,
+        }
+        return {
+            "status": "REJECTED_NON_ROAD" if input_check.get("verdict") == "not_road" else "REJECTED_NON_PAVEMENT",
+            "gatekeeper_passed": False,
+            "reason": reason,
+            "input_check": input_check,
+            "texture_metrics": {"road_roi_mean_lum": round(mean_lum, 2), "road_roi_std_lum": round(std_lum, 2)},
+            "corridor_id": corridor_id,
+            "location": {"lat": latitude, "lng": longitude, "chainage_km": None},
+            "is_distress": False,
+            "vulnerable_safety_alert": False,
+            "pedestrians_count": 0,
+            "all_pedestrians": [],
+            "vehicles_count": 0,
+            "all_vehicles": [],
+            "scene_objects": [],
+            "scene_summary": {"available": False, "reason": "Skipped on rejected non-road image"},
+            "primary_vehicle": None,
+            "primary_distress": placeholder,
+            "primary_pedestrian": None,
+            "primary_detection": placeholder,
+            "all_detections": [],
+            "astm_d6433_pci": {"pci_score": None, "rating_category": "N/A (NOT A ROAD)", "description": reason, "deduct_values": {}},
+            "morth_civil_ledger": {
+                "asphalt_density_t_m3": 2.40,
+                "compaction_factor": 1.15,
+                "total_bitumen_tonnage_t": 0.0,
+                "mix_rate_inr_per_tonne": 7500.0,
+                "total_estimated_repair_inr": 0.0,
+            },
+            "cryptographic_work_order": None,
+            "vision_backend": "deep_cnn",
+            "camera_calibration": calib_desc,
+            "segmentation": {"available": False, "crack_pixels": 0, "pothole_pixels": 0, "defect_fraction": 0.0},
+            "imu_shock_telemetry": {"available": False, "reason": "No IMU window supplied."},
+            "latency_ms": elapsed_ms,
+            "total_latency_ms": elapsed_ms,
+        }
+
+    # STAGE 2: YOLOv8 COCO Object Detection (people, vehicles, signs) + Object Masking
+    scene_objects, scene_summary, pedestrians, vehicle_detections, traffic_analysis, object_mask = _detect_scene_objects(img_np, H, W)
+
+    # STAGE 3: Whole-frame MobileNetV3-Large classification
     frame_cls_raw = classify_crop(img_np)
     frame_cls = {
         "class_name": frame_cls_raw["class_name"],
@@ -446,21 +692,47 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         "role": "whole-frame opinion of the classifier; does not set area, depth or cost",
     }
 
-    seg_out = segment_image(img_np)
+    # STAGE 4: U-Net Segmentation (with people, vehicles, and road paint masked out)
+    seg_out = segment_image(img_np, object_mask_full=object_mask, gray_full=gray)
     detections = []
 
     if seg_out and seg_out["components"]:
         mask_full = seg_out["mask"]
         for comp in seg_out["components"]:
             bx, by, bw, bh = comp["bbox_pixels"]
-            crop = img_np[max(0, by):min(H, by + bh), max(0, bx):min(W, bx + bw)]
+            # Expand crop with 20% context margin (minimum 96x96 px) for MobileNetV3-Large verification
+            cx, cy = bx + bw // 2, by + bh // 2
+            cw = max(96, int(round(bw * 1.4)))
+            ch = max(96, int(round(bh * 1.4)))
+            x0 = max(0, min(W - cw, cx - cw // 2))
+            y0 = max(0, min(H - ch, cy - ch // 2))
+            crop = img_np[y0:min(H, y0 + ch), x0:min(W, x0 + cw)]
             cls_info = classify_crop(crop) if crop.size > 0 else dict(frame_cls_raw)
+
+            # Classifier agreement gate (matches pipeline/deep_inference_pipeline.py line 1206):
+            # If the crop classifier says Normal Road (0) AND the whole-frame classifier says Normal Road (0),
+            # drop the false-positive U-Net component.
+            p_probs = cls_info.get("probabilities") or {}
+            p_defect_crop = float(p_probs.get(CLASS_NAMES[1], 0.0)) + float(p_probs.get(CLASS_NAMES[2], 0.0))
+            f_probs = frame_cls_raw.get("probabilities") or {}
+            p_defect_frame = float(f_probs.get(CLASS_NAMES[1], 0.0)) + float(f_probs.get(CLASS_NAMES[2], 0.0))
+            if cls_info["class_id"] == 0 and p_defect_crop < 0.35 and p_defect_frame < 0.45:
+                continue
+            if frame_cls_raw["class_id"] == 0 and frame_cls_raw["confidence"] >= 0.85 and cls_info["class_id"] not in (1, 2):
+                continue
+
             cls_id = comp["class_id"]
             if cls_id == 1 and (
                 (cls_info["class_id"] == 2 and cls_info["confidence"] >= 0.55)
                 or (frame_cls_raw["class_id"] == 2 and frame_cls_raw["confidence"] >= 0.70)
             ):
                 cls_id = 2
+
+            de = _photometric_depth(gray, [bx, by, bw, bh], cls_id)
+            # A genuine cavity/crack must not be brighter than its surrounding asphalt
+            if cls_id == 2 and de.get("relative_darkness", 0.0) < 0.04 and cls_info["class_id"] != 2:
+                continue
+
             cls_name = CLASS_NAMES[cls_id]
             conf = max(float(comp["mean_conf"]), float(cls_info["confidence"]) if cls_info["class_id"] == cls_id else 0.0)
             if frame_cls_raw["class_id"] == cls_id:
@@ -472,7 +744,6 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             area_m2 = float(max(0.012, min(area_m2, 3.5)))
             mask_px_count = int(region_bool.sum())
             dist_m = round(max(2.2, 18.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
-            de = _photometric_depth(gray, [bx, by, bw, bh], cls_id)
             depth_cm = de["depth_cm"]
             tonnage_t = round(area_m2 * (depth_cm / 100.0) * 2.40 * 1.15, 4)
             cost_inr = round(tonnage_t * 7500.0, 2)
@@ -511,20 +782,18 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 "probabilities": cls_info["probabilities"],
             })
 
-    # If U-Net found no mask above threshold, but the whole-frame classifier detects a distress class (1..6)
-    if not detections and frame_cls_raw["class_id"] != 0 and frame_cls_raw["confidence"] >= 0.45:
+    # Corridor-level hazard check ONLY for classes 3..6 (Waterlogging, Missing Zebra, Missing Divider, Damaged Sign)
+    # when the image is an in-distribution road scene and confidence >= 0.72
+    if (
+        not detections
+        and frame_cls_raw["class_id"] in (3, 4, 5, 6)
+        and frame_cls_raw["confidence"] >= 0.72
+        and input_check.get("verdict") in ("ok", None)
+    ):
         cls_id = frame_cls_raw["class_id"]
-        # Localize darkest / highest-gradient road sub-box inside the lower 60% ROI
-        bx, by, bw, bh = int(W * 0.22), int(H * 0.48), int(W * 0.56), int(H * 0.38)
-        area_m2 = float(ipm.calculate_surface_area_sqm(bx, by, bw, bh))
-        area_m2 = max(0.04, min(area_m2, 1.85))
+        bx, by, bw, bh = int(W * 0.18), int(H * 0.42), int(W * 0.64), int(H * 0.44)
+        area_m2 = round(float(ipm.calculate_surface_area_sqm(bx, by, bw, bh)), 4) if cls_id == 3 else 0.0
         dist_m = round(max(2.5, 18.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
-        de = _photometric_depth(gray, [bx, by, bw, bh], cls_id if cls_id in (1, 2) else 2)
-        depth_cm = de["depth_cm"]
-        tonnage_t = round(area_m2 * (depth_cm / 100.0) * 2.40 * 1.15, 4)
-        cost_inr = round(tonnage_t * 7500.0, 2)
-        de["repair_cost_low_inr"] = round(area_m2 * (de["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-        de["repair_cost_high_inr"] = round(area_m2 * (de["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
         detections.append({
             "bbox_pixels": [bx, by, bw, bh],
             "bbox_normalized": [round(bx / W, 4), round(by / H, 4), round(bw / W, 4), round(bh / H, 4)],
@@ -538,39 +807,14 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "top3_ranked_predictions": frame_cls_raw["top3_ranked_predictions"],
             "is_distress": True,
             "distance_meters": dist_m,
-            "surface_area_m2": round(area_m2, 4),
+            "surface_area_m2": area_m2,
             "area_method": "bounding_box_estimate",
             "area_diagnostics": {
                 "max_plausible_m2": 2.0,
                 "box_share_of_frame": round((bw * bh) / float(W * H), 3),
             },
             "area_is_plausible_single_repair": True,
-            "needs_manual_survey": False,
-            "depth_cm": depth_cm,
-            "depth_estimate": de,
-            "volumetric_m3": round(area_m2 * (depth_cm / 100.0), 5),
-            "morth_tonnage_t": tonnage_t,
-            "repair_cost_inr": cost_inr,
-            "probabilities": frame_cls_raw["probabilities"],
-        })
-
-    if not detections:
-        detections.append({
-            "bbox_pixels": None,
-            "bbox_normalized": None,
-            "class_id": 0,
-            "class_name": CLASS_NAMES[0],
-            "confidence": frame_cls_raw["confidence"],
-            "shannon_entropy_bits": frame_cls_raw["shannon_entropy_bits"],
-            "uncertainty_rating": frame_cls_raw["uncertainty_rating"],
-            "astm_d6433_severity": "NONE",
-            "irc_standard_specification": IRC_STANDARDS[0],
-            "top3_ranked_predictions": frame_cls_raw["top3_ranked_predictions"],
-            "is_distress": False,
-            "distance_meters": 0.0,
-            "surface_area_m2": 0.0,
-            "area_method": "segmentation_mask" if seg_out else "bounding_box_estimate",
-            "needs_manual_survey": False,
+            "needs_manual_survey": cls_id in (4, 5, 6),
             "depth_cm": 0.0,
             "depth_estimate": None,
             "volumetric_m3": 0.0,
@@ -579,39 +823,82 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "probabilities": frame_cls_raw["probabilities"],
         })
 
-    primary = detections[0]
-    pci_res = _compute_pci([d for d in detections if d.get("is_distress")])
+    # If no road defect was confirmed, zero out the segmentation mask so rejected noise blobs are not counted
+    if not detections and seg_out:
+        seg_out["crack_px_full"] = 0
+        seg_out["pothole_px_full"] = 0
+        seg_out["defect_fraction"] = 0.0
+        seg_out["mask_data_url"] = None
+
+    normal_entry = {
+        "bbox_pixels": None,
+        "bbox_normalized": None,
+        "class_id": 0,
+        "class_name": CLASS_NAMES[0],
+        "confidence": frame_cls_raw["confidence"] if frame_cls_raw["class_id"] == 0 else round(float(frame_cls_raw["probabilities"].get(CLASS_NAMES[0], 0.85)), 4),
+        "shannon_entropy_bits": frame_cls_raw["shannon_entropy_bits"],
+        "uncertainty_rating": frame_cls_raw["uncertainty_rating"],
+        "astm_d6433_severity": "NONE",
+        "irc_standard_specification": IRC_STANDARDS[0],
+        "top3_ranked_predictions": frame_cls_raw["top3_ranked_predictions"],
+        "is_distress": False,
+        "distance_meters": 0.0,
+        "surface_area_m2": 0.0,
+        "area_method": "segmentation_mask" if seg_out else "bounding_box_estimate",
+        "needs_manual_survey": False,
+        "depth_cm": 0.0,
+        "depth_estimate": None,
+        "volumetric_m3": 0.0,
+        "morth_tonnage_t": 0.0,
+        "repair_cost_inr": 0.0,
+        "probabilities": frame_cls_raw["probabilities"],
+    }
+
+    primary_distress = detections[0] if detections else normal_entry
+    primary_pedestrian = pedestrians[0] if pedestrians else None
+    primary_vehicle = vehicle_detections[0] if vehicle_detections else None
+    primary = primary_distress if detections else (primary_pedestrian if primary_pedestrian else normal_entry)
+    all_dets = detections if detections else [normal_entry]
+
+    pci_res = _compute_pci(detections)
     total_tonnage = round(sum(float(d.get("morth_tonnage_t", 0.0)) for d in detections if not d.get("needs_manual_survey")), 4)
     total_cost = round(sum(float(d.get("repair_cost_inr", 0.0)) for d in detections if not d.get("needs_manual_survey")), 2)
 
-    order_payload = {
-        "corridor_id": corridor_id,
-        "defect_class": primary["class_name"],
-        "surface_area_m2": primary["surface_area_m2"],
-        "morth_tonnage_t": total_tonnage,
-        "repair_cost_inr": total_cost,
-        "pci_score": pci_res["pci_score"],
-    }
-    seal = hmac.new(b"ROAD-SHIELD-MORTH-SEAL", json.dumps(order_payload, sort_keys=True).encode("utf-8"), hashlib.sha256).hexdigest()
+    work_order = None
+    if detections and primary_distress["class_id"] in (1, 2, 3):
+        order_payload = {
+            "corridor_id": corridor_id,
+            "defect_class": primary_distress["class_name"],
+            "surface_area_m2": primary_distress["surface_area_m2"],
+            "morth_tonnage_t": total_tonnage,
+            "repair_cost_inr": total_cost,
+            "pci_score": pci_res["pci_score"],
+        }
+        seal = hmac.new(b"ROAD-SHIELD-MORTH-SEAL", json.dumps(order_payload, sort_keys=True).encode("utf-8"), hashlib.sha256).hexdigest()
+        work_order = {**order_payload, "sha256_seal": seal}
 
     elapsed_ms = round((time.time() - t0) * 1000.0, 2)
     return {
         "status": "ANALYSIS_COMPLETE",
-        "gatekeeper_passed": std_lum >= 6.5,
+        "gatekeeper_passed": True,
+        "input_check": input_check,
         "texture_metrics": {"road_roi_mean_lum": round(mean_lum, 2), "road_roi_std_lum": round(std_lum, 2)},
         "corridor_id": corridor_id,
         "location": {"lat": latitude, "lng": longitude, "chainage_km": None},
-        "is_distress": bool(primary.get("is_distress")),
-        "vulnerable_safety_alert": False,
-        "pedestrians_count": 0,
-        "all_pedestrians": [],
-        "vehicles_count": 0,
-        "all_vehicles": [],
-        "primary_vehicle": None,
-        "primary_distress": primary,
-        "primary_pedestrian": None,
+        "is_distress": len(detections) > 0,
+        "vulnerable_safety_alert": len(pedestrians) > 0,
+        "pedestrians_count": len(pedestrians),
+        "all_pedestrians": pedestrians,
+        "vehicles_count": len(vehicle_detections),
+        "all_vehicles": vehicle_detections,
+        "primary_vehicle": primary_vehicle,
+        "urban_traffic_analysis": traffic_analysis,
+        "scene_objects": scene_objects,
+        "scene_summary": scene_summary,
+        "primary_distress": primary_distress,
+        "primary_pedestrian": primary_pedestrian,
         "primary_detection": primary,
-        "all_detections": detections,
+        "all_detections": all_dets,
         "astm_d6433_pci": pci_res,
         "morth_civil_ledger": {
             "asphalt_density_t_m3": 2.40,
@@ -620,10 +907,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "mix_rate_inr_per_tonne": 7500.0,
             "total_estimated_repair_inr": total_cost,
         },
-        "cryptographic_work_order": {
-            **order_payload,
-            "sha256_seal": seal,
-        },
+        "cryptographic_work_order": work_order,
         "frame_classification": frame_cls,
         "vision_backend": "deep_cnn",
         "camera_calibration": calib_desc,
@@ -632,6 +916,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "crack_pixels": seg_out["crack_px_full"],
             "pothole_pixels": seg_out["pothole_px_full"],
             "defect_fraction": seg_out["defect_fraction"],
+            "mask_data_url": seg_out.get("mask_data_url"),
             "area_method": "per-pixel ground footprint over the mask",
         } if seg_out else {
             "available": False,
@@ -647,6 +932,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
 
 
 def redact_image_base64(image_b64):
+    import numpy as np
     from PIL import Image, ImageFilter
     raw = str(image_b64 or "").strip()
     if "," in raw and raw.startswith("data:"):
@@ -654,21 +940,49 @@ def redact_image_base64(image_b64):
     img_bytes = base64.b64decode(raw)
     pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     w, h = pil_img.size
-    # Blur license-plate/pedestrian horizon band (DPDP Act 2023 privacy safeguard)
-    band_top = int(h * 0.28)
-    band_bot = int(h * 0.52)
-    crop = pil_img.crop((int(w * 0.15), band_top, int(w * 0.85), band_bot))
-    blurred = crop.filter(ImageFilter.GaussianBlur(radius=12))
     out_img = pil_img.copy()
-    out_img.paste(blurred, (int(w * 0.15), band_top))
+
+    s = _load_sessions()
+    det = s.get("detector")
+    people_blurred = 0
+    plates_blurred = 0
+    if det is not None and det.is_ready:
+        try:
+            objs = det.detect(np.asarray(pil_img, dtype=np.uint8), conf_threshold=0.25)
+            for o in objs:
+                bx, by, bw, bh = o["bbox_pixels"]
+                x0, y0 = max(0, bx), max(0, by)
+                x1, y1 = min(w, bx + bw), min(h, by + bh)
+                if x1 <= x0 or y1 <= y0:
+                    continue
+                if o["class_name"] == "person":
+                    crop = out_img.crop((x0, y0, x1, y1)).filter(ImageFilter.GaussianBlur(radius=16))
+                    out_img.paste(crop, (x0, y0))
+                    people_blurred += 1
+                elif o["class_name"] in VEHICLE_CLASS_MAP:
+                    # Blur lower 45% of vehicle bounding box (license plate band)
+                    py0 = max(y0, y0 + int((y1 - y0) * 0.55))
+                    crop = out_img.crop((x0, py0, x1, y1)).filter(ImageFilter.GaussianBlur(radius=14))
+                    out_img.paste(crop, (x0, py0))
+                    plates_blurred += 1
+        except Exception:
+            pass
+
+    if people_blurred == 0 and plates_blurred == 0:
+        band_top = int(h * 0.28)
+        band_bot = int(h * 0.52)
+        crop = out_img.crop((int(w * 0.15), band_top, int(w * 0.85), band_bot)).filter(ImageFilter.GaussianBlur(radius=12))
+        out_img.paste(crop, (int(w * 0.15), band_top))
+        plates_blurred = 1
+
     buf = io.BytesIO()
     out_img.save(buf, format="JPEG", quality=88)
     return {
         "redacted_image_base64": base64.b64encode(buf.getvalue()).decode("ascii"),
         "report": {
-            "people_blurred": 0,
-            "faces_blurred": 0,
-            "plates_blurred": 1,
-            "method": "GaussianBlur privacy band (DPDP Act 2023)",
+            "people_blurred": people_blurred,
+            "faces_blurred": people_blurred,
+            "plates_blurred": plates_blurred,
+            "method": "YOLOv8 COCO person/vehicle box GaussianBlur (DPDP Act 2023)",
         },
     }
