@@ -1,18 +1,18 @@
 {
  "served": "deep_cnn",
  "rule": "serve the fine-tuned network only if it beats the frozen head on BOTH accuracy and macro-F1, measured on non-test data (head: grouped 5-fold CV on the fit split; fine-tuned: validation split). Test numbers are recorded, not used.",
- "evidence": "fine-tuned mobilenet_v3_large: validation accuracy 0.9182, macro-F1 0.8807; frozen head: grouped-CV accuracy 0.8214, macro-F1 0.7480",
+ "evidence": "fine-tuned mobilenet_v3_large: validation accuracy 0.9182, macro-F1 0.8807; frozen head: grouped-CV accuracy 0.7742, macro-F1 0.7384",
  "test_for_reporting": {
   "cnn_embeddings": {
-   "accuracy": 0.8731,
-   "macro_f1": 0.7649,
-   "images": 520
+   "accuracy": 0.8644,
+   "macro_f1": 0.7875,
+   "images": 531
   },
   "deep_cnn": {
-   "accuracy": 0.9333,
-   "macro_f1": 0.8283,
-   "images": 630
+   "accuracy": 0.9435,
+   "macro_f1": 0.8786,
+   "images": 531
   }
  },
- "decided_unix": 1793137679
+ "decided_unix": 1793158497
 }

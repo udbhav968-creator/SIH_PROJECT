@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1793145176,
+  "generated_unix": 1793158502,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
@@ -7,14 +7,14 @@
       "name": "Vision distress classifier",
       "architecture": "mobilenet_v3_large (ImageNet-pretrained, fine-tuned end to end on the road corpus, refit on train+val), ONNX Runtime, flip TTA",
       "role": "7-class road condition classification",
-      "why": "Chosen over the frozen MobileNetV2 + scikit-learn head by a rule fixed before the test set was read: it had to beat the head on both accuracy and macro-F1 on non-test data. fine-tuned mobilenet_v3_large: validation accuracy 0.9182, macro-F1 0.8807; frozen head: grouped-CV accuracy 0.8214, macro-F1 0.7480",
+      "why": "Chosen over the frozen MobileNetV2 + scikit-learn head by a rule fixed before the test set was read: it had to beat the head on both accuracy and macro-F1 on non-test data. fine-tuned mobilenet_v3_large: validation accuracy 0.9182, macro-F1 0.8807; frozen head: grouped-CV accuracy 0.7742, macro-F1 0.7384",
       "rejected_alternative": "Frozen-embedding head (kept as the fallback); other fine-tuned architectures lost on validation - see finetune_summary.json.",
       "measured": {
         "served_model": "mobilenet_v3_large_refit",
-        "held_out_accuracy": 0.9333,
-        "held_out_macro_f1": 0.8283,
-        "test_images": 630,
-        "test_photographs": 567,
+        "held_out_accuracy": 0.9435,
+        "held_out_macro_f1": 0.8786,
+        "test_images": 531,
+        "test_photographs": 512,
         "indian_roads": {
           "images": 1200,
           "accuracy": 0.9225,

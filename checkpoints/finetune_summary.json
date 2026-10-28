@@ -3,9 +3,9 @@
  "chosen_arch": "mobilenet_v3_large",
  "served": "mobilenet_v3_large_refit",
  "served_test": {
-  "accuracy": 0.9333,
-  "macro_f1": 0.8283,
-  "images": 630
+  "accuracy": 0.9435,
+  "macro_f1": 0.8786,
+  "images": 531
  },
  "served_indian_roads": {
   "images": 1200,
