@@ -73,8 +73,22 @@ def _bar_candidates_from_mask(binary_mask, roi_y0, min_area):
     except Exception:
         from collections import deque
         h_roi, w_roi = binary_mask.shape
+        # Pure-NumPy 3x3 binary opening (erosion then dilation) to separate bars without cv2
+        eroded = np.zeros_like(binary_mask)
+        eroded[1:-1, 1:-1] = (
+            binary_mask[1:-1, 1:-1] & binary_mask[:-2, 1:-1] & binary_mask[2:, 1:-1] &
+            binary_mask[1:-1, :-2] & binary_mask[1:-1, 2:] &
+            binary_mask[:-2, :-2] & binary_mask[:-2, 2:] & binary_mask[2:, :-2] & binary_mask[2:, 2:]
+        )
+        opened = np.zeros_like(binary_mask)
+        opened[1:-1, 1:-1] = (
+            eroded[1:-1, 1:-1] | eroded[:-2, 1:-1] | eroded[2:, 1:-1] |
+            eroded[1:-1, :-2] | eroded[1:-1, 2:] |
+            eroded[:-2, :-2] | eroded[:-2, 2:] | eroded[2:, :-2] | eroded[2:, 2:]
+        )
+        work_mask = opened if int(opened.sum()) >= min_area else binary_mask
         visited = np.zeros((h_roi, w_roi), dtype=bool)
-        ys, xs = np.nonzero(binary_mask)
+        ys, xs = np.nonzero(work_mask)
         for y0, x0 in zip(ys.tolist(), xs.tolist()):
             if visited[y0, x0]:
                 continue
@@ -87,7 +101,7 @@ def _bar_candidates_from_mask(binary_mask, roi_y0, min_area):
                 cy, cx = q.popleft()
                 for ny in range(max(0, cy - 1), min(h_roi, cy + 2)):
                     for nx in range(max(0, cx - 1), min(w_roi, cx + 2)):
-                        if not visited[ny, nx] and binary_mask[ny, nx]:
+                        if not visited[ny, nx] and work_mask[ny, nx]:
                             visited[ny, nx] = True
                             q.append((ny, nx))
                             coords.append((ny, nx))
