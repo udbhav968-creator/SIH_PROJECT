@@ -342,9 +342,10 @@ def detect_zebra(image_rgb, roi_top_fraction=0.35):
             "crossings_count": 0,
             "reason": "no set of 3+ parallel, evenly spaced bars found",
         }
-    primary = max(crossings, key=lambda c: (c.get("stripe_count", 0), c.get("confidence", 0.0)))
-    primary["all_crossings"] = crossings
-    primary["crossings_count"] = len(crossings)
+    sorted_cross = sorted(crossings, key=lambda c: (c.get("stripe_count", 0), c.get("confidence", 0.0)), reverse=True)
+    primary = dict(sorted_cross[0])
+    primary["all_crossings"] = [dict(c) for c in sorted_cross]
+    primary["crossings_count"] = len(sorted_cross)
     return primary
 
 
