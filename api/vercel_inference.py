@@ -365,7 +365,8 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
             dtype=np.float32,
         )
         road_med = float(np.median(g_work[int(WORK_H * 0.35):, :]))
-        paint_work = g_work > max(175.0, road_med + 38.0)
+        # Withhold only pure white high-intensity road paint markings (>215 and bright above road)
+        paint_work = g_work > max(215.0, road_med + 55.0)
         labels[paint_work] = 0
 
     # Minimum component sizes matching pipeline/deep_inference_pipeline.py:
@@ -587,6 +588,107 @@ def _detect_scene_objects(img_np, H, W):
     return scene_objects, scene_summary, pedestrians, vehicle_detections, traffic_analysis, object_mask
 
 
+def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
+    """Pure-NumPy gradient/darkness anomaly scan for unsegmented cavities / potholes / cracks."""
+    import numpy as np
+    H, W = img_np.shape[:2]
+    gray = 0.299 * img_np[:, :, 0] + 0.587 * img_np[:, :, 1] + 0.114 * img_np[:, :, 2]
+    rgb = img_np.astype(np.float32) / 255.0
+    cmax = rgb.max(axis=-1)
+    cmin = rgb.min(axis=-1)
+    delta = cmax - cmin
+    sat = np.zeros_like(cmax)
+    nz = cmax > 1e-5
+    sat[nz] = delta[nz] / cmax[nz]
+
+    excl_mask = np.zeros((H, W), dtype=bool)
+    for eb in excluded_boxes or []:
+        bx, by, bw, bh = eb.get("bbox_pixels", [0, 0, 0, 0])
+        sy0, sy1 = max(0, by - 8), min(H, by + bh + int(bh * 0.35))
+        sx0, sx1 = max(0, bx - 20), min(W, bx + bw + 20)
+        excl_mask[sy0:sy1, sx0:sx1] = True
+
+    roi_y0 = int(H * 0.35)
+    road_gray = gray[roi_y0:, :]
+    mean_int = float(road_gray.mean())
+    std_int = float(road_gray.std())
+    if std_int < 6.5:
+        return []
+
+    gy, gx = np.gradient(road_gray)
+    grad_mag = np.hypot(gx, gy)
+
+    grid_rows, grid_cols = 16, 24
+    cell_h = max(1, (H - roi_y0) // grid_rows)
+    cell_w = max(1, W // grid_cols)
+    cell_score = np.zeros((grid_rows, grid_cols), dtype=np.float32)
+    cell_kind = np.zeros((grid_rows, grid_cols), dtype=np.uint8)
+
+    for r in range(grid_rows):
+        for c in range(grid_cols):
+            y0, x0 = r * cell_h, c * cell_w
+            abs_y = roi_y0 + y0
+            if excl_mask[abs_y : abs_y + cell_h, x0 : x0 + cell_w].any():
+                continue
+            cell_sat = sat[abs_y : abs_y + cell_h, x0 : x0 + cell_w]
+            if cell_sat.mean() > 0.22:
+                continue
+            sub_gray = road_gray[y0 : y0 + cell_h, x0 : x0 + cell_w]
+            sub_mag = grad_mag[y0 : y0 + cell_h, x0 : x0 + cell_w]
+            dark_diff = max(0.0, mean_int - float(sub_gray.mean()))
+            edge_peak = float(np.percentile(sub_mag, 90)) if sub_mag.size else 0.0
+
+            col_weight = 0.40 if (c < 2 or c > 21) else (1.30 if 5 <= c <= 18 else 1.0)
+            pothole_score = dark_diff * 2.5 * col_weight if dark_diff > 10.0 else 0.0
+            crack_score = edge_peak * 2.2 * col_weight if edge_peak > 18.0 else 0.0
+
+            if pothole_score >= crack_score and pothole_score > 0:
+                cell_score[r, c], cell_kind[r, c] = pothole_score, 2
+            elif crack_score > 0:
+                cell_score[r, c], cell_kind[r, c] = crack_score, 1
+
+    active = cell_score >= 20.0
+    if active.sum() < 2:
+        return []
+
+    visited = np.zeros_like(active, dtype=bool)
+    boxes = []
+    for r0 in range(grid_rows):
+        for c0 in range(grid_cols):
+            if active[r0, c0] and not visited[r0, c0]:
+                q = [(r0, c0)]
+                visited[r0, c0] = True
+                cells = [(r0, c0)]
+                while q:
+                    cr, cc = q.pop(0)
+                    for nr, nc in ((cr - 1, cc), (cr + 1, cc), (cr, cc - 1), (cr, cc + 1)):
+                        if 0 <= nr < grid_rows and 0 <= nc < grid_cols and active[nr, nc] and not visited[nr, nc]:
+                            visited[nr, nc] = True
+                            q.append((nr, nc))
+                            cells.append((nr, nc))
+                if len(cells) < 2:
+                    continue
+                rs = [p[0] for p in cells]
+                cs = [p[1] for p in cells]
+                min_r, max_r = min(rs), max(rs)
+                min_c, max_c = min(cs), max(cs)
+                bx = max(10, min_c * cell_w - int(cell_w * 0.2))
+                by = max(roi_y0, roi_y0 + min_r * cell_h - int(cell_h * 0.15))
+                bw = min(W - bx - 10, (max_c - min_c + 1) * cell_w + int(cell_w * 0.4))
+                bh = min(H - by - 10, (max_r - min_r + 1) * cell_h + int(cell_h * 0.3))
+                kinds = [int(cell_kind[cr, cc]) for cr, cc in cells]
+                is_pothole_like = kinds.count(2) >= kinds.count(1)
+                mean_score = float(np.mean([cell_score[cr, cc] for cr, cc in cells]))
+                boxes.append([int(bx), int(by), int(bw), int(bh), mean_score, 2 if is_pothole_like else 1])
+    return boxes
+
+
+def _box_iou(b1, b2):
+    xA, yA = max(b1[0], b2[0]), max(b1[1], b2[1])
+    xB, yB = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
+    inter = max(0, xB - xA) * max(0, yB - yA)
+    return inter / max(1e-6, b1[2] * b1[3] + b2[2] * b2[3] - inter)
+
 def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=None, longitude=None):
     import numpy as np
     from models import camera_calibration as cam_cal
@@ -692,95 +794,148 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         "role": "whole-frame opinion of the classifier; does not set area, depth or cost",
     }
 
-    # STAGE 4: U-Net Segmentation (with people, vehicles, and road paint masked out)
+    # STAGE 4: Fusion of U-Net Segmentation & Salient Cavity Proposals
     seg_out = segment_image(img_np, object_mask_full=object_mask, gray_full=gray)
     detections = []
 
+    # Gather proposals from U-Net components and salient anomaly detector
+    proposals = []
     if seg_out and seg_out["components"]:
-        mask_full = seg_out["mask"]
         for comp in seg_out["components"]:
-            bx, by, bw, bh = comp["bbox_pixels"]
-            # Expand crop with 20% context margin (minimum 96x96 px) for MobileNetV3-Large verification
-            cx, cy = bx + bw // 2, by + bh // 2
-            cw = max(96, int(round(bw * 1.4)))
-            ch = max(96, int(round(bh * 1.4)))
-            x0 = max(0, min(W - cw, cx - cw // 2))
-            y0 = max(0, min(H - ch, cy - ch // 2))
-            crop = img_np[y0:min(H, y0 + ch), x0:min(W, x0 + cw)]
-            cls_info = classify_crop(crop) if crop.size > 0 else dict(frame_cls_raw)
+            proposals.append({
+                "bbox_pixels": comp["bbox_pixels"],
+                "seg_comp": comp,
+                "source": "unet_segmenter",
+            })
 
-            # Classifier agreement gate (matches pipeline/deep_inference_pipeline.py line 1206):
-            # If the crop classifier says Normal Road (0) AND the whole-frame classifier says Normal Road (0),
-            # drop the false-positive U-Net component.
-            p_probs = cls_info.get("probabilities") or {}
-            p_defect_crop = float(p_probs.get(CLASS_NAMES[1], 0.0)) + float(p_probs.get(CLASS_NAMES[2], 0.0))
-            f_probs = frame_cls_raw.get("probabilities") or {}
-            p_defect_frame = float(f_probs.get(CLASS_NAMES[1], 0.0)) + float(f_probs.get(CLASS_NAMES[2], 0.0))
-            if cls_info["class_id"] == 0 and p_defect_crop < 0.35 and p_defect_frame < 0.45:
+    # Add salient optical anomaly proposals (crucial for water-filled / sky-reflecting potholes)
+    salient_boxes = _extract_salient_regions_numpy(img_np, excluded_boxes=pedestrians)
+    for sb in salient_boxes:
+        sbox = sb[:4]
+        # Only add if not overlapping with an existing U-Net proposal
+        if not any(_box_iou(sbox, p["bbox_pixels"]) > 0.40 for p in proposals):
+            proposals.append({
+                "bbox_pixels": sbox,
+                "seg_comp": None,
+                "source": "salient_cavity_detector",
+            })
+
+    mask_full = seg_out["mask"] if seg_out else None
+
+    for prop in proposals:
+        bx, by, bw, bh = prop["bbox_pixels"]
+        comp = prop["seg_comp"]
+
+        # Expand crop with 20% context margin (minimum 96x96 px) for MobileNetV3-Large verification
+        cx, cy = bx + bw // 2, by + bh // 2
+        cw = max(96, int(round(bw * 1.35)))
+        ch = max(96, int(round(bh * 1.35)))
+        x0 = max(0, min(W - cw, cx - cw // 2))
+        y0 = max(0, min(H - ch, cy - ch // 2))
+        crop = img_np[y0:min(H, y0 + ch), x0:min(W, x0 + cw)]
+        cls_info = classify_crop(crop) if crop.size > 0 else dict(frame_cls_raw)
+
+        # Classifier agreement gate: drop false-positive proposals where crop is sound pavement
+        p_probs = cls_info.get("probabilities") or {}
+        p_defect_crop = float(p_probs.get(CLASS_NAMES[1], 0.0)) + float(p_probs.get(CLASS_NAMES[2], 0.0)) + float(p_probs.get(CLASS_NAMES[3], 0.0))
+        f_probs = frame_cls_raw.get("probabilities") or {}
+        p_defect_frame = float(f_probs.get(CLASS_NAMES[1], 0.0)) + float(f_probs.get(CLASS_NAMES[2], 0.0)) + float(f_probs.get(CLASS_NAMES[3], 0.0))
+
+        if cls_info["class_id"] == 0 and p_defect_crop < 0.35 and p_defect_frame < 0.45:
+            continue
+        if frame_cls_raw["class_id"] == 0 and frame_cls_raw["confidence"] >= 0.85 and cls_info["class_id"] not in (1, 2, 3):
+            continue
+
+        # Heuristic salient proposal verification (matches pipeline/deep_inference_pipeline.py line 1252):
+        if prop["source"] == "salient_cavity_detector":
+            # 1. Whole frame must confirm distress (whole frame is NOT Normal Road)
+            if frame_cls_raw["class_id"] == 0 or frame_cls_raw["confidence"] < 0.60:
                 continue
-            if frame_cls_raw["class_id"] == 0 and frame_cls_raw["confidence"] >= 0.85 and cls_info["class_id"] not in (1, 2):
+            # 2. Whole frame class must agree with defect kind (or waterlogging/pothole interchange)
+            if frame_cls_raw["class_id"] not in (cls_info["class_id"], 2, 3):
+                continue
+            # 3. Must be a significant anomaly, not tiny peripheral noise
+            box_area_share = (bw * bh) / float(W * H)
+            if box_area_share < 0.035 and cls_info["confidence"] < 0.90:
                 continue
 
-            cls_id = comp["class_id"]
-            if cls_id == 1 and (
-                (cls_info["class_id"] == 2 and cls_info["confidence"] >= 0.55)
-                or (frame_cls_raw["class_id"] == 2 and frame_cls_raw["confidence"] >= 0.70)
-            ):
-                cls_id = 2
-
-            de = _photometric_depth(gray, [bx, by, bw, bh], cls_id)
-            # A genuine cavity/crack must not be brighter than its surrounding asphalt
-            if cls_id == 2 and de.get("relative_darkness", 0.0) < 0.04 and cls_info["class_id"] != 2:
+        # Class determination: ALWAYS respect the crop classifier's specific verdict
+        cls_id = cls_info["class_id"]
+        if cls_id == 0:
+            if comp and comp["class_id"] in (1, 2) and p_defect_frame >= 0.60:
+                cls_id = comp["class_id"]
+            elif frame_cls_raw["class_id"] in (1, 2, 3) and frame_cls_raw["confidence"] >= 0.75:
+                cls_id = frame_cls_raw["class_id"]
+            else:
                 continue
 
-            cls_name = CLASS_NAMES[cls_id]
-            conf = max(float(comp["mean_conf"]), float(cls_info["confidence"]) if cls_info["class_id"] == cls_id else 0.0)
-            if frame_cls_raw["class_id"] == cls_id:
-                conf = max(conf, float(frame_cls_raw["confidence"]))
+        de = _photometric_depth(gray, [bx, by, bw, bh], cls_id)
+        cls_name = CLASS_NAMES[cls_id]
+        conf = float(cls_info["confidence"]) if cls_info["class_id"] == cls_id else (
+            float(comp["mean_conf"]) if comp else float(frame_cls_raw["confidence"])
+        )
+        if frame_cls_raw["class_id"] == cls_id:
+            conf = max(conf, float(frame_cls_raw["confidence"]))
 
+        # Surface area calculation: use pixel mask if >= 45 matching mask pixels exist, else perspective homography
+        has_dense_mask = False
+        area_m2 = 0.0
+        mask_px_count = 0
+        if mask_full is not None and comp is not None:
             region_bool = np.zeros((H, W), dtype=bool)
             region_bool[by:by + bh, bx:bx + bw] = (mask_full[by:by + bh, bx:bx + bw] == comp["seg_cls"])
-            area_m2, _diag = ipm.mask_area_m2(region_bool)
-            area_m2 = float(max(0.012, min(area_m2, 3.5)))
             mask_px_count = int(region_bool.sum())
-            dist_m = round(max(2.2, 18.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
-            depth_cm = de["depth_cm"]
-            tonnage_t = round(area_m2 * (depth_cm / 100.0) * 2.40 * 1.15, 4)
-            cost_inr = round(tonnage_t * 7500.0, 2)
-            de["repair_cost_low_inr"] = round(area_m2 * (de["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-            de["repair_cost_high_inr"] = round(area_m2 * (de["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+            if mask_px_count >= 45:
+                area_m2, _diag = ipm.mask_area_m2(region_bool)
+                has_dense_mask = True
 
-            box_share = (bw * bh) / float(W * H)
-            needs_survey = bool(area_m2 > 2.0 or box_share > 0.35)
-            detections.append({
-                "bbox_pixels": [bx, by, bw, bh],
-                "bbox_normalized": [round(bx / W, 4), round(by / H, 4), round(bw / W, 4), round(bh / H, 4)],
-                "class_id": cls_id,
-                "class_name": cls_name,
-                "confidence": round(conf, 4),
-                "shannon_entropy_bits": cls_info["shannon_entropy_bits"],
-                "uncertainty_rating": cls_info["uncertainty_rating"],
-                "astm_d6433_severity": "HIGH" if depth_cm >= 5.0 else ("MEDIUM" if depth_cm >= 2.5 else "LOW"),
-                "irc_standard_specification": IRC_STANDARDS.get(cls_id, ""),
-                "top3_ranked_predictions": cls_info["top3_ranked_predictions"],
-                "is_distress": True,
-                "distance_meters": dist_m,
-                "surface_area_m2": round(area_m2, 4),
-                "area_method": "segmentation_mask",
-                "area_diagnostics": {
-                    "mask_pixels": mask_px_count,
-                    "max_plausible_m2": 2.0,
-                    "box_share_of_frame": round(box_share, 3),
-                },
-                "area_is_plausible_single_repair": not needs_survey,
-                "needs_manual_survey": needs_survey,
-                "depth_cm": depth_cm,
-                "depth_estimate": de,
-                "volumetric_m3": round(area_m2 * (depth_cm / 100.0), 5),
-                "morth_tonnage_t": tonnage_t,
-                "repair_cost_inr": cost_inr,
-                "probabilities": cls_info["probabilities"],
-            })
+        if not has_dense_mask:
+            area_m2 = float(ipm.calculate_surface_area_sqm(bx, by, bw, bh))
+            area_m2 = float(max(0.04, min(area_m2, 6.0)))
+
+        area_m2 = float(max(0.012, min(area_m2, 6.0)))
+        dist_m = round(max(2.2, 18.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
+        depth_cm = de["depth_cm"]
+        tonnage_t = round(area_m2 * (depth_cm / 100.0) * 2.40 * 1.15, 4)
+        cost_inr = round(tonnage_t * 7500.0, 2)
+        de["repair_cost_low_inr"] = round(area_m2 * (de["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+        de["repair_cost_high_inr"] = round(area_m2 * (de["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+
+        box_share = (bw * bh) / float(W * H)
+        needs_survey = bool(area_m2 > 3.0 or box_share > 0.40)
+        detections.append({
+            "bbox_pixels": [bx, by, bw, bh],
+            "bbox_normalized": [round(bx / W, 4), round(by / H, 4), round(bw / W, 4), round(bh / H, 4)],
+            "class_id": cls_id,
+            "class_name": cls_name,
+            "confidence": round(conf, 4),
+            "shannon_entropy_bits": cls_info["shannon_entropy_bits"],
+            "uncertainty_rating": cls_info["uncertainty_rating"],
+            "astm_d6433_severity": "HIGH" if depth_cm >= 5.0 else ("MEDIUM" if depth_cm >= 2.5 else "LOW"),
+            "irc_standard_specification": IRC_STANDARDS.get(cls_id, ""),
+            "top3_ranked_predictions": cls_info["top3_ranked_predictions"],
+            "is_distress": True,
+            "distance_meters": dist_m,
+            "surface_area_m2": round(area_m2, 4),
+            "area_method": "segmentation_mask" if has_dense_mask else "perspective_homography",
+            "area_diagnostics": {
+                "mask_pixels": mask_px_count,
+                "max_plausible_m2": 3.0,
+                "box_share_of_frame": round(box_share, 3),
+            },
+            "area_is_plausible_single_repair": not needs_survey,
+            "needs_manual_survey": needs_survey,
+            "depth_cm": depth_cm,
+            "depth_estimate": de,
+            "volumetric_m3": round(area_m2 * (depth_cm / 100.0), 5),
+            "morth_tonnage_t": tonnage_t,
+            "repair_cost_inr": cost_inr,
+            "probabilities": cls_info["probabilities"],
+            "source": prop["source"],
+        })
+
+    # Sort detections by significance (potholes first, then largest surface area)
+    detections.sort(key=lambda d: (1 if d["class_id"] == 2 else 0, d["surface_area_m2"]), reverse=True)
 
     # Corridor-level hazard check ONLY for classes 3..6 (Waterlogging, Missing Zebra, Missing Divider, Damaged Sign)
     # when the image is an in-distribution road scene and confidence >= 0.72

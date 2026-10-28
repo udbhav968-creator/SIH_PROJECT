@@ -506,6 +506,11 @@ class DeepInferencePipeline:
             normal["all_vehicles"] = vehicle_detections
             normal["primary_vehicle"] = primary_vehicle
             normal["urban_traffic_analysis"] = traffic_analysis
+            imu_report, delta_z, p_imu, imu_available = self._run_imu_stage(imu_series)
+            fusion_res = self.bayesian_gate.fuse(p_visual=0.0, p_imu_shock=p_imu, delta_z_ms2=delta_z)
+            fusion_res["imu_evidence_source"] = "real_sensor_window" if imu_available else "no_real_imu_data_neutral_prior"
+            normal["imu_shock_telemetry"] = imu_report
+            normal["bayesian_sensor_fusion"] = fusion_res
             dag_exec.mark("N7_astm_pci_hd4")
             dag_exec.mark("N8_irc_compliance")
             dag_exec.mark("N9_merkle_audit", "SKIPPED")
