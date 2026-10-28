@@ -13,7 +13,6 @@ Replaces the earlier single-equation `1 - exp(-0.06 * d)` analytic stand-in with
 """
 
 import os
-import joblib
 import numpy as np
 
 CKPT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checkpoints")
@@ -56,6 +55,7 @@ class PavementConditionIndexEngine:
     def _load(self):
         if os.path.exists(self.model_path):
             try:
+                import joblib
                 blob = joblib.load(self.model_path)
                 self.model = blob.get("model")
                 if "astm_density_grid" in blob:

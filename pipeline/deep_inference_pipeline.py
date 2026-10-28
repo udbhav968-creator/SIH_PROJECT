@@ -333,7 +333,9 @@ class DeepInferencePipeline:
         # the same class order. It used to check for the head by name only, so
         # serving the fine-tuned CNN silently switched the gate off and zebra
         # crossings came back as potholes. Skipped with the hand-crafted fallback.
-        if seg_out is not None and getattr(self, "vision_backend", "") in ("cnn_embeddings", "deep_cnn"):
+        if (seg_out is not None
+                and getattr(self, "vision_backend", "") in ("cnn_embeddings", "deep_cnn")
+                and type(getattr(self, "segmenter", None)).__name__ != "UNetSegmenter"):
             try:
                 from models import semantic_gate
                 seg_out = semantic_gate.apply(seg_out, self.vision_model, img_np)

@@ -1,1 +1,3 @@
-# Vercel function is stdlib-only (see api/vercel_app.py). Full stack: ../requirements.txt
+numpy>=1.24.0
+pillow>=10.0.0
+onnxruntime>=1.17.0

@@ -8,10 +8,11 @@ training
 __pycache__
 *.pyc
 requirements-train.txt
-# The Vercel handler reads only the JSON reports in checkpoints/; model
-# binaries and local run outputs never need to be uploaded.
 checkpoints/*.joblib
 checkpoints/*.onnx
+!checkpoints/deep_vision_mobilenet_v3_large_refit.onnx
+!checkpoints/defect_segmenter_unet.onnx
+!checkpoints/imu_shock_cnn.onnx
 checkpoints/*.pt
 checkpoints/*.db
 checkpoints/*.db-*
