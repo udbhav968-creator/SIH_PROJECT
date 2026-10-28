@@ -135,81 +135,122 @@ def _bar_candidates_from_mask(binary_mask, roi_y0, min_area):
     return bars
 
 
-def _regular_group(bars):
+def _all_regular_groups(bars):
     """
-    The largest set of bars that share an orientation AND form an evenly spaced
-    sequence of stripes across the road.
+    Find all distinct regular crosswalk clusters across the road.
+    Allows detecting multiple zebra crossings (e.g. 2 or 3 separate crosswalks in an intersection).
     """
-    best_bars = []
-    best_stripes = []
-    best_var = 1.0
+    if not bars:
+        return []
 
+    valid_groups = []
     for angle in (0.0, 90.0):
         same = [b for b in bars if abs(b["angle"] - angle) <= ORIENTATION_TOLERANCE_DEG]
         if len(same) < MIN_BARS:
             continue
-        key = "cy" if angle == 0.0 else "cx"
-        dim_key = "h" if angle == 0.0 else "w"
-        same.sort(key=lambda b: b[key])
 
-        # Cluster bars at almost the same position (left/right fragments of same stripe)
-        stripes = []
-        for b in same:
-            merged = False
+        # Spatial connected components: cluster bars belonging to the same crosswalk
+        adj = {i: [] for i in range(len(same))}
+        for i in range(len(same)):
+            for j in range(i + 1, len(same)):
+                b1, b2 = same[i], same[j]
+                if angle == 90.0:
+                    same_band = abs(b1["cy"] - b2["cy"]) <= 1.25 * max(b1["h"], b2["h"])
+                    near_x = abs(b1["cx"] - b2["cx"]) <= 4.5 * max(b1["w"], b2["w"], 40.0)
+                    connected = same_band and near_x
+                else:
+                    same_band = abs(b1["cx"] - b2["cx"]) <= 1.25 * max(b1["w"], b2["w"])
+                    near_y = abs(b1["cy"] - b2["cy"]) <= 4.5 * max(b1["h"], b2["h"], 40.0)
+                    connected = same_band and near_y
+                if connected:
+                    adj[i].append(j)
+                    adj[j].append(i)
+
+        visited = set()
+        for i in range(len(same)):
+            if i in visited:
+                continue
+            group_indices = []
+            q = [i]
+            visited.add(i)
+            while q:
+                curr = q.pop()
+                group_indices.append(curr)
+                for neighbor in adj[curr]:
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        q.append(neighbor)
+
+            if len(group_indices) < MIN_BARS:
+                continue
+
+            cluster_bars = [same[idx] for idx in group_indices]
+            key = "cy" if angle == 0.0 else "cx"
+            dim_key = "h" if angle == 0.0 else "w"
+            cluster_bars.sort(key=lambda b: b[key])
+
+            stripes = []
+            for b in cluster_bars:
+                merged = False
+                for s in stripes:
+                    thresh = max(10.0, min(16.0, 0.35 * s[dim_key]))
+                    diff = abs(b[key] - s[key])
+                    if diff <= thresh:
+                        s["bars"].append(b)
+                        s[key] = float(np.mean([bar[key] for bar in s["bars"]]))
+                        s[dim_key] = max(s[dim_key], b[dim_key])
+                        merged = True
+                        break
+                if not merged:
+                    stripes.append({
+                        key: b[key],
+                        dim_key: b[dim_key],
+                        "bars": [b]
+                    })
+
+            if len(stripes) < MIN_BARS:
+                continue
+
+            stripes.sort(key=lambda s: s[key])
+            gaps = [stripes[k + 1][key] - stripes[k][key] for k in range(len(stripes) - 1)]
+            if not gaps:
+                continue
+            mean_gap = float(np.mean(gaps))
+            if mean_gap <= 4.0:
+                continue
+            variation = float(np.std(gaps)) / mean_gap
+            regular = variation <= MAX_SPACING_VARIATION
+            if not regular and len(gaps) >= 2:
+                ratios = [gaps[k + 1] / gaps[k] for k in range(len(gaps) - 1) if gaps[k] > 1e-6]
+                if ratios:
+                    mr = float(np.mean(ratios))
+                    monotonic = all(r >= 0.80 for r in ratios) or all(r <= 1.25 for r in ratios)
+                    regular = (mr > 0 and float(np.std(ratios)) / max(1e-6, mr) <= MAX_RATIO_VARIATION and monotonic)
+
+            if not regular:
+                continue
+
+            all_cluster_bars = []
             for s in stripes:
-                thresh = max(10.0, min(16.0, 0.35 * s[dim_key]))
-                diff = abs(b[key] - s[key])
-                if diff <= thresh:
-                    s["bars"].append(b)
-                    s[key] = float(np.mean([bar[key] for bar in s["bars"]]))
-                    s[dim_key] = max(s[dim_key], b[dim_key])
-                    merged = True
-                    break
-            if not merged:
-                stripes.append({
-                    key: b[key],
-                    dim_key: b[dim_key],
-                    "bars": [b]
-                })
+                all_cluster_bars.extend(s["bars"])
 
-        if len(stripes) < MIN_BARS:
-            continue
+            valid_groups.append((all_cluster_bars, len(stripes), variation))
 
-        stripes.sort(key=lambda s: s[key])
-        gaps = [stripes[i + 1][key] - stripes[i][key] for i in range(len(stripes) - 1)]
-        if not gaps:
-            continue
-        mean_gap = float(np.mean(gaps))
-        if mean_gap <= 4.0:
-            continue
-        variation = float(np.std(gaps)) / mean_gap
-        regular = variation <= MAX_SPACING_VARIATION
-        if not regular and len(gaps) >= 2:
-            ratios = [gaps[i + 1] / gaps[i] for i in range(len(gaps) - 1)
-                      if gaps[i] > 1e-6]
-            if ratios:
-                mr = float(np.mean(ratios))
-                monotonic = all(r >= 0.80 for r in ratios) or all(r <= 1.25 for r in ratios)
-                regular = (mr > 0 and float(np.std(ratios)) / max(1e-6, mr) <= MAX_RATIO_VARIATION
-                           and monotonic)
-        if not regular:
-            continue
-
-        all_cluster_bars = []
-        for s in stripes:
-            all_cluster_bars.extend(s["bars"])
-
-        if len(stripes) > len(best_stripes) or (len(stripes) == len(best_stripes) and variation < best_var):
-            best_stripes = stripes
-            best_bars = all_cluster_bars
-            best_var = variation
-
-    return best_bars, len(best_stripes), best_var
+    return valid_groups
 
 
-def detect_zebra(image_rgb, roi_top_fraction=0.35):
+def _regular_group(bars):
+    groups = _all_regular_groups(bars)
+    if not groups:
+        return [], 0, 1.0
+    groups.sort(key=lambda g: (g[1], -g[2]), reverse=True)
+    return groups[0]
+
+
+def detect_all_zebras(image_rgb, roi_top_fraction=0.35):
     """
-    Find a pedestrian crossing using geometric regularity and chromatic whiteness.
+    Find all pedestrian crosswalks in the scene.
+    Returns a list of crosswalk detection dicts, each with its own tight bounding box.
     """
     img = np.asarray(image_rgb)
     if img.ndim == 3:
@@ -229,88 +270,82 @@ def detect_zebra(image_rgb, roi_top_fraction=0.35):
     roi_sat = sat[roi_y0:, :]
     roi_area = roi_gray.size
     if roi_area == 0:
-        return {"found": False, "bars": [], "bar_count": 0, "reason": "empty ROI"}
+        return []
 
     mean_val = float(roi_gray.mean())
     std_val = float(roi_gray.std())
     thr = max(160.0, mean_val + 1.05 * std_val)
 
-    # Thermoplastic road paint is achromatic white: low saturation (< 0.22) and high intensity (> thr)
     bright_mask = (roi_gray > thr) & (roi_sat < 0.22)
     paint_share = float(bright_mask.sum()) / float(roi_area)
 
-    # Minimum paint coverage floor: a real crossing must occupy at least 3.0% of the road surface
     if paint_share < 0.030:
-        return {
-            "found": False,
-            "bars": [],
-            "bar_count": 0,
-            "paint_share": round(paint_share, 4),
-            "reason": f"paint_share {paint_share:.3f} < 0.030 (insufficient white paint on surface)",
-        }
+        return []
 
     min_area = max(40, int(0.0008 * H * W))
     bars = _bar_candidates_from_mask(bright_mask, roi_y0, min_area)
     if len(bars) < MIN_BARS:
-        return {
-            "found": False,
-            "bars": [],
-            "bar_count": len(bars),
-            "paint_share": round(paint_share, 4),
-            "reason": f"{len(bars)} candidate bar(s) < {MIN_BARS} required",
-        }
+        return []
 
-    group, stripe_count, variation = _regular_group(bars)
-    if len(group) < MIN_BARS or stripe_count < MIN_BARS:
-        return {
-            "found": False,
-            "bars": [],
-            "bar_count": len(bars),
-            "paint_share": round(paint_share, 4),
-            "reason": (f"{len(bars)} elongated bright blob(s), but no set of "
-                       f"{MIN_BARS}+ parallel, evenly spaced bars"),
-        }
+    groups = _all_regular_groups(bars)
+    crossings = []
+    for group, stripe_count, variation in groups:
+        if len(group) < MIN_BARS or stripe_count < MIN_BARS:
+            continue
+        x0 = min(b["x"] for b in group)
+        y0 = min(b["y"] for b in group)
+        x1 = max(b["x"] + b["w"] for b in group)
+        y1 = max(b["y"] + b["h"] for b in group)
+        box_w = x1 - x0
+        box_h = y1 - y0
 
-    x0 = min(b["x"] for b in group)
-    y0 = min(b["y"] for b in group)
-    x1 = max(b["x"] + b["w"] for b in group)
-    y1 = max(b["y"] + b["h"] for b in group)
-    box_w = x1 - x0
-    box_h = y1 - y0
+        total_paint_area = sum(b["area"] for b in group)
+        box_area = box_w * box_h
+        fill_ratio = total_paint_area / float(box_area) if box_area > 0 else 0.0
+        if fill_ratio < 0.08:
+            continue
 
-    # Crosswalk bounding box paint density: bars must fill >= 14% of the enclosing bounding box
-    total_paint_area = sum(b["area"] for b in group)
-    box_area = box_w * box_h
-    fill_ratio = total_paint_area / float(box_area) if box_area > 0 else 0.0
-    if fill_ratio < 0.08:
-        return {
-            "found": False,
-            "bars": [],
+        conf = min(0.99, 0.45 + 0.12 * stripe_count + 0.25 * (1.0 - min(1.0, variation)))
+        crossing = stripe_count >= 3
+        crossings.append({
+            "found": True,
+            "is_crossing": bool(crossing),
+            "class_name": "Zebra Crossing" if crossing else "Road Marking (painted)",
+            "confidence": round(float(conf), 3),
+            "bbox_pixels": [int(x0), int(y0), int(box_w), int(box_h)],
+            "bbox_normalized": [round(x0 / W, 4), round(y0 / H, 4),
+                                round(box_w / W, 4), round(box_h / H, 4)],
+            "bars": group,
             "bar_count": len(group),
+            "stripe_count": stripe_count,
+            "spacing_variation": round(variation, 3),
             "paint_share": round(paint_share, 4),
             "fill_ratio": round(fill_ratio, 3),
-            "reason": f"fill_ratio {fill_ratio:.3f} < 0.14 (bars too scattered/isolated)",
-        }
+            "method": ("parallel bright bars with regular spacing - geometric, not "
+                       "learned; see models/marking_detector.py"),
+        })
 
-    conf = min(0.99, 0.45 + 0.12 * stripe_count + 0.25 * (1.0 - min(1.0, variation)))
-    crossing = stripe_count >= 3
-    return {
-        "found": True,
-        "is_crossing": bool(crossing),
-        "class_name": "Zebra Crossing" if crossing else "Road Marking (painted)",
-        "confidence": round(float(conf), 3),
-        "bbox_pixels": [int(x0), int(y0), int(box_w), int(box_h)],
-        "bbox_normalized": [round(x0 / W, 4), round(y0 / H, 4),
-                            round(box_w / W, 4), round(box_h / H, 4)],
-        "bars": group,
-        "bar_count": len(group),
-        "stripe_count": stripe_count,
-        "spacing_variation": round(variation, 3),
-        "paint_share": round(paint_share, 4),
-        "fill_ratio": round(fill_ratio, 3),
-        "method": ("parallel bright bars with regular spacing - geometric, not "
-                   "learned; see models/marking_detector.py"),
-    }
+    return crossings
+
+
+def detect_zebra(image_rgb, roi_top_fraction=0.35):
+    """
+    Find a pedestrian crossing using geometric regularity and chromatic whiteness.
+    """
+    crossings = detect_all_zebras(image_rgb, roi_top_fraction=roi_top_fraction)
+    if not crossings:
+        return {
+            "found": False,
+            "bars": [],
+            "bar_count": 0,
+            "all_crossings": [],
+            "crossings_count": 0,
+            "reason": "no set of 3+ parallel, evenly spaced bars found",
+        }
+    primary = max(crossings, key=lambda c: (c.get("stripe_count", 0), c.get("confidence", 0.0)))
+    primary["all_crossings"] = crossings
+    primary["crossings_count"] = len(crossings)
+    return primary
 
 
 def paint_mask(image_rgb, zebra):

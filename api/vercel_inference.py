@@ -386,7 +386,7 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
     sy = orig_h / float(WORK_H)
     for cls_val, cls_id in ((2, 2), (1, 1)):
         c_mask, boxes = _connected_components_8(labels == cls_val, min_blob_px=min_px_map[cls_val])
-        for b in boxes[:4]:
+        for b in boxes[:100]:
             wx, wy, ww, wh = b["bbox_work"]
             # Require detection centroid to lie in the lower 65% road ROI (below horizon)
             if (wy + wh * 0.5) < WORK_H * 0.35:
@@ -844,25 +844,27 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 "reason": f"suppressed by distress classifier (distress {CLASS_NAMES.get(f_cls)} conf {f_conf:.2f}, paint_share {p_share:.3f} < 0.10)",
             }
         else:
-            bx, by, bw, bh = markings_res["bbox_pixels"]
-            scene_objects.append({
-                "class_name": markings_res["class_name"],
-                "confidence": markings_res["confidence"],
-                "bbox_pixels": [bx, by, bw, bh],
-                "bbox_normalized": markings_res["bbox_normalized"],
-                "detector": "geometric_marking_analyzer",
-                "color": "#38bdf8",
-                "is_distress": False,
-                "is_pedestrian": False,
-                "is_vehicle": False,
-                "is_marking": True,
-                "details": {
-                    "stripe_count": markings_res.get("stripe_count", 0),
-                    "bar_count": markings_res.get("bar_count", 0),
-                    "spacing_variation": markings_res.get("spacing_variation", 0.0),
-                    "paint_share": p_share,
-                }
-            })
+            all_cross = markings_res.get("all_crossings") or [markings_res]
+            for cross_item in all_cross:
+                bx, by, bw, bh = cross_item["bbox_pixels"]
+                scene_objects.append({
+                    "class_name": cross_item.get("class_name", "Zebra Crossing"),
+                    "confidence": cross_item.get("confidence", 0.95),
+                    "bbox_pixels": [bx, by, bw, bh],
+                    "bbox_normalized": cross_item.get("bbox_normalized", [round(bx / W, 4), round(by / H, 4), round(bw / W, 4), round(bh / H, 4)]),
+                    "detector": "geometric_marking_analyzer",
+                    "color": "#38bdf8",
+                    "is_distress": False,
+                    "is_pedestrian": False,
+                    "is_vehicle": False,
+                    "is_marking": True,
+                    "details": {
+                        "stripe_count": cross_item.get("stripe_count", 0),
+                        "bar_count": cross_item.get("bar_count", 0),
+                        "spacing_variation": cross_item.get("spacing_variation", 0.0),
+                        "paint_share": p_share,
+                    }
+                })
             if scene_summary.get("available"):
                 counts = scene_summary.setdefault("counts_by_class", {})
                 counts[markings_res["class_name"]] = counts.get(markings_res["class_name"], 0) + 1
