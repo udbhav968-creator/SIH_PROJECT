@@ -52,7 +52,6 @@ ROAD_RELEVANT = {
     "traffic light": ("Traffic control", "#a3e635"),
     "stop sign": ("Traffic control", "#84cc16"),
     "fire hydrant": ("Roadside asset", "#94a3b8"),
-    "bench": ("Roadside asset", "#94a3b8"),
     "parking meter": ("Roadside asset", "#94a3b8"),
 }
 

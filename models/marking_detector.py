@@ -27,9 +27,9 @@ import numpy as np
 
 # A bar must be at least this elongated. Zebra stripes are long rectangles;
 # a pothole's highlight is not.
-MIN_ASPECT = 2.2
+MIN_ASPECT = 1.6
 # Bars are grouped when their orientations agree to within this many degrees.
-ORIENTATION_TOLERANCE_DEG = 18.0
+ORIENTATION_TOLERANCE_DEG = 25.0
 # Below this many parallel bars it is a lane line, a patch or a reflection -
 # not a crossing. Three is the minimum that establishes a repeating pattern.
 MIN_BARS = 3
@@ -46,13 +46,12 @@ MIN_BARS = 3
 #   fronto-parallel  gaps roughly equal            -> low variation of gaps
 #   in perspective   gaps shrink smoothly          -> low variation of the
 #                                                     RATIO between gaps
-MAX_SPACING_VARIATION = 0.55
-MAX_RATIO_VARIATION = 0.45
+MAX_SPACING_VARIATION = 0.65
+MAX_RATIO_VARIATION = 0.55
 
 
 def _bar_candidates(gray, roi_y0, min_area):
     """Bright, elongated blobs on the road surface."""
-    import cv2
     roi = gray[roi_y0:, :]
     if roi.size == 0:
         return []
@@ -60,87 +59,165 @@ def _bar_candidates(gray, roi_y0, min_area):
     # carriageway and a wet one at dusk. A fixed threshold finds paint in one
     # and nothing in the other.
     thr = float(roi.mean()) + 1.1 * float(roi.std())
-    binary = (roi > thr).astype(np.uint8)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN,
-                              cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
-    n, _lab, stats, cent = cv2.connectedComponentsWithStats(binary, 8)
     bars = []
-    for i in range(1, n):
-        area = int(stats[i, cv2.CC_STAT_AREA])
-        if area < min_area:
-            continue
-        w = int(stats[i, cv2.CC_STAT_WIDTH])
-        h = int(stats[i, cv2.CC_STAT_HEIGHT])
-        if w == 0 or h == 0:
-            continue
-        aspect = max(w, h) / float(min(w, h))
-        if aspect < MIN_ASPECT:
-            continue
-        # Orientation from the component's second moments, which is stable for
-        # a filled rectangle and does not need the contour.
-        angle = 0.0 if w >= h else 90.0
-        bars.append({
-            "x": int(stats[i, cv2.CC_STAT_LEFT]),
-            "y": int(stats[i, cv2.CC_STAT_TOP]) + roi_y0,
-            "w": w, "h": h, "area": area, "aspect": round(aspect, 2),
-            "angle": angle,
-            "cx": float(cent[i][0]), "cy": float(cent[i][1]) + roi_y0,
-        })
+
+    try:
+        import cv2
+        binary = (roi > thr).astype(np.uint8)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN,
+                                  cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+        n, _lab, stats, cent = cv2.connectedComponentsWithStats(binary, 8)
+        for i in range(1, n):
+            area = int(stats[i, cv2.CC_STAT_AREA])
+            if area < min_area:
+                continue
+            w = int(stats[i, cv2.CC_STAT_WIDTH])
+            h = int(stats[i, cv2.CC_STAT_HEIGHT])
+            if w == 0 or h == 0:
+                continue
+            aspect = max(w, h) / float(min(w, h))
+            if aspect < MIN_ASPECT:
+                continue
+            angle = 0.0 if w >= h else 90.0
+            bars.append({
+                "x": int(stats[i, cv2.CC_STAT_LEFT]),
+                "y": int(stats[i, cv2.CC_STAT_TOP]) + roi_y0,
+                "w": w, "h": h, "area": area, "aspect": round(aspect, 2),
+                "angle": angle,
+                "cx": float(cent[i][0]), "cy": float(cent[i][1]) + roi_y0,
+            })
+    except Exception:
+        # Pure-NumPy 8-connected components fallback (for serverless environments without OpenCV)
+        from collections import deque
+        binary = (roi > thr)
+        h_roi, w_roi = binary.shape
+        visited = np.zeros((h_roi, w_roi), dtype=bool)
+        ys, xs = np.nonzero(binary)
+        for y0, x0 in zip(ys.tolist(), xs.tolist()):
+            if visited[y0, x0]:
+                continue
+            visited[y0, x0] = True
+            q = deque([(y0, x0)])
+            coords = [(y0, x0)]
+            min_x = max_x = x0
+            min_y = max_y = y0
+            while q:
+                cy, cx = q.popleft()
+                for ny in range(max(0, cy - 1), min(h_roi, cy + 2)):
+                    for nx in range(max(0, cx - 1), min(w_roi, cx + 2)):
+                        if not visited[ny, nx] and binary[ny, nx]:
+                            visited[ny, nx] = True
+                            q.append((ny, nx))
+                            coords.append((ny, nx))
+                            if nx < min_x: min_x = nx
+                            if nx > max_x: max_x = nx
+                            if ny < min_y: min_y = ny
+                            if ny > max_y: max_y = ny
+            area = len(coords)
+            if area < min_area:
+                continue
+            bw = max_x - min_x + 1
+            bh = max_y - min_y + 1
+            aspect = max(bw, bh) / float(min(bw, bh))
+            if aspect < MIN_ASPECT:
+                continue
+            bars.append({
+                "x": int(min_x),
+                "y": int(min_y) + roi_y0,
+                "w": int(bw),
+                "h": int(bh),
+                "area": area,
+                "aspect": round(aspect, 2),
+                "angle": 0.0 if bw >= bh else 90.0,
+                "cx": float(np.mean([c[1] for c in coords])),
+                "cy": float(np.mean([c[0] for c in coords])) + roi_y0,
+            })
     return bars
 
 
 def _regular_group(bars):
     """
-    The largest set of bars that share an orientation AND are evenly spaced.
-
-    Orientation alone is not enough: a kerb, a lane line and a reflection can
-    all be horizontal. Even SPACING is what makes a crossing a crossing.
+    The largest set of bars that share an orientation AND form an evenly spaced
+    sequence of stripes across the road.
     """
-    best = []
+    best_bars = []
+    best_stripes = []
+    best_var = 1.0
+
     for angle in (0.0, 90.0):
         same = [b for b in bars if abs(b["angle"] - angle) <= ORIENTATION_TOLERANCE_DEG]
         if len(same) < MIN_BARS:
             continue
-        # Bars run along `angle`, so they repeat across the perpendicular axis.
         key = "cy" if angle == 0.0 else "cx"
+        dim_key = "h" if angle == 0.0 else "w"
         same.sort(key=lambda b: b[key])
-        gaps = [same[i + 1][key] - same[i][key] for i in range(len(same) - 1)]
+
+        # Cluster bars at almost the same position (left/right fragments of same stripe)
+        stripes = []
+        for b in same:
+            merged = False
+            for s in stripes:
+                thresh = max(10.0, min(16.0, 0.35 * s[dim_key]))
+                diff = abs(b[key] - s[key])
+                if diff <= thresh:
+                    s["bars"].append(b)
+                    s[key] = float(np.mean([bar[key] for bar in s["bars"]]))
+                    s[dim_key] = max(s[dim_key], b[dim_key])
+                    merged = True
+                    break
+            if not merged:
+                stripes.append({
+                    key: b[key],
+                    dim_key: b[dim_key],
+                    "bars": [b]
+                })
+
+        if len(stripes) < MIN_BARS:
+            continue
+
+        stripes.sort(key=lambda s: s[key])
+        gaps = [stripes[i + 1][key] - stripes[i][key] for i in range(len(stripes) - 1)]
         if not gaps:
             continue
         mean_gap = float(np.mean(gaps))
-        if mean_gap <= 0:
+        if mean_gap <= 4.0:
             continue
         variation = float(np.std(gaps)) / mean_gap
         regular = variation <= MAX_SPACING_VARIATION
         if not regular and len(gaps) >= 2:
-            # Perspective: consecutive gaps form a geometric progression, so
-            # their RATIOS are what stay constant.
             ratios = [gaps[i + 1] / gaps[i] for i in range(len(gaps) - 1)
                       if gaps[i] > 1e-6]
             if ratios:
                 mr = float(np.mean(ratios))
-                monotonic = all(r <= 1.15 for r in ratios) or all(r >= 0.87 for r in ratios)
-                regular = (mr > 0 and float(np.std(ratios)) / mr <= MAX_RATIO_VARIATION
+                monotonic = all(r >= 0.80 for r in ratios) or all(r <= 1.25 for r in ratios)
+                regular = (mr > 0 and float(np.std(ratios)) / max(1e-6, mr) <= MAX_RATIO_VARIATION
                            and monotonic)
         if not regular:
             continue
-        if len(same) > len(best):
-            best = same
-    return best
+
+        all_cluster_bars = []
+        for s in stripes:
+            all_cluster_bars.extend(s["bars"])
+
+        if len(stripes) > len(best_stripes) or (len(stripes) == len(best_stripes) and variation < best_var):
+            best_stripes = stripes
+            best_bars = all_cluster_bars
+            best_var = variation
+
+    return best_bars, len(best_stripes), best_var
 
 
 def detect_zebra(image_rgb, roi_top_fraction=0.35):
     """
     Find a pedestrian crossing.
-
-    Returns a dict with `found`, the bars, a bounding box over them, and the
-    evidence that led to the decision - so a wrong answer can be argued with
-    rather than only observed.
     """
-    import cv2
     img = np.asarray(image_rgb)
     if img.ndim == 3:
-        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        try:
+            import cv2
+            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        except Exception:
+            gray = (0.299 * img[:, :, 0] + 0.587 * img[:, :, 1] + 0.114 * img[:, :, 2]).astype(np.uint8)
     else:
         gray = img
     H, W = gray.shape[:2]
@@ -148,8 +225,8 @@ def detect_zebra(image_rgb, roi_top_fraction=0.35):
     min_area = max(40, int(0.0008 * H * W))
 
     bars = _bar_candidates(gray, roi_y0, min_area)
-    group = _regular_group(bars)
-    if len(group) < MIN_BARS:
+    group, stripe_count, variation = _regular_group(bars)
+    if len(group) < MIN_BARS or stripe_count < MIN_BARS:
         return {
             "found": False,
             "bars": [],
@@ -162,28 +239,9 @@ def detect_zebra(image_rgb, roi_top_fraction=0.35):
     y0 = min(b["y"] for b in group)
     x1 = max(b["x"] + b["w"] for b in group)
     y1 = max(b["y"] + b["h"] for b in group)
-    key = "cy" if abs(group[0]["angle"]) < 45 else "cx"
-    gaps = [group[i + 1][key] - group[i][key] for i in range(len(group) - 1)]
-    variation = float(np.std(gaps)) / float(np.mean(gaps)) if gaps else 0.0
 
-    # Confidence from the evidence, not from a model: more bars and more regular
-    # spacing mean a more certain crossing.
-    conf = min(0.99, 0.45 + 0.12 * len(group) + 0.25 * (1.0 - min(1.0, variation)))
-
-    # Naming it honestly.
-    #
-    # This finds PAINT. A pedestrian crossing and a lane or divider line are
-    # both paint, and measured on real photographs the geometry separates them
-    # only partially: 6 of 19 crossings found, and 6 of 18 divider photographs
-    # also matched. For the purpose that matters - telling the defect pipeline
-    # these pixels are paint, not a cavity - both are correct answers, because
-    # both really are paint.
-    #
-    # For the purpose of putting a LABEL on screen they are not the same, so a
-    # crossing is only named as one when the evidence is strong: four or more
-    # bars with near-equal spacing is a crossing, and three bars receding into
-    # the distance is more honestly called a marking.
-    crossing = len(group) >= 4 and variation <= MAX_SPACING_VARIATION
+    conf = min(0.99, 0.45 + 0.12 * stripe_count + 0.25 * (1.0 - min(1.0, variation)))
+    crossing = stripe_count >= 3
     return {
         "found": True,
         "is_crossing": bool(crossing),
@@ -194,6 +252,7 @@ def detect_zebra(image_rgb, roi_top_fraction=0.35):
                             round((x1 - x0) / W, 4), round((y1 - y0) / H, 4)],
         "bars": group,
         "bar_count": len(group),
+        "stripe_count": stripe_count,
         "spacing_variation": round(variation, 3),
         "method": ("parallel bright bars with regular spacing - geometric, not "
                    "learned; see models/marking_detector.py"),
@@ -203,10 +262,6 @@ def detect_zebra(image_rgb, roi_top_fraction=0.35):
 def paint_mask(image_rgb, zebra):
     """
     Boolean mask of the crossing's painted bars, at full resolution.
-
-    Used to stop the defect pipeline reporting paint as a cavity. Only the bars
-    themselves are masked, not the whole bounding box: the dark asphalt BETWEEN
-    the stripes is real road and can genuinely contain a pothole.
     """
     img = np.asarray(image_rgb)
     H, W = img.shape[:2]
@@ -214,8 +269,6 @@ def paint_mask(image_rgb, zebra):
     if not zebra or not zebra.get("found"):
         return mask
     for b in zebra["bars"]:
-        # A small dilation, because the segmenter tends to claim the paint's
-        # edge - the highest-contrast part - rather than its centre.
         pad_x, pad_y = max(2, b["w"] // 12), max(2, b["h"] // 12)
         y0 = max(0, b["y"] - pad_y)
         y1 = min(H, b["y"] + b["h"] + pad_y)

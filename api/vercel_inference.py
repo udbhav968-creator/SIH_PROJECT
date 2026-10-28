@@ -585,7 +585,43 @@ def _detect_scene_objects(img_np, H, W):
         "los_grade": los,
         "total_vehicles_detected": len(vehicle_detections),
     }
-    return scene_objects, scene_summary, pedestrians, vehicle_detections, traffic_analysis, object_mask
+
+    # Geometric Road Markings & Zebra Crossing Detection
+    markings_res = {"found": False, "bars": []}
+    try:
+        from models.marking_detector import detect_zebra, paint_mask
+        z = detect_zebra(img_np)
+        if z and z.get("found"):
+            markings_res = z
+            bx, by, bw, bh = z["bbox_pixels"]
+            scene_objects.append({
+                "class_name": z["class_name"],
+                "confidence": z["confidence"],
+                "bbox_pixels": [bx, by, bw, bh],
+                "bbox_normalized": z["bbox_normalized"],
+                "detector": "geometric_marking_analyzer",
+                "color": "#38bdf8",
+                "is_distress": False,
+                "is_pedestrian": False,
+                "is_vehicle": False,
+                "is_marking": True,
+                "details": {
+                    "stripe_count": z.get("stripe_count", 0),
+                    "bar_count": z.get("bar_count", 0),
+                    "spacing_variation": z.get("spacing_variation", 0.0),
+                }
+            })
+            if scene_summary.get("available"):
+                counts = scene_summary.setdefault("counts_by_class", {})
+                counts[z["class_name"]] = counts.get(z["class_name"], 0) + 1
+                scene_summary["objects_detected"] = len(scene_objects)
+            # Mask paint bars so segmenter never claims paint as cavity
+            p_mask = paint_mask(img_np, z)
+            object_mask = object_mask | p_mask
+    except Exception as e:
+        markings_res = {"found": False, "reason": str(e)}
+
+    return scene_objects, scene_summary, pedestrians, vehicle_detections, traffic_analysis, object_mask, markings_res
 
 
 def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
@@ -810,11 +846,15 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "total_latency_ms": elapsed_ms,
         }
 
-    # STAGE 2: YOLOv8 COCO Object Detection (people, vehicles, signs) + Object Masking
-    scene_objects, scene_summary, pedestrians, vehicle_detections, traffic_analysis, object_mask = _detect_scene_objects(img_np, H, W)
+    # STAGE 2: YOLOv8 COCO Object Detection + Geometric Marking Analyzer (Zebra Crossing)
+    scene_objects, scene_summary, pedestrians, vehicle_detections, traffic_analysis, object_mask, markings_res = _detect_scene_objects(img_np, H, W)
 
     # STAGE 3: Whole-frame MobileNetV3-Large classification
     frame_cls_raw = classify_crop(img_np)
+    if markings_res.get("found") and frame_cls_raw.get("class_id") == 4:
+        # Intact zebra crossing is verified by geometry; override spurious missing crossing defect
+        frame_cls_raw["class_id"] = 0
+        frame_cls_raw["class_name"] = "Normal Road / Sound Pavement"
     frame_cls = {
         "class_name": frame_cls_raw["class_name"],
         "confidence": frame_cls_raw["confidence"],
@@ -1095,6 +1135,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "total_estimated_repair_inr": total_cost,
         },
         "cryptographic_work_order": work_order,
+        "markings": markings_res,
         "frame_classification": frame_cls,
         "vision_backend": "deep_cnn",
         "camera_calibration": calib_desc,
