@@ -3,10 +3,10 @@
  "rule": "serve the CNN only if its mean 5-fold CV accuracy AND macro-F1 on the training windows beat the RandomForest's; folds are contiguous time blocks of 25 windows (no neighbouring window on both sides); fixed before the held-out windows were scored",
  "cv": {
   "random_forest": {
-   "cv_accuracy": 0.7678,
-   "cv_accuracy_std": 0.1013,
-   "cv_macro_f1": 0.6123,
-   "cv_macro_f1_std": 0.0854
+   "cv_accuracy": 0.7985,
+   "cv_accuracy_std": 0.121,
+   "cv_macro_f1": 0.72,
+   "cv_macro_f1_std": 0.1133
   },
   "cnn": {
    "cv_accuracy": 0.7626,
@@ -17,8 +17,8 @@
  },
  "held_out_for_reporting": {
   "random_forest": {
-   "accuracy": 0.872,
-   "macro_f1": 0.7292
+   "accuracy": 0.8659,
+   "macro_f1": 0.7765
   },
   "cnn": {
    "accuracy": 0.7622,

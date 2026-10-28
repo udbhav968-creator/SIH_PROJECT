@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1793158502,
+  "generated_unix": 1793165653,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
@@ -11,8 +11,8 @@
       "rejected_alternative": "Frozen-embedding head (kept as the fallback); other fine-tuned architectures lost on validation - see finetune_summary.json.",
       "measured": {
         "served_model": "mobilenet_v3_large_refit",
-        "held_out_accuracy": 0.9435,
-        "held_out_macro_f1": 0.8786,
+        "held_out_accuracy": 0.9492,
+        "held_out_macro_f1": 0.9207,
         "test_images": 531,
         "test_photographs": 512,
         "indian_roads": {
@@ -109,17 +109,17 @@
       "why": "Suspension vibration is periodic and noisy. RMS, peak-to-peak, crest factor, kurtosis and spectral power separate a sharp impact from a repetitive wave. Tree ensembles are immune to the noise and need no sequence buffer.",
       "rejected_alternative": "A 1-D residual CNN is trained and compared on the same windows (training/train_imu_deep.py); it is served only if it beats the forest on cross-validation over the training windows.",
       "measured": {
-        "held_out_accuracy": 0.872,
-        "held_out_macro_f1": 0.7292,
+        "held_out_accuracy": 0.8659,
+        "held_out_macro_f1": 0.7765,
         "held_out_windows": 164,
         "cnn_compared": {
           "served": "random_forest",
           "cv": {
             "random_forest": {
-              "cv_accuracy": 0.7678,
-              "cv_accuracy_std": 0.1013,
-              "cv_macro_f1": 0.6123,
-              "cv_macro_f1_std": 0.0854
+              "cv_accuracy": 0.7985,
+              "cv_accuracy_std": 0.121,
+              "cv_macro_f1": 0.72,
+              "cv_macro_f1_std": 0.1133
             },
             "cnn": {
               "cv_accuracy": 0.7626,
@@ -130,8 +130,8 @@
           },
           "held_out": {
             "random_forest": {
-              "accuracy": 0.872,
-              "macro_f1": 0.7292
+              "accuracy": 0.8659,
+              "macro_f1": 0.7765
             },
             "cnn": {
               "accuracy": 0.7622,

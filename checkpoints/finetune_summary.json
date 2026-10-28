@@ -3,8 +3,8 @@
  "chosen_arch": "mobilenet_v3_large",
  "served": "mobilenet_v3_large_refit",
  "served_test": {
-  "accuracy": 0.9435,
-  "macro_f1": 0.8786,
+  "accuracy": 0.9492,
+  "macro_f1": 0.9207,
   "images": 531
  },
  "served_indian_roads": {
@@ -128,5 +128,5 @@
   "test_macro_f1": 0.7447,
   "test_images": 630
  },
- "generated_unix": 1793136327
+ "generated_unix": 1793165562
 }
