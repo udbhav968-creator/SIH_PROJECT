@@ -608,9 +608,9 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
         sx0, sx1 = max(0, bx - 20), min(W, bx + bw + 20)
         excl_mask[sy0:sy1, sx0:sx1] = True
 
-    roi_y0 = int(H * 0.35)
+    roi_y0 = int(H * 0.38)
     road_gray = gray[roi_y0:, :]
-    mean_int = float(road_gray.mean())
+    road_median = float(np.median(road_gray))
     std_int = float(road_gray.std())
     if std_int < 6.5:
         return []
@@ -635,24 +635,26 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
                 continue
             sub_gray = road_gray[y0 : y0 + cell_h, x0 : x0 + cell_w]
             sub_mag = grad_mag[y0 : y0 + cell_h, x0 : x0 + cell_w]
-            dark_diff = max(0.0, mean_int - float(sub_gray.mean()))
+            # Use road median to avoid bright water reflections from skewing threshold
+            dark_diff = max(0.0, road_median - float(sub_gray.mean()))
             edge_peak = float(np.percentile(sub_mag, 90)) if sub_mag.size else 0.0
 
-            col_weight = 0.40 if (c < 2 or c > 21) else (1.30 if 5 <= c <= 18 else 1.0)
-            pothole_score = dark_diff * 2.5 * col_weight if dark_diff > 10.0 else 0.0
-            crack_score = edge_peak * 2.2 * col_weight if edge_peak > 18.0 else 0.0
+            # Strongly focus on the central driving lane; suppress peripheral road verges
+            col_weight = 0.15 if (c < 3 or c > 20) else (1.30 if 4 <= c <= 17 else 0.70)
+            pothole_score = dark_diff * 2.8 * col_weight if dark_diff > 16.0 else 0.0
+            crack_score = edge_peak * 2.2 * col_weight if edge_peak > 22.0 else 0.0
 
             if pothole_score >= crack_score and pothole_score > 0:
                 cell_score[r, c], cell_kind[r, c] = pothole_score, 2
             elif crack_score > 0:
                 cell_score[r, c], cell_kind[r, c] = crack_score, 1
 
-    active = cell_score >= 20.0
-    if active.sum() < 2:
+    active = cell_score >= 32.0
+    if active.sum() < 5:
         return []
 
     visited = np.zeros_like(active, dtype=bool)
-    boxes = []
+    raw_boxes = []
     for r0 in range(grid_rows):
         for c0 in range(grid_cols):
             if active[r0, c0] and not visited[r0, c0]:
@@ -666,21 +668,48 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
                             visited[nr, nc] = True
                             q.append((nr, nc))
                             cells.append((nr, nc))
-                if len(cells) < 2:
+                if len(cells) < 5:
                     continue
                 rs = [p[0] for p in cells]
                 cs = [p[1] for p in cells]
                 min_r, max_r = min(rs), max(rs)
                 min_c, max_c = min(cs), max(cs)
-                bx = max(10, min_c * cell_w - int(cell_w * 0.2))
-                by = max(roi_y0, roi_y0 + min_r * cell_h - int(cell_h * 0.15))
-                bw = min(W - bx - 10, (max_c - min_c + 1) * cell_w + int(cell_w * 0.4))
-                bh = min(H - by - 10, (max_r - min_r + 1) * cell_h + int(cell_h * 0.3))
+                bx = max(10, min_c * cell_w - int(cell_w * 0.15))
+                by = max(roi_y0, roi_y0 + min_r * cell_h - int(cell_h * 0.10))
+                bw = min(W - bx - 10, (max_c - min_c + 1) * cell_w + int(cell_w * 0.3))
+                bh = min(H - by - 10, (max_r - min_r + 1) * cell_h + int(cell_h * 0.2))
                 kinds = [int(cell_kind[cr, cc]) for cr, cc in cells]
                 is_pothole_like = kinds.count(2) >= kinds.count(1)
                 mean_score = float(np.mean([cell_score[cr, cc] for cr, cc in cells]))
-                boxes.append([int(bx), int(by), int(bw), int(bh), mean_score, 2 if is_pothole_like else 1])
-    return boxes
+                raw_boxes.append([int(bx), int(by), int(bw), int(bh), mean_score, 2 if is_pothole_like else 1])
+
+    if not raw_boxes:
+        return []
+
+    # Non-maximum suppression with peripheral noise suppression
+    raw_boxes.sort(key=lambda b: b[4] * ((b[2] * b[3]) ** 0.20), reverse=True)
+    max_area = max(b[2] * b[3] for b in raw_boxes)
+    selected = []
+    for b in raw_boxes:
+        b_area = b[2] * b[3]
+        if max_area > 8000 and b_area < 0.20 * max_area:
+            continue  # ignore peripheral noise once a dominant cavity exists
+        keep = True
+        for s in selected:
+            xA, yA = max(b[0], s[0]), max(b[1], s[1])
+            xB, yB = min(b[0] + b[2], s[0] + s[2]), min(b[1] + b[3], s[1] + s[3])
+            inter = max(0, xB - xA) * max(0, yB - yA)
+            s_area = s[2] * s[3]
+            iou = inter / max(1e-6, b_area + s_area - inter)
+            containment = inter / max(1.0, min(b_area, s_area))
+            if iou > 0.35 or containment > 0.50:
+                keep = False
+                break
+        if keep:
+            selected.append(b)
+            if len(selected) >= 5:
+                break
+    return selected
 
 
 def _box_iou(b1, b2):
@@ -862,10 +891,13 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         # Class determination: ALWAYS respect the crop classifier's specific verdict
         cls_id = cls_info["class_id"]
         if cls_id == 0:
-            if comp and comp["class_id"] in (1, 2) and p_defect_frame >= 0.60:
-                cls_id = comp["class_id"]
-            elif frame_cls_raw["class_id"] in (1, 2, 3) and frame_cls_raw["confidence"] >= 0.75:
-                cls_id = frame_cls_raw["class_id"]
+            # Only accept if U-Net produced a dense segmentation mask (>= 50 px) in this exact crop
+            if comp and comp["class_id"] in (1, 2) and mask_full is not None:
+                mask_in_crop = (mask_full[by:by + bh, bx:bx + bw] == comp["seg_cls"]).sum()
+                if mask_in_crop >= 50 and p_defect_frame >= 0.70:
+                    cls_id = comp["class_id"]
+                else:
+                    continue
             else:
                 continue
 
