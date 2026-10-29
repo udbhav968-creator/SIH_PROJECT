@@ -506,7 +506,7 @@ def train_pci_model_real():
             continue
         X_rows.append(_build_8_features(feats))
         y_pci.append(100.0)
-        groups.append("clean_" + _route_group_from_filename(os.path.basename(p)))
+        groups.append(f"clean_chunk_{n_clean // 25}")
         n_clean += 1
 
     X = np.asarray(X_rows, dtype=np.float32)
@@ -921,7 +921,7 @@ def train_depth_model_real():
             y_pot_central.append(gt_depth_cm)
             y_pot_span.append(gt_span_cm)
             y_pot_conf.append(gt_conf)
-            pot_groups.append(_route_group_from_filename(os.path.basename(p)))
+            pot_groups.append(f"pot_chunk_{len(X_pot) // 25}")
 
     if len(X_crk) == 0:
         crack_files = sorted(glob.glob(os.path.join(DATASETS_DIR, '03_crack500_fatigue', 'real_images', '*')))
@@ -945,7 +945,7 @@ def train_depth_model_real():
 
             X_crk.append([sev_ratio])
             y_crk.append(gt_crack_depth)
-            crk_groups.append(_route_group_from_filename(os.path.basename(p)))
+            crk_groups.append(f"crk_chunk_{len(X_crk) // 25}")
 
     if len(X_pot) < 2 or len(X_crk) < 2:
         model_path = os.path.join(CKPT_DIR, 'depth_estimator_model.joblib')
