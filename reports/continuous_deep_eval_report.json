@@ -1,5 +1,5 @@
 {
-  "timestamp": 1793279663.3778276,
+  "timestamp": 1793285798.9378788,
   "total_images": 16,
   "crashes": 0,
   "giant_box_violations": 0,
@@ -9,178 +9,178 @@
     {
       "path": "clean_original_road.png",
       "category": "rural_flooded_puddles",
-      "distress_detections_count": 12,
-      "giant_boxes_count": 0,
-      "unpriced_defects_count": 0,
-      "area_overflow_count": 0,
-      "total_cost_inr": 541.5,
-      "visual_overlay": "eval_01_clean_original_road.png",
-      "elapsed_ms": 7813.8
-    },
-    {
-      "path": "user_test_scene_2.png",
-      "category": "asphalt_center_pothole",
-      "distress_detections_count": 13,
-      "giant_boxes_count": 0,
-      "unpriced_defects_count": 0,
-      "area_overflow_count": 0,
-      "total_cost_inr": 1304.25,
-      "visual_overlay": "eval_02_user_test_scene_2.png",
-      "elapsed_ms": 2487.8
-    },
-    {
-      "path": "1014620_RS_386_386RS124739_30026_RAW.jpg",
-      "category": "rdd2022_asphalt_distress",
-      "distress_detections_count": 0,
-      "giant_boxes_count": 0,
-      "unpriced_defects_count": 0,
-      "area_overflow_count": 0,
-      "total_cost_inr": 0,
-      "visual_overlay": "eval_03_1014620_RS_386_386RS124739_30026_RAW.png",
-      "elapsed_ms": 1771.3
-    },
-    {
-      "path": "1014628_RS_386_386RS124739_30065_RAW.jpg",
-      "category": "rdd2022_asphalt_distress",
-      "distress_detections_count": 5,
-      "giant_boxes_count": 0,
-      "unpriced_defects_count": 0,
-      "area_overflow_count": 0,
-      "total_cost_inr": 604.5,
-      "visual_overlay": "eval_04_1014628_RS_386_386RS124739_30065_RAW.png",
-      "elapsed_ms": 3895.7
-    },
-    {
-      "path": "1014636_RS_386_386RS124739_30105_RAW.jpg",
-      "category": "rdd2022_asphalt_distress",
-      "distress_detections_count": 6,
-      "giant_boxes_count": 0,
-      "unpriced_defects_count": 0,
-      "area_overflow_count": 0,
-      "total_cost_inr": 385.5,
-      "visual_overlay": "eval_05_1014636_RS_386_386RS124739_30105_RAW.png",
-      "elapsed_ms": 2164.5
-    },
-    {
-      "path": "1014760_RS_386_386RS124739_30725_RAW.jpg",
-      "category": "rdd2022_asphalt_distress",
-      "distress_detections_count": 2,
-      "giant_boxes_count": 0,
-      "unpriced_defects_count": 0,
-      "area_overflow_count": 0,
-      "total_cost_inr": 87.0,
-      "visual_overlay": "eval_06_1014760_RS_386_386RS124739_30725_RAW.png",
-      "elapsed_ms": 2151.9
-    },
-    {
-      "path": "1014639_RS_386_386RS124739_30121_RAW.jpg",
-      "category": "kaggle_asphalt_pothole",
-      "distress_detections_count": 6,
-      "giant_boxes_count": 0,
-      "unpriced_defects_count": 0,
-      "area_overflow_count": 0,
-      "total_cost_inr": 852.75,
-      "visual_overlay": "eval_07_1014639_RS_386_386RS124739_30121_RAW.png",
-      "elapsed_ms": 1966.2
-    },
-    {
-      "path": "1014730_RS_386_386RS124739_30575_RAW.jpg",
-      "category": "kaggle_asphalt_pothole",
-      "distress_detections_count": 2,
+      "distress_detections_count": 7,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
       "total_cost_inr": 380.25,
-      "visual_overlay": "eval_08_1014730_RS_386_386RS124739_30575_RAW.png",
-      "elapsed_ms": 2241.7
+      "visual_overlay": "eval_01_clean_original_road.png",
+      "elapsed_ms": 7686.7
     },
     {
-      "path": "1014777_RS_386_386RS124739_30811_RAW.jpg",
-      "category": "kaggle_asphalt_pothole",
-      "distress_detections_count": 2,
+      "path": "user_test_scene_2.png",
+      "category": "asphalt_center_pothole",
+      "distress_detections_count": 10,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 105.75,
-      "visual_overlay": "eval_09_1014777_RS_386_386RS124739_30811_RAW.png",
-      "elapsed_ms": 2261.6
-    },
-    {
-      "path": "1014788_RS_386_386RS124739_30865_RAW.jpg",
-      "category": "kaggle_asphalt_pothole",
-      "distress_detections_count": 2,
-      "giant_boxes_count": 0,
-      "unpriced_defects_count": 0,
-      "area_overflow_count": 0,
-      "total_cost_inr": 29.25,
-      "visual_overlay": "eval_10_1014788_RS_386_386RS124739_30865_RAW.png",
-      "elapsed_ms": 2519.4
+      "total_cost_inr": 2132.25,
+      "visual_overlay": "eval_02_user_test_scene_2.png",
+      "elapsed_ms": 2234.1
     },
     {
       "path": "1014620_RS_386_386RS124739_30026_RAW.jpg",
-      "category": "crack500_fatigue_crack",
-      "distress_detections_count": 0,
+      "category": "rdd2022_asphalt_distress",
+      "distress_detections_count": 6,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 0,
-      "visual_overlay": "eval_11_1014620_RS_386_386RS124739_30026_RAW.png",
-      "elapsed_ms": 1915.6
+      "total_cost_inr": 919.5,
+      "visual_overlay": "eval_03_1014620_RS_386_386RS124739_30026_RAW.png",
+      "elapsed_ms": 2594.0
     },
     {
       "path": "1014628_RS_386_386RS124739_30065_RAW.jpg",
-      "category": "crack500_fatigue_crack",
+      "category": "rdd2022_asphalt_distress",
+      "distress_detections_count": 13,
+      "giant_boxes_count": 0,
+      "unpriced_defects_count": 0,
+      "area_overflow_count": 0,
+      "total_cost_inr": 684.75,
+      "visual_overlay": "eval_04_1014628_RS_386_386RS124739_30065_RAW.png",
+      "elapsed_ms": 3289.8
+    },
+    {
+      "path": "1014636_RS_386_386RS124739_30105_RAW.jpg",
+      "category": "rdd2022_asphalt_distress",
+      "distress_detections_count": 4,
+      "giant_boxes_count": 0,
+      "unpriced_defects_count": 0,
+      "area_overflow_count": 0,
+      "total_cost_inr": 936.75,
+      "visual_overlay": "eval_05_1014636_RS_386_386RS124739_30105_RAW.png",
+      "elapsed_ms": 2678.5
+    },
+    {
+      "path": "1014760_RS_386_386RS124739_30725_RAW.jpg",
+      "category": "rdd2022_asphalt_distress",
       "distress_detections_count": 5,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 604.5,
-      "visual_overlay": "eval_12_1014628_RS_386_386RS124739_30065_RAW.png",
-      "elapsed_ms": 2280.4
+      "total_cost_inr": 924.75,
+      "visual_overlay": "eval_06_1014760_RS_386_386RS124739_30725_RAW.png",
+      "elapsed_ms": 2645.6
     },
     {
-      "path": "1014636_RS_386_386RS124739_30105_RAW.jpg",
+      "path": "1014639_RS_386_386RS124739_30121_RAW.jpg",
+      "category": "kaggle_asphalt_pothole",
+      "distress_detections_count": 5,
+      "giant_boxes_count": 0,
+      "unpriced_defects_count": 0,
+      "area_overflow_count": 0,
+      "total_cost_inr": 1181.25,
+      "visual_overlay": "eval_07_1014639_RS_386_386RS124739_30121_RAW.png",
+      "elapsed_ms": 2750.4
+    },
+    {
+      "path": "1014730_RS_386_386RS124739_30575_RAW.jpg",
+      "category": "kaggle_asphalt_pothole",
+      "distress_detections_count": 3,
+      "giant_boxes_count": 0,
+      "unpriced_defects_count": 0,
+      "area_overflow_count": 0,
+      "total_cost_inr": 354.75,
+      "visual_overlay": "eval_08_1014730_RS_386_386RS124739_30575_RAW.png",
+      "elapsed_ms": 2195.5
+    },
+    {
+      "path": "1014777_RS_386_386RS124739_30811_RAW.jpg",
+      "category": "kaggle_asphalt_pothole",
+      "distress_detections_count": 8,
+      "giant_boxes_count": 0,
+      "unpriced_defects_count": 0,
+      "area_overflow_count": 0,
+      "total_cost_inr": 177.75,
+      "visual_overlay": "eval_09_1014777_RS_386_386RS124739_30811_RAW.png",
+      "elapsed_ms": 2778.9
+    },
+    {
+      "path": "1014788_RS_386_386RS124739_30865_RAW.jpg",
+      "category": "kaggle_asphalt_pothole",
+      "distress_detections_count": 9,
+      "giant_boxes_count": 0,
+      "unpriced_defects_count": 0,
+      "area_overflow_count": 0,
+      "total_cost_inr": 495.0,
+      "visual_overlay": "eval_10_1014788_RS_386_386RS124739_30865_RAW.png",
+      "elapsed_ms": 3272.8
+    },
+    {
+      "path": "1014620_RS_386_386RS124739_30026_RAW.jpg",
       "category": "crack500_fatigue_crack",
       "distress_detections_count": 6,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 385.5,
+      "total_cost_inr": 919.5,
+      "visual_overlay": "eval_11_1014620_RS_386_386RS124739_30026_RAW.png",
+      "elapsed_ms": 2480.7
+    },
+    {
+      "path": "1014628_RS_386_386RS124739_30065_RAW.jpg",
+      "category": "crack500_fatigue_crack",
+      "distress_detections_count": 13,
+      "giant_boxes_count": 0,
+      "unpriced_defects_count": 0,
+      "area_overflow_count": 0,
+      "total_cost_inr": 684.75,
+      "visual_overlay": "eval_12_1014628_RS_386_386RS124739_30065_RAW.png",
+      "elapsed_ms": 2890.3
+    },
+    {
+      "path": "1014636_RS_386_386RS124739_30105_RAW.jpg",
+      "category": "crack500_fatigue_crack",
+      "distress_detections_count": 4,
+      "giant_boxes_count": 0,
+      "unpriced_defects_count": 0,
+      "area_overflow_count": 0,
+      "total_cost_inr": 936.75,
       "visual_overlay": "eval_13_1014636_RS_386_386RS124739_30105_RAW.png",
-      "elapsed_ms": 2348.2
+      "elapsed_ms": 2692.8
     },
     {
       "path": "real_01_FileCoopers Arms Flood Street Chelsea - geogr.jpg",
       "category": "monsoon_waterlogging",
-      "distress_detections_count": 24,
+      "distress_detections_count": 17,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 208.5,
+      "total_cost_inr": 3562.5,
       "visual_overlay": "eval_14_real_01_FileCoopers Arms Flood Street Chelsea - geogr.png",
-      "elapsed_ms": 5380.9
+      "elapsed_ms": 3976.7
     },
     {
       "path": "real_02_FileCoopers Arms Flood Street - geograph.org..jpg",
       "category": "monsoon_waterlogging",
-      "distress_detections_count": 28,
+      "distress_detections_count": 11,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 288.0,
+      "total_cost_inr": 2436.0,
       "visual_overlay": "eval_15_real_02_FileCoopers Arms Flood Street - geograph.org..png",
-      "elapsed_ms": 3541.4
+      "elapsed_ms": 2651.0
     },
     {
       "path": "real_07_FileHall of Remembrance Flood Street SW3 - ge.jpg",
       "category": "monsoon_waterlogging",
-      "distress_detections_count": 15,
+      "distress_detections_count": 17,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 1568.25,
+      "total_cost_inr": 3948.75,
       "visual_overlay": "eval_16_real_07_FileHall of Remembrance Flood Street SW3 - ge.png",
-      "elapsed_ms": 2737.8
+      "elapsed_ms": 3268.3
     }
   ]
 }

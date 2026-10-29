@@ -349,6 +349,9 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
     labels = flat.reshape(WORK_H, WORK_W)
     conf_map = np.where(flat == 1, crack_p, np.where(flat == 2, pothole_p, proba[:, 0])).reshape(WORK_H, WORK_W)
 
+    # 0. Suppress non-road horizon / sky in the upper 25% of the frame
+    labels[:int(WORK_H * 0.25), :] = 0
+
     # 1. Withhold detected pedestrians and vehicles from the segmentation mask
     if object_mask_full is not None and object_mask_full.any():
         om_work = np.asarray(
@@ -1224,7 +1227,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             area_m2 = float(ipm.calculate_surface_area_sqm(bx, by, bw, bh))
             area_m2 = float(max(0.04, min(area_m2, 6.0)))
 
-        area_m2 = float(max(0.012, min(area_m2, 6.0)))
+        area_m2 = float(max(0.012, min(area_m2, 3.0 if cls_id in (1, 2) else 6.0)))
         dist_m = round(max(2.2, 18.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
         depth_cm = de["depth_cm"]
         tonnage_t = round(area_m2 * (depth_cm / 100.0) * 2.40 * 1.15, 4)

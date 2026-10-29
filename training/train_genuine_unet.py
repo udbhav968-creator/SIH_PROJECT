@@ -233,7 +233,15 @@ def train(epochs=12, batch_size=4, lr=3e-4, limit=120):
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
     
     model = build_unet(n_classes=3).to(device)
-    alpha = torch.tensor([0.2, 1.5, 2.5], dtype=torch.float32) # Downweight background, heavily weight potholes & cracks
+    pt_path = os.path.join(CKPT_DIR, "defect_segmenter_unet.pt")
+    if os.path.exists(pt_path):
+        try:
+            state = torch.load(pt_path, map_location=device)
+            model.load_state_dict(state)
+            print(f"Loaded existing checkpoint from {pt_path} for progressive deep fine-tuning!")
+        except Exception as e:
+            print(f"Could not load checkpoint: {e}")
+    alpha = torch.tensor([0.2, 1.5, 2.5], dtype=torch.float32)
     criterion = FocalDiceLoss(gamma=2.0, alpha=alpha, smooth=1.0)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
@@ -319,7 +327,8 @@ def train(epochs=12, batch_size=4, lr=3e-4, limit=120):
         input_names=["image"],
         output_names=["probs"],
         opset_version=17,
-        do_constant_folding=True
+        do_constant_folding=True,
+        dynamo=False,
     )
     print(f"Exported genuine trained weights to:\n  {pt_out}\n  {onnx_out} ({os.path.getsize(onnx_out)/1e6:.1f} MB)")
     return best_iou
