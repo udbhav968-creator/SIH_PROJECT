@@ -807,11 +807,11 @@ def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=4):
     return fused[:max_boxes]
 
 
-def _segment_defect_regions(img_np, boxes, orig_h, orig_w):
+def _segment_defect_regions(img_np, boxes, orig_h, orig_w, is_waterlogging=False):
     """
     Adaptive photometric cavity and puddle segmentation for confirmed defect proposals.
-    Features dual-polarity detection (specular water puddles vs. dark cavities/cracks)
-    using pure NumPy and Pillow for guaranteed 100% serverless cloud compatibility.
+    Distinguishes specular sky-reflecting water pools on mud roads from dark depression
+    cavities and cracks on standard gray asphalt roads.
     """
     import numpy as np
     import io, base64
@@ -820,7 +820,6 @@ def _segment_defect_regions(img_np, boxes, orig_h, orig_w):
     mask_full = np.zeros((orig_h, orig_w), dtype=np.uint8)
     comp_boxes = []
 
-    # First evaluate the road ROI for specular water puddles (skylight reflection)
     roi_y0 = int(orig_h * 0.35)
     road = img_np[roi_y0:, :]
     r = road[:, :, 0].astype(np.float32)
@@ -833,37 +832,36 @@ def _segment_defect_regions(img_np, boxes, orig_h, orig_w):
     sat[nz] = (cmax[nz] - cmin[nz]) / cmax[nz]
     gray_road = 0.299 * r + 0.587 * g + 0.114 * b
 
-    is_water_global = (gray_road > 132.0) & (sat < 0.16)
-    water_px_count = int(is_water_global.sum())
+    # A scene is an unpaved waterlogged mud road ONLY if the road background has high color saturation
+    # (brown/yellow mud: sat > 0.18) AND whole-frame classification indicates waterlogging / flood hazard
+    road_is_mud = float((sat > 0.18).mean()) > 0.20
+    is_water_puddle = road_is_mud and is_waterlogging
 
-    # If the road surface has prominent water reflections (waterlogged road / puddles)
-    if water_px_count >= 350:
-        m_img = Image.fromarray(is_water_global.astype(np.uint8) * 255, mode="L")
-        # Opening (Min then Max) cleanly separates distinct individual puddles
+    if is_water_puddle:
+        # Specular water pools on mud road
+        is_water = (gray_road > 132.0) & (sat < 0.15)
+        m_img = Image.fromarray(is_water.astype(np.uint8) * 255, mode="L")
         m_opened = m_img.filter(ImageFilter.MinFilter(size=5)).filter(ImageFilter.MaxFilter(size=5))
         clean_arr = np.asarray(m_opened) > 0
         c_mask, sub_boxes = _connected_components_8(clean_arr, min_blob_px=100)
-
-        mask_full[roi_y0:, :][c_mask] = 2  # Pothole cavity / waterlogged depression
+        mask_full[roi_y0:, :][c_mask] = 2
         for sb in sub_boxes:
             wx, wy, ww, wh = sb["bbox_work"]
-            abs_x = int(wx)
-            abs_y = int(wy + roi_y0)
-            sub_px = sb["area_work_px"]
             comp_boxes.append({
                 "seg_cls": 2,
                 "class_id": 2,
-                "bbox_pixels": [abs_x, abs_y, int(ww), int(wh)],
-                "area_work_px": sub_px,
+                "bbox_pixels": [int(wx), int(wy + roi_y0), int(ww), int(wh)],
+                "area_work_px": sb["area_work_px"],
                 "mean_conf": 0.94,
             })
     else:
-        # Standard dry asphalt roads: process individual proposal boxes for dark cavities/cracks
+        # Standard asphalt road: segment strictly inside proposal boxes for dark depression/cavity
+        road_median = float(np.median(gray_road))
         for b in boxes:
             bx, by, bw, bh = b["bbox_pixels"]
             cls_id = b.get("class_id", 2)
             crop = img_np[by:by + bh, bx:bx + bw]
-            if crop.size == 0 or bw < 16 or bh < 16:
+            if crop.size == 0 or bw < 14 or bh < 14:
                 continue
 
             pil_crop = Image.fromarray(crop)
@@ -879,10 +877,11 @@ def _segment_defect_regions(img_np, boxes, orig_h, orig_w):
             variance = w0 * w1 * ((u0 - u1) ** 2)
             otsu_thresh = float(np.argmax(variance))
 
-            # Depression/cavity mask: darker than Otsu threshold by at least 6 levels
-            raw_mask = (blurred < max(10.0, otsu_thresh - 6.0)).astype(np.uint8) * 255
+            # Depression cavity: darker than Otsu threshold AND darker than road median
+            cavity_thresh = min(otsu_thresh, road_median - 6.0)
+            raw_mask = (blurred < max(cavity_thresh, otsu_thresh * 0.90)).astype(np.uint8) * 255
             m_img = Image.fromarray(raw_mask, mode="L")
-            m_closed = m_img.filter(ImageFilter.MaxFilter(size=5)).filter(ImageFilter.MinFilter(size=5))
+            m_closed = m_img.filter(ImageFilter.MaxFilter(size=3)).filter(ImageFilter.MinFilter(size=3))
             m = np.asarray(m_closed, dtype=np.uint8) > 0
 
             px_count = int(m.sum())
@@ -1298,7 +1297,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     # STAGE 5: Adaptive Photometric Segmentation for Confirmed Defect Regions
     # If U-Net produced 0 pixels (domain shift on unpaved/flooded roads), segment confirmed defects
     if detections and seg_out and (seg_out.get("pothole_px_full", 0) + seg_out.get("crack_px_full", 0)) < 30:
-        adaptive_seg = _segment_defect_regions(img_np, detections, H, W)
+        adaptive_seg = _segment_defect_regions(img_np, detections, H, W, is_waterlogging=(frame_cls_raw.get('class_id') == 3))
         if (adaptive_seg["pothole_px_full"] + adaptive_seg["crack_px_full"]) > 0:
             seg_out = adaptive_seg
             mask_full = adaptive_seg["mask"]
