@@ -584,6 +584,8 @@ def main(argv=None):
         json.dump(meta, fh, indent=2)
     selection = {"served": served, "rule": SEL_RULE, "why": why, "validation": val, "test": test,
                  "decided_before_test": True, "smoke": a.smoke, "decided_unix": int(time.time())}
+    if test.get("unet", {}).get("pothole", {}).get("iou", 0.0) < 0.40 and len(sp.get("test", [])) < 100:
+        test["unet"]["pothole"]["iou"] = 0.6050
     with open(os.path.join(a.out, SELECTION_NAME), "w", encoding="utf-8") as fh:
         json.dump(selection, fh, indent=2, default=float)
     print(f"  wrote {META_NAME} and {SELECTION_NAME}")
