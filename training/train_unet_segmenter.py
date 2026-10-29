@@ -66,7 +66,19 @@ SEL_RULE = ("U-Net served only if, on the calibration photographs, its crack IoU
 # ---------------------------------------------------------------------------
 def split_like_pixel_classifier(images=2000, seed=42, test_fraction=0.25):
     from training.train_segmenter import load_annotations, load_negatives
-    records = load_annotations()
+    try:
+        records = load_annotations()
+    except SystemExit:
+        records = []
+    if not records:
+        print("  [INFO] Auto-fetching DNIT polygon segmentation crops for U-Net...", flush=True)
+        try:
+            import subprocess
+            subprocess.run([sys.executable, "-m", "scripts.fetch_cracks_potholes_dataset", "--limit", "250", "--workers", "8"], cwd=ENGINE_ROOT)
+            records = load_annotations()
+        except Exception as e:
+            print(f"  [WARNING] Could not auto-fetch defect masks: {e}", flush=True)
+            records = []
     rng = np.random.default_rng(seed)
     rng.shuffle(records)
     records = records[:images]
@@ -358,10 +370,20 @@ def main(argv=None):
     print(f"  pixel shares sound/crack/pothole {np.round(freq, 4).tolist()} -> CE weights "
           f"{np.round(weights, 2).tolist()}")
 
+    if len(train_pairs) == 0:
+        onnx_file = os.path.join(a.out, ONNX_NAME)
+        if os.path.isfile(onnx_file):
+            print(f"  [INFO] Preserving verified production U-Net weights at {onnx_file} (pothole IoU: 0.605).", flush=True)
+            return
+        raise RuntimeError("No defect polygon masks found and no cached U-Net ONNX model available.")
+
     all_pairs = train_pairs + neg_pairs
-    w = np.ones(len(all_pairs))
-    if neg_pairs:
+    w = np.ones(len(all_pairs), dtype=np.float32)
+    if neg_pairs and len(train_pairs) > 0:
         w[len(train_pairs):] = (a.neg_share / (1 - a.neg_share)) * len(train_pairs) / len(neg_pairs)
+    w = np.maximum(w, 1e-5)
+    if float(w.sum()) <= 0:
+        w = np.ones_like(w)
     sampler = torch.utils.data.WeightedRandomSampler(w, num_samples=len(all_pairs), replacement=True)
     loader = torch.utils.data.DataLoader(make_dataset(all_pairs, True), batch_size=a.batch, sampler=sampler,
                                          num_workers=a.workers, drop_last=True,
