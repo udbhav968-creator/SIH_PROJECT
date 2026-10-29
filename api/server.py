@@ -1121,8 +1121,12 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/automotive/can-stream":
             scenario = self.path.split("scenario=")[1].split("&")[0] if "scenario=" in self.path else "highway_pothole"
             snapshot = automotive_telematics.get_simulated_telemetry_snapshot(scenario)
+            # Canned UI fixture: the telemetry is a scripted scenario and the vision
+            # probability below is an assumed input, not a model output. Both are
+            # declared in the response so the cockpit demo cannot pass as vehicle data.
+            assumed_p_vision = 0.85 if snapshot["hazard_class_id"] != 0 else 0.05
             fused_conf = fusion_gate.fuse_evidence(
-                p_vision=0.85 if snapshot["hazard_class_id"] != 0 else 0.05,
+                p_vision=assumed_p_vision,
                 accel_delta_z=snapshot["imu_z_shock_ms2"],
                 vehicle_speed_kmh=snapshot["vehicle_speed_kmh"],
             )["posterior_probability"]
@@ -1142,6 +1146,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 speed_kmh=snapshot["vehicle_speed_kmh"],
             )
             self._send_json(200, {
+                "data_source": "simulated_ui_fixture_not_vehicle_data",
+                "assumed_inputs": {"p_vision": assumed_p_vision,
+                                   "telemetry": f"scripted scenario '{scenario}'"},
                 "telemetry": snapshot,
                 "rl_decision": rl_decision,
                 "can_frame": can_frame,

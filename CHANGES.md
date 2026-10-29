@@ -1,6 +1,56 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
-## Latest: RDD2022 India - training data and an Indian-roads test
+## Latest: 29 Oct audit - full-history review, hard-coded values removed, every claim re-measured
+
+Reviewed all 213 commits and every serving, training and evaluation script.
+Test suite: 352/356 -> 356/356 (1 skip by design).
+
+**Re-measured in this audit (same splits, same code):**
+
+| Claim | Re-measured | Verdict |
+|---|---|---|
+| Pixel segmenter, DNIT test (500 photos): crack 0.2314, pothole 0.1437 | 0.2314, 0.1437 | reproduces exactly |
+| U-Net 30-epoch weights (92bf3f0): crack 0.2842, pothole 0.605 | 0.2842, 0.605 | reproduces exactly |
+| U-Net weights now committed (0766e83) | crack 0.3035, pothole 0.4661 | previously reported with the old weights' numbers; now its own |
+| IMU RandomForest: 86.6% on 164 held-out windows | 86.6% | reproduces exactly |
+| DNIT corpus: 1,200 crack + 465 pothole crops | 1,200 + 465 | reproduces exactly |
+| Classifier 94.9%, India 92.3% | not reproducible in the audit sandbox (RDD2022 India is on S3) | India figure belongs to the previous weights - see below |
+
+- **Hard-coded IoU removed** (`training/train_unet_segmenter.py`). Since 3ff6c3c
+  a run with fewer than 100 test photographs replaced a measured pothole IoU
+  below 0.40 with 0.6050 before writing `segmenter_selection.json`. Such a run
+  now leaves the full-dataset reports untouched and writes no number it did not
+  measure. No other literal metric exists in training, evaluation or serving code.
+- **Segmenter served by the deployment check.** The U-Net weights were replaced
+  five times on 29 Oct without `scripts/segmenter_deployment_check.py`. End to
+  end on the 36 clean / 24 defect check photographs (seed 7): 92bf3f0 6/36 false
+  positives, 17/24 found; aff80cc and fa3140c 0/24 found; 6ff2ad3 33/36 false
+  positives; c0f430f 19/36; 0766e83 6/36, 18/24; pixel classifier 3/36, 22/24.
+  The pixel classifier wins on both counts and is served; the U-Net stays on disk.
+  **Rule going forward: no weight file is committed without that check.**
+- **Classifier India figure.** 87000a9 replaced the served classifier's weights
+  ("rare-class head") with no training script and no validation set (the model is
+  refit on train+val), and test macro-F1 rose 0.879 -> 0.921. On 400
+  normal/crack/pothole photographs the old and new weights disagree on 12, yet the
+  India result (92.25% on 1,200 crops) is identical to four decimals - it was not
+  re-measured. Annotated in the report; re-measure with `scripts/eval_indian_roads.py`.
+- **CAN-bus demo labelled** (`/api/v1/automotive/can-stream`): the response now
+  declares `data_source: simulated_ui_fixture_not_vehicle_data` and the assumed
+  vision probability (0.85), which were previously indistinguishable from vehicle data.
+- **Zebra detector** (`models/marking_detector.py`). 0450d5e raised bar solidity
+  0.35 -> 0.55, halving recall (4/19 -> 2/19) and doubling every line of the file.
+  Repaired; 0.35 restored as `MIN_SOLIDITY` with the measured trade-off.
+- **Pothole depth interval** (`models/depth_estimator.py`) keeps its width inside
+  the band, so a weak cue never reports a tighter interval than a strong one.
+- **Pitch deck and SIH submission** corrected to the repository's numbers
+  (79.87%/9 classes, PCI R2 0.99, 10/10 tests, pure NumPy, 207 ms on ARM and
+  94% fusion false-positive removal had no evidence here).
+- **Reproducing the data.** DNIT crops (`cpr_*`) and RDD2022 India crops
+  (`rddin_*`) are git-ignored by design. A fresh clone trains on about half the
+  corpus unless `scripts/fetch_cracks_potholes_dataset.py --limit 2235` and
+  `scripts/fetch_rdd2022_india.py` are run first.
+
+## Previous: RDD2022 India - training data and an Indian-roads test
 
 `scripts/ingest_rdd2022_india.py` reads the YOLO-format RDD2022 India set
 (images/labels split into train/valid/test). Crack (D00/D10/D20) and pothole

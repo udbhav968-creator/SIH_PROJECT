@@ -10,7 +10,7 @@ Generated 2026-10-29 from `checkpoints/claims.json` by `scripts/build_model_card
 | Intended users | Road authorities and their contractors; inspectors reviewing system reports |
 | Decision role | **Recommends; people decide.** No repair is dispatched without a human authority |
 | Out of scope | Any decision about a person; legal evidence of fault; roads or cameras unlike the evaluation data without re-validation; depth as a measurement |
-| Served segmenter | unet (rule: U-Net served only if, on the calibration photographs, its crack IoU AND pothole IoU both exceed the pixel classifier's, and its clean-road false-blob rate is no) |
+| Served segmenter | pixel_classifier (rule: U-Net served only if, on the calibration photographs, its crack IoU AND pothole IoU both exceed the pixel classifier's, and its clean-road false-blob rate is no) |
 | Served vibration model | random_forest |
 
 ## Vision distress classifier
@@ -44,29 +44,28 @@ Generated 2026-10-29 from `checkpoints/claims.json` by `scripts/build_model_card
 
 **Intended use.** Outline cracks and potholes pixel by pixel, so area (and from it material and cost) is measured from the defect's own footprint rather than a box.
 
-**Model.** U-Net with a ResNet-18 encoder (ImageNet-pretrained, all layers trained on the DNIT polygons), flip TTA, ONNX Runtime; per-class thresholds tuned on the calibration split
+**Model.** HistGradientBoosting pixel classifier on 11 vectorised features, trained on defect polygons AND clean-road photographs, with hard-negative mining
 
-**Why this design.** Chosen by a rule fixed before the test set was scored: U-Net served only if, on the calibration photographs, its crack IoU AND pothole IoU both exceed the pixel classifier's, and its clean-road false-blob rate is no more than 5 points worse. Decided before the test set was scored. calibration IoU crack 0.268 vs 0.214, pothole 0.646 vs 0.119; clean false-blob rate 0.0 vs 0.1807
+**Why this design.** A bounding box around a diagonal crack overstates its area by about 13x, and area drives tonnage which drives cost. A per-pixel mask gives the defect's own footprint. It also decides where a defect IS, which is the proposal stage for the whole pipeline.
 
 **Measured (held-out data).**
 
 | metric | value |
 |---|---|
-| crack iou | 0.2842 |
-| pothole iou | 0.605 |
-| crack dice | 0.4426 |
-| pothole dice | 0.7539 |
-| clean road false blob rate | 0 |
+| crack iou | 0.2314 |
+| pothole iou | 0.1437 |
+| crack dice | 0.3758 |
+| pothole dice | 0.2513 |
+| clean road false blob rate | 0.2333 |
 | clean photographs scored | 120 |
 | test photographs | 500 |
-| pixel classifier crack iou | 0.2314 |
-| pixel classifier pothole iou | 0.1437 |
+| training pixels | 3692729 |
 
-**Limits - do not rely on it for this.** IoU of 0.2842 (crack) and 0.605 (pothole) on DNIT (Brazilian) photographs; not measured on Indian or bus-camera frames. On held-out clean roads it draws a false blob on 0.0% of 120 photographs.
+**Limits - do not rely on it for this.** IoU of 0.2314 (crack) and 0.1437 (pothole) is a working model, not a solved problem. On held-out clean roads the segmenter alone draws a false blob on 23.3% of 120 photographs. The CNN semantic gate in front of it reduced clean roads with a false blob from 8/50 to 2/50 and raised pothole IoU from 0.1024 to 0.2706 (checkpoints/semantic_gate_report.json, measured with the frozen-embedding classifier). Water-filled potholes are still under-detected.
 
-**Alternatives tried.** A U-Net (ResNet-18 encoder) was trained on DNIT plus public outline datasets (crackseg9k, kaggle_pothole, pothole_mix) and did NOT replace this model: calibration IoU crack 0.255 vs 0.214, pothole 0.640 vs 0.119; clean false-blob rate 0.0241 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 18/24 defects with 3/36 false positives; the pixel classifier found 24/24 with 3/36 Held-out test (same 500 photographs): U-Net crack IoU 0.2712, pothole IoU 0.6317; pixel classifier crack 0.2314, pothole 0.1437.
+**Alternatives tried.** A U-Net (ResNet-18 encoder) was trained on the same polygons and did NOT replace this model: calibration IoU crack 0.268 vs 0.214, pothole 0.646 vs 0.119; clean false-blob rate 0.0 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 18/24 defects with 6/36 false positives; the pixel classifier found 22/24 with 3/36 Held-out test (same 500 photographs): U-Net crack IoU 0.3035, pothole IoU 0.4661; pixel classifier crack 0.2314, pothole 0.1437.
 
-**Evidence.** `checkpoints/defect_segmenter_unet.json, checkpoints/segmenter_selection.json, training/train_unet_segmenter.py` · reproduce: `python -m training.train_unet_segmenter`
+**Evidence.** `checkpoints/defect_segmenter_report.json, checkpoints/segmenter_selection.json` · reproduce: `python -m training.train_segmenter --images 2000`
 
 ## IMU shock classifier
 
@@ -173,7 +172,7 @@ Every deep model replaces its simpler counterpart only by a rule written before 
 - **Fairness is geographic.** Roads without bus routes are not inspected, and a model trained in one country degrades in another (33% on Indian roads before Indian data was added). Coverage and per-city accuracy must be reported before any allocation of repair budgets relies on the system.
 - **Money.** Costs are ranges from an estimated depth. A work order is a recommendation for a human authority, sealed so it cannot be altered after issue.
 
-## Corrections on record (17)
+## Corrections on record (18)
 
 Claims this project made and later withdrew or corrected, kept visible on the Architecture page:
 
@@ -194,3 +193,4 @@ Claims this project made and later withdrew or corrected, kept visible on the Ar
 - **WITHDRAWN** - Laplacian-variance gate (42.5), 4th-order Butterworth filter, CLAHE, 2.45 m camera
 - **REVERSED** - The U-Net segmenter serves (pothole IoU 0.641 vs 0.144)
 - **NOT SERVED** - The U-Net segmenter serves (pothole IoU 0.632 vs 0.144) - multi-dataset run
+- **REVERSED** - The U-Net segmenter serves (pothole IoU 0.466 vs 0.144)

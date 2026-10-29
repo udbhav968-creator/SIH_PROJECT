@@ -15,5 +15,14 @@
   "optimizer": "AdamW, Cosine Annealing",
   "epochs_run": 8,
   "best_val_mean_iou": 0.3917,
-  "final_loss": 1.1975
+  "final_loss": 1.1975,
+  "iou": {
+    "crack": {
+      "iou": 0.3035
+    },
+    "pothole": {
+      "iou": 0.4661
+    }
+  },
+  "iou_measurement": "Re-measured 29 Oct 2026 for the U-Net weights committed in 0766e83 (sha256 ba9887bf7fbe...) with training.train_unet_segmenter.score on the same 500-photograph DNIT test split (seed 42). The earlier figures (crack 0.2842, pothole 0.605) belong to the previous 30-epoch weights (92bf3f0) and reproduce exactly for those weights."
 }

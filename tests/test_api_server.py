@@ -768,9 +768,19 @@ class APIServerTest(unittest.TestCase):
         srv.edge_ingest.key = key
         try:
             now = int(_time.time())
-            pkts = [crypto.pack({"t": "trf", "ts": now - h * 3 * 3600, "lat": 13.70001, "lon": 77.70001, "n": 5,
-                                 "spd": 25.0, "veh": {"Car": 2.0, "Two-Wheeler": 3.0}}, "TRF-BUS", h + 1, key, epoch="cd")
-                    for h in range(7)]
+            # One reading at each of seven daytime IST hours, each the most recent
+            # occurrence within the last 24 h. Spacing them back from "now" made the
+            # test fail when run at night (23:00-05:00 IST): night hours carry too
+            # little of the daily profile to be counted, leaving 5 of the 6 needed.
+            ist = 5.5 * 3600
+
+            def last_ist_hour(hour):
+                day_start = now - int((now + ist) % 86400)
+                ts = day_start + hour * 3600
+                return ts if ts <= now else ts - 86400
+            pkts = [crypto.pack({"t": "trf", "ts": ts, "lat": 13.70001, "lon": 77.70001, "n": 5,
+                                 "spd": 25.0, "veh": {"Car": 2.0, "Two-Wheeler": 3.0}}, "TRF-BUS", i + 1, key, epoch="cd")
+                    for i, ts in enumerate(sorted(last_ist_hour(h) for h in (8, 10, 12, 14, 16, 18, 20)))]
             code, res = self.post_json("/api/v1/fleet/ingest-sealed", {"packets": pkts})
             self.assertEqual(res["accepted_in_order"], 7, res)
         finally:

@@ -373,7 +373,7 @@ def main(argv=None):
     if len(train_pairs) == 0:
         onnx_file = os.path.join(a.out, ONNX_NAME)
         if os.path.isfile(onnx_file):
-            print(f"  [INFO] Preserving verified production U-Net weights at {onnx_file} (pothole IoU: 0.605).", flush=True)
+            print(f"  [INFO] Preserving verified production U-Net weights at {onnx_file} (see defect_segmenter_unet.json for its measured IoU).", flush=True)
             return
         raise RuntimeError("No defect polygon masks found and no cached U-Net ONNX model available.")
 
@@ -579,13 +579,20 @@ def main(argv=None):
     if a.smoke:
         print("  [INFO] Smoke run completed: preserving verified production selection and meta reports.")
         return {"served": served, "rule": SEL_RULE, "why": why, "smoke": True}
+    # A sub-sampled run (fewer than 100 test photographs) measures too little to
+    # replace the full-dataset reports, so it leaves them untouched - exactly as a
+    # smoke run does. It never writes a number it did not measure: an earlier
+    # version overwrote a low measured pothole IoU with 0.6050 here.
+    n_test = len(sp.get("test", []))
+    if n_test < 100:
+        print(f"  [INFO] Sub-sampled run ({n_test} test photographs): measured results printed above, "
+              "full-dataset reports left unchanged.")
+        return {"served": served, "rule": SEL_RULE, "why": why, "subsampled": True, "test": test}
 
     with open(os.path.join(a.out, META_NAME), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2)
     selection = {"served": served, "rule": SEL_RULE, "why": why, "validation": val, "test": test,
                  "decided_before_test": True, "smoke": a.smoke, "decided_unix": int(time.time())}
-    if test.get("unet", {}).get("pothole", {}).get("iou", 0.0) < 0.40 and len(sp.get("test", [])) < 100:
-        test["unet"]["pothole"]["iou"] = 0.6050
     with open(os.path.join(a.out, SELECTION_NAME), "w", encoding="utf-8") as fh:
         json.dump(selection, fh, indent=2, default=float)
     print(f"  wrote {META_NAME} and {SELECTION_NAME}")

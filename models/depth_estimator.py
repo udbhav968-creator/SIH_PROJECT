@@ -167,7 +167,15 @@ def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
         extra["distance_m"] = round(float(distance_m), 2)
         if float(distance_m) > 12.0:
             extra["distance_penalty"] = "beyond 12 m the cue is unreliable"
-    return _estimate(central, max(lo, central - span), min(hi, central + span),
+    # The interval keeps the width the span model asked for. Truncating it at a
+    # band edge would make a weak, near-floor reading look MORE certain than a
+    # strong one (a shallow guess of 3.9 cm clipped to [2.5, 8.1] is narrower
+    # than a confident 8.9 cm in [5.9, 12.0]); instead the window slides inside
+    # the band, so a weaker cue never reports a tighter interval.
+    width = min(2.0 * span, hi - lo)
+    low = float(np.clip(central - span, lo, hi - width))
+    high = low + width
+    return _estimate(central, low, high,
                      method=method,
                      basis=POTHOLE_PATCH_DEPTH_CM["basis"],
                      confidence=min(conf, 0.6), driver="measured cavity contrast", **extra)
