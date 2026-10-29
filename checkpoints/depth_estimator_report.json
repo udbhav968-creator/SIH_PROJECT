@@ -6,7 +6,7 @@
   "held_out_crack_r2": 0.8603,
   "held_out_crack_mae_cm": 0.0589,
   "sklearn_version": "1.8.0",
-  "trained_at_unix": 1793250975,
+  "trained_at_unix": 1793252486,
   "synthetic_grid_removed": true,
   "train_records": 454,
   "held_out_test_records": 110,

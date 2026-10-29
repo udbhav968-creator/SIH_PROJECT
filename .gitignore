@@ -97,6 +97,9 @@ audit_commit_msg.txt
 runs/
 road_shield_*outputs.zip
 road_shield_imu_fix.zip
+road_shield_trained_checkpoints.zip
+checkpoints/deep_vision_resnet18.pt
+checkpoints/deep_vision_report.json
 checkpoints/defect_segmenter_unet.pt
 logs/tunnel.*
 logs/engine_public.*

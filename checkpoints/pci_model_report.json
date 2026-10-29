@@ -22,14 +22,14 @@
     "excess_iri_m_km",
     "excess_age_yr"
   ],
-  "held_out_r2": 0.8677,
-  "held_out_mae": 2.302,
-  "held_out_rmse": 5.1715,
+  "held_out_r2": 0.8839,
+  "held_out_mae": 1.9569,
+  "held_out_rmse": 4.4052,
   "sklearn_version": "1.8.0",
-  "trained_at_unix": 1793250796,
+  "trained_at_unix": 1793252305,
   "n_real_images_used": 4042,
-  "train_records": 3472,
-  "held_out_test_records": 570,
-  "distinct_route_groups": 263,
-  "basis": "Ground-truth ASTM D6433-20 PCI computed from 2235 human-annotated COCO segmentation polygons (datasets/incoming/cracks_potholes_dnit/coco.json) + 1807 clean road photographs, predicted from coarse bounding-box & morphological features and evaluated on 570 unseen route-separated photographs."
+  "train_records": 3082,
+  "held_out_test_records": 960,
+  "distinct_route_groups": 327,
+  "basis": "Ground-truth ASTM D6433-20 PCI computed from 2235 human-annotated COCO segmentation polygons (datasets/incoming/cracks_potholes_dnit/coco.json) + 1807 clean road photographs, predicted from coarse bounding-box & morphological features and evaluated on 960 unseen route-separated photographs."
 }
