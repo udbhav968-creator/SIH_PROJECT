@@ -668,7 +668,7 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
         return []
 
     visited = np.zeros_like(active, dtype=bool)
-    raw_boxes = []
+    components = []
     for r0 in range(grid_rows):
         for c0 in range(grid_cols):
             if active[r0, c0] and not visited[r0, c0]:
@@ -682,32 +682,70 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
                             visited[nr, nc] = True
                             q.append((nr, nc))
                             cells.append((nr, nc))
-                if len(cells) < 5:
+                components.append(cells)
+
+    raw_boxes = []
+    for cells in components:
+        rs = [p[0] for p in cells]
+        cs = [p[1] for p in cells]
+        span_r = max(rs) - min(rs) + 1
+        span_c = max(cs) - min(cs) + 1
+        if len(cells) >= 10 or span_r >= 4 or span_c >= 5:
+            # Multi-pothole cluster: decompose by local peaks so multiple defects are separated
+            cell_set = set(cells)
+            peaks = []
+            for cr, cc in cells:
+                sc = cell_score[cr, cc]
+                if sc < 40.0:
                     continue
-                rs = [p[0] for p in cells]
-                cs = [p[1] for p in cells]
-                min_r, max_r = min(rs), max(rs)
-                min_c, max_c = min(cs), max(cs)
-                bx = max(10, min_c * cell_w - int(cell_w * 0.15))
-                by = max(roi_y0, roi_y0 + min_r * cell_h - int(cell_h * 0.10))
-                bw = min(W - bx - 10, (max_c - min_c + 1) * cell_w + int(cell_w * 0.3))
-                bh = min(H - by - 10, (max_r - min_r + 1) * cell_h + int(cell_h * 0.2))
+                is_peak = True
+                for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    nr, nc = cr + dr, cc + dc
+                    if (nr, nc) in cell_set and cell_score[nr, nc] > sc:
+                        is_peak = False
+                        break
+                if is_peak:
+                    peaks.append((cr, cc, sc))
+            peaks.sort(key=lambda p: p[2], reverse=True)
+            claimed = set()
+            for pr, pc, psc in peaks:
+                if (pr, pc) in claimed:
+                    continue
+                sub_cells = []
+                for dr in range(-2, 3):
+                    for dc in range(-2, 3):
+                        nr, nc = pr + dr, pc + dc
+                        if (nr, nc) in cell_set and (nr, nc) not in claimed:
+                            if cell_score[nr, nc] >= max(28.0, 0.40 * psc):
+                                sub_cells.append((nr, nc))
+                                claimed.add((nr, nc))
+                if len(sub_cells) >= 2:
+                    s_rs = [p[0] for p in sub_cells]
+                    s_cs = [p[1] for p in sub_cells]
+                    bx = max(10, min(s_cs) * cell_w - int(cell_w * 0.15))
+                    by = max(roi_y0, roi_y0 + min(s_rs) * cell_h - int(cell_h * 0.10))
+                    bw = min(int(W * 0.35), min(W - bx - 10, (max(s_cs) - min(s_cs) + 1) * cell_w + int(cell_w * 0.3)))
+                    bh = min(int(H * 0.30), min(H - by - 10, (max(s_rs) - min(s_rs) + 1) * cell_h + int(cell_h * 0.2)))
+                    kinds = [int(cell_kind[cr, cc]) for cr, cc in sub_cells]
+                    raw_boxes.append([int(bx), int(by), int(bw), int(bh), psc, 2 if kinds.count(2) >= kinds.count(1) else 1])
+        else:
+            if len(cells) >= 3:
+                bx = max(10, min(cs) * cell_w - int(cell_w * 0.15))
+                by = max(roi_y0, roi_y0 + min(rs) * cell_h - int(cell_h * 0.10))
+                bw = min(int(W * 0.35), min(W - bx - 10, span_c * cell_w + int(cell_w * 0.3)))
+                bh = min(int(H * 0.30), min(H - by - 10, span_r * cell_h + int(cell_h * 0.2)))
+                mean_sc = float(np.mean([cell_score[cr, cc] for cr, cc in cells]))
                 kinds = [int(cell_kind[cr, cc]) for cr, cc in cells]
-                is_pothole_like = kinds.count(2) >= kinds.count(1)
-                mean_score = float(np.mean([cell_score[cr, cc] for cr, cc in cells]))
-                raw_boxes.append([int(bx), int(by), int(bw), int(bh), mean_score, 2 if is_pothole_like else 1])
+                raw_boxes.append([int(bx), int(by), int(bw), int(bh), mean_sc, 2 if kinds.count(2) >= kinds.count(1) else 1])
 
     if not raw_boxes:
         return []
 
-    # Non-maximum suppression with peripheral noise suppression
-    raw_boxes.sort(key=lambda b: b[4] * ((b[2] * b[3]) ** 0.20), reverse=True)
-    max_area = max(b[2] * b[3] for b in raw_boxes)
+    # Non-maximum suppression: sort by score and preserve distinct pothole locations
+    raw_boxes.sort(key=lambda b: b[4] * ((b[2] * b[3]) ** 0.15), reverse=True)
     selected = []
     for b in raw_boxes:
         b_area = b[2] * b[3]
-        if max_area > 8000 and b_area < 0.20 * max_area:
-            continue  # ignore peripheral noise once a dominant cavity exists
         keep = True
         for s in selected:
             xA, yA = max(b[0], s[0]), max(b[1], s[1])
@@ -715,13 +753,12 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
             inter = max(0, xB - xA) * max(0, yB - yA)
             s_area = s[2] * s[3]
             iou = inter / max(1e-6, b_area + s_area - inter)
-            containment = inter / max(1.0, min(b_area, s_area))
-            if iou > 0.35 or containment > 0.50:
+            if iou > 0.35:
                 keep = False
                 break
         if keep:
             selected.append(b)
-            if len(selected) >= 5:
+            if len(selected) >= 8:
                 break
     return selected
 
@@ -832,16 +869,17 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     f_cls = frame_cls_raw.get("class_id")
     f_conf = frame_cls_raw.get("confidence", 0.0)
 
-    # Semantic cross-verification: on severe distress roads (pothole cavity, waterlogging, or crack >= 0.70 conf),
-    # suppress zebra crossing detection unless paint_share >= 0.10 (real painted crossing)
+    # Semantic cross-verification: on severe distress roads (pothole cavity, waterlogging, or crack >= 0.60 conf),
+    # suppress zebra crossing detection completely (water reflections / specular puddle glare are not crosswalks)
     if markings_res.get("found"):
-        p_share = markings_res.get("paint_share", 0.0)
-        if f_cls in (1, 2, 3) and f_conf >= 0.70 and p_share < 0.10:
+        bars = markings_res.get("bars", [])
+        mean_solidity = float(np.mean([b.get("solidity", 0.0) for b in bars])) if bars else 0.0
+        if (f_cls in (1, 2, 3) and f_conf >= 0.60) or mean_solidity < 0.62:
             markings_res = {
                 "found": False,
                 "bars": [],
                 "bar_count": 0,
-                "reason": f"suppressed by distress classifier (distress {CLASS_NAMES.get(f_cls)} conf {f_conf:.2f}, paint_share {p_share:.3f} < 0.10)",
+                "reason": f"suppressed on distress road (distress {(CLASS_NAMES[f_cls] if 0 <= f_cls < len(CLASS_NAMES) else "Unknown")} conf {f_conf:.2f}, solidity {mean_solidity:.2f})",
             }
         else:
             all_cross = markings_res.get("all_crossings") or [markings_res]
