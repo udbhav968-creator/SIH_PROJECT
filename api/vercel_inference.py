@@ -814,12 +814,12 @@ def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=4):
 def _segment_defect_regions(img_np, boxes, orig_h, orig_w):
     """
     Adaptive photometric cavity and puddle segmentation for confirmed defect proposals.
-    Provides true pixel-level masks on out-of-domain roads (unpaved, gravel, wet).
+    Provides true pixel-level masks on out-of-domain roads using pure NumPy and Pillow
+    for guaranteed 100% compatibility in serverless cloud environments without OpenCV.
     """
     import numpy as np
-    import cv2
     import io, base64
-    from PIL import Image
+    from PIL import Image, ImageFilter
 
     mask_full = np.zeros((orig_h, orig_w), dtype=np.uint8)
     comp_boxes = []
@@ -830,15 +830,33 @@ def _segment_defect_regions(img_np, boxes, orig_h, orig_w):
         crop = img_np[by:by + bh, bx:bx + bw]
         if crop.size == 0 or bw < 16 or bh < 16:
             continue
-        gray_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
-        blur = cv2.GaussianBlur(gray_crop, (5, 5), 0)
-        _, m = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, kernel)
-        m = cv2.morphologyEx(m, cv2.MORPH_OPEN, kernel)
-        px_count = int((m > 0).sum())
+
+        # Pure Pillow/NumPy grayscale + Gaussian blur
+        pil_crop = Image.fromarray(crop)
+        blurred = np.asarray(pil_crop.convert("L").filter(ImageFilter.GaussianBlur(radius=2)), dtype=np.float32)
+
+        # Pure NumPy Otsu optimal thresholding
+        hist, _ = np.histogram(blurred, bins=256, range=(0, 256))
+        hist = hist.astype(np.float32) / (hist.sum() + 1e-7)
+        w0 = np.cumsum(hist)
+        w1 = 1.0 - w0
+        mean_all = np.sum(np.arange(256) * hist)
+        u0 = np.cumsum(np.arange(256) * hist) / (w0 + 1e-7)
+        u1 = (mean_all - np.cumsum(np.arange(256) * hist)) / (w1 + 1e-7)
+        variance = w0 * w1 * ((u0 - u1) ** 2)
+        otsu_thresh = float(np.argmax(variance))
+
+        # Binary depression/cavity mask
+        raw_mask = (blurred < otsu_thresh).astype(np.uint8) * 255
+
+        # Morphological closing via Pillow MaxFilter then MinFilter
+        m_img = Image.fromarray(raw_mask, mode="L")
+        m_closed = m_img.filter(ImageFilter.MaxFilter(size=5)).filter(ImageFilter.MinFilter(size=5))
+        m = np.asarray(m_closed, dtype=np.uint8) > 0
+
+        px_count = int(m.sum())
         if px_count >= 24:
-            mask_full[by:by + bh, bx:bx + bw][m > 0] = cls_id
+            mask_full[by:by + bh, bx:bx + bw][m] = cls_id
             comp_boxes.append({
                 "seg_cls": cls_id,
                 "class_id": cls_id,
