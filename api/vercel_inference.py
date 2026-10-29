@@ -791,9 +791,9 @@ def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=3):
             comb_h = max(y2, cy2) - min(y1, cy1)
             gap_x = max(0, max(x1, cx1) - min(x2, cx2))
             gap_y = max(0, max(y1, cy1) - min(y2, cy2))
-            is_proximate = (gap_x <= int(W * 0.08) and gap_y <= int(H * 0.06) and comb_w <= int(W * 0.78) and comb_h <= int(H * 0.60))
+            is_proximate = (gap_x <= int(W * 0.04) and gap_y <= int(H * 0.03) and comb_w <= int(W * 0.40) and comb_h <= int(H * 0.30))
 
-            if iou >= 0.15 or containment >= 0.35 or is_proximate:
+            if iou >= 0.18 or containment >= 0.40 or is_proximate:
                 matched.append(ci)
         if not matched:
             clusters.append([b])
@@ -1196,7 +1196,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             if not (crop_is_distress or frame_is_distress):
                 continue
             box_area_share = (bw * bh) / float(W * H)
-            if box_area_share < 0.015 and cls_info["confidence"] < 0.85:
+            if box_area_share < 0.012 and cls_info["confidence"] < 0.72:
                 continue
 
         # Class determination: pavement distress must strictly be Crack, Pothole, or Waterlogging
@@ -1333,13 +1333,13 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
                 comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
                 is_proximate = (
-                    gap_x <= int(W * 0.08)
-                    and gap_y <= int(H * 0.06)
-                    and comb_w <= int(W * 0.78)
-                    and comb_h <= int(H * 0.60)
+                    gap_x <= int(W * 0.04)
+                    and gap_y <= int(H * 0.03)
+                    and comb_w <= int(W * 0.40)
+                    and comb_h <= int(H * 0.30)
                 )
 
-                if iou > 0.15 or containment > 0.30 or is_proximate:
+                if iou > 0.18 or containment > 0.40 or is_proximate:
                     matched = mi
                     break
 
