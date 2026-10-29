@@ -11,6 +11,7 @@ import sys
 import json
 import time
 import glob
+import hashlib
 import base64
 import numpy as np
 from PIL import Image, ImageDraw
@@ -67,7 +68,28 @@ def find_test_images():
     for p in water_files[:3]:
         candidates.append({"type": "monsoon_waterlogging", "path": p})
 
-    return candidates
+    # 6. Sound pavement: the suite must also see roads that should produce NO defect,
+    #    otherwise it can only ever count misses as passes.
+    clean_files = sorted(glob.glob(os.path.join(ENGINE_ROOT, "datasets", "05_morth_civil_hard_negatives", "**", "*.jpg"), recursive=True))
+    for p in clean_files[:4]:
+        candidates.append({"type": "sound_pavement_clean", "path": p})
+
+    # The same photograph sits in more than one dataset folder (e.g. 1014620_RS_386... in both
+    # 01_rdd2022_india and 03_crack500_fatigue); score each image once, under its first label.
+    seen, unique = set(), []
+    for c in candidates:
+        with open(c["path"], "rb") as fh:
+            digest = hashlib.sha1(fh.read()).hexdigest()
+        if digest not in seen:
+            seen.add(digest)
+            unique.append(c)
+    return unique
+
+
+# What each category should produce. Waterlogging and the scratch scenes have no fixed
+# expectation and are reported without being scored.
+EXPECT_DEFECT = {"rdd2022_asphalt_distress", "kaggle_asphalt_pothole", "crack500_fatigue_crack"}
+EXPECT_CLEAN = {"sound_pavement_clean"}
 
 def render_visual_verification_image(orig_path, res, out_name):
     """Draws segmentation mask and defect bounding boxes directly onto original image."""
@@ -126,6 +148,7 @@ def run_suite():
     area_overflow_violations = 0
     impossible_class_violations = 0
     degenerate_box_violations = 0
+    defect_photos = defect_found = clean_photos = clean_false = 0
 
     print(f"{'IMAGE':<32} {'TYPE':<25} {'DETS':<6} {'GIANT':<6} {'UNPRICED':<9} {'COST (INR)':<12} {'VISUAL OVERLAY'}")
     print("-" * 115)
@@ -166,6 +189,12 @@ def run_suite():
         cost_val = ledger.get("total_estimated_repair_inr", 0.0) if ledger else 0.0
         cost_str = f"Rs.{cost_val:,.2f}" if cost_val > 0 else "Rs.0.00"
         distress_count = len([d for d in dets if d.get("is_distress")])
+        if cat in EXPECT_DEFECT:
+            defect_photos += 1
+            defect_found += int(distress_count > 0)
+        elif cat in EXPECT_CLEAN:
+            clean_photos += 1
+            clean_false += int(distress_count > 0)
         
         print(f"{os.path.basename(path)[:30]:<32} {cat:<25} {distress_count:<6} {len(giant_boxes):<6} {len(unpriced_defects):<9} {cost_str:<12} {os.path.basename(out_name)}")
 
@@ -199,16 +228,27 @@ def run_suite():
             "giant_box_violations": giant_box_violations,
             "unpriced_violations": unpriced_violations,
             "area_overflow_violations": area_overflow_violations,
+            "detection_quality": {
+                "defect_photos_detected": defect_found, "defect_photos": defect_photos,
+                "clean_photos_false_alarm": clean_false, "clean_photos": clean_photos,
+                "note": "a handful of photographs: a smoke check, not an accuracy measurement "
+                        "(see scripts/measure_detection_quality.py)",
+            },
             "results": results
         }, f, indent=2)
 
     print(f"  Impossible Defect Classes    : {impossible_class_violations}  (Target: 0)")
     print(f"  Degenerate Bounding Boxes    : {degenerate_box_violations}  (Target: 0)")
     all_passed = (crashes == 0 and giant_box_violations == 0 and unpriced_violations == 0 and area_overflow_violations == 0 and impossible_class_violations == 0 and degenerate_box_violations == 0)
+    print("\nDETECTION QUALITY (small smoke sample, not an accuracy figure):")
+    print(f"  Defect photos with a detection : {defect_found}/{defect_photos}")
+    print(f"  Clean photos with a false alarm: {clean_false}/{clean_photos}")
     if all_passed:
-        print("\n>>> ALL MLOPS QUALITY GATES PASSED PERFECTLY! <<<")
+        print("\n>>> SAFETY GATES PASSED (no crash, giant box, unpriced defect, overflow, impossible class or degenerate box).")
+        print(">>> These gates do not measure whether detections are right - read DETECTION QUALITY above. <<<")
     else:
-        print("\n>>> QUALITY GATES FAILED - REVIEW LOGS ABOVE <<<")
+        print("\n>>> SAFETY GATES FAILED - REVIEW LOGS ABOVE <<<")
+    return all_passed
 
 if __name__ == "__main__":
-    run_suite()
+    sys.exit(0 if run_suite() else 1)

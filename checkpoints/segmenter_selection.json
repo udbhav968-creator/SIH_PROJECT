@@ -192,6 +192,11 @@
         "seconds": 121.3
       }
     },
-    "checked_unix": 1793290978
+    "checked_unix": 1793290978,
+    "served_end_to_end": {
+      "segmenter": "pixel_classifier",
+      "detection_rate": 0.9167,
+      "false_positive_rate": 0.0833
+    }
   }
 }

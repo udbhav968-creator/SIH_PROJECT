@@ -31,12 +31,16 @@ SPECS = {
         "task": "crack and pothole pixel masks",
         "files": ["defect_segmenter_unet.onnx", "defect_segmenter_unet.json", "defect_segmenter.joblib",
                   "defect_segmenter_report.json", "segmenter_selection.json", "semantic_gate_report.json"],
-        "metrics": {"segmenter_selection.json": {"pothole_iou_unet": "test.unet.pothole.iou",
-                                                 "crack_iou_unet": "test.unet.crack.iou",
-                                                 "clean_false_blob_rate_unet": "test.unet.clean.photo_rate_any_blob"}},
-        "gate": {"primary": "pothole_iou_unet", "direction": "max", "floor": 0.4, "max_drop": 0.02,
-                 "guards": {"crack_iou_unet": {"direction": "max", "max_drop": 0.03},
-                            "clean_false_blob_rate_unet": {"direction": "min", "max_rise": 0.02}}},
+        # Gated on the segmenter actually served (scripts/segmenter_deployment_check.py, through
+        # audit_image()). It used to gate the U-Net's IoU, which kept CI green while the U-Net
+        # was not served and never tested the pixel classifier that was.
+        "metrics": {"segmenter_selection.json": {
+            "served_detection_rate": "deployment_check.served_end_to_end.detection_rate",
+            "served_false_positive_rate": "deployment_check.served_end_to_end.false_positive_rate",
+            "pothole_iou_unet": "test.unet.pothole.iou",
+            "crack_iou_unet": "test.unet.crack.iou"}},
+        "gate": {"primary": "served_detection_rate", "direction": "max", "floor": 0.8, "max_drop": 0.05,
+                 "guards": {"served_false_positive_rate": {"direction": "min", "max_rise": 0.05}}},
         "train": "colab",
     },
     "road_damage_detector": {

@@ -641,8 +641,9 @@ class DeepInferencePipeline:
                 "rating_category": pci_result["rating_category"],
                 "description": pci_result["description"],
                 "deduct_values": pci_result["deduct_values"],
-                "rutting_mm": round(rutting_mm, 1),
-                "iri_roughness": round(iri_roughness, 2),
+                "rutting_mm": rutting_mm,
+                "iri_roughness": iri_roughness,
+                "not_measured": "rut depth and IRI need a straightedge or profile, not a photograph",
                 "note": "Per-frame proxy PCI (single dashcam frame), not a full-segment ASTM D6433 survey.",
             },
             "monsoon_deterioration_forecast": degrade_report,
@@ -1616,9 +1617,13 @@ class DeepInferencePipeline:
         crack_density_pct = min(100.0, (crack_area / ASSUMED_FRAME_PAVEMENT_AREA_M2) * 100.0)
         pothole_density_pct = min(100.0, (pothole_area / ASSUMED_FRAME_PAVEMENT_AREA_M2) * 100.0)
 
-        # Documented proxy, not a measured rut-bar/profilometer reading (see module docstring).
-        rutting_mm = min(25.0, 3.0 + pothole_count * 3.5 + crack_area * 0.8)
-        iri_roughness = min(9.0, 1.8 + pothole_count * 0.9)
+        # Rut depth needs a straightedge or profilometer and IRI needs a longitudinal
+        # profile; one photograph measures neither. They used to be filled in from the
+        # pothole count (3.0 + 3.5 mm per pothole, 1.8 + 0.9 m/km per pothole), which made
+        # a single pothole deduct three times (pothole, rutting, roughness). An
+        # unmeasured distress now contributes no deduct and is reported as None.
+        rutting_mm = None
+        iri_roughness = None
 
         result = self.pci_model.compute(
             crack_density_pct=crack_density_pct,
@@ -1626,8 +1631,8 @@ class DeepInferencePipeline:
             pothole_count=pothole_count,
             pothole_density_pct=pothole_density_pct,
             pothole_severity=pothole_severity,
-            rutting_mm=rutting_mm,
-            iri_roughness=iri_roughness,
+            rutting_mm=0.0,
+            iri_roughness=0.0,
             age_yr=pavement_age_yr,
         )
         return result, rutting_mm, iri_roughness

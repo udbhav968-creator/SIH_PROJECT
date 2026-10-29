@@ -115,6 +115,13 @@ def main(argv=None):
         # The U-Net already lost the IoU selection; the check is recorded, it does not overturn the rule.
         sel["served"] = "pixel_classifier"
         sel["why"] = sel["why_iou"] + "; end-to-end check recorded for information (it cannot overturn the IoU rule): " + why
+    # What CI gates on: the end-to-end numbers of the segmenter actually served.
+    served_res = res["unet" if sel["served"] == "unet" else "pixel_classifier"]
+    sel["deployment_check"]["served_end_to_end"] = {
+        "segmenter": sel["served"],
+        "detection_rate": served_res["detection_rate"],
+        "false_positive_rate": served_res["false_positive_rate"],
+    }
     with open(SEL, "w", encoding="utf-8") as fh:
         json.dump(sel, fh, indent=2, default=float)
     print(f"\n  {'PASSED' if passed else 'FAILED'}: {why}")

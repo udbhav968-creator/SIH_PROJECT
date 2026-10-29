@@ -508,13 +508,16 @@ def _compute_pci(detections):
     if pot_dens > 0:
         p_sev = "HIGH" if (pot_area > 0.35 or any(float(d.get("depth_cm", 0.0)) >= 4.0 for d in potholes)) else "MEDIUM"
         deducts["potholes"] = round(eng._deduct_value("potholes", p_sev, pot_dens), 1)
-    if other and not deducts:
-        deducts["safety_corridor"] = 14.5
-    cdv = eng._corrected_deduct_value(list(deducts.values()))
-    # Under ASTM D6433, any confirmed severe open cavity (>0.5 m2 or depth >= 4.5 cm) requires priority work order
-    if any(d.get("class_id") == 2 and (float(d.get("surface_area_m2", 0.0)) >= 0.5 or float(d.get("depth_cm", 0.0)) >= 4.5) for d in detections):
-        cdv = max(cdv, 65.0)
-    pci = round(float(np.clip(100.0 - cdv, 5.0, 100.0)), 1)
+    # Markings, dividers, signs and waterlogging are not ASTM D6433 pavement distresses,
+    # so they add no deduct (an invented 14.5 "safety_corridor" deduct used to).
+    cdv = eng._corrected_deduct_value(list(deducts.values())) if deducts else 0.0
+    pci = round(float(np.clip(100.0 - cdv, 0.0, 100.0)), 1)
+    # Operational dispatch rule, NOT part of ASTM D6433: a large or deep cavity is
+    # flagged for priority repair. It used to be forced into the PCI itself (a corrected
+    # deduct of at least 65, so PCI <= 35) under a mis-cited "ASTM D6433" comment.
+    priority_cavity = any(d.get("class_id") == 2 and (float(d.get("surface_area_m2", 0.0)) >= 0.5
+                                                      or float(d.get("depth_cm", 0.0)) >= 4.5)
+                          for d in detections)
     if pci >= 85:
         cat, desc = "EXCELLENT", "Optimal surface texture; routine monitoring only."
     elif pci >= 70:
@@ -525,15 +528,16 @@ def _compute_pci(detections):
         cat, desc = "POOR", "Significant structural distress; priority patching required."
     else:
         cat, desc = "CRITICAL", "Severe pavement failure; immediate rehabilitation required."
-    rut = round(2.2 + (100.0 - pci) * 0.14, 1)
-    iri = round(1.6 + (100.0 - pci) * 0.065, 2)
     return {
         "pci_score": pci,
         "rating_category": cat,
         "description": desc,
         "deduct_values": deducts,
-        "rutting_mm": rut,
-        "iri_roughness": iri,
+        "rutting_mm": None,
+        "iri_roughness": None,
+        "not_measured": "rut depth and IRI need a straightedge or profile, not a photograph",
+        "priority_repair": priority_cavity,
+        "priority_rule": "operational: pothole >= 0.5 m2 or >= 4.5 cm deep (not an ASTM D6433 rule)",
         "note": "Per-frame proxy PCI (single dashcam frame), not a full-segment ASTM D6433 survey.",
     }
 
@@ -1404,50 +1408,60 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 de["repair_cost_high_inr"] = round(md["surface_area_m2"] * (de["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
         detections = merged
 
+    # Semantic gate (models/semantic_gate.py, threshold measured in
+    # checkpoints/semantic_gate_report.json): a pothole box is kept only where the CNN's
+    # sliding-window heat map also sees a pothole. The main engine applies it to every
+    # pixel-classifier mask; this path had none and reported potholes on 16 of the 36
+    # clean-road check photographs.
+    if any(d.get("class_id") == 2 for d in detections):
+        try:
+            from models import semantic_gate
+
+            class _ServerlessClassifier:
+                @staticmethod
+                def predict_probabilities(rgb):
+                    return list(classify_crop(rgb)["probabilities"].values())
+
+            heat = semantic_gate.heatmaps(_ServerlessClassifier, img_np)[semantic_gate.POTHOLE]
+            kept = []
+            for d in detections:
+                if d.get("class_id") == 2 and d.get("bbox_pixels"):
+                    bx, by, bw, bh = d["bbox_pixels"]
+                    region = heat[by:by + bh, bx:bx + bw]
+                    peak = float(region.max()) if region.size else 0.0
+                    d["semantic_gate_pothole_heat"] = round(peak, 3)
+                    if peak < semantic_gate.DEFAULT_THRESHOLD:
+                        continue
+                kept.append(d)
+            detections = kept
+        except Exception as e:
+            print(f"[WARN] serverless semantic gate skipped: {e}")
+
     # Sort detections by significance (potholes first, then largest surface area) and keep top 4
     detections.sort(key=lambda d: (1 if d["class_id"] == 2 else 0, d["surface_area_m2"]), reverse=True)
     detections = detections[:4]
 
-    # Corridor-level hazard check ONLY for classes 3..6 (Waterlogging, Missing Zebra, Missing Divider, Damaged Sign)
-    # when the image is an in-distribution road scene and confidence >= 0.72
+    # Corridor-level hazards (waterlogging, zebra, divider, sign) come from the classifier's
+    # whole-frame opinion. They used to be turned into a detection with a fixed box
+    # (18-82% x 42-86% of the frame) and a distance - and for waterlogging an area - computed
+    # from that invented box. On the 36 clean-road check photographs this path then reported
+    # a missing zebra crossing or divider on 14. Same rule as the main engine
+    # (pipeline/deep_inference_pipeline._frame_classification): a whole-frame opinion is
+    # reported as such and never sets a box, area, depth or cost.
+    frame_level_hazard = None
     if (
         not detections
         and frame_cls_raw["class_id"] in (3, 4, 5, 6)
         and frame_cls_raw["confidence"] >= 0.72
         and input_check.get("verdict") in ("ok", None)
     ):
-        cls_id = frame_cls_raw["class_id"]
-        bx, by, bw, bh = int(W * 0.18), int(H * 0.42), int(W * 0.64), int(H * 0.44)
-        area_m2 = round(float(ipm.calculate_surface_area_sqm(bx, by, bw, bh)), 4) if cls_id == 3 else 0.0
-        dist_m = round(max(2.5, 18.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
-        detections.append({
-            "bbox_pixels": [bx, by, bw, bh],
-            "bbox_normalized": [round(bx / W, 4), round(by / H, 4), round(bw / W, 4), round(bh / H, 4)],
-            "class_id": cls_id,
+        frame_level_hazard = {
+            "class_id": frame_cls_raw["class_id"],
             "class_name": frame_cls_raw["class_name"],
             "confidence": frame_cls_raw["confidence"],
-            "shannon_entropy_bits": frame_cls_raw["shannon_entropy_bits"],
-            "uncertainty_rating": frame_cls_raw["uncertainty_rating"],
-            "astm_d6433_severity": "MEDIUM",
-            "irc_standard_specification": IRC_STANDARDS.get(cls_id, ""),
-            "top3_ranked_predictions": frame_cls_raw["top3_ranked_predictions"],
-            "is_distress": True,
-            "distance_meters": dist_m,
-            "surface_area_m2": area_m2,
-            "area_method": "bounding_box_estimate",
-            "area_diagnostics": {
-                "max_plausible_m2": 2.0,
-                "box_share_of_frame": round((bw * bh) / float(W * H), 3),
-            },
-            "area_is_plausible_single_repair": True,
-            "needs_manual_survey": cls_id in (4, 5, 6),
-            "depth_cm": 0.0,
-            "depth_estimate": None,
-            "volumetric_m3": 0.0,
-            "morth_tonnage_t": 0.0,
-            "repair_cost_inr": 0.0,
-            "probabilities": frame_cls_raw["probabilities"],
-        })
+            "irc_standard_specification": IRC_STANDARDS.get(frame_cls_raw["class_id"], ""),
+            "role": "whole-frame opinion of the classifier; not localised, sets no area, depth or cost",
+        }
 
     # STAGE 5: Refine surface area and repair metrics using genuine U-Net segmentation mask
     if detections and seg_out and mask_full is not None:
@@ -1537,8 +1551,17 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "repair_cost_inr": total_cost,
             "pci_score": pci_res["pci_score"],
         }
-        seal = hmac.new(b"ROAD-SHIELD-MORTH-SEAL", json.dumps(order_payload, sort_keys=True).encode("utf-8"), hashlib.sha256).hexdigest()
-        work_order = {**order_payload, "sha256_seal": seal}
+        # Same rule as models/morth_dispatch_agent: a keyed HMAC only when the deployment
+        # holds ROAD_SHIELD_SEAL_KEY (a secret set in the host's environment, never in the
+        # repository); otherwise a plain SHA-256 that proves integrity, not authorship.
+        # A key written in this file would let anyone who reads the repository forge seals.
+        seal_key = os.environ.get("ROAD_SHIELD_SEAL_KEY", "").encode("utf-8")
+        canonical = json.dumps(order_payload, sort_keys=True).encode("utf-8")
+        if seal_key:
+            seal_algorithm, seal = "HMAC-SHA256", hmac.new(seal_key, canonical, hashlib.sha256).hexdigest()
+        else:
+            seal_algorithm, seal = "SHA-256", hashlib.sha256(canonical).hexdigest()
+        work_order = {**order_payload, "seal_algorithm": seal_algorithm, "sha256_seal": seal}
 
     elapsed_ms = round((time.time() - t0) * 1000.0, 2)
     return {
@@ -1573,6 +1596,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         "cryptographic_work_order": work_order,
         "markings": markings_res,
         "frame_classification": frame_cls,
+        "frame_level_hazard": frame_level_hazard,
         "vision_backend": "deep_cnn",
         "camera_calibration": calib_desc,
         "segmentation": ({

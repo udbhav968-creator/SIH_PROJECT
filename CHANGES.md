@@ -1,6 +1,42 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
-## Latest: 29 Oct audit - full-history review, hard-coded values removed, every claim re-measured
+## Latest: 30 Oct - invented values removed from serving paths, CI gates the served model
+
+- **Work-order seal key** (`api/vercel_inference.py`). The serverless path sealed work
+  orders with HMAC key `ROAD-SHIELD-MORTH-SEAL` written in the public repository, so
+  anyone could forge a "tamper-proof" seal. It now follows `models/morth_dispatch_agent`:
+  HMAC-SHA256 only with `ROAD_SHIELD_SEAL_KEY` from the host environment, otherwise a
+  plain SHA-256 labelled as such (`seal_algorithm`). **Set `ROAD_SHIELD_SEAL_KEY` in the
+  Vercel project settings.**
+- **Rutting and IRI are no longer invented.** Both pipelines filled them from the PCI or
+  the pothole count (main: 3.0 + 3.5 mm per pothole and 1.8 + 0.9 m/km per pothole;
+  serverless: straight lines from the PCI) and the main pipeline fed them into the PCI,
+  so one pothole deducted three times. A photograph measures neither; they are now
+  `None` with a `not_measured` reason and add no deduct.
+- **Serverless PCI follows its own engine.** Removed a hidden floor that forced the
+  corrected deduct to >= 65 (PCI <= 35) for large or deep potholes under a mis-cited
+  "ASTM D6433" comment, an invented 14.5 "safety_corridor" deduct, and a PCI floor of 5.
+  The large-cavity rule survives as an explicit operational `priority_repair` flag.
+- **Serverless hazards no longer get an invented box.** A whole-frame classifier opinion
+  of waterlogging / zebra / divider / sign was turned into a detection with a fixed
+  rectangle and a distance (and for waterlogging an area) computed from it. It is now
+  `frame_level_hazard`, which sets no area, depth or cost - the main engine's rule.
+- **Serverless semantic gate.** The main engine's measured gate (CNN heat map, threshold
+  0.5) now filters serverless pothole boxes. On the 36 clean / 24 defect check
+  photographs: false positives 32/36 -> 11/36, defects found 21/24 -> 19/24. The main
+  engine is 3/36 and 22/24; the gap is the pixel classifier, which the serverless build
+  does not load.
+- **CI gates the served segmenter** (`mlops/specs.py`). The gate checked the U-Net's IoU
+  while the pixel classifier was served (its pothole IoU, 0.144, would fail that floor).
+  It now gates `deployment_check.served_end_to_end` (detection 0.917, false positives
+  0.083), recorded by `scripts/segmenter_deployment_check.py` for whichever is served.
+- **Stress suite** (`scripts/deep_continuous_eval.py`) adds sound-pavement photographs,
+  reports defects found and clean false alarms, scores each image once (the same photo
+  sits in more than one dataset folder), says its gates are safety checks rather than
+  accuracy, and exits non-zero on failure. It replaces "ALL MLOPS QUALITY GATES PASSED
+  PERFECTLY", which printed while 4 of 5 pothole photographs returned no detection.
+
+## Previous: 29 Oct audit - full-history review, hard-coded values removed, every claim re-measured
 
 Reviewed all 213 commits and every serving, training and evaluation script.
 Test suite: 352/356 -> 356/356 (1 skip by design).
