@@ -341,8 +341,8 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
     crack_p = proba[:, 1]
     pothole_p = proba[:, 2]
     flat = np.zeros(proba.shape[0], dtype=np.uint8)
-    is_crack = crack_p >= float(thresholds.get("crack", 0.6))
-    is_pothole = pothole_p >= float(thresholds.get("pothole", 0.55))
+    is_crack = crack_p >= float(thresholds.get("crack", 0.38))
+    is_pothole = pothole_p >= float(thresholds.get("pothole", 0.35))
     flat[is_crack] = 1
     flat[is_pothole & (pothole_p >= crack_p)] = 2
     flat[is_pothole & ~is_crack] = 2
@@ -374,10 +374,10 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
 
     # Minimum component sizes matching pipeline/deep_inference_pipeline.py:
     # crack = 0.0012 * 64000 = 76 px, pothole = 0.004 * 64000 = 256 px (at least 48 px)
-    min_px_map = {1: 48, 2: 96}
+    min_px_map = {1: 32, 2: 48}
     min_conf_map = {
-        1: float(thresholds.get("crack", 0.60)),
-        2: min(0.92, float(thresholds.get("pothole", 0.55)) + 0.08),
+        1: float(thresholds.get("crack", 0.38)),
+        2: float(thresholds.get("pothole", 0.35)),
     }
 
     cleaned = np.zeros_like(labels)
