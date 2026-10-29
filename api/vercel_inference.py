@@ -1275,31 +1275,76 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "source": prop["source"],
         })
 
-    # Deduplicate overlapping / nested bounding boxes (Non-Maximum Suppression & Containment)
+    # Spatial Proximity Fusion & Deduplication (Merges rim fragments, puddle center & adjoining defects)
     if len(detections) > 1:
         dets_sorted = sorted(detections, key=lambda d: (d["confidence"], d["surface_area_m2"]), reverse=True)
-        keep = []
+        merged = []
         for d in dets_sorted:
-            b1 = d["bbox_pixels"]
-            is_dup = False
-            for k in keep:
-                b2 = k["bbox_pixels"]
+            b1 = d.get("bbox_pixels")
+            if not b1:
+                merged.append(d)
+                continue
+            matched = None
+            for mi, md in enumerate(merged):
+                b2 = md.get("bbox_pixels")
+                if not b2 or d["class_id"] != md["class_id"]:
+                    continue
                 xi0 = max(b1[0], b2[0])
                 yi0 = max(b1[1], b2[1])
                 xi1 = min(b1[0] + b1[2], b2[0] + b2[2])
                 yi1 = min(b1[1] + b1[3], b2[1] + b2[3])
+                iou = 0.0
+                containment = 0.0
                 if xi1 > xi0 and yi1 > yi0:
                     inter = (xi1 - xi0) * (yi1 - yi0)
                     a1 = b1[2] * b1[3]
                     a2 = b2[2] * b2[3]
                     iou = inter / float(a1 + a2 - inter)
                     containment = inter / float(min(a1, a2))
-                    if iou > 0.20 or containment > 0.40:
-                        is_dup = True
-                        break
-            if not is_dup:
-                keep.append(d)
-        detections = keep
+
+                gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
+                gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
+                comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
+                comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
+                is_proximate = (
+                    gap_x <= int(W * 0.08)
+                    and gap_y <= int(H * 0.06)
+                    and comb_w <= int(W * 0.65)
+                    and comb_h <= int(H * 0.45)
+                )
+
+                if iou > 0.15 or containment > 0.30 or is_proximate:
+                    matched = mi
+                    break
+
+            if matched is None:
+                merged.append(d)
+            else:
+                md = merged[matched]
+                b2 = md["bbox_pixels"]
+                nx = min(b1[0], b2[0])
+                ny = min(b1[1], b2[1])
+                nw = max(b1[0] + b1[2], b2[0] + b2[2]) - nx
+                nh = max(b1[1] + b1[3], b2[1] + b2[3]) - ny
+                md["bbox_pixels"] = [nx, ny, nw, nh]
+                md["bbox_normalized"] = [round(nx / W, 4), round(ny / H, 4), round(nw / W, 4), round(nh / H, 4)]
+                md["confidence"] = max(d["confidence"], md["confidence"])
+                if d.get("area_method") == "segmentation_mask" or md.get("area_method") == "segmentation_mask":
+                    md["area_method"] = "segmentation_mask"
+                if md.get("area_method") != "segmentation_mask":
+                    md["surface_area_m2"] = round(float(ipm.calculate_surface_area_sqm(nx, ny, nw, nh)), 4)
+                box_share = (nw * nh) / float(W * H)
+                md["area_diagnostics"]["box_share_of_frame"] = round(box_share, 3)
+                de = _photometric_depth(gray, [nx, ny, nw, nh], md["class_id"])
+                md["depth_cm"] = de["depth_cm"]
+                md["depth_estimate"] = de
+                md["volumetric_m3"] = round(md["surface_area_m2"] * (de["depth_cm"] / 100.0), 5)
+                tonnage_t = round(md["surface_area_m2"] * (de["depth_cm"] / 100.0) * 2.40 * 1.15, 4)
+                md["morth_tonnage_t"] = tonnage_t
+                md["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
+                de["repair_cost_low_inr"] = round(md["surface_area_m2"] * (de["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                de["repair_cost_high_inr"] = round(md["surface_area_m2"] * (de["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+        detections = merged
 
     # Sort detections by significance (potholes first, then largest surface area) and keep top 4
     detections.sort(key=lambda d: (1 if d["class_id"] == 2 else 0, d["surface_area_m2"]), reverse=True)
