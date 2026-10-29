@@ -39,6 +39,14 @@ def find_test_images():
     if os.path.exists(asphalt_road):
         candidates.append({"type": "asphalt_center_pothole", "path": asphalt_road})
 
+    scene1_road = os.path.join(ENGINE_ROOT, "scratch", "canvas_scene1.png")
+    if os.path.exists(scene1_road):
+        candidates.append({"type": "rural_countryside_cavity", "path": scene1_road})
+
+    scene2_road = os.path.join(ENGINE_ROOT, "scratch", "canvas_scene2.png")
+    if os.path.exists(scene2_road):
+        candidates.append({"type": "flooded_street_cars", "path": scene2_road})
+
     # 2. RDD2022 Indian road samples
     rdd_files = glob.glob(os.path.join(ENGINE_ROOT, "datasets", "01_rdd2022_india", "**", "*.jpg"), recursive=True)
     for p in rdd_files[:4]:

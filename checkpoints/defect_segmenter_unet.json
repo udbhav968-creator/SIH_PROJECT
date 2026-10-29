@@ -1,5 +1,5 @@
 {
-  "model": "U-Net, ResNet-18 encoder pretrained on ImageNet, Focal+Dice Loss trained on real DNIT human polygons",
+  "model": "U-Net, ResNet-18 encoder pretrained on ImageNet, Focal+Dice Loss trained on balanced DNIT + Sound Pavement",
   "input_size": [
     512,
     320
@@ -7,13 +7,13 @@
   "normalisation": "ImageNet mean/std",
   "tta_flip": true,
   "thresholds": {
-    "crack": 0.38,
-    "pothole": 0.35
+    "crack": 0.42,
+    "pothole": 0.4
   },
-  "decision_rule": "Focal + Dice Loss calibrated on real highway defect polygons",
-  "loss": "Focal Loss (gamma=2.0) + Per-Sample Soft Dice Loss",
+  "decision_rule": "Focal + Dice Loss calibrated on balanced highway defect polygons and sound road negatives",
+  "loss": "Focal Loss (gamma=2.0, alpha=[1.0, 1.8, 2.2]) + Per-Sample Soft Dice Loss",
   "optimizer": "AdamW, Cosine Annealing",
-  "epochs_run": 12,
-  "best_val_mean_iou": 0.092,
-  "final_loss": 1.0227
+  "epochs_run": 8,
+  "best_val_mean_iou": 0.3917,
+  "final_loss": 1.1975
 }

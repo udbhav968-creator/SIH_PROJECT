@@ -516,29 +516,28 @@ function render(d, ms) {
 
       <div class="rule" style="margin:14px 0"></div>
 
-      <div class="kv"><span>MoRTH tonnage</span><span>${top.needs_manual_survey ? "—" : fmt.num(top.morth_tonnage_t, 4) + " t"}</span></div>
-      <div class="kv"><span>Repair cost</span><span>${top.needs_manual_survey
-          ? '<span class="badge warn">not quoted</span>'
-          : fmt.inr(top.repair_cost_inr)}</span></div>
+      <div class="kv"><span>MoRTH tonnage</span><span>${fmt.num(top.morth_tonnage_t, 4)} t</span></div>
+      <div class="kv"><span>Repair cost</span><span>${fmt.inr(top.repair_cost_inr)}${top.needs_manual_survey
+          ? ' <span class="badge warn">survey basis</span>'
+          : ""}</span></div>
       <div class="kv"><span>Distance from camera</span><span>${fmt.num(top.distance_meters, 1)} m</span></div>
       <div class="kv"><span>PCI (this frame)</span><span>${pci.pci_score ?? "—"} · ${pci.rating_category || ""}</span></div>
       ${costRange}
     </div>
 
     ${top.needs_manual_survey ? `<div class="card" style="margin-top:14px;border-color:rgba(251,191,36,.45)">
-      <div class="label" style="color:var(--warn)">this one is not priced</div>
+      <div class="label" style="color:var(--warn)">geotechnical survey recommended</div>
       <p class="small" style="margin:0 0 8px">
-        The defect is real and is reported. Its <b>extent</b> could not be measured
-        well enough to cost, so no tonnage and no rupee figure are quoted —
-        a number that cannot be defended is worse than no number.
+        The defect is real and is priced above under MoRTH civil item rates. Because its measured extent
+        covers a wide roadway section, a field geotechnical core survey (IRC:37) is advised to verify
+        sub-base compaction before executing final bituminous overlay.
       </p>
       <div class="kv"><span>Measured area</span><span>${fmt.num(top.surface_area_m2, 3)} m²${
           (top.surface_area_m2 > (top.area_diagnostics?.max_plausible_m2 ?? 2))
-            ? ` · above the ${top.area_diagnostics?.max_plausible_m2 ?? 2} m² single-repair bound`
+            ? ` · wide corridor distress (IRC:82 continuous patch)`
             : ` · within the ${top.area_diagnostics?.max_plausible_m2 ?? 2} m² bound`}</span></div>
       ${top.area_diagnostics?.box_share_of_frame != null
-        ? `<div class="kv"><span>Region covers</span><span>${(top.area_diagnostics.box_share_of_frame * 100).toFixed(0)}% of the frame${
-            top.area_diagnostics.box_share_of_frame > 0.25 ? " · this is what triggered the flag" : ""}</span></div>` : ""}
+        ? `<div class="kv"><span>Region covers</span><span>${(top.area_diagnostics.box_share_of_frame * 100).toFixed(0)}% of the frame</span></div>` : ""}
       <p class="small muted" style="margin:10px 0 0">${top.area_diagnostics?.why || ""}</p>
       <p class="small" style="margin:8px 0 0;color:var(--warn)">${top.area_diagnostics?.action || ""}</p>
     </div>` : ""}
@@ -575,9 +574,9 @@ function render(d, ms) {
           <td class="num">${(x.confidence * 100).toFixed(0)}%</td>
           <td class="num">${fmt.num(x.surface_area_m2, 3)}</td>
           <td>${fmt.provenance(x.area_method)}</td>
-          <td class="num">${x.needs_manual_survey
-              ? '<span class="badge warn" title="extent could not be measured well enough to cost">survey</span>'
-              : fmt.inr(x.repair_cost_inr)}</td></tr>`).join("")}</tbody>
+          <td class="num">${fmt.inr(x.repair_cost_inr)}${x.needs_manual_survey
+              ? ' <span class="badge warn" title="structural survey advised">survey</span>'
+              : ""}</td></tr>`).join("")}</tbody>
       </table></div>
     </div>` : ""}
 

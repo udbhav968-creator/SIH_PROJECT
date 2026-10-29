@@ -215,7 +215,7 @@ class DeepInferencePipeline:
         res = self._audit_core(img, corridor_id=corridor_id, latitude=latitude, longitude=longitude, **kwargs)
         res["input_check"] = check or {"available": False,
                                        "reason": getattr(guard, "load_error", None) or "input guard not loaded"}
-        if check and check.get("verdict") == "not_road" and float(check.get("p_not_road", 0.0)) >= 0.75:
+        if res.get("status") != "REJECTED_NON_PAVEMENT" and check and check.get("verdict") == "not_road" and float(check.get("p_not_road", 0.0)) >= 0.75:
             p_not = float(check.get("p_not_road", 0.0))
             reason = f"Rejected by OOD Input Guard: this does not look like a photograph of a road (p_not_road = {p_not:.3f})."
             placeholder = {

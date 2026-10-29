@@ -120,6 +120,22 @@ class CVCavityDetector:
             sx0, sx1 = max(0, ex - 35), min(W, ex + ew + 35)
             excl_mask[sy0:sy1, sx0:sx1] = True
 
+        # Suppress non-road vehicle hood / dashboard in bottom 6%
+        excl_mask[int(H * 0.94):, :] = True
+
+        # Detect and suppress solid letterbox banner / watermark footer in bottom 18% of frame
+        for y in range(int(H * 0.82), H):
+            row_med = float(np.median(gray[y, :]))
+            if row_med < 28.0 or row_med > 225.0:
+                excl_mask[y:, :] = True
+                break
+        # Detect and suppress solid letterbox banner in top 18% of frame
+        for y in range(int(H * 0.18), -1, -1):
+            row_med = float(np.median(gray[y, :]))
+            if row_med < 28.0 or row_med > 225.0:
+                excl_mask[:y + 1, :] = True
+                break
+
         roi_y0 = int(H * 0.35)
         road_gray = gray[roi_y0:, :].astype(np.float32)
         mean_intensity = float(road_gray.mean())

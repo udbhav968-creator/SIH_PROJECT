@@ -338,19 +338,25 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
     proba = proba / np.maximum(proba.sum(axis=1, keepdims=True), 1e-6)
 
     thresholds = seg["thresholds"]
+    p0 = proba[:, 0]
     crack_p = proba[:, 1]
     pothole_p = proba[:, 2]
-    flat = np.zeros(proba.shape[0], dtype=np.uint8)
-    is_crack = crack_p >= float(thresholds.get("crack", 0.38))
-    is_pothole = pothole_p >= float(thresholds.get("pothole", 0.35))
-    flat[is_crack] = 1
-    flat[is_pothole & (pothole_p >= crack_p)] = 2
-    flat[is_pothole & ~is_crack] = 2
-    labels = flat.reshape(WORK_H, WORK_W)
-    conf_map = np.where(flat == 1, crack_p, np.where(flat == 2, pothole_p, proba[:, 0])).reshape(WORK_H, WORK_W)
+    t_crack = float(thresholds.get("crack", 0.40))
+    t_pothole = float(thresholds.get("pothole", 0.38))
 
-    # 0. Suppress non-road horizon / sky in the upper 25% of the frame
+    flat = np.zeros(proba.shape[0], dtype=np.uint8)
+    # A pixel is crack/pothole ONLY if it exceeds threshold and is competitive with background sound road
+    is_crack = (crack_p >= t_crack) & (crack_p >= p0 * 0.92) & (crack_p >= pothole_p)
+    is_pothole = (pothole_p >= t_pothole) & (pothole_p >= p0 * 0.92) & (pothole_p > crack_p)
+    flat[is_crack] = 1
+    flat[is_pothole] = 2
+    labels = flat.reshape(WORK_H, WORK_W)
+    conf_map = np.where(flat == 1, crack_p, np.where(flat == 2, pothole_p, p0)).reshape(WORK_H, WORK_W)
+
+    # 0a. Suppress non-road horizon / sky in the upper 25% of the frame
     labels[:int(WORK_H * 0.25), :] = 0
+    # 0b. Suppress vehicle hood / dashboard / letterbox footer in bottom 6% of the frame
+    labels[int(WORK_H * 0.94):, :] = 0
 
     # 1. Withhold detected pedestrians and vehicles from the segmentation mask
     if object_mask_full is not None and object_mask_full.any():
@@ -362,7 +368,7 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
         ) > 0
         labels[om_work] = 0
 
-    # 2. Withhold bright white painted lane markings / zebra stripes (paint is brighter than road, cavities are darker)
+    # 2. Suppress solid letterbox footer banner (Alamy / stock watermarks / camera bars) and bright white paint markings
     if gray_full is not None:
         g_work = np.asarray(
             Image.fromarray(np.clip(gray_full, 0, 255).astype(np.uint8), mode="L").resize(
@@ -370,17 +376,26 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
             ),
             dtype=np.float32,
         )
+        # Check bottom 18% for solid letterbox bar
+        for y in range(int(WORK_H * 0.82), WORK_H):
+            row_med = float(np.median(g_work[y, :]))
+            if row_med < 28.0 or row_med > 225.0:
+                labels[y:, :] = 0
+                break
+        for y in range(int(WORK_H * 0.18), -1, -1):
+            row_med = float(np.median(g_work[y, :]))
+            if row_med < 28.0 or row_med > 225.0:
+                labels[:y + 1, :] = 0
+                break
         road_med = float(np.median(g_work[int(WORK_H * 0.35):, :]))
-        # Withhold only pure white high-intensity road paint markings (>215 and bright above road)
+        # Withhold pure white high-intensity road paint markings (>215 and bright above road)
         paint_work = g_work > max(215.0, road_med + 55.0)
         labels[paint_work] = 0
 
-    # Minimum component sizes matching pipeline/deep_inference_pipeline.py:
-    # crack = 0.0012 * 64000 = 76 px, pothole = 0.004 * 64000 = 256 px (at least 48 px)
     min_px_map = {1: 32, 2: 48}
     min_conf_map = {
-        1: float(thresholds.get("crack", 0.38)),
-        2: float(thresholds.get("pothole", 0.35)),
+        1: t_crack,
+        2: t_pothole,
     }
 
     cleaned = np.zeros_like(labels)
@@ -394,24 +409,56 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
             # Require detection centroid to lie in the lower 65% road ROI (below horizon)
             if (wy + wh * 0.5) < WORK_H * 0.35:
                 continue
-            sub_mask = c_mask[wy:wy + wh, wx:wx + ww]
-            sub_conf = float(conf_map[wy:wy + wh, wx:wx + ww][sub_mask].mean())
-            if sub_conf < min_conf_map[cls_val]:
-                continue
-            cleaned[wy:wy + wh, wx:wx + ww][sub_mask] = cls_val
-            bx = max(0, int(round(wx * sx)))
-            by = max(0, int(round(wy * sy)))
-            bw = min(orig_w - bx, max(16, int(round(ww * sx))))
-            bh = min(orig_h - by, max(16, int(round(wh * sy))))
-            if bw < 14 or bh < 10:
-                continue
-            comp_boxes.append({
-                "seg_cls": cls_val,
-                "class_id": cls_id,
-                "bbox_pixels": [bx, by, bw, bh],
-                "area_work_px": b["area_work_px"],
-                "mean_conf": sub_conf,
-            })
+
+            # Decompose oversized multi-defect clusters into localized repair patches
+            max_ww = int(WORK_W * 0.32)
+            max_wh = int(WORK_H * 0.25)
+            sub_regions = []
+            if ww > max_ww or wh > max_wh:
+                nx = max(1, int(np.ceil(ww / float(max_ww))))
+                ny = max(1, int(np.ceil(wh / float(max_wh))))
+                step_x = (ww - max_ww) / max(1, nx - 1) if nx > 1 else 0
+                step_y = (wh - max_wh) / max(1, ny - 1) if ny > 1 else 0
+                for i in range(nx):
+                    for j in range(ny):
+                        cur_x = int(round(wx + i * step_x))
+                        cur_y = int(round(wy + j * step_y))
+                        cur_w = min(max_ww, wx + ww - cur_x)
+                        cur_h = min(max_wh, wy + wh - cur_y)
+                        sub_m = c_mask[cur_y:cur_y + cur_h, cur_x:cur_x + cur_w]
+                        if sub_m.sum() >= min_px_map[cls_val]:
+                            ys, xs = np.where(sub_m)
+                            sub_regions.append((
+                                cur_x + int(xs.min()),
+                                cur_y + int(ys.min()),
+                                int(xs.max() - xs.min() + 1),
+                                int(ys.max() - ys.min() + 1),
+                                int(sub_m.sum())
+                            ))
+            else:
+                sub_regions.append((wx, wy, ww, wh, b["area_work_px"]))
+
+            for rwx, rwy, rww, rwh, r_area in sub_regions:
+                sub_mask = c_mask[rwy:rwy + rwh, rwx:rwx + rww]
+                if not sub_mask.any():
+                    continue
+                sub_conf = float(conf_map[rwy:rwy + rwh, rwx:rwx + rww][sub_mask].mean())
+                if sub_conf < min_conf_map[cls_val]:
+                    continue
+                cleaned[rwy:rwy + rwh, rwx:rwx + rww][sub_mask] = cls_val
+                bx = max(0, int(round(rwx * sx)))
+                by = max(0, int(round(rwy * sy)))
+                bw = min(orig_w - bx, max(16, int(round(rww * sx))))
+                bh = min(orig_h - by, max(16, int(round(rwh * sy))))
+                if bw < 14 or bh < 10:
+                    continue
+                comp_boxes.append({
+                    "seg_cls": cls_val,
+                    "class_id": cls_id,
+                    "bbox_pixels": [bx, by, bw, bh],
+                    "area_work_px": r_area,
+                    "mean_conf": sub_conf,
+                })
 
     mask_full = np.asarray(
         Image.fromarray(cleaned, mode="L").resize((orig_w, orig_h), Image.Resampling.NEAREST),
@@ -626,6 +673,22 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
         sy0, sy1 = max(0, by - 8), min(H, by + bh + int(bh * 0.35))
         sx0, sx1 = max(0, bx - 20), min(W, bx + bw + 20)
         excl_mask[sy0:sy1, sx0:sx1] = True
+
+    # Suppress non-road vehicle hood / dashboard in bottom 6%
+    excl_mask[int(H * 0.94):, :] = True
+
+    # Detect and suppress solid letterbox banner / watermark footer in bottom 18% of frame
+    for y in range(int(H * 0.82), H):
+        row_med = float(np.median(gray[y, :]))
+        if row_med < 28.0 or row_med > 225.0:
+            excl_mask[y:, :] = True
+            break
+    # Detect and suppress solid letterbox banner in top 18% of frame
+    for y in range(int(H * 0.18), -1, -1):
+        row_med = float(np.median(gray[y, :]))
+        if row_med < 28.0 or row_med > 225.0:
+            excl_mask[:y + 1, :] = True
+            break
 
     roi_y0 = int(H * 0.38)
     road_gray = gray[roi_y0:, :]
@@ -1205,11 +1268,14 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
 
         de = _photometric_depth(gray, [bx, by, bw, bh], cls_id)
         cls_name = CLASS_NAMES[cls_id]
-        conf = float(cls_info["confidence"]) if cls_info["class_id"] == cls_id else (
-            float(comp["mean_conf"]) if comp else float(frame_cls_raw["confidence"])
-        )
-        if frame_cls_raw["class_id"] == cls_id:
-            conf = max(conf, float(frame_cls_raw["confidence"]))
+        # Bounded local neural confidence specific to this defect proposal
+        if cls_info["class_id"] == cls_id:
+            conf = float(cls_info["confidence"])
+        elif comp and comp.get("mean_conf") is not None:
+            conf = float(comp["mean_conf"])
+        else:
+            p_cls = float(cls_info.get("probabilities", {}).get(cls_name, 0.70))
+            conf = max(0.55, p_cls)
 
         # Surface area calculation: use pixel mask if >= 45 matching mask pixels exist, else perspective homography
         has_dense_mask = False
@@ -1236,7 +1302,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         de["repair_cost_high_inr"] = round(area_m2 * (de["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
 
         box_share = (bw * bh) / float(W * H)
-        needs_survey = bool(area_m2 > 3.0 or box_share > 0.40)
+        needs_survey = bool(area_m2 > 3.0 or box_share > 0.45)
         detections.append({
             "bbox_pixels": [bx, by, bw, bh],
             "bbox_normalized": [round(bx / W, 4), round(by / H, 4), round(bw / W, 4), round(bh / H, 4)],
