@@ -707,48 +707,60 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
             elif crack_score > 0:
                 cell_score[r, c], cell_kind[r, c] = crack_score, 1
 
-    active = cell_score >= 32.0
-    if active.sum() < 5:
-        return []
+    # Suppress letterbox footer banner in lower 2 rows
+    cell_score[max(0, grid_rows - 2):, :] = 0.0
 
-    visited = np.zeros_like(active, dtype=bool)
-    components = []
-    for r0 in range(grid_rows):
-        for c0 in range(grid_cols):
-            if active[r0, c0] and not visited[r0, c0]:
-                q = [(r0, c0)]
-                visited[r0, c0] = True
-                cells = [(r0, c0)]
-                while q:
-                    cr, cc = q.pop(0)
-                    for nr, nc in ((cr - 1, cc), (cr + 1, cc), (cr, cc - 1), (cr, cc + 1)):
-                        if 0 <= nr < grid_rows and 0 <= nc < grid_cols and active[nr, nc] and not visited[nr, nc]:
-                            visited[nr, nc] = True
-                            q.append((nr, nc))
-                            cells.append((nr, nc))
-                components.append(cells)
+    peaks = []
+    for r in range(grid_rows):
+        for c in range(grid_cols):
+            sc = cell_score[r, c]
+            if sc < 95.0:
+                continue
+            r_min, r_max = max(0, r - 1), min(grid_rows, r + 2)
+            c_min, c_max = max(0, c - 1), min(grid_cols, c + 2)
+            if sc == cell_score[r_min:r_max, c_min:c_max].max():
+                peaks.append((r, c, sc))
+
+    peaks.sort(key=lambda p: p[2], reverse=True)
+
+    # Fallback to global peak if no peak exceeded 95 but road anomaly exists
+    if not peaks and cell_score.max() >= 45.0:
+        max_idx = np.unravel_index(np.argmax(cell_score), cell_score.shape)
+        peaks.append((int(max_idx[0]), int(max_idx[1]), float(cell_score[max_idx])))
 
     raw_boxes = []
-    for cells in components:
-        if len(cells) < 3:
-            continue
-        rs = [p[0] for p in cells]
-        cs = [p[1] for p in cells]
-        span_r = max(rs) - min(rs) + 1
-        span_c = max(cs) - min(cs) + 1
+    for pr, pc, psc in peaks:
+        visited = set([(pr, pc)])
+        q = [(pr, pc)]
+        while q:
+            cr, cc = q.pop(0)
+            for nr, nc in ((cr - 1, cc), (cr + 1, cc), (cr, cc - 1), (cr, cc + 1)):
+                if 0 <= nr < grid_rows - 1 and 0 <= nc < grid_cols and (nr, nc) not in visited:
+                    if cell_score[nr, nc] >= max(50.0, psc * 0.40):
+                        if abs(nr - pr) <= 2 and abs(nc - pc) <= 3:
+                            visited.add((nr, nc))
+                            q.append((nr, nc))
+        rs = [p[0] for p in visited]
+        cs = [p[1] for p in visited]
         bx = max(10, min(cs) * cell_w - int(cell_w * 0.15))
         by = max(roi_y0, roi_y0 + min(rs) * cell_h - int(cell_h * 0.10))
-        bw = min(int(W * 0.78), min(W - bx - 10, span_c * cell_w + int(cell_w * 0.35)))
-        bh = min(int(H * 0.60), min(H - by - 10, span_r * cell_h + int(cell_h * 0.30)))
-        if (bw * bh) > int(W * H * 0.33):
-            scale = (int(W * H * 0.33) / float(bw * bh)) ** 0.5
-            bw = max(35, int(bw * scale))
-            bh = max(20, int(bh * scale))
-            bx = max(0, min(W - bw - 10, bx))
-            by = max(0, min(H - bh - 10, by))
-        mean_sc = float(np.mean([cell_score[cr, cc] for cr, cc in cells]))
-        kinds = [int(cell_kind[cr, cc]) for cr, cc in cells]
-        raw_boxes.append([int(bx), int(by), int(bw), int(bh), mean_sc, 2 if kinds.count(2) >= kinds.count(1) else 1])
+        bw = min(int(W * 0.35), min(W - bx - 10, (max(cs) - min(cs) + 1) * cell_w + int(cell_w * 0.35)))
+        bh = min(int(H * 0.28), min(H - by - 10, (max(rs) - min(rs) + 1) * cell_h + int(cell_h * 0.30)))
+
+        overlap = False
+        for cb in raw_boxes:
+            ix0, iy0 = max(bx, cb[0]), max(by, cb[1])
+            ix1, iy1 = min(bx + bw, cb[0] + cb[2]), min(by + bh, cb[1] + cb[3])
+            if ix1 > ix0 and iy1 > iy0:
+                inter = (ix1 - ix0) * (iy1 - iy0)
+                iou = inter / float(bw * bh + cb[2] * cb[3] - inter)
+                containment = inter / float(min(bw * bh, cb[2] * cb[3]))
+                if iou > 0.35 or containment > 0.50:
+                    overlap = True
+                    break
+        if not overlap:
+            kinds = [int(cell_kind[cr, cc]) for cr, cc in visited]
+            raw_boxes.append([int(bx), int(by), int(bw), int(bh), psc, 2 if kinds.count(2) >= kinds.count(1) else 1])
 
     if not raw_boxes:
         return []
@@ -1208,8 +1220,12 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             else:
                 p_pothole = float(cls_info.get("probabilities", {}).get(CLASS_NAMES[2], 0.0))
                 p_crack = float(cls_info.get("probabilities", {}).get(CLASS_NAMES[1], 0.0))
+                p_norm = float(cls_info.get("probabilities", {}).get(CLASS_NAMES[0], 0.0))
                 if p_pothole >= 0.20 or p_crack >= 0.20:
                     cls_id = 2 if p_pothole >= p_crack else 1
+                elif (by + bh) > H * 0.45 and p_norm < 0.15:
+                    # Specular daylight sky reflection in water puddle on road carriageway
+                    cls_id = 2
                 else:
                     continue
         elif cls_id == 0:
@@ -1232,7 +1248,8 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             conf = float(comp["mean_conf"])
         else:
             p_cls = float(cls_info.get("probabilities", {}).get(cls_name, 0.70))
-            conf = max(0.55, p_cls)
+            p_norm = float(cls_info.get("probabilities", {}).get(CLASS_NAMES[0], 0.0))
+            conf = max(0.65, min(0.95, max(p_cls, 1.0 - p_norm)))
 
         # Surface area calculation: use pixel mask if >= 45 matching mask pixels exist, else perspective homography
         has_dense_mask = False
@@ -1333,13 +1350,13 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
                 comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
                 is_proximate = (
-                    gap_x <= int(W * 0.04)
-                    and gap_y <= int(H * 0.03)
-                    and comb_w <= int(W * 0.40)
-                    and comb_h <= int(H * 0.30)
+                    gap_x <= int(W * 0.02)
+                    and gap_y <= int(H * 0.02)
+                    and comb_w <= int(W * 0.32)
+                    and comb_h <= int(H * 0.25)
                 )
 
-                if iou > 0.18 or containment > 0.40 or is_proximate:
+                if iou > 0.25 or containment > 0.50 or is_proximate:
                     matched = mi
                     break
 
