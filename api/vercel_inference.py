@@ -404,61 +404,33 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
     sy = orig_h / float(WORK_H)
     for cls_val, cls_id in ((2, 2), (1, 1)):
         c_mask, boxes = _connected_components_8(labels == cls_val, min_blob_px=min_px_map[cls_val])
-        for b in boxes[:100]:
+        sorted_boxes = sorted(boxes, key=lambda b: b["area_work_px"], reverse=True)[:5]
+        for b in sorted_boxes:
             wx, wy, ww, wh = b["bbox_work"]
             # Require detection centroid to lie in the lower 65% road ROI (below horizon)
             if (wy + wh * 0.5) < WORK_H * 0.35:
                 continue
 
-            # Decompose oversized multi-defect clusters into localized repair patches
-            max_ww = int(WORK_W * 0.32)
-            max_wh = int(WORK_H * 0.25)
-            sub_regions = []
-            if ww > max_ww or wh > max_wh:
-                nx = max(1, int(np.ceil(ww / float(max_ww))))
-                ny = max(1, int(np.ceil(wh / float(max_wh))))
-                step_x = (ww - max_ww) / max(1, nx - 1) if nx > 1 else 0
-                step_y = (wh - max_wh) / max(1, ny - 1) if ny > 1 else 0
-                for i in range(nx):
-                    for j in range(ny):
-                        cur_x = int(round(wx + i * step_x))
-                        cur_y = int(round(wy + j * step_y))
-                        cur_w = min(max_ww, wx + ww - cur_x)
-                        cur_h = min(max_wh, wy + wh - cur_y)
-                        sub_m = c_mask[cur_y:cur_y + cur_h, cur_x:cur_x + cur_w]
-                        if sub_m.sum() >= min_px_map[cls_val]:
-                            ys, xs = np.where(sub_m)
-                            sub_regions.append((
-                                cur_x + int(xs.min()),
-                                cur_y + int(ys.min()),
-                                int(xs.max() - xs.min() + 1),
-                                int(ys.max() - ys.min() + 1),
-                                int(sub_m.sum())
-                            ))
-            else:
-                sub_regions.append((wx, wy, ww, wh, b["area_work_px"]))
-
-            for rwx, rwy, rww, rwh, r_area in sub_regions:
-                sub_mask = c_mask[rwy:rwy + rwh, rwx:rwx + rww]
-                if not sub_mask.any():
-                    continue
-                sub_conf = float(conf_map[rwy:rwy + rwh, rwx:rwx + rww][sub_mask].mean())
-                if sub_conf < min_conf_map[cls_val]:
-                    continue
-                cleaned[rwy:rwy + rwh, rwx:rwx + rww][sub_mask] = cls_val
-                bx = max(0, int(round(rwx * sx)))
-                by = max(0, int(round(rwy * sy)))
-                bw = min(orig_w - bx, max(16, int(round(rww * sx))))
-                bh = min(orig_h - by, max(16, int(round(rwh * sy))))
-                if bw < 14 or bh < 10:
-                    continue
-                comp_boxes.append({
-                    "seg_cls": cls_val,
-                    "class_id": cls_id,
-                    "bbox_pixels": [bx, by, bw, bh],
-                    "area_work_px": r_area,
-                    "mean_conf": sub_conf,
-                })
+            sub_mask = c_mask[wy:wy + wh, wx:wx + ww]
+            if not sub_mask.any():
+                continue
+            sub_conf = float(conf_map[wy:wy + wh, wx:wx + ww][sub_mask].mean())
+            if sub_conf < min_conf_map[cls_val]:
+                continue
+            cleaned[wy:wy + wh, wx:wx + ww][sub_mask] = cls_val
+            bx = max(0, int(round(wx * sx)))
+            by = max(0, int(round(wy * sy)))
+            bw = min(orig_w - bx, max(16, int(round(ww * sx))))
+            bh = min(orig_h - by, max(16, int(round(wh * sy))))
+            if bw < 14 or bh < 10:
+                continue
+            comp_boxes.append({
+                "seg_cls": cls_val,
+                "class_id": cls_id,
+                "bbox_pixels": [bx, by, bw, bh],
+                "area_work_px": b["area_work_px"],
+                "mean_conf": sub_conf,
+            })
 
     mask_full = np.asarray(
         Image.fromarray(cleaned, mode="L").resize((orig_w, orig_h), Image.Resampling.NEAREST),
@@ -754,68 +726,30 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
 
     raw_boxes = []
     for cells in components:
+        if len(cells) < 3:
+            continue
         rs = [p[0] for p in cells]
         cs = [p[1] for p in cells]
         span_r = max(rs) - min(rs) + 1
         span_c = max(cs) - min(cs) + 1
-        if len(cells) >= 10 or span_r >= 4 or span_c >= 5:
-            # Multi-pothole cluster: decompose by local peaks so multiple defects are separated
-            cell_set = set(cells)
-            peaks = []
-            for cr, cc in cells:
-                sc = cell_score[cr, cc]
-                if sc < 40.0:
-                    continue
-                is_peak = True
-                for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                    nr, nc = cr + dr, cc + dc
-                    if (nr, nc) in cell_set and cell_score[nr, nc] > sc:
-                        is_peak = False
-                        break
-                if is_peak:
-                    peaks.append((cr, cc, sc))
-            peaks.sort(key=lambda p: p[2], reverse=True)
-            claimed = set()
-            for pr, pc, psc in peaks:
-                if (pr, pc) in claimed:
-                    continue
-                sub_cells = []
-                for dr in range(-2, 3):
-                    for dc in range(-2, 3):
-                        nr, nc = pr + dr, pc + dc
-                        if (nr, nc) in cell_set and (nr, nc) not in claimed:
-                            if cell_score[nr, nc] >= max(28.0, 0.40 * psc):
-                                sub_cells.append((nr, nc))
-                                claimed.add((nr, nc))
-                if len(sub_cells) >= 2:
-                    s_rs = [p[0] for p in sub_cells]
-                    s_cs = [p[1] for p in sub_cells]
-                    bx = max(10, min(s_cs) * cell_w - int(cell_w * 0.15))
-                    by = max(roi_y0, roi_y0 + min(s_rs) * cell_h - int(cell_h * 0.10))
-                    bw = min(int(W * 0.35), min(W - bx - 10, (max(s_cs) - min(s_cs) + 1) * cell_w + int(cell_w * 0.3)))
-                    bh = min(int(H * 0.30), min(H - by - 10, (max(s_rs) - min(s_rs) + 1) * cell_h + int(cell_h * 0.2)))
-                    kinds = [int(cell_kind[cr, cc]) for cr, cc in sub_cells]
-                    raw_boxes.append([int(bx), int(by), int(bw), int(bh), psc, 2 if kinds.count(2) >= kinds.count(1) else 1])
-        else:
-            if len(cells) >= 3:
-                bx = max(10, min(cs) * cell_w - int(cell_w * 0.15))
-                by = max(roi_y0, roi_y0 + min(rs) * cell_h - int(cell_h * 0.10))
-                bw = min(int(W * 0.35), min(W - bx - 10, span_c * cell_w + int(cell_w * 0.3)))
-                bh = min(int(H * 0.30), min(H - by - 10, span_r * cell_h + int(cell_h * 0.2)))
-                mean_sc = float(np.mean([cell_score[cr, cc] for cr, cc in cells]))
-                kinds = [int(cell_kind[cr, cc]) for cr, cc in cells]
-                raw_boxes.append([int(bx), int(by), int(bw), int(bh), mean_sc, 2 if kinds.count(2) >= kinds.count(1) else 1])
+        bx = max(10, min(cs) * cell_w - int(cell_w * 0.15))
+        by = max(roi_y0, roi_y0 + min(rs) * cell_h - int(cell_h * 0.10))
+        bw = min(int(W * 0.45), min(W - bx - 10, span_c * cell_w + int(cell_w * 0.3)))
+        bh = min(int(H * 0.35), min(H - by - 10, span_r * cell_h + int(cell_h * 0.2)))
+        mean_sc = float(np.mean([cell_score[cr, cc] for cr, cc in cells]))
+        kinds = [int(cell_kind[cr, cc]) for cr, cc in cells]
+        raw_boxes.append([int(bx), int(by), int(bw), int(bh), mean_sc, 2 if kinds.count(2) >= kinds.count(1) else 1])
 
     if not raw_boxes:
         return []
 
-    return _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=4)
+    return _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=3)
 
 
-def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=4):
+def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=3):
     """
     Weighted Box Fusion and Spatial Clustering.
-    Merges overlapping (IoU >= 0.08) and adjacent boxes into unified defect boundaries,
+    Merges overlapping (IoU >= 0.12) and proximate (gap < 8%) boxes into unified defect boundaries,
     eliminating fragmented duplicates and colliding text labels.
     """
     if not raw_boxes:
@@ -842,7 +776,14 @@ def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=4):
             union_area = b_area + c_area - inter_area
             iou = inter_area / max(1.0, union_area)
             containment = inter_area / max(1.0, min(b_area, c_area))
-            if iou >= 0.25 or containment >= 0.45:
+
+            comb_w = max(x2, cx2) - min(x1, cx1)
+            comb_h = max(y2, cy2) - min(y1, cy1)
+            gap_x = max(0, max(x1, cx1) - min(x2, cx2))
+            gap_y = max(0, max(y1, cy1) - min(y2, cy2))
+            is_proximate = (gap_x <= int(W * 0.08) and gap_y <= int(H * 0.06) and comb_w <= int(W * 0.45) and comb_h <= int(H * 0.35))
+
+            if iou >= 0.15 or containment >= 0.35 or is_proximate:
                 matched.append(ci)
         if not matched:
             clusters.append([b])
@@ -1353,15 +1294,16 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                     a2 = b2[2] * b2[3]
                     iou = inter / float(a1 + a2 - inter)
                     containment = inter / float(min(a1, a2))
-                    if iou > 0.35 or containment > 0.55:
+                    if iou > 0.20 or containment > 0.40:
                         is_dup = True
                         break
             if not is_dup:
                 keep.append(d)
         detections = keep
 
-    # Sort detections by significance (potholes first, then largest surface area)
+    # Sort detections by significance (potholes first, then largest surface area) and keep top 4
     detections.sort(key=lambda d: (1 if d["class_id"] == 2 else 0, d["surface_area_m2"]), reverse=True)
+    detections = detections[:4]
 
     # Corridor-level hazard check ONLY for classes 3..6 (Waterlogging, Missing Zebra, Missing Divider, Damaged Sign)
     # when the image is an in-distribution road scene and confidence >= 0.72
@@ -1404,93 +1346,30 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "probabilities": frame_cls_raw["probabilities"],
         })
 
-    # STAGE 5: Adaptive Photometric Segmentation for Confirmed Defect Regions
-    # If U-Net produced 0 pixels (domain shift on unpaved/flooded roads), segment confirmed defects
-    if detections and seg_out and (seg_out.get("pothole_px_full", 0) + seg_out.get("crack_px_full", 0)) < 30:
-        adaptive_seg = _segment_defect_regions(img_np, detections, H, W, is_waterlogging=(frame_cls_raw.get('class_id') == 3))
-        if (adaptive_seg["pothole_px_full"] + adaptive_seg["crack_px_full"]) > 0:
-            seg_out = adaptive_seg
-            mask_full = adaptive_seg["mask"]
-            if adaptive_seg.get("components") and len(adaptive_seg["components"]) >= 1:
-                decomp_detections = []
-                for comp in adaptive_seg["components"][:8]:
-                    cbx, cby, cbw, cbh = comp["bbox_pixels"]
-                    c_cls_id = comp.get("class_id", 2)
-                    region_bool = np.zeros((H, W), dtype=bool)
-                    region_bool[cby:cby + cbh, cbx:cbx + cbw] = (mask_full[cby:cby + cbh, cbx:cbx + cbw] == c_cls_id)
-                    px_c = int(region_bool.sum())
-                    if px_c < 20:
-                        continue
+    # STAGE 5: Refine surface area and repair metrics using genuine U-Net segmentation mask
+    if detections and seg_out and mask_full is not None:
+        for d in detections:
+            if d.get("bbox_pixels"):
+                bx, by, bw, bh = d["bbox_pixels"]
+                cls_id = d.get("class_id", 2)
+                region_bool = np.zeros((H, W), dtype=bool)
+                region_bool[by:by + bh, bx:bx + bw] = (mask_full[by:by + bh, bx:bx + bw] == cls_id)
+                px_c = int(region_bool.sum())
+                if px_c >= 25:
                     m2, _ = ipm.mask_area_m2(region_bool)
-                    m2 = round(float(max(0.04, min(m2, 2.5))), 4)
-                    de = _photometric_depth(gray, [cbx, cby, cbw, cbh], c_cls_id)
-                    depth_cm = de["depth_cm"]
-                    tonnage_t = round(m2 * (depth_cm / 100.0) * 2.40 * 1.15, 4)
-                    cost_inr = round(tonnage_t * 7500.0, 2)
-                    de["repair_cost_low_inr"] = round(m2 * (de["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-                    de["repair_cost_high_inr"] = round(m2 * (de["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-                    box_share = (cbw * cbh) / float(W * H)
-                    needs_survey = bool(m2 > 3.0 or box_share > 0.40)
-                    dist_m = round(max(2.2, 18.0 * (1.0 - ((cby + cbh) / float(H)) ** 0.85)), 1)
-                    decomp_detections.append({
-                        "bbox_pixels": [cbx, cby, cbw, cbh],
-                        "bbox_normalized": [round(cbx / W, 4), round(cby / H, 4), round(cbw / W, 4), round(cbh / H, 4)],
-                        "class_id": c_cls_id,
-                        "class_name": CLASS_NAMES[c_cls_id],
-                        "confidence": round(float(comp.get("mean_conf", 0.94)), 4),
-                        "shannon_entropy_bits": 0.5,
-                        "uncertainty_rating": "LOW_UNCERTAINTY",
-                        "astm_d6433_severity": "HIGH" if depth_cm >= 5.0 else ("MEDIUM" if depth_cm >= 2.5 else "LOW"),
-                        "irc_standard_specification": IRC_STANDARDS.get(c_cls_id, ""),
-                        "top3_ranked_predictions": [
-                            {"class_id": c_cls_id, "class_name": CLASS_NAMES[c_cls_id], "probability": 0.94},
-                            {"class_id": 0, "class_name": "Normal Road / Sound Pavement", "probability": 0.04},
-                            {"class_id": 1, "class_name": "Crack (Longitudinal / Transverse / Alligator)", "probability": 0.02},
-                        ],
-                        "is_distress": True,
-                        "distance_meters": dist_m,
-                        "surface_area_m2": m2,
-                        "area_method": "segmentation_mask",
-                        "area_diagnostics": {
-                            "mask_pixels": px_c,
-                            "max_plausible_m2": 3.0,
-                            "box_share_of_frame": round(box_share, 3),
-                        },
-                        "area_is_plausible_single_repair": not needs_survey,
-                        "needs_manual_survey": needs_survey,
-                        "depth_cm": depth_cm,
-                        "depth_estimate": de,
-                        "volumetric_m3": round(m2 * (depth_cm / 100.0), 5),
-                        "morth_tonnage_t": tonnage_t,
-                        "repair_cost_inr": cost_inr,
-                        "probabilities": {CLASS_NAMES[c_cls_id]: 0.94},
-                        "source": "adaptive_puddle_segmenter",
-                    })
-                if decomp_detections:
-                    detections = decomp_detections
-            else:
-                for d in detections:
-                    if d.get("bbox_pixels"):
-                        bx, by, bw, bh = d["bbox_pixels"]
-                        cls_id = d.get("class_id", 2)
-                        region_bool = np.zeros((H, W), dtype=bool)
-                        region_bool[by:by + bh, bx:bx + bw] = (mask_full[by:by + bh, bx:bx + bw] == cls_id)
-                        px_c = int(region_bool.sum())
-                        if px_c >= 20:
-                            m2, _ = ipm.mask_area_m2(region_bool)
-                            d["surface_area_m2"] = round(float(max(0.04, min(m2, 2.5))), 4)
-                            d["area_method"] = "segmentation_mask"
-                            d["area_diagnostics"]["mask_pixels"] = px_c
-                            depth_cm = d.get("depth_cm", 4.0)
-                            tonnage_t = round(d["surface_area_m2"] * (depth_cm / 100.0) * 2.40 * 1.15, 4)
-                            d["morth_tonnage_t"] = tonnage_t
-                            d["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
-                            box_share = (bw * bh) / float(W * H)
-                            d["needs_manual_survey"] = bool(d["surface_area_m2"] > 3.0 or box_share > 0.40)
-                            d["area_is_plausible_single_repair"] = not d["needs_manual_survey"]
-                            if d.get("depth_estimate"):
-                                d["depth_estimate"]["repair_cost_low_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-                                d["depth_estimate"]["repair_cost_high_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                    d["surface_area_m2"] = round(float(max(0.04, min(m2, 2.5))), 4)
+                    d["area_method"] = "segmentation_mask"
+                    d["area_diagnostics"]["mask_pixels"] = px_c
+                    depth_cm = d.get("depth_cm", 4.0)
+                    tonnage_t = round(d["surface_area_m2"] * (depth_cm / 100.0) * 2.40 * 1.15, 4)
+                    d["morth_tonnage_t"] = tonnage_t
+                    d["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
+                    box_share = (bw * bh) / float(W * H)
+                    d["needs_manual_survey"] = bool(d["surface_area_m2"] > 3.0 or box_share > 0.40)
+                    d["area_is_plausible_single_repair"] = not d["needs_manual_survey"]
+                    if d.get("depth_estimate"):
+                        d["depth_estimate"]["repair_cost_low_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                        d["depth_estimate"]["repair_cost_high_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
 
     # If no road defect was confirmed, zero out the segmentation mask so rejected noise blobs are not counted
     if not detections and seg_out:

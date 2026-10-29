@@ -1,5 +1,5 @@
 {
-  "timestamp": 1793290146.4129415,
+  "timestamp": 1793293647.9432058,
   "total_images": 18,
   "crashes": 0,
   "giant_box_violations": 0,
@@ -9,35 +9,35 @@
     {
       "path": "clean_original_road.png",
       "category": "rural_flooded_puddles",
-      "distress_detections_count": 3,
+      "distress_detections_count": 1,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 132.75,
+      "total_cost_inr": 384.0,
       "visual_overlay": "eval_01_clean_original_road.png",
-      "elapsed_ms": 8356.0
+      "elapsed_ms": 6742.6
     },
     {
       "path": "user_test_scene_2.png",
       "category": "asphalt_center_pothole",
-      "distress_detections_count": 2,
+      "distress_detections_count": 1,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 564.0,
+      "total_cost_inr": 2620.5,
       "visual_overlay": "eval_02_user_test_scene_2.png",
-      "elapsed_ms": 1604.4
+      "elapsed_ms": 1890.3
     },
     {
       "path": "canvas_scene1.png",
       "category": "rural_countryside_cavity",
-      "distress_detections_count": 2,
+      "distress_detections_count": 1,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 621.0,
+      "total_cost_inr": 2954.25,
       "visual_overlay": "eval_03_canvas_scene1.png",
-      "elapsed_ms": 1853.3
+      "elapsed_ms": 1567.9
     },
     {
       "path": "canvas_scene2.png",
@@ -48,7 +48,7 @@
       "area_overflow_count": 0,
       "total_cost_inr": 0,
       "visual_overlay": "eval_04_canvas_scene2.png",
-      "elapsed_ms": 1699.2
+      "elapsed_ms": 1596.9
     },
     {
       "path": "1014620_RS_386_386RS124739_30026_RAW.jpg",
@@ -57,53 +57,53 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 31.5,
+      "total_cost_inr": 47.25,
       "visual_overlay": "eval_05_1014620_RS_386_386RS124739_30026_RAW.png",
-      "elapsed_ms": 2087.8
+      "elapsed_ms": 2645.2
     },
     {
       "path": "1014628_RS_386_386RS124739_30065_RAW.jpg",
       "category": "rdd2022_asphalt_distress",
-      "distress_detections_count": 11,
+      "distress_detections_count": 4,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 531.0,
+      "total_cost_inr": 370.5,
       "visual_overlay": "eval_06_1014628_RS_386_386RS124739_30065_RAW.png",
-      "elapsed_ms": 2736.6
+      "elapsed_ms": 2447.2
     },
     {
       "path": "1014636_RS_386_386RS124739_30105_RAW.jpg",
       "category": "rdd2022_asphalt_distress",
-      "distress_detections_count": 16,
+      "distress_detections_count": 4,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 444.0,
+      "total_cost_inr": 170.25,
       "visual_overlay": "eval_07_1014636_RS_386_386RS124739_30105_RAW.png",
-      "elapsed_ms": 3005.6
+      "elapsed_ms": 2522.2
     },
     {
       "path": "1014760_RS_386_386RS124739_30725_RAW.jpg",
       "category": "rdd2022_asphalt_distress",
-      "distress_detections_count": 2,
+      "distress_detections_count": 1,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 87.0,
+      "total_cost_inr": 171.75,
       "visual_overlay": "eval_08_1014760_RS_386_386RS124739_30725_RAW.png",
-      "elapsed_ms": 1950.1
+      "elapsed_ms": 1875.2
     },
     {
       "path": "1014639_RS_386_386RS124739_30121_RAW.jpg",
       "category": "kaggle_asphalt_pothole",
-      "distress_detections_count": 7,
+      "distress_detections_count": 1,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 834.75,
+      "total_cost_inr": 246.75,
       "visual_overlay": "eval_09_1014639_RS_386_386RS124739_30121_RAW.png",
-      "elapsed_ms": 2602.5
+      "elapsed_ms": 2338.1
     },
     {
       "path": "1014730_RS_386_386RS124739_30575_RAW.jpg",
@@ -114,7 +114,7 @@
       "area_overflow_count": 0,
       "total_cost_inr": 28.5,
       "visual_overlay": "eval_10_1014730_RS_386_386RS124739_30575_RAW.png",
-      "elapsed_ms": 2110.8
+      "elapsed_ms": 2097.3
     },
     {
       "path": "1014777_RS_386_386RS124739_30811_RAW.jpg",
@@ -123,9 +123,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 51.75,
+      "total_cost_inr": 74.25,
       "visual_overlay": "eval_11_1014777_RS_386_386RS124739_30811_RAW.png",
-      "elapsed_ms": 2068.0
+      "elapsed_ms": 2145.4
     },
     {
       "path": "1014788_RS_386_386RS124739_30865_RAW.jpg",
@@ -134,9 +134,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 31.5,
+      "total_cost_inr": 77.25,
       "visual_overlay": "eval_12_1014788_RS_386_386RS124739_30865_RAW.png",
-      "elapsed_ms": 2294.6
+      "elapsed_ms": 2543.4
     },
     {
       "path": "1014620_RS_386_386RS124739_30026_RAW.jpg",
@@ -145,64 +145,64 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 31.5,
+      "total_cost_inr": 47.25,
       "visual_overlay": "eval_13_1014620_RS_386_386RS124739_30026_RAW.png",
-      "elapsed_ms": 2132.2
+      "elapsed_ms": 2103.4
     },
     {
       "path": "1014628_RS_386_386RS124739_30065_RAW.jpg",
       "category": "crack500_fatigue_crack",
-      "distress_detections_count": 11,
+      "distress_detections_count": 4,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 531.0,
+      "total_cost_inr": 370.5,
       "visual_overlay": "eval_14_1014628_RS_386_386RS124739_30065_RAW.png",
-      "elapsed_ms": 2529.1
+      "elapsed_ms": 2359.7
     },
     {
       "path": "1014636_RS_386_386RS124739_30105_RAW.jpg",
       "category": "crack500_fatigue_crack",
-      "distress_detections_count": 16,
+      "distress_detections_count": 4,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 444.0,
+      "total_cost_inr": 170.25,
       "visual_overlay": "eval_15_1014636_RS_386_386RS124739_30105_RAW.png",
-      "elapsed_ms": 3300.4
+      "elapsed_ms": 2539.1
     },
     {
       "path": "real_01_FileCoopers Arms Flood Street Chelsea - geogr.jpg",
       "category": "monsoon_waterlogging",
-      "distress_detections_count": 8,
+      "distress_detections_count": 1,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 2179.5,
+      "total_cost_inr": 102.0,
       "visual_overlay": "eval_16_real_01_FileCoopers Arms Flood Street Chelsea - geogr.png",
-      "elapsed_ms": 4078.4
+      "elapsed_ms": 2329.6
     },
     {
       "path": "real_02_FileCoopers Arms Flood Street - geograph.org..jpg",
       "category": "monsoon_waterlogging",
-      "distress_detections_count": 8,
+      "distress_detections_count": 2,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 1674.0,
+      "total_cost_inr": 2295.75,
       "visual_overlay": "eval_17_real_02_FileCoopers Arms Flood Street - geograph.org..png",
-      "elapsed_ms": 2316.2
+      "elapsed_ms": 1778.9
     },
     {
       "path": "real_07_FileHall of Remembrance Flood Street SW3 - ge.jpg",
       "category": "monsoon_waterlogging",
-      "distress_detections_count": 3,
+      "distress_detections_count": 2,
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 879.75,
+      "total_cost_inr": 63.0,
       "visual_overlay": "eval_18_real_07_FileHall of Remembrance Flood Street SW3 - ge.png",
-      "elapsed_ms": 1748.7
+      "elapsed_ms": 1889.0
     }
   ]
 }
