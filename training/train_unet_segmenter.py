@@ -576,6 +576,10 @@ def main(argv=None):
         "inference_ms_per_image_cpu_onnx": round(cpu_ms, 1) if cpu_ms else None, "smoke": a.smoke,
         "trained_at_unix": int(time.time()),
     }
+    if a.smoke:
+        print("  [INFO] Smoke run completed: preserving verified production selection and meta reports.")
+        return {"served": served, "rule": SEL_RULE, "why": why, "smoke": True}
+
     with open(os.path.join(a.out, META_NAME), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2)
     selection = {"served": served, "rule": SEL_RULE, "why": why, "validation": val, "test": test,
