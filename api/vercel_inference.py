@@ -400,6 +400,8 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
             by = max(0, int(round(wy * sy)))
             bw = min(orig_w - bx, max(16, int(round(ww * sx))))
             bh = min(orig_h - by, max(16, int(round(wh * sy))))
+            if bw < 14 or bh < 10:
+                continue
             comp_boxes.append({
                 "seg_cls": cls_val,
                 "class_id": cls_id,
@@ -1140,6 +1142,8 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
 
     for prop in proposals:
         bx, by, bw, bh = prop["bbox_pixels"]
+        if bw < 14 or bh < 10:
+            continue
         comp = prop["seg_comp"]
 
         # Expand crop with 20% context margin (minimum 96x96 px) for MobileNetV3-Large verification
@@ -1172,13 +1176,24 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             if box_area_share < 0.015 and cls_info["confidence"] < 0.85:
                 continue
 
-        # Class determination: ALWAYS respect the crop classifier's specific verdict
+        # Class determination: pavement distress must strictly be Crack, Pothole, or Waterlogging
         cls_id = cls_info["class_id"]
-        if cls_id == 0:
-            # Only accept if U-Net produced a dense segmentation mask (>= 50 px) in this exact crop
+        if cls_id in (4, 5, 6):
+            # Asset / corridor classes (Zebra, Divider, Sign) cannot be pavement surface distresses
+            if comp and comp["class_id"] in (1, 2):
+                cls_id = comp["class_id"]
+            else:
+                p_pothole = float(cls_info.get("probabilities", {}).get(CLASS_NAMES[2], 0.0))
+                p_crack = float(cls_info.get("probabilities", {}).get(CLASS_NAMES[1], 0.0))
+                if p_pothole >= 0.20 or p_crack >= 0.20:
+                    cls_id = 2 if p_pothole >= p_crack else 1
+                else:
+                    continue
+        elif cls_id == 0:
+            # Sound pavement verdict from crop: only accept if U-Net produced dense mask in this region
             if comp and comp["class_id"] in (1, 2) and mask_full is not None:
                 mask_in_crop = (mask_full[by:by + bh, bx:bx + bw] == comp["seg_cls"]).sum()
-                if mask_in_crop >= 50 and p_defect_frame >= 0.70:
+                if mask_in_crop >= 35 and (p_defect_frame >= 0.50 or p_defect_crop >= 0.25):
                     cls_id = comp["class_id"]
                 else:
                     continue
@@ -1249,6 +1264,32 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "probabilities": cls_info["probabilities"],
             "source": prop["source"],
         })
+
+    # Deduplicate overlapping / nested bounding boxes (Non-Maximum Suppression & Containment)
+    if len(detections) > 1:
+        dets_sorted = sorted(detections, key=lambda d: (d["confidence"], d["surface_area_m2"]), reverse=True)
+        keep = []
+        for d in dets_sorted:
+            b1 = d["bbox_pixels"]
+            is_dup = False
+            for k in keep:
+                b2 = k["bbox_pixels"]
+                xi0 = max(b1[0], b2[0])
+                yi0 = max(b1[1], b2[1])
+                xi1 = min(b1[0] + b1[2], b2[0] + b2[2])
+                yi1 = min(b1[1] + b1[3], b2[1] + b2[3])
+                if xi1 > xi0 and yi1 > yi0:
+                    inter = (xi1 - xi0) * (yi1 - yi0)
+                    a1 = b1[2] * b1[3]
+                    a2 = b2[2] * b2[3]
+                    iou = inter / float(a1 + a2 - inter)
+                    containment = inter / float(min(a1, a2))
+                    if iou > 0.35 or containment > 0.55:
+                        is_dup = True
+                        break
+            if not is_dup:
+                keep.append(d)
+        detections = keep
 
     # Sort detections by significance (potholes first, then largest surface area)
     detections.sort(key=lambda d: (1 if d["class_id"] == 2 else 0, d["surface_area_m2"]), reverse=True)

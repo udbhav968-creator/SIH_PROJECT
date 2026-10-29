@@ -116,6 +116,8 @@ def run_suite():
     giant_box_violations = 0
     unpriced_violations = 0
     area_overflow_violations = 0
+    impossible_class_violations = 0
+    degenerate_box_violations = 0
 
     print(f"{'IMAGE':<32} {'TYPE':<25} {'DETS':<6} {'GIANT':<6} {'UNPRICED':<9} {'COST (INR)':<12} {'VISUAL OVERLAY'}")
     print("-" * 115)
@@ -141,10 +143,14 @@ def run_suite():
         giant_boxes = [d for d in dets if d.get("area_diagnostics", {}).get("box_share_of_frame", 0.0) > 0.35 and d.get("is_distress")]
         unpriced_defects = [d for d in dets if d.get("is_distress") and d.get("needs_manual_survey")]
         area_overflows = [d for d in dets if d.get("is_distress") and d.get("surface_area_m2", 0.0) > 3.0]
+        impossible_classes = [d for d in dets if d.get("class_id") in (4, 5, 6) and d.get("is_distress")]
+        degenerate_boxes = [d for d in dets if d.get("is_distress") and (d.get("bbox_pixels", [0,0,0,0])[2] < 14 or d.get("bbox_pixels", [0,0,0,0])[3] < 10)]
         
         giant_box_violations += len(giant_boxes)
         unpriced_violations += len(unpriced_defects)
         area_overflow_violations += len(area_overflows)
+        impossible_class_violations += len(impossible_classes)
+        degenerate_box_violations += len(degenerate_boxes)
 
         out_name = f"eval_{i+1:02d}_{os.path.splitext(os.path.basename(path))[0]}.png"
         v_path = render_visual_verification_image(path, res, out_name)
@@ -188,7 +194,9 @@ def run_suite():
             "results": results
         }, f, indent=2)
 
-    all_passed = (crashes == 0 and giant_box_violations == 0 and unpriced_violations == 0 and area_overflow_violations == 0)
+    print(f"  Impossible Defect Classes    : {impossible_class_violations}  (Target: 0)")
+    print(f"  Degenerate Bounding Boxes    : {degenerate_box_violations}  (Target: 0)")
+    all_passed = (crashes == 0 and giant_box_violations == 0 and unpriced_violations == 0 and area_overflow_violations == 0 and impossible_class_violations == 0 and degenerate_box_violations == 0)
     if all_passed:
         print("\n>>> ALL MLOPS QUALITY GATES PASSED PERFECTLY! <<<")
     else:
