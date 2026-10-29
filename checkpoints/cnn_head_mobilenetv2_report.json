@@ -25,7 +25,7 @@
       "cv_accuracy_std": 0.0082,
       "cv_macro_f1": 0.6936,
       "cv_macro_f1_std": 0.0108,
-      "seconds": 30.8,
+      "seconds": 46.9,
       "score": 0.7169
     },
     "logistic_C1|plain": {
@@ -34,7 +34,7 @@
       "cv_accuracy_std": 0.0119,
       "cv_macro_f1": 0.6777,
       "cv_macro_f1_std": 0.0174,
-      "seconds": 33.9,
+      "seconds": 54.6,
       "score": 0.7022
     },
     "logistic_C3|plain": {
@@ -43,7 +43,7 @@
       "cv_accuracy_std": 0.012,
       "cv_macro_f1": 0.6669,
       "cv_macro_f1_std": 0.016,
-      "seconds": 33.9,
+      "seconds": 60.9,
       "score": 0.6911
     },
     "sgd_huber|plain": {
@@ -52,7 +52,7 @@
       "cv_accuracy_std": 0.0127,
       "cv_macro_f1": 0.6857,
       "cv_macro_f1_std": 0.0174,
-      "seconds": 309.0,
+      "seconds": 377.5,
       "score": 0.7077
     },
     "mlp_512_256|plain": {
@@ -61,7 +61,7 @@
       "cv_accuracy_std": 0.0177,
       "cv_macro_f1": 0.7384,
       "cv_macro_f1_std": 0.0221,
-      "seconds": 138.9,
+      "seconds": 194.4,
       "score": 0.7563
     },
     "logistic_C0.3|flip_tta": {
@@ -70,7 +70,7 @@
       "cv_accuracy_std": 0.0131,
       "cv_macro_f1": 0.6966,
       "cv_macro_f1_std": 0.0171,
-      "seconds": 34.8,
+      "seconds": 48.6,
       "score": 0.7205
     },
     "logistic_C1|flip_tta": {
@@ -79,7 +79,7 @@
       "cv_accuracy_std": 0.0126,
       "cv_macro_f1": 0.6879,
       "cv_macro_f1_std": 0.0177,
-      "seconds": 35.7,
+      "seconds": 52.7,
       "score": 0.7118
     },
     "logistic_C3|flip_tta": {
@@ -88,7 +88,7 @@
       "cv_accuracy_std": 0.0153,
       "cv_macro_f1": 0.6801,
       "cv_macro_f1_std": 0.0206,
-      "seconds": 41.4,
+      "seconds": 55.4,
       "score": 0.7045
     },
     "sgd_huber|flip_tta": {
@@ -97,7 +97,7 @@
       "cv_accuracy_std": 0.0156,
       "cv_macro_f1": 0.6893,
       "cv_macro_f1_std": 0.021,
-      "seconds": 280.3,
+      "seconds": 348.2,
       "score": 0.7108
     },
     "mlp_512_256|flip_tta": {
@@ -106,7 +106,7 @@
       "cv_accuracy_std": 0.0315,
       "cv_macro_f1": 0.7314,
       "cv_macro_f1_std": 0.0411,
-      "seconds": 114.0,
+      "seconds": 152.4,
       "score": 0.7511
     },
     "ensemble_soft|plain": {
@@ -120,7 +120,7 @@
       "cv_accuracy_std": 0.0126,
       "cv_macro_f1": 0.7307,
       "cv_macro_f1_std": 0.0173,
-      "seconds": 478.9,
+      "seconds": 598.8,
       "score": 0.7509
     }
   },
@@ -250,7 +250,7 @@
     }
   },
   "split_strategy": "grouped by source photograph; test set scored once",
-  "trained_at_unix": 1793260512,
+  "trained_at_unix": 1793258193,
   "handcrafted_baseline": {
     "accuracy": 0.7797,
     "macro_f1": 0.6506,
