@@ -741,26 +741,153 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
     if not raw_boxes:
         return []
 
-    # Non-maximum suppression: sort by score and preserve distinct pothole locations
-    raw_boxes.sort(key=lambda b: b[4] * ((b[2] * b[3]) ** 0.15), reverse=True)
-    selected = []
-    for b in raw_boxes:
-        b_area = b[2] * b[3]
-        keep = True
-        for s in selected:
-            xA, yA = max(b[0], s[0]), max(b[1], s[1])
-            xB, yB = min(b[0] + b[2], s[0] + s[2]), min(b[1] + b[3], s[1] + s[3])
-            inter = max(0, xB - xA) * max(0, yB - yA)
-            s_area = s[2] * s[3]
-            iou = inter / max(1e-6, b_area + s_area - inter)
-            if iou > 0.35:
-                keep = False
-                break
-        if keep:
-            selected.append(b)
-            if len(selected) >= 8:
-                break
-    return selected
+    return _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=4)
+
+
+def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=4):
+    """
+    Weighted Box Fusion and Spatial Clustering.
+    Merges overlapping (IoU >= 0.08) and adjacent boxes into unified defect boundaries,
+    eliminating fragmented duplicates and colliding text labels.
+    """
+    if not raw_boxes:
+        return []
+    boxes = sorted(raw_boxes, key=lambda b: b[4], reverse=True)
+    clusters = []
+    for b in boxes:
+        bx, by, bw, bh, sc, kd = b
+        x1, y1, x2, y2 = bx, by, bx + bw, by + bh
+        matched = []
+        for ci, c in enumerate(clusters):
+            cx1 = min(ob[0] for ob in c)
+            cy1 = min(ob[1] for ob in c)
+            cx2 = max(ob[0] + ob[2] for ob in c)
+            cy2 = max(ob[1] + ob[3] for ob in c)
+            cbw = cx2 - cx1
+            cbh = cy2 - cy1
+
+            inter_w = max(0, min(x2, cx2) - max(x1, cx1))
+            inter_h = max(0, min(y2, cy2) - max(y1, cy1))
+            inter_area = inter_w * inter_h
+            b_area = bw * bh
+            c_area = cbw * cbh
+            union_area = b_area + c_area - inter_area
+            iou = inter_area / max(1.0, union_area)
+            containment = inter_area / max(1.0, min(b_area, c_area))
+            h_gap = max(0, max(x1, cx1) - min(x2, cx2))
+            v_overlap = inter_h / max(1, min(bh, cbh))
+            v_gap = max(0, max(y1, cy1) - min(y2, cy2))
+            h_overlap = inter_w / max(1, min(bw, cbw))
+            if iou >= 0.08 or containment >= 0.25 or (h_gap <= 25 and v_overlap >= 0.30) or (v_gap <= 20 and h_overlap >= 0.30):
+                matched.append(ci)
+        if not matched:
+            clusters.append([b])
+        elif len(matched) == 1:
+            clusters[matched[0]].append(b)
+        else:
+            merged = [b]
+            for ci in sorted(matched, reverse=True):
+                merged.extend(clusters.pop(ci))
+            clusters.append(merged)
+
+    fused = []
+    for c in clusters:
+        min_x = max(0, min(b[0] for b in c))
+        min_y = max(0, min(b[1] for b in c))
+        max_x = min(W, max(b[0] + b[2] for b in c))
+        max_y = min(H, max(b[1] + b[3] for b in c))
+        fw = max_x - min_x
+        fh = max_y - min_y
+        if fw < 35 or fh < 18:
+            continue
+        if (min_x < 20 or max_x > W - 20) and (fw * fh) < 0.015 * W * H:
+            continue
+        max_sc = max(b[4] for b in c)
+        kinds = [b[5] for b in c]
+        dom_kind = 2 if kinds.count(2) >= kinds.count(1) else 1
+        fused.append([min_x, min_y, fw, fh, max_sc, dom_kind])
+
+    fused.sort(key=lambda b: b[4] * ((b[2] * b[3]) ** 0.5), reverse=True)
+    return fused[:max_boxes]
+
+
+def _segment_defect_regions(img_np, boxes, orig_h, orig_w):
+    """
+    Adaptive photometric cavity and puddle segmentation for confirmed defect proposals.
+    Provides true pixel-level masks on out-of-domain roads (unpaved, gravel, wet).
+    """
+    import numpy as np
+    import cv2
+    import io, base64
+    from PIL import Image
+
+    mask_full = np.zeros((orig_h, orig_w), dtype=np.uint8)
+    comp_boxes = []
+
+    for b in boxes:
+        bx, by, bw, bh = b["bbox_pixels"]
+        cls_id = b.get("class_id", 2)
+        crop = img_np[by:by + bh, bx:bx + bw]
+        if crop.size == 0 or bw < 16 or bh < 16:
+            continue
+        gray_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+        blur = cv2.GaussianBlur(gray_crop, (5, 5), 0)
+        _, m = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, kernel)
+        m = cv2.morphologyEx(m, cv2.MORPH_OPEN, kernel)
+        px_count = int((m > 0).sum())
+        if px_count >= 24:
+            mask_full[by:by + bh, bx:bx + bw][m > 0] = cls_id
+            comp_boxes.append({
+                "seg_cls": cls_id,
+                "class_id": cls_id,
+                "bbox_pixels": [bx, by, bw, bh],
+                "area_work_px": px_count,
+                "mean_conf": b.get("confidence", 0.90),
+            })
+
+    total_px = int((mask_full > 0).sum())
+    mask_url = None
+    if total_px > 0:
+        rgba = np.zeros((orig_h, orig_w, 4), dtype=np.uint8)
+        rgba[mask_full == 1] = [45, 212, 212, 135]   # cyan for cracks
+        rgba[mask_full == 2] = [244, 63, 94, 145]    # rose-red for potholes
+        buf = io.BytesIO()
+        Image.fromarray(rgba, mode="RGBA").save(buf, format="PNG")
+        mask_url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+    return {
+        "mask": mask_full,
+        "mask_work": mask_full,
+        "mask_data_url": mask_url,
+        "crack_px": int((mask_full == 1).sum()),
+        "pothole_px": int((mask_full == 2).sum()),
+        "crack_px_full": int((mask_full == 1).sum()),
+        "pothole_px_full": int((mask_full == 2).sum()),
+        "defect_fraction": round(float((mask_full != 0).mean()), 4),
+        "components": comp_boxes,
+    }
+
+
+def _unwrap_dashboard_screenshot(img_np):
+    """
+    Detects if an uploaded image is an accidental browser screenshot of the
+    ROAD-SHIELD inspection page containing an embedded road canvas, and extracts
+    the pure road photo canvas.
+    """
+    H, W = img_np.shape[:2]
+    if W < 600 or H < 400:
+        return img_np, False
+    right_patch = img_np[int(H * 0.25):int(H * 0.75), int(W * 0.65):int(W * 0.95)]
+    r_mean = right_patch.mean(axis=(0, 1))
+    if 8.0 <= r_mean[0] <= 26.0 and 12.0 <= r_mean[1] <= 32.0 and 18.0 <= r_mean[2] <= 42.0:
+        x0, y0 = 24, 112
+        x1, y1 = int(W * 0.524), int(H * 0.75)
+        crop = img_np[y0:y1, x0:x1]
+        if crop.shape[0] > 120 and crop.shape[1] > 150:
+            return crop, True
+    return img_np, False
 
 
 def _box_iou(b1, b2):
@@ -777,6 +904,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     t0 = time.time()
     s = _load_sessions()
     img_np = decode_base64_image(image_b64)
+    img_np, _was_unwrapped = _unwrap_dashboard_screenshot(img_np)
     H, W = img_np.shape[:2]
     gray = (0.299 * img_np[:, :, 0] + 0.587 * img_np[:, :, 1] + 0.114 * img_np[:, :, 2]).astype(np.float32)
 
@@ -864,8 +992,14 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     # STAGE 2: YOLOv8 COCO Object Detection + Geometric Marking Analyzer (Zebra Crossing)
     scene_objects, scene_summary, pedestrians, vehicle_detections, traffic_analysis, object_mask, markings_res = _detect_scene_objects(img_np, H, W)
 
-    # STAGE 3: Whole-frame MobileNetV3-Large classification
+    # STAGE 3: Whole-frame MobileNetV3-Large classification with Road Surface ROI prior
     frame_cls_raw = classify_crop(img_np)
+    roi_crop = img_np[int(H * 0.35):, :]
+    road_cls_raw = classify_crop(roi_crop) if roi_crop.size > 0 else frame_cls_raw
+    if frame_cls_raw.get("class_id") in (5, 6) and road_cls_raw.get("class_id") in (1, 2, 3):
+        frame_cls_raw = road_cls_raw
+    elif frame_cls_raw.get("class_id") == 0 and road_cls_raw.get("class_id") in (1, 2, 3) and road_cls_raw.get("confidence", 0.0) >= 0.45:
+        frame_cls_raw = road_cls_raw
     f_cls = frame_cls_raw.get("class_id")
     f_conf = frame_cls_raw.get("confidence", 0.0)
 
@@ -980,15 +1114,12 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
 
         # Heuristic salient proposal verification (matches pipeline/deep_inference_pipeline.py line 1252):
         if prop["source"] == "salient_cavity_detector":
-            # 1. Whole frame must confirm distress (whole frame is NOT Normal Road)
-            if frame_cls_raw["class_id"] == 0 or frame_cls_raw["confidence"] < 0.60:
+            crop_is_distress = cls_info["class_id"] in (1, 2, 3) and cls_info["confidence"] >= 0.65
+            frame_is_distress = frame_cls_raw["class_id"] in (1, 2, 3) and frame_cls_raw["confidence"] >= 0.40
+            if not (crop_is_distress or frame_is_distress):
                 continue
-            # 2. Whole frame class must agree with defect kind (or waterlogging/pothole interchange)
-            if frame_cls_raw["class_id"] not in (cls_info["class_id"], 2, 3):
-                continue
-            # 3. Must be a significant anomaly, not tiny peripheral noise
             box_area_share = (bw * bh) / float(W * H)
-            if box_area_share < 0.035 and cls_info["confidence"] < 0.90:
+            if box_area_share < 0.015 and cls_info["confidence"] < 0.85:
                 continue
 
         # Class determination: ALWAYS respect the crop classifier's specific verdict
@@ -1112,6 +1243,33 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "repair_cost_inr": 0.0,
             "probabilities": frame_cls_raw["probabilities"],
         })
+
+    # STAGE 5: Adaptive Photometric Segmentation for Confirmed Defect Regions
+    # If U-Net produced 0 pixels (domain shift on unpaved/flooded roads), segment confirmed defects
+    if detections and seg_out and (seg_out.get("pothole_px_full", 0) + seg_out.get("crack_px_full", 0)) < 30:
+        adaptive_seg = _segment_defect_regions(img_np, detections, H, W)
+        if (adaptive_seg["pothole_px_full"] + adaptive_seg["crack_px_full"]) > 0:
+            seg_out = adaptive_seg
+            mask_full = adaptive_seg["mask"]
+            for d in detections:
+                if d.get("bbox_pixels"):
+                    bx, by, bw, bh = d["bbox_pixels"]
+                    cls_id = d.get("class_id", 2)
+                    region_bool = np.zeros((H, W), dtype=bool)
+                    region_bool[by:by + bh, bx:bx + bw] = (mask_full[by:by + bh, bx:bx + bw] == cls_id)
+                    px_c = int(region_bool.sum())
+                    if px_c >= 20:
+                        m2, _ = ipm.mask_area_m2(region_bool)
+                        d["surface_area_m2"] = round(float(max(0.04, min(m2, 6.0))), 4)
+                        d["area_method"] = "segmentation_mask"
+                        d["area_diagnostics"]["mask_pixels"] = px_c
+                        depth_cm = d.get("depth_cm", 5.0)
+                        tonnage_t = round(d["surface_area_m2"] * (depth_cm / 100.0) * 2.40 * 1.15, 4)
+                        d["morth_tonnage_t"] = tonnage_t
+                        d["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
+                        if d.get("depth_estimate"):
+                            d["depth_estimate"]["repair_cost_low_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                            d["depth_estimate"]["repair_cost_high_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
 
     # If no road defect was confirmed, zero out the segmentation mask so rejected noise blobs are not counted
     if not detections and seg_out:

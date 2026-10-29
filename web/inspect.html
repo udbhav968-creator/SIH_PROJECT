@@ -336,6 +336,7 @@ function draw() {
   }
 
   if (el("showBox").checked) {
+    const drawnLabels = [];
     roadDets.forEach(d => {
       const b = d.bbox_pixels;
       const bn = d.bbox_normalized;
@@ -354,10 +355,19 @@ function draw() {
       const label = `${(d.class_name || "").split(" ")[0]} ${(d.confidence * 100).toFixed(0)}%`;
       ctx.font = "600 12px ui-monospace, monospace";
       const tw = ctx.measureText(label).width + 10;
+      let tagX = x;
+      let tagY = Math.max(0, y - 19);
+      for (const dl of drawnLabels) {
+        if (Math.abs(tagX - dl.x) < (tw + 10) && Math.abs(tagY - dl.y) < 22) {
+          tagY = Math.min(cv.height - 20, y + h + 2);
+          break;
+        }
+      }
+      drawnLabels.push({ x: tagX, y: tagY, w: tw, h: 19 });
       ctx.fillStyle = measured ? "#2dd4d4" : "#f0a92b";
-      ctx.fillRect(x, Math.max(0, y - 19), tw, 19);
+      ctx.fillRect(tagX, tagY, tw, 19);
       ctx.fillStyle = "#0a0f17";
-      ctx.fillText(label, x + 5, Math.max(13, y - 5));
+      ctx.fillText(label, tagX + 5, tagY + 14);
     });
   }
   // Road-damage boxes from the YOLOv8 model trained on RDD2022 India. Solid
