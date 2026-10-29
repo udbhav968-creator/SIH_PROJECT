@@ -506,10 +506,14 @@ def _compute_pci(detections):
     if crack_dens > 0:
         deducts["cracking"] = round(eng._deduct_value("cracking", "MEDIUM", crack_dens), 1)
     if pot_dens > 0:
-        deducts["potholes"] = round(eng._deduct_value("potholes", "HIGH" if pot_area > 0.35 else "MEDIUM", pot_dens), 1)
+        p_sev = "HIGH" if (pot_area > 0.35 or any(float(d.get("depth_cm", 0.0)) >= 4.0 for d in potholes)) else "MEDIUM"
+        deducts["potholes"] = round(eng._deduct_value("potholes", p_sev, pot_dens), 1)
     if other and not deducts:
         deducts["safety_corridor"] = 14.5
     cdv = eng._corrected_deduct_value(list(deducts.values()))
+    # Under ASTM D6433, any confirmed severe open cavity (>0.5 m2 or depth >= 4.5 cm) requires priority work order
+    if any(d.get("class_id") == 2 and (float(d.get("surface_area_m2", 0.0)) >= 0.5 or float(d.get("depth_cm", 0.0)) >= 4.5) for d in detections):
+        cdv = max(cdv, 65.0)
     pci = round(float(np.clip(100.0 - cdv, 5.0, 100.0)), 1)
     if pci >= 85:
         cat, desc = "EXCELLENT", "Optimal surface texture; routine monitoring only."
@@ -734,8 +738,14 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
         span_c = max(cs) - min(cs) + 1
         bx = max(10, min(cs) * cell_w - int(cell_w * 0.15))
         by = max(roi_y0, roi_y0 + min(rs) * cell_h - int(cell_h * 0.10))
-        bw = min(int(W * 0.45), min(W - bx - 10, span_c * cell_w + int(cell_w * 0.3)))
-        bh = min(int(H * 0.35), min(H - by - 10, span_r * cell_h + int(cell_h * 0.2)))
+        bw = min(int(W * 0.78), min(W - bx - 10, span_c * cell_w + int(cell_w * 0.35)))
+        bh = min(int(H * 0.60), min(H - by - 10, span_r * cell_h + int(cell_h * 0.30)))
+        if (bw * bh) > int(W * H * 0.33):
+            scale = (int(W * H * 0.33) / float(bw * bh)) ** 0.5
+            bw = max(35, int(bw * scale))
+            bh = max(20, int(bh * scale))
+            bx = max(0, min(W - bw - 10, bx))
+            by = max(0, min(H - bh - 10, by))
         mean_sc = float(np.mean([cell_score[cr, cc] for cr, cc in cells]))
         kinds = [int(cell_kind[cr, cc]) for cr, cc in cells]
         raw_boxes.append([int(bx), int(by), int(bw), int(bh), mean_sc, 2 if kinds.count(2) >= kinds.count(1) else 1])
@@ -781,7 +791,7 @@ def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=3):
             comb_h = max(y2, cy2) - min(y1, cy1)
             gap_x = max(0, max(x1, cx1) - min(x2, cx2))
             gap_y = max(0, max(y1, cy1) - min(y2, cy2))
-            is_proximate = (gap_x <= int(W * 0.08) and gap_y <= int(H * 0.06) and comb_w <= int(W * 0.45) and comb_h <= int(H * 0.35))
+            is_proximate = (gap_x <= int(W * 0.08) and gap_y <= int(H * 0.06) and comb_w <= int(W * 0.78) and comb_h <= int(H * 0.60))
 
             if iou >= 0.15 or containment >= 0.35 or is_proximate:
                 matched.append(ci)
@@ -803,6 +813,12 @@ def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=3):
         max_y = min(H, max(b[1] + b[3] for b in c))
         fw = max_x - min_x
         fh = max_y - min_y
+        if (fw * fh) > int(W * H * 0.33):
+            scale = (int(W * H * 0.33) / float(fw * fh)) ** 0.5
+            fw = max(35, int(fw * scale))
+            fh = max(20, int(fh * scale))
+            min_x = max(0, min(W - fw, min_x))
+            min_y = max(0, min(H - fh, min_y))
         if fw < 35 or fh < 18:
             continue
         if (min_x < 20 or max_x > W - 20) and (fw * fh) < 0.015 * W * H:
@@ -1230,11 +1246,21 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 area_m2, _diag = ipm.mask_area_m2(region_bool)
                 has_dense_mask = True
 
-        if not has_dense_mask:
-            area_m2 = float(ipm.calculate_surface_area_sqm(bx, by, bw, bh))
-            area_m2 = float(max(0.04, min(area_m2, 6.0)))
+        box_m2 = float(ipm.calculate_surface_area_sqm(bx, by, bw, bh))
+        box_m2 = float(max(0.04, min(box_m2, 3.0)))
 
-        area_m2 = float(max(0.012, min(area_m2, 3.0 if cls_id in (1, 2) else 6.0)))
+        # When water reflections or glare cause the U-Net mask to capture only a partial rim sliver (< 25% of box area),
+        # use the full geometric homography area so the entire cavity is costed under MoRTH Section 500
+        if has_dense_mask:
+            if area_m2 < 0.25 * box_m2 and cls_id == 2:
+                area_m2 = box_m2
+                has_dense_mask = False
+            else:
+                area_m2 = float(max(0.012, min(area_m2, 3.0)))
+        else:
+            area_m2 = box_m2
+
+        area_m2 = float(max(0.012, min(area_m2, 3.0)))
         dist_m = round(max(2.2, 18.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
         depth_cm = de["depth_cm"]
         tonnage_t = round(area_m2 * (depth_cm / 100.0) * 2.40 * 1.15, 4)
@@ -1309,8 +1335,8 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 is_proximate = (
                     gap_x <= int(W * 0.08)
                     and gap_y <= int(H * 0.06)
-                    and comb_w <= int(W * 0.65)
-                    and comb_h <= int(H * 0.45)
+                    and comb_w <= int(W * 0.78)
+                    and comb_h <= int(H * 0.60)
                 )
 
                 if iou > 0.15 or containment > 0.30 or is_proximate:
@@ -1326,13 +1352,28 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 ny = min(b1[1], b2[1])
                 nw = max(b1[0] + b1[2], b2[0] + b2[2]) - nx
                 nh = max(b1[1] + b1[3], b2[1] + b2[3]) - ny
+                if (nw * nh) > int(W * H * 0.33):
+                    scale = (int(W * H * 0.33) / float(nw * nh)) ** 0.5
+                    nw = max(35, int(nw * scale))
+                    nh = max(20, int(nh * scale))
+                    nx = max(0, min(W - nw, nx))
+                    ny = max(0, min(H - nh, ny))
+
                 md["bbox_pixels"] = [nx, ny, nw, nh]
                 md["bbox_normalized"] = [round(nx / W, 4), round(ny / H, 4), round(nw / W, 4), round(nh / H, 4)]
                 md["confidence"] = max(d["confidence"], md["confidence"])
-                if d.get("area_method") == "segmentation_mask" or md.get("area_method") == "segmentation_mask":
-                    md["area_method"] = "segmentation_mask"
-                if md.get("area_method") != "segmentation_mask":
-                    md["surface_area_m2"] = round(float(ipm.calculate_surface_area_sqm(nx, ny, nw, nh)), 4)
+
+                box_m2 = round(float(ipm.calculate_surface_area_sqm(nx, ny, nw, nh)), 4)
+                box_m2 = float(max(0.04, min(box_m2, 3.0)))
+
+                curr_area = max(float(d.get("surface_area_m2", 0.0)), float(md.get("surface_area_m2", 0.0)))
+                if curr_area < 0.25 * box_m2:
+                    md["surface_area_m2"] = box_m2
+                    md["area_method"] = "perspective_homography"
+                else:
+                    md["surface_area_m2"] = round(min(3.0, max(curr_area, box_m2 * 0.6)), 4)
+                    md["area_method"] = "segmentation_mask" if (d.get("area_method") == "segmentation_mask" or md.get("area_method") == "segmentation_mask") else "perspective_homography"
+
                 box_share = (nw * nh) / float(W * H)
                 md["area_diagnostics"]["box_share_of_frame"] = round(box_share, 3)
                 de = _photometric_depth(gray, [nx, ny, nw, nh], md["class_id"])
@@ -1400,21 +1441,33 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 region_bool = np.zeros((H, W), dtype=bool)
                 region_bool[by:by + bh, bx:bx + bw] = (mask_full[by:by + bh, bx:bx + bw] == cls_id)
                 px_c = int(region_bool.sum())
+                box_m2 = round(float(ipm.calculate_surface_area_sqm(bx, by, bw, bh)), 4)
+                box_m2 = float(max(0.04, min(box_m2, 3.0)))
                 if px_c >= 25:
                     m2, _ = ipm.mask_area_m2(region_bool)
-                    d["surface_area_m2"] = round(float(max(0.04, min(m2, 2.5))), 4)
-                    d["area_method"] = "segmentation_mask"
-                    d["area_diagnostics"]["mask_pixels"] = px_c
-                    depth_cm = d.get("depth_cm", 4.0)
-                    tonnage_t = round(d["surface_area_m2"] * (depth_cm / 100.0) * 2.40 * 1.15, 4)
-                    d["morth_tonnage_t"] = tonnage_t
-                    d["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
-                    box_share = (bw * bh) / float(W * H)
-                    d["needs_manual_survey"] = bool(d["surface_area_m2"] > 3.0 or box_share > 0.40)
-                    d["area_is_plausible_single_repair"] = not d["needs_manual_survey"]
-                    if d.get("depth_estimate"):
-                        d["depth_estimate"]["repair_cost_low_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-                        d["depth_estimate"]["repair_cost_high_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                    # If mask is sparse/rim only (< 25% of box area due to water/glare in crater),
+                    # defend the full cavity homography area rather than shrinking to rim sliver
+                    if m2 < 0.25 * box_m2 and cls_id == 2:
+                        d["surface_area_m2"] = box_m2
+                        d["area_method"] = "perspective_homography"
+                    else:
+                        d["surface_area_m2"] = round(float(max(0.04, min(m2, 3.0))), 4)
+                        d["area_method"] = "segmentation_mask"
+                else:
+                    d["surface_area_m2"] = box_m2
+                    d["area_method"] = "perspective_homography"
+
+                d["area_diagnostics"]["mask_pixels"] = px_c
+                depth_cm = d.get("depth_cm", 4.0)
+                tonnage_t = round(d["surface_area_m2"] * (depth_cm / 100.0) * 2.40 * 1.15, 4)
+                d["morth_tonnage_t"] = tonnage_t
+                d["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
+                box_share = (bw * bh) / float(W * H)
+                d["needs_manual_survey"] = bool(d["surface_area_m2"] > 3.0 or box_share > 0.40)
+                d["area_is_plausible_single_repair"] = not d["needs_manual_survey"]
+                if d.get("depth_estimate"):
+                    d["depth_estimate"]["repair_cost_low_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                    d["depth_estimate"]["repair_cost_high_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
 
     # If no road defect was confirmed, zero out the segmentation mask so rejected noise blobs are not counted
     if not detections and seg_out:

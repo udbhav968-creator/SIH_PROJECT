@@ -1,5 +1,5 @@
 {
-  "timestamp": 1793294642.4530811,
+  "timestamp": 1793296471.3520942,
   "total_images": 18,
   "crashes": 0,
   "giant_box_violations": 0,
@@ -13,9 +13,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 384.0,
+      "total_cost_inr": 400.5,
       "visual_overlay": "eval_01_clean_original_road.png",
-      "elapsed_ms": 6864.9
+      "elapsed_ms": 6547.6
     },
     {
       "path": "user_test_scene_2.png",
@@ -24,9 +24,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 2620.5,
+      "total_cost_inr": 2484.0,
       "visual_overlay": "eval_02_user_test_scene_2.png",
-      "elapsed_ms": 1696.6
+      "elapsed_ms": 1505.7
     },
     {
       "path": "canvas_scene1.png",
@@ -35,9 +35,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 2954.25,
+      "total_cost_inr": 2359.5,
       "visual_overlay": "eval_03_canvas_scene1.png",
-      "elapsed_ms": 1610.5
+      "elapsed_ms": 1591.6
     },
     {
       "path": "canvas_scene2.png",
@@ -48,7 +48,7 @@
       "area_overflow_count": 0,
       "total_cost_inr": 0,
       "visual_overlay": "eval_04_canvas_scene2.png",
-      "elapsed_ms": 1608.9
+      "elapsed_ms": 1637.2
     },
     {
       "path": "1014620_RS_386_386RS124739_30026_RAW.jpg",
@@ -57,9 +57,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 30.75,
+      "total_cost_inr": 74.25,
       "visual_overlay": "eval_05_1014620_RS_386_386RS124739_30026_RAW.png",
-      "elapsed_ms": 2302.5
+      "elapsed_ms": 2294.0
     },
     {
       "path": "1014628_RS_386_386RS124739_30065_RAW.jpg",
@@ -68,9 +68,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 463.5,
+      "total_cost_inr": 866.25,
       "visual_overlay": "eval_06_1014628_RS_386_386RS124739_30065_RAW.png",
-      "elapsed_ms": 2534.1
+      "elapsed_ms": 2560.4
     },
     {
       "path": "1014636_RS_386_386RS124739_30105_RAW.jpg",
@@ -79,9 +79,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 170.25,
+      "total_cost_inr": 260.25,
       "visual_overlay": "eval_07_1014636_RS_386_386RS124739_30105_RAW.png",
-      "elapsed_ms": 2472.3
+      "elapsed_ms": 2397.4
     },
     {
       "path": "1014760_RS_386_386RS124739_30725_RAW.jpg",
@@ -90,9 +90,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 171.75,
+      "total_cost_inr": 177.0,
       "visual_overlay": "eval_08_1014760_RS_386_386RS124739_30725_RAW.png",
-      "elapsed_ms": 2029.7
+      "elapsed_ms": 1830.8
     },
     {
       "path": "1014639_RS_386_386RS124739_30121_RAW.jpg",
@@ -101,9 +101,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 271.5,
+      "total_cost_inr": 340.5,
       "visual_overlay": "eval_09_1014639_RS_386_386RS124739_30121_RAW.png",
-      "elapsed_ms": 2349.1
+      "elapsed_ms": 2324.5
     },
     {
       "path": "1014730_RS_386_386RS124739_30575_RAW.jpg",
@@ -112,9 +112,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 17.25,
+      "total_cost_inr": 70.5,
       "visual_overlay": "eval_10_1014730_RS_386_386RS124739_30575_RAW.png",
-      "elapsed_ms": 2116.5
+      "elapsed_ms": 2002.5
     },
     {
       "path": "1014777_RS_386_386RS124739_30811_RAW.jpg",
@@ -125,7 +125,7 @@
       "area_overflow_count": 0,
       "total_cost_inr": 74.25,
       "visual_overlay": "eval_11_1014777_RS_386_386RS124739_30811_RAW.png",
-      "elapsed_ms": 2268.5
+      "elapsed_ms": 2170.7
     },
     {
       "path": "1014788_RS_386_386RS124739_30865_RAW.jpg",
@@ -134,9 +134,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 77.25,
+      "total_cost_inr": 106.5,
       "visual_overlay": "eval_12_1014788_RS_386_386RS124739_30865_RAW.png",
-      "elapsed_ms": 2524.8
+      "elapsed_ms": 2225.8
     },
     {
       "path": "1014620_RS_386_386RS124739_30026_RAW.jpg",
@@ -145,9 +145,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 30.75,
+      "total_cost_inr": 74.25,
       "visual_overlay": "eval_13_1014620_RS_386_386RS124739_30026_RAW.png",
-      "elapsed_ms": 2318.8
+      "elapsed_ms": 2031.2
     },
     {
       "path": "1014628_RS_386_386RS124739_30065_RAW.jpg",
@@ -156,9 +156,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 463.5,
+      "total_cost_inr": 866.25,
       "visual_overlay": "eval_14_1014628_RS_386_386RS124739_30065_RAW.png",
-      "elapsed_ms": 2806.2
+      "elapsed_ms": 2471.7
     },
     {
       "path": "1014636_RS_386_386RS124739_30105_RAW.jpg",
@@ -167,9 +167,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 170.25,
+      "total_cost_inr": 260.25,
       "visual_overlay": "eval_15_1014636_RS_386_386RS124739_30105_RAW.png",
-      "elapsed_ms": 2550.0
+      "elapsed_ms": 2339.7
     },
     {
       "path": "real_01_FileCoopers Arms Flood Street Chelsea - geogr.jpg",
@@ -178,9 +178,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 102.0,
+      "total_cost_inr": 6458.25,
       "visual_overlay": "eval_16_real_01_FileCoopers Arms Flood Street Chelsea - geogr.png",
-      "elapsed_ms": 2192.5
+      "elapsed_ms": 2054.7
     },
     {
       "path": "real_02_FileCoopers Arms Flood Street - geograph.org..jpg",
@@ -189,9 +189,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 3345.75,
+      "total_cost_inr": 4719.75,
       "visual_overlay": "eval_17_real_02_FileCoopers Arms Flood Street - geograph.org..png",
-      "elapsed_ms": 1686.0
+      "elapsed_ms": 1745.6
     },
     {
       "path": "real_07_FileHall of Remembrance Flood Street SW3 - ge.jpg",
@@ -200,9 +200,9 @@
       "giant_boxes_count": 0,
       "unpriced_defects_count": 0,
       "area_overflow_count": 0,
-      "total_cost_inr": 63.75,
+      "total_cost_inr": 69.0,
       "visual_overlay": "eval_18_real_07_FileHall of Remembrance Flood Street SW3 - ge.png",
-      "elapsed_ms": 2041.5
+      "elapsed_ms": 1863.8
     }
   ]
 }
