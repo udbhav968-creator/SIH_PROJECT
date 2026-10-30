@@ -20,6 +20,12 @@
   showed only "99%" under "car 82%"); a probability of 0.995+ shows as ">=99%", not "100%".
 - **Survey panel** states the actual reason (area above the single-patch bound, or the share
   of the frame) and no longer says the defect "is priced above" when no cost is quoted.
+- **Same photograph, same answer, whatever the input type** (`models/cv_cavity_detector.decode_image`).
+  Files, uploads (base64) and bytes were resized to the working resolution, but numpy
+  arrays - the camera frames `edge/bus_agent.py` passes, and video frames - were analysed at
+  their own resolution. On the 36 clean / 24 defect check photographs: 6/36 false positives
+  as arrays vs 3/36 as files, so the published 3/36 did not describe the bus deployment.
+  Arrays are now resized the same way: 3/36 and 22/24 for every input type.
 
 ## Previous: 30 Oct (2) - the website runs the served segmenter and the main engine's rules
 

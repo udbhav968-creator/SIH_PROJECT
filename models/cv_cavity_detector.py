@@ -52,7 +52,18 @@ class CVCavityDetector:
         elif isinstance(image_input, Image.Image):
             pil_img = image_input.convert("RGB")
         elif isinstance(image_input, np.ndarray):
-            return image_input
+            # Arrays (camera frames from edge/bus_agent.py, video frames) used to be returned at
+            # their own resolution while files, uploads and bytes were resized below, so the
+            # same photograph gave different detections by input type: on the 36 clean / 24
+            # defect check photographs, 6/36 false positives as an array vs 3/36 as a file.
+            # Every input is now analysed at the working resolution the engine is measured at.
+            arr = np.asarray(image_input)
+            if arr.ndim == 2:
+                arr = np.dstack([arr] * 3)
+            arr = np.clip(arr[:, :, :3], 0, 255).astype(np.uint8)
+            if arr.shape[1] == self.target_w and arr.shape[0] == self.target_h:
+                return arr
+            pil_img = Image.fromarray(arr)
         else:
             raise ValueError(f"Unsupported image input type: {type(image_input)}")
 
