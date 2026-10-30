@@ -490,6 +490,9 @@ class DeepInferencePipeline:
         self._has_confirmed_seg_distress = False
         confirmed_seg_boxes = []
         for bbox in seg_boxes:
+            bx_s, by_s, bw_s, bh_s = bbox[:4]
+            if (bx_s < 20 or bx_s + bw_s > W - 20) and by_s < int(H * 0.50) and (bw_s * bh_s) < int(0.04 * W * H):
+                continue
             entry = self._classify_region(img_np, gray, bbox, W, H, mean_intensity)
             if entry is not None:
                 detections.append(entry)
@@ -507,6 +510,104 @@ class DeepInferencePipeline:
                 detections.append(entry)
                 if entry.get("is_distress"):
                     self._has_confirmed_seg_distress = True
+
+        # Deduplication, horizon glare rejection, and spatial proximity fusion for distress detections
+        distress_dets = [d for d in detections if d.get("is_distress")]
+        other_dets = [d for d in detections if not d.get("is_distress")]
+
+        filtered_distress = []
+        for d in distress_dets:
+            b = d.get("bbox_pixels")
+            if not b:
+                filtered_distress.append(d)
+                continue
+            bx, by, bw, bh = b
+            if (bx < 20 or bx + bw > W - 20) and by < int(H * 0.50) and (bw * bh) < int(0.04 * W * H):
+                continue
+            if (by + bh * 0.5) < int(H * 0.48) and bw > int(W * 0.30):
+                continue
+            filtered_distress.append(d)
+
+        if len(filtered_distress) > 1:
+            changed = True
+            while changed and len(filtered_distress) > 1:
+                changed = False
+                new_dets = []
+                used = set()
+                for i in range(len(filtered_distress)):
+                    if i in used:
+                        continue
+                    d1 = filtered_distress[i]
+                    mb = d1["bbox_pixels"][:]
+                    max_conf = d1["confidence"]
+                    max_area = d1.get("surface_area_m2", 0.0)
+                    for j in range(i + 1, len(filtered_distress)):
+                        if j in used:
+                            continue
+                        d2 = filtered_distress[j]
+                        if d1["class_id"] != d2["class_id"]:
+                            continue
+                        if self._can_merge_defects(mb, d2["bbox_pixels"], W, H):
+                            nx = min(mb[0], d2["bbox_pixels"][0])
+                            ny = min(mb[1], d2["bbox_pixels"][1])
+                            nw = max(mb[0] + mb[2], d2["bbox_pixels"][0] + d2["bbox_pixels"][2]) - nx
+                            nh = max(mb[1] + mb[3], d2["bbox_pixels"][1] + d2["bbox_pixels"][3]) - ny
+                            if (nw * nh) > int(W * H * 0.33):
+                                scale = (int(W * H * 0.33) / float(nw * nh)) ** 0.5
+                                cx = nx + nw // 2
+                                cy = ny + nh // 2
+                                nw = max(35, int(nw * scale))
+                                nh = max(20, int(nh * scale))
+                                nx = max(0, min(W - nw, cx - nw // 2))
+                                ny = max(0, min(H - nh, cy - nh // 2))
+                            mb = [nx, ny, nw, nh]
+                            max_conf = max(max_conf, d2["confidence"])
+                            max_area = max(max_area, d2.get("surface_area_m2", 0.0))
+                            used.add(j)
+                            changed = True
+                    used.add(i)
+                    d1_merged = dict(d1)
+                    d1_merged["bbox_pixels"] = mb
+                    d1_merged["bbox_normalized"] = [round(mb[0] / W, 4), round(mb[1] / H, 4), round(mb[2] / W, 4), round(mb[3] / H, 4)]
+                    d1_merged["confidence"] = max_conf
+                    box_m2 = round(float(self.ipm_engine.calculate_surface_area_sqm(mb[0], mb[1], mb[2], mb[3])), 4)
+                    region_mask = self._region_mask(d1_merged["class_id"], mb[0], mb[1], mb[2], mb[3], H, W)
+                    if region_mask is not None and int(region_mask.sum()) >= 25:
+                        m2, _ = self.ipm_engine.mask_area_m2(region_mask)
+                        d1_merged["surface_area_m2"] = round(float(max(0.04, min(max(m2, box_m2 * 0.40), 3.0))), 4)
+                        d1_merged["area_method"] = "segmentation_mask"
+                    else:
+                        d1_merged["surface_area_m2"] = float(max(0.04, min(box_m2, 3.0)))
+                        d1_merged["area_method"] = "segmentation_mask" if d1_merged.get("area_method") == "segmentation_mask" else "bounding_box_estimate"
+                    de = d1_merged.get("depth_estimate") or {}
+                    depth_cm = de.get("depth_cm", 4.5)
+                    d1_merged["depth_cm"] = depth_cm
+                    tonnage_t = round(d1_merged["surface_area_m2"] * (depth_cm / 100.0) * 2.40 * 1.15, 4)
+                    d1_merged["morth_tonnage_t"] = tonnage_t
+                    d1_merged["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
+                    new_dets.append(d1_merged)
+                filtered_distress = new_dets
+
+            clean_dets = []
+            for d in filtered_distress:
+                b1 = d["bbox_pixels"]
+                is_nested = False
+                for other in clean_dets:
+                    b2 = other["bbox_pixels"]
+                    if d["class_id"] != other["class_id"]:
+                        continue
+                    xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
+                    xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
+                    if xi1 > xi0 and yi1 > yi0:
+                        inter = (xi1 - xi0) * (yi1 - yi0)
+                        if inter / float(b1[2] * b1[3]) >= 0.70:
+                            is_nested = True
+                            break
+                if not is_nested:
+                    clean_dets.append(d)
+            filtered_distress = clean_dets
+
+        detections = other_dets + filtered_distress
 
         # Corridor-level hazard check (Waterlogging, Missing Zebra Crossing, Missing Road Divider, Damaged Sign)
         # when no region-level distress was found.
@@ -923,7 +1024,7 @@ class DeepInferencePipeline:
     # segmentation component covered 83% x 84% of the frame and was reported as
     # a single 4.273 m2 pothole priced at Rs 2,830. A component that large is
     # the segmenter over-claiming a whole road surface, not one repair.
-    MAX_COMPONENT_BOX_FRACTION = 0.25
+    MAX_COMPONENT_BOX_FRACTION = 0.35
     # A single pothole patch under MoRTH Section 500 is a metre or so across.
     # Past this, the geometry has almost certainly been handed a photograph it
     # was not designed for - a close-up crop rather than a frame from a mounted
@@ -1145,6 +1246,40 @@ class DeepInferencePipeline:
             return False
         return inter / float(min(aw * ah, bw * bh) or 1) > thresh
 
+    @staticmethod
+    def _can_merge_defects(b1, b2, W, H):
+        xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
+        xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
+        iou = 0.0
+        containment = 0.0
+        if xi1 > xi0 and yi1 > yi0:
+            inter = (xi1 - xi0) * (yi1 - yi0)
+            a1 = b1[2] * b1[3]
+            a2 = b2[2] * b2[3]
+            iou = inter / float(a1 + a2 - inter)
+            containment = inter / float(min(a1, a2))
+
+        gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
+        gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
+        comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
+        comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
+        horiz_inter = max(0, min(b1[0] + b1[2], b2[0] + b2[2]) - max(b1[0], b2[0]))
+        horiz_overlap = horiz_inter / float(max(1, min(b1[2], b2[2])))
+        is_proximate = (
+            gap_x <= int(W * 0.03)
+            and gap_y <= int(H * 0.03)
+            and comb_w <= int(W * 0.40)
+            and comb_h <= int(H * 0.30)
+        )
+        is_crater_complex = (
+            (horiz_overlap >= 0.12 or gap_x <= int(W * 0.06))
+            and gap_y <= int(H * 0.16)
+            and comb_w <= int(W * 0.98)
+            and comb_h <= int(H * 0.60)
+            and (comb_w * comb_h) <= int(W * H * 0.50)
+        )
+        return (iou > 0.15 or containment > 0.40 or is_proximate or is_crater_complex)
+
     # A region must have at least this fraction of its pixels claimed by the
     # segmenter before it is reported as that defect.
     #
@@ -1223,7 +1358,7 @@ class DeepInferencePipeline:
                     else float(self.MIN_COMPONENT_FRACTION))
         min_px = max(12, int(float(frac_cfg) * mh * mw))
         active_px = int((sub_pp >= thresh).sum())
-        if active_px < min_px or float(sub_pp.max()) < max(0.50, self._component_floor(cls_id)):
+        if active_px < max(12, int(min_px * 0.40)) or float(sub_pp.max()) < 0.40:
             return None
         roi_crop = img_np[int(H * self.ROAD_ROI_TOP_FRACTION):, :]
         if roi_crop.size == 0:
@@ -1234,7 +1369,7 @@ class DeepInferencePipeline:
             self._classifier_failures = getattr(self, "_classifier_failures", 0) + 1
             self._classifier_last_error = str(e)
             return None
-        if roi_pred.get("class_id") != cls_id or float(roi_pred.get("confidence", 0.0)) < 0.65:
+        if roi_pred.get("class_id") != cls_id or float(roi_pred.get("confidence", 0.0)) < 0.60:
             return None
         return max(crop_conf, float(roi_pred.get("confidence", crop_conf)))
 
@@ -1262,7 +1397,14 @@ class DeepInferencePipeline:
         answer. The segmenter was trained on exactly that question, per pixel.
         """
         bx, by, bw, bh = bbox[:4]
-        crop = img_np[by : by + bh, bx : bx + bw]
+        cx, cy = bx + bw // 2, by + bh // 2
+        cw = max(96, int(round(bw * 1.30)))
+        ch = max(96, int(round(bh * 1.30)))
+        x0 = max(0, min(W - cw, cx - cw // 2))
+        y0 = max(0, min(H - ch, cy - ch // 2))
+        crop = img_np[y0:min(H, y0 + ch), x0:min(W, x0 + cw)]
+        if crop.size == 0:
+            crop = img_np[by : by + bh, bx : bx + bw]
         if crop.size == 0:
             return None
 
@@ -1317,8 +1459,6 @@ class DeepInferencePipeline:
                     pred["class_name"] = VisionDistressNet.CLASS_NAMES[cls_id]
         if cls_id in (1, 2) and not from_segmenter:
             if getattr(self, "segmenter", None) is not None and self.segmenter.is_ready:
-                if getattr(self, "_has_confirmed_seg_distress", False):
-                    return None
                 rescued_conf = self._verify_rim_fragmented_cavity(
                     img_np, cls_id, bx, by, bw, bh, H, W, float(pred.get("confidence", 0.0))
                 )
