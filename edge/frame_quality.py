@@ -26,7 +26,7 @@ DEFAULTS = {
     "min_brightness": 35.0,
     "max_brightness": 225.0,
     "max_clipped_fraction": 0.35,
-    "min_contrast": 10.0,
+    "min_contrast": 5.0,
 }
 
 
