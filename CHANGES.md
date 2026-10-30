@@ -1,6 +1,27 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
-## Latest: 30 Oct (2) - the website runs the served segmenter and the main engine's rules
+## Latest: 30 Oct (3) - flooded potholes, duplicate boxes, labels, survey wording
+
+- **No zebra crossing inside a pothole** (`models/marking_detector.discard_bars_in_defects`,
+  applied where the main engine assembles its result). Water in a pothole reflects the sky
+  as bright bars, and the main engine reported "Zebra Crossing 95% - 3 bars" on flooded
+  potholes. Bars whose centre lies inside a pothole or waterlogging detection are dropped.
+  Measured through `audit_image()`: on 40 pothole photographs where the detector fires,
+  false crossings 40 -> 29 (potholes found unchanged, 30/40); flooded streets 2/14 -> 1/14;
+  real crossings unchanged at 4/19. A first version tested against the hole-filled pothole
+  mask removed none (reflections sit outside it) and was replaced.
+- **One cavity, one detection** (`_merge_overlapping_potholes`). The mask breaks around the
+  bright water in a pothole, and each piece was reported as a pothole ("100%", "96%", "87%"
+  on one cavity). Pothole proposals whose regions overlap are merged; separate potholes stay
+  separate; area is still counted from the mask's pothole pixels. On 30 pothole
+  photographs: 56 -> 45 pothole boxes, photographs with 2+ pothole boxes 15 -> 11. Detection
+  quality unchanged (36 clean / 24 defect: 3/36 false positives, 22/24 found).
+- **Labels** (`web/inspect.html`): vehicle labels no longer cover defect labels (a crack box
+  showed only "99%" under "car 82%"); a probability of 0.995+ shows as ">=99%", not "100%".
+- **Survey panel** states the actual reason (area above the single-patch bound, or the share
+  of the frame) and no longer says the defect "is priced above" when no cost is quoted.
+
+## Previous: 30 Oct (2) - the website runs the served segmenter and the main engine's rules
 
 Website engine (`api/vercel_inference.py`, Vercel build), 36 clean / 24 defect check
 photographs, measured in an environment with only the Vercel packages (numpy, Pillow,

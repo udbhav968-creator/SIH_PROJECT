@@ -81,6 +81,17 @@ VEHICLE_CLASS_MAP = {
 ASSUMED_FRAME_PAVEMENT_AREA_M2 = 25.0  # rough visible-pavement extent in one dashcam frame, for density-% estimates
 
 
+
+def _markings_outside_defects(markings, detections):
+    try:
+        from models import marking_detector
+        boxes = [d["bbox_pixels"] for d in detections
+                 if d.get("class_id") in (2, 3) and d.get("bbox_pixels")]
+        return marking_detector.discard_bars_in_defects(markings, boxes)
+    except Exception as e:
+        print(f"[WARN] marking/defect cross-check skipped: {e}")
+        return markings
+
 class DeepInferencePipeline:
     """Wires the project's real models together into one road-photo/telemetry audit."""
 
@@ -679,7 +690,9 @@ class DeepInferencePipeline:
             "road_damage_boxes": damage_boxes,
             "road_damage_summary": damage_summary,
             "frame_classification": frame_cls,
-            "markings": getattr(self, "_markings", {"found": False}),
+            # Paint cannot lie inside a pothole: bars inside a pothole / waterlogging box are
+            # sky reflections on water (models/marking_detector.discard_bars_in_defects).
+            "markings": _markings_outside_defects(getattr(self, "_markings", {"found": False}), detections),
             # Non-zero means at least one region could not be classified, so the
             # number of detections below is a floor, not a count.
             "classifier_failures": getattr(self, "_classifier_failures", 0),
@@ -1071,8 +1084,42 @@ class DeepInferencePipeline:
                 out.append([x0, y0, x1 - x0, y1 - y0, mean_p * area, kind,
                             "segmentation", round(mean_p, 4),
                             round(area / frame_px, 5), oversized])
+        out = self._merge_overlapping_potholes(out, W, H)
         out.sort(key=lambda b: -b[4])
         return out[: self.MAX_COMPONENTS]
+
+    def _merge_overlapping_potholes(self, props, W, H):
+        """
+        One cavity, one detection. Water in a pothole is bright, so the mask often
+        breaks into pieces around it, and each piece came back as its own pothole
+        ("Pothole 100%", "96%", "87%" on one cavity). Pothole proposals whose regions
+        overlap are merged into one; separate potholes (boxes that do not overlap)
+        stay separate, and the area downstream is still counted from the mask's pothole
+        pixels, so merging neither double-counts nor inflates it.
+        """
+        pot = [b for b in props if b[5] == 2]
+        rest = [b for b in props if b[5] != 2]
+        merged = True
+        while merged and len(pot) > 1:
+            merged = False
+            for i in range(len(pot)):
+                for j in range(i + 1, len(pot)):
+                    a, b = pot[i], pot[j]
+                    if (min(a[0] + a[2], b[0] + b[2]) > max(a[0], b[0])
+                            and min(a[1] + a[3], b[1] + b[3]) > max(a[1], b[1])):
+                        x0, y0 = min(a[0], b[0]), min(a[1], b[1])
+                        x1, y1 = max(a[0] + a[2], b[0] + b[2]), max(a[1] + a[3], b[1] + b[3])
+                        wa, wb = a[8] or 0.0, b[8] or 0.0
+                        mp = round((a[7] * wa + b[7] * wb) / (wa + wb), 4) if (wa + wb) > 0 else a[7]
+                        pot[i] = [x0, y0, x1 - x0, y1 - y0, a[4] + b[4], 2, "segmentation", mp,
+                                  round(wa + wb, 5),
+                                  ((x1 - x0) * (y1 - y0)) / float(W * H) > self.MAX_COMPONENT_BOX_FRACTION]
+                        del pot[j]
+                        merged = True
+                        break
+                if merged:
+                    break
+        return rest + pot
 
     @staticmethod
     def _boxes_overlap(a, b, thresh=0.30):

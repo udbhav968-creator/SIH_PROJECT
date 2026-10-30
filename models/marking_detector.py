@@ -392,3 +392,41 @@ def paint_mask(image_rgb, zebra):
         x1 = min(W, b["x"] + b["w"] + pad_x)
         mask[y0:y1, x0:x1] = True
     return mask
+
+
+
+def discard_bars_in_defects(zebra, defect_boxes):
+    """
+    Drop zebra bars whose centre lies inside a detected pothole or water region.
+
+    Paint cannot sit inside a cavity. Water in a pothole reflects the sky as bright,
+    elongated patches that pass every geometric test for a painted bar, so flooded
+    potholes were reported as "Zebra Crossing 95%". defect_boxes are the final
+    detection boxes [x, y, w, h] of potholes and waterlogging. If fewer than MIN_BARS
+    survive, the crossing is withdrawn and the reason recorded.
+    """
+    if not zebra or not zebra.get("found") or not defect_boxes:
+        return zebra
+
+    def inside(b):
+        return any(x <= b["cx"] <= x + w and y <= b["cy"] <= y + h for x, y, w, h in defect_boxes)
+
+    survivors, removed = [], 0
+    for c in (zebra.get("all_crossings") or [zebra]):
+        kept = [b for b in c.get("bars", []) if not inside(b)]
+        removed += len(c.get("bars", [])) - len(kept)
+        if len(kept) >= MIN_BARS:
+            c2 = dict(c, bars=kept, bar_count=len(kept))
+            c2.pop("all_crossings", None)
+            survivors.append(c2)
+    if removed == 0:
+        return zebra
+    if not survivors:
+        return {"found": False, "bars": [], "bar_count": 0, "all_crossings": [], "crossings_count": 0,
+                "reason": f"{removed} candidate bar(s) lay inside a detected pothole or water region "
+                          "(reflections, not paint)"}
+    primary = dict(max(survivors, key=lambda c: (c.get("stripe_count", 0), c.get("confidence", 0.0))))
+    primary["all_crossings"] = survivors
+    primary["crossings_count"] = len(survivors)
+    primary["bars_discarded_in_defects"] = removed
+    return primary

@@ -335,8 +335,8 @@ function draw() {
     }
   }
 
+  const drawnLabels = [];   // shared by every layer, so no label is drawn over another
   if (el("showBox").checked) {
-    const drawnLabels = [];
     roadDets.forEach(d => {
       const b = d.bbox_pixels;
       const bn = d.bbox_normalized;
@@ -352,7 +352,9 @@ function draw() {
       ctx.setLineDash(measured ? [] : [7, 5]);   // dashed = estimated area
       ctx.strokeRect(x, y, w, h);
       ctx.setLineDash([]);
-      const label = `${(d.class_name || "").split(" ")[0]} ${(d.confidence * 100).toFixed(0)}%`;
+      // A model probability is never certainty: 0.996 is shown as "≥99%", not "100%".
+      const pct = d.confidence >= 0.995 ? "≥99" : (d.confidence * 100).toFixed(0);
+      const label = `${(d.class_name || "").split(" ")[0]} ${pct}%`;
       ctx.font = "600 12px ui-monospace, monospace";
       const tw = ctx.measureText(label).width + 10;
       let tagX = Math.max(0, Math.min(cv.width - tw, x));
@@ -413,7 +415,14 @@ function draw() {
       ctx.font = "600 11.5px ui-monospace, monospace";
       const tw = ctx.measureText(label).width + 8;
       ctx.fillStyle = color;
-      const ly = y >= 18 ? y - 17 : Math.min(cv.height - 17, y + h + 1);
+      // Scene labels are drawn after the defect labels; they used to cover them (a crack
+      // box showed only "99%" under "car 82%"). A scene label that would overlap an
+      // existing label moves below its box, and is skipped if it would still overlap.
+      let ly = y >= 18 ? y - 17 : Math.min(cv.height - 17, y + h + 1);
+      const hits = (yy) => drawnLabels.some(dl => x < dl.x + dl.w && dl.x < x + tw && yy < dl.y + dl.h && dl.y < yy + 17);
+      if (hits(ly)) ly = Math.min(cv.height - 17, y + h + 1);
+      if (hits(ly)) return;
+      drawnLabels.push({ x: x, y: ly, w: tw, h: 17 });
       ctx.fillRect(x, ly, tw, 17);
       ctx.fillStyle = "#0a0f17";
       ctx.fillText(label, x + 4, ly + 12);
@@ -528,9 +537,13 @@ function render(d, ms) {
     ${top.needs_manual_survey ? `<div class="card" style="margin-top:14px;border-color:rgba(251,191,36,.45)">
       <div class="label" style="color:var(--warn)">geotechnical survey recommended</div>
       <p class="small" style="margin:0 0 8px">
-        The defect is real and is priced above under MoRTH civil item rates. Because its measured extent
-        covers a wide roadway section, a field geotechnical core survey (IRC:37) is advised to verify
-        sub-base compaction before executing final bituminous overlay.
+        The defect is real, but its extent cannot be defended from this photograph: ${
+          (top.surface_area_m2 > (top.area_diagnostics?.max_plausible_m2 ?? 2))
+            ? `the measured area is above the ${top.area_diagnostics?.max_plausible_m2 ?? 2} m² a single repair patch covers`
+            : `the region covers ${top.area_diagnostics?.box_share_of_frame != null
+                ? (top.area_diagnostics.box_share_of_frame * 100).toFixed(0) + "% of"
+                : "a large share of"} the frame, which suggests a close-up or merged defects`}.
+        It is reported for a field survey (IRC:37 / IRC:82) before any tonnage or cost is committed.
       </p>
       <div class="kv"><span>Measured area</span><span>${fmt.num(top.surface_area_m2, 3)} m²${
           (top.surface_area_m2 > (top.area_diagnostics?.max_plausible_m2 ?? 2))
