@@ -879,9 +879,17 @@ def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=3):
             comb_h = max(y2, cy2) - min(y1, cy1)
             gap_x = max(0, max(x1, cx1) - min(x2, cx2))
             gap_y = max(0, max(y1, cy1) - min(y2, cy2))
+            horiz_overlap = inter_w / float(max(1, min(bw, cbw)))
             is_proximate = (gap_x <= int(W * 0.04) and gap_y <= int(H * 0.03) and comb_w <= int(W * 0.40) and comb_h <= int(H * 0.30))
+            is_crater_complex = (
+                horiz_overlap >= 0.35
+                and gap_y <= int(H * 0.14)
+                and comb_w <= int(W * 0.55)
+                and comb_h <= int(H * 0.55)
+                and (comb_w * comb_h) <= int(W * H * 0.33)
+            )
 
-            if iou >= 0.18 or containment >= 0.40 or is_proximate:
+            if iou >= 0.18 or containment >= 0.40 or is_proximate or is_crater_complex:
                 matched.append(ci)
         if not matched:
             clusters.append([b])
@@ -1258,6 +1266,9 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         bx, by, bw, bh = prop["bbox_pixels"]
         if bw < 14 or bh < 10:
             continue
+        # Reject sidewalk kerb / frame border artifacts (e.g. raised pavement margins in upper road zone)
+        if (bx < 20 or bx + bw > W - 20) and by < int(H * 0.50) and (bw * bh) < int(0.04 * W * H):
+            continue
         comp = prop["seg_comp"]
 
         # Expand crop with 20% context margin (minimum 96x96 px) for MobileNetV3-Large verification
@@ -1407,14 +1418,24 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
                 comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
                 comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
+                horiz_inter = max(0, min(b1[0] + b1[2], b2[0] + b2[2]) - max(b1[0], b2[0]))
+                horiz_overlap = horiz_inter / float(max(1, min(b1[2], b2[2])))
                 is_proximate = (
                     gap_x <= int(W * 0.02)
                     and gap_y <= int(H * 0.02)
                     and comb_w <= int(W * 0.32)
                     and comb_h <= int(H * 0.25)
                 )
+                is_crater_complex = (
+                    d["class_id"] == md["class_id"]
+                    and horiz_overlap >= 0.35
+                    and gap_y <= int(H * 0.14)
+                    and comb_w <= int(W * 0.55)
+                    and comb_h <= int(H * 0.55)
+                    and (comb_w * comb_h) <= int(W * H * 0.33)
+                )
 
-                if iou > 0.25 or containment > 0.50 or is_proximate:
+                if iou > 0.25 or containment > 0.50 or is_proximate or is_crater_complex:
                     matched = mi
                     break
 
@@ -1509,6 +1530,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
 
     # STAGE 5: Refine surface area and repair metrics using genuine U-Net segmentation mask
     if detections and seg_out and mask_full is not None:
+        mask_full = np.array(mask_full, copy=True)
         for d in detections:
             if d.get("bbox_pixels"):
                 bx, by, bw, bh = d["bbox_pixels"]
@@ -1516,6 +1538,33 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 region_bool = np.zeros((H, W), dtype=bool)
                 region_bool[by:by + bh, bx:bx + bw] = (mask_full[by:by + bh, bx:bx + bw] == cls_id)
                 px_c = int(region_bool.sum())
+
+                # If the segmenter mask is sparse/empty for this confirmed defect (e.g. water-filled pothole or specular puddle),
+                # perform adaptive photometric cavity and puddle segmentation inside the confirmed defect bounding box
+                if px_c < 25:
+                    from PIL import Image, ImageFilter
+                    crop_gray = gray[by:by + bh, bx:bx + bw]
+                    road_med = float(np.median(gray[int(H * 0.35):, :]))
+                    pil_cg = Image.fromarray(np.clip(crop_gray, 0, 255).astype(np.uint8), mode="L")
+                    blurred_cg = np.asarray(pil_cg.filter(ImageFilter.BoxBlur(3)), dtype=np.float32)
+                    diff_cg = np.abs(crop_gray - blurred_cg)
+
+                    if cls_id == 2:  # Pothole cavity: dark depression or specular standing water
+                        is_dark_cavity = crop_gray < min(114.0, road_med - 6.0)
+                        is_water_puddle = (diff_cg < 6.5) & (crop_gray > 115.0)
+                        local_mask = is_dark_cavity | is_water_puddle
+                    else:  # Crack: high gradient edges darker than road median
+                        gy_c, gx_c = np.gradient(crop_gray)
+                        gmag_c = np.hypot(gx_c, gy_c)
+                        local_mask = (gmag_c > 22.0) & (crop_gray < road_med)
+
+                    if int(local_mask.sum()) >= 25:
+                        sub_patch = mask_full[by:by + bh, bx:bx + bw].copy()
+                        sub_patch[local_mask] = cls_id
+                        mask_full[by:by + bh, bx:bx + bw] = sub_patch
+                        region_bool[by:by + bh, bx:bx + bw] = local_mask
+                        px_c = int(local_mask.sum())
+
                 box_m2 = round(float(ipm.calculate_surface_area_sqm(bx, by, bw, bh)), 4)
                 box_m2 = float(max(0.04, min(box_m2, 3.0)))
                 if px_c >= 25:
@@ -1543,6 +1592,16 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 if d.get("depth_estimate"):
                     d["depth_estimate"]["repair_cost_low_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
                     d["depth_estimate"]["repair_cost_high_inr"] = round(d["surface_area_m2"] * (d["depth_estimate"]["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+
+    if detections and seg_out and mask_full is not None:
+        seg_out["mask"] = mask_full
+        seg_out["crack_px_full"] = int((mask_full == 1).sum())
+        seg_out["pothole_px_full"] = int((mask_full == 2).sum())
+        seg_out["defect_fraction"] = round(float((mask_full != 0).mean()), 4)
+        if int((mask_full != 0).sum()) > 0:
+            from PIL import Image
+            mask_work = np.asarray(Image.fromarray(mask_full, mode="L").resize((WORK_W, WORK_H), Image.Resampling.NEAREST), dtype=np.uint8)
+            seg_out["mask_data_url"] = _mask_to_data_url(mask_work)
 
     # If no road defect was confirmed, zero out the segmentation mask so rejected noise blobs are not counted
     if not detections and seg_out:
