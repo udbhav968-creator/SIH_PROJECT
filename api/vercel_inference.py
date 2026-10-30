@@ -1269,6 +1269,9 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         # Reject sidewalk kerb / frame border artifacts (e.g. raised pavement margins in upper road zone)
         if (bx < 20 or bx + bw > W - 20) and by < int(H * 0.50) and (bw * bh) < int(0.04 * W * H):
             continue
+        # Reject distant horizon noise (large width proposal with centroid in top 40% of frame)
+        if (by + bh * 0.5) < int(H * 0.40) and bw > int(W * 0.25):
+            continue
         comp = prop["seg_comp"]
 
         # Expand crop with 20% context margin (minimum 96x96 px) for MobileNetV3-Large verification
@@ -1389,99 +1392,117 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
 
     # Spatial Proximity Fusion & Deduplication (Merges rim fragments, puddle center & adjoining defects)
     if len(detections) > 1:
-        dets_sorted = sorted(detections, key=lambda d: (d["confidence"], d["surface_area_m2"]), reverse=True)
-        merged = []
-        for d in dets_sorted:
-            b1 = d.get("bbox_pixels")
-            if not b1:
-                merged.append(d)
-                continue
-            matched = None
-            for mi, md in enumerate(merged):
-                b2 = md.get("bbox_pixels")
-                if not b2 or d["class_id"] != md["class_id"]:
+        def _can_merge_defects(b1, b2, W, H):
+            xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
+            xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
+            iou = 0.0
+            containment = 0.0
+            if xi1 > xi0 and yi1 > yi0:
+                inter = (xi1 - xi0) * (yi1 - yi0)
+                a1 = b1[2] * b1[3]
+                a2 = b2[2] * b2[3]
+                iou = inter / float(a1 + a2 - inter)
+                containment = inter / float(min(a1, a2))
+
+            gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
+            gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
+            comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
+            comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
+            horiz_inter = max(0, min(b1[0] + b1[2], b2[0] + b2[2]) - max(b1[0], b2[0]))
+            horiz_overlap = horiz_inter / float(max(1, min(b1[2], b2[2])))
+            is_proximate = (
+                gap_x <= int(W * 0.03)
+                and gap_y <= int(H * 0.03)
+                and comb_w <= int(W * 0.40)
+                and comb_h <= int(H * 0.30)
+            )
+            is_crater_complex = (
+                (horiz_overlap >= 0.12 or gap_x <= int(W * 0.06))
+                and gap_y <= int(H * 0.16)
+                and comb_w <= int(W * 0.98)
+                and comb_h <= int(H * 0.60)
+                and (comb_w * comb_h) <= int(W * H * 0.50)
+            )
+            return (iou > 0.15 or containment > 0.40 or is_proximate or is_crater_complex)
+
+        changed = True
+        while changed and len(detections) > 1:
+            changed = False
+            new_dets = []
+            used = set()
+            for i in range(len(detections)):
+                if i in used:
                     continue
-                xi0 = max(b1[0], b2[0])
-                yi0 = max(b1[1], b2[1])
-                xi1 = min(b1[0] + b1[2], b2[0] + b2[2])
-                yi1 = min(b1[1] + b1[3], b2[1] + b2[3])
-                iou = 0.0
-                containment = 0.0
+                d1 = detections[i]
+                mb = d1["bbox_pixels"][:]
+                max_conf = d1["confidence"]
+                max_area = d1.get("surface_area_m2", 0.0)
+                for j in range(i + 1, len(detections)):
+                    if j in used:
+                        continue
+                    d2 = detections[j]
+                    if d1["class_id"] != d2["class_id"]:
+                        continue
+                    if _can_merge_defects(mb, d2["bbox_pixels"], W, H):
+                        nx = min(mb[0], d2["bbox_pixels"][0])
+                        ny = min(mb[1], d2["bbox_pixels"][1])
+                        nw = max(mb[0] + mb[2], d2["bbox_pixels"][0] + d2["bbox_pixels"][2]) - nx
+                        nh = max(mb[1] + mb[3], d2["bbox_pixels"][1] + d2["bbox_pixels"][3]) - ny
+                        if (nw * nh) > int(W * H * 0.33):
+                            scale = (int(W * H * 0.33) / float(nw * nh)) ** 0.5
+                            cx = nx + nw // 2
+                            cy = ny + nh // 2
+                            nw = max(35, int(nw * scale))
+                            nh = max(20, int(nh * scale))
+                            nx = max(0, min(W - nw, cx - nw // 2))
+                            ny = max(0, min(H - nh, cy - nh // 2))
+                        mb = [nx, ny, nw, nh]
+                        max_conf = max(max_conf, d2["confidence"])
+                        max_area = max(max_area, d2.get("surface_area_m2", 0.0))
+                        used.add(j)
+                        changed = True
+                used.add(i)
+                d1_merged = dict(d1)
+                d1_merged["bbox_pixels"] = mb
+                d1_merged["bbox_normalized"] = [round(mb[0] / W, 4), round(mb[1] / H, 4), round(mb[2] / W, 4), round(mb[3] / H, 4)]
+                d1_merged["confidence"] = max_conf
+                box_m2 = round(float(ipm.calculate_surface_area_sqm(mb[0], mb[1], mb[2], mb[3])), 4)
+                d1_merged["surface_area_m2"] = float(max(0.04, min(max(max_area, box_m2 * 0.6), 3.0)))
+                d1_merged["area_diagnostics"]["box_share_of_frame"] = round((mb[2] * mb[3]) / float(W * H), 3)
+                de = _photometric_depth(gray, mb, d1_merged["class_id"])
+                d1_merged["depth_cm"] = de["depth_cm"]
+                d1_merged["depth_estimate"] = de
+                tonnage_t = round(d1_merged["surface_area_m2"] * (de["depth_cm"] / 100.0) * 2.40 * 1.15, 4)
+                d1_merged["morth_tonnage_t"] = tonnage_t
+                d1_merged["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
+                de["repair_cost_low_inr"] = round(d1_merged["surface_area_m2"] * (de["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                de["repair_cost_high_inr"] = round(d1_merged["surface_area_m2"] * (de["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                new_dets.append(d1_merged)
+            detections = new_dets
+
+        # Second-pass containment suppression: suppress smaller nested sub-boxes (containment >= 70%)
+        clean_dets = []
+        for d in detections:
+            b1 = d["bbox_pixels"]
+            is_nested = False
+            for other in clean_dets:
+                b2 = other["bbox_pixels"]
+                if d["class_id"] != other["class_id"]:
+                    continue
+                xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
+                xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
                 if xi1 > xi0 and yi1 > yi0:
                     inter = (xi1 - xi0) * (yi1 - yi0)
-                    a1 = b1[2] * b1[3]
-                    a2 = b2[2] * b2[3]
-                    iou = inter / float(a1 + a2 - inter)
-                    containment = inter / float(min(a1, a2))
+                    if inter / float(b1[2] * b1[3]) >= 0.70:
+                        is_nested = True
+                        break
+            if not is_nested:
+                clean_dets.append(d)
+        detections = clean_dets
 
-                gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
-                gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
-                comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
-                comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
-                horiz_inter = max(0, min(b1[0] + b1[2], b2[0] + b2[2]) - max(b1[0], b2[0]))
-                horiz_overlap = horiz_inter / float(max(1, min(b1[2], b2[2])))
-                is_proximate = (
-                    gap_x <= int(W * 0.02)
-                    and gap_y <= int(H * 0.02)
-                    and comb_w <= int(W * 0.32)
-                    and comb_h <= int(H * 0.25)
-                )
-                is_crater_complex = (
-                    d["class_id"] == md["class_id"]
-                    and (horiz_overlap >= 0.20 or gap_x <= int(W * 0.05))
-                    and gap_y <= int(H * 0.14)
-                    and comb_w <= int(W * 0.60)
-                    and comb_h <= int(H * 0.55)
-                    and (comb_w * comb_h) <= int(W * H * 0.33)
-                )
-
-                if iou > 0.25 or containment > 0.50 or is_proximate or is_crater_complex:
-                    matched = mi
-                    break
-
-            if matched is None:
-                merged.append(d)
-            else:
-                md = merged[matched]
-                b2 = md["bbox_pixels"]
-                nx = min(b1[0], b2[0])
-                ny = min(b1[1], b2[1])
-                nw = max(b1[0] + b1[2], b2[0] + b2[2]) - nx
-                nh = max(b1[1] + b1[3], b2[1] + b2[3]) - ny
-                if (nw * nh) > int(W * H * 0.33):
-                    scale = (int(W * H * 0.33) / float(nw * nh)) ** 0.5
-                    nw = max(35, int(nw * scale))
-                    nh = max(20, int(nh * scale))
-                    nx = max(0, min(W - nw, nx))
-                    ny = max(0, min(H - nh, ny))
-
-                md["bbox_pixels"] = [nx, ny, nw, nh]
-                md["bbox_normalized"] = [round(nx / W, 4), round(ny / H, 4), round(nw / W, 4), round(nh / H, 4)]
-                md["confidence"] = max(d["confidence"], md["confidence"])
-
-                box_m2 = round(float(ipm.calculate_surface_area_sqm(nx, ny, nw, nh)), 4)
-                box_m2 = float(max(0.04, min(box_m2, 3.0)))
-
-                curr_area = max(float(d.get("surface_area_m2", 0.0)), float(md.get("surface_area_m2", 0.0)))
-                if curr_area < 0.25 * box_m2:
-                    md["surface_area_m2"] = box_m2
-                    md["area_method"] = "perspective_homography"
-                else:
-                    md["surface_area_m2"] = round(min(3.0, max(curr_area, box_m2 * 0.6)), 4)
-                    md["area_method"] = "segmentation_mask" if (d.get("area_method") == "segmentation_mask" or md.get("area_method") == "segmentation_mask") else "perspective_homography"
-
-                box_share = (nw * nh) / float(W * H)
-                md["area_diagnostics"]["box_share_of_frame"] = round(box_share, 3)
-                de = _photometric_depth(gray, [nx, ny, nw, nh], md["class_id"])
-                md["depth_cm"] = de["depth_cm"]
-                md["depth_estimate"] = de
-                md["volumetric_m3"] = round(md["surface_area_m2"] * (de["depth_cm"] / 100.0), 5)
-                tonnage_t = round(md["surface_area_m2"] * (de["depth_cm"] / 100.0) * 2.40 * 1.15, 4)
-                md["morth_tonnage_t"] = tonnage_t
-                md["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
-                de["repair_cost_low_inr"] = round(md["surface_area_m2"] * (de["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-                de["repair_cost_high_inr"] = round(md["surface_area_m2"] * (de["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-        detections = merged
+        # Filter distant low-conf / small background noise when large foreground defect exists
+        if any(d.get("surface_area_m2", 0.0) > 1.0 for d in detections):
+            detections = [d for d in detections if not (d["bbox_pixels"][1] < int(H * 0.40) and d.get("surface_area_m2", 0.0) < 0.35)]
 
     # Semantic gate (models/semantic_gate.py, threshold measured in
     # checkpoints/semantic_gate_report.json): a pothole box is kept only where the CNN's
@@ -1569,14 +1590,8 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 box_m2 = float(max(0.04, min(box_m2, 3.0)))
                 if px_c >= 25:
                     m2, _ = ipm.mask_area_m2(region_bool)
-                    # If mask is sparse/rim only (< 25% of box area due to water/glare in crater),
-                    # defend the full cavity homography area rather than shrinking to rim sliver
-                    if m2 < 0.25 * box_m2 and cls_id == 2:
-                        d["surface_area_m2"] = box_m2
-                        d["area_method"] = "perspective_homography"
-                    else:
-                        d["surface_area_m2"] = round(float(max(0.04, min(m2, 3.0))), 4)
-                        d["area_method"] = "segmentation_mask"
+                    d["surface_area_m2"] = round(float(max(0.04, min(max(m2, box_m2 * 0.40), 3.0))), 4)
+                    d["area_method"] = "segmentation_mask"
                 else:
                     d["surface_area_m2"] = box_m2
                     d["area_method"] = "perspective_homography"
