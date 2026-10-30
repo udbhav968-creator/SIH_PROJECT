@@ -8,7 +8,9 @@ while executing all 5 genuine trained models:
   - `checkpoints/ood_guard.npz` + `checkpoints/cnn_backbone_mobilenetv2.onnx` (OOD Input Guard, AUROC 0.9945)
   - `checkpoints/road_shield_detector.onnx` (YOLOv8 COCO Object Detector: people, vehicles, signs)
   - `checkpoints/deep_vision_mobilenet_v3_large_refit.onnx` (MobileNetV3-Large, 94.92% test accuracy, 0.9207 Macro-F1)
-  - `checkpoints/defect_segmenter_unet.onnx` (U-Net ResNet-34, 60.50% Pothole IoU)
+  - `checkpoints/defect_segmenter_pixel.onnx` (served pixel segmenter, ONNX export; see
+    scripts/export_pixel_segmenter_onnx.py) or `checkpoints/defect_segmenter_unet.onnx`
+    (U-Net, ResNet-18 encoder), whichever checkpoints/segmenter_selection.json serves
   - `checkpoints/imu_shock_cnn.onnx` (1-D CNN IMU shock classifier)
 """
 
@@ -55,6 +57,8 @@ VEHICLE_CLASS_MAP = {
 }
 
 WORK_W, WORK_H = 320, 200
+# Same floor as DeepInferencePipeline.MIN_REPORT_CONFIDENCE.
+MIN_REPORT_CONFIDENCE = 0.45
 UNET_W, UNET_H = 512, 320
 
 _SESSIONS = {}
@@ -305,51 +309,33 @@ def _mask_to_data_url(mask_work):
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
 
-def segment_image(img_rgb, object_mask_full=None, gray_full=None):
+
+
+class _ServerlessClassifier:
+    """Adapter so models/semantic_gate can drive this path's ONNX classifier."""
+    @staticmethod
+    def predict_probabilities(rgb):
+        return list(classify_crop(rgb)["probabilities"].values())
+
+
+def _pothole_heat(img_np):
+    """The main engine's semantic-gate heat map for 'pothole' (None if it cannot run)."""
+    try:
+        from models import semantic_gate
+        return semantic_gate.heatmaps(_ServerlessClassifier, img_np)[semantic_gate.POTHOLE]
+    except Exception as e:
+        print(f"[WARN] semantic gate unavailable: {e}")
+        return None
+
+def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_mask_full, gray_full,
+                         backend, t_crack=None, t_pothole=None, pothole_heat=None):
+    """Shared post-processing for either segmenter: scene exclusions, blob filters, boxes."""
     import numpy as np
     from PIL import Image
-    s = _load_sessions()
-    seg = s.get("segmenter")
-    if not seg:
-        return None
-    orig_h, orig_w = img_rgb.shape[:2]
-    pil_in = Image.fromarray(np.asarray(img_rgb, dtype=np.uint8)).resize(
-        (UNET_W, UNET_H), Image.Resampling.BILINEAR
-    )
-    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-    x = (np.asarray(pil_in, dtype=np.float32) / 255.0 - mean) / std
-    x_chw = np.ascontiguousarray(x.transpose(2, 0, 1)[None])
-    sess = seg["session"]
-    in_name = seg["input_name"]
-    p = sess.run(None, {in_name: x_chw})[0][0]
-    if seg["meta"].get("tta_flip", True):
-        p_flip = sess.run(None, {in_name: np.ascontiguousarray(x_chw[:, :, :, ::-1])})[0][0][:, :, ::-1]
-        p = 0.5 * (p + p_flip)
-
-    chans = []
-    for c in range(p.shape[0]):
-        ch_img = Image.fromarray(np.asarray(p[c], dtype=np.float32), mode="F").resize(
-            (WORK_W, WORK_H), Image.Resampling.BILINEAR
-        )
-        chans.append(np.asarray(ch_img, dtype=np.float32))
-    proba = np.stack(chans, axis=-1).reshape(-1, p.shape[0])
-    proba = np.clip(proba, 0.0, 1.0)
-    proba = proba / np.maximum(proba.sum(axis=1, keepdims=True), 1e-6)
-
-    thresholds = seg["thresholds"]
-    p0 = proba[:, 0]
-    crack_p = proba[:, 1]
-    pothole_p = proba[:, 2]
-    t_crack = float(thresholds.get("crack", 0.40))
-    t_pothole = float(thresholds.get("pothole", 0.38))
-
-    flat = np.zeros(proba.shape[0], dtype=np.uint8)
-    # A pixel is crack/pothole ONLY if it exceeds threshold and is competitive with background sound road
-    is_crack = (crack_p >= t_crack) & (crack_p >= p0 * 0.92) & (crack_p >= pothole_p)
-    is_pothole = (pothole_p >= t_pothole) & (pothole_p >= p0 * 0.92) & (pothole_p > crack_p)
-    flat[is_crack] = 1
-    flat[is_pothole] = 2
+    if t_crack is None or t_pothole is None:
+        from models import pixel_segmenter_lite as lite
+        th = lite.load()[1]["thresholds"]
+        t_crack, t_pothole = float(th.get("crack", 0.5)), float(th.get("pothole", 0.5))
     labels = flat.reshape(WORK_H, WORK_W)
     conf_map = np.where(flat == 1, crack_p, np.where(flat == 2, pothole_p, p0)).reshape(WORK_H, WORK_W)
 
@@ -391,6 +377,14 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
         # Withhold pure white high-intensity road paint markings (>215 and bright above road)
         paint_work = g_work > max(215.0, road_med + 55.0)
         labels[paint_work] = 0
+
+    # Semantic gate per pixel, as models/semantic_gate.apply does in the main engine: pothole
+    # pixels the classifier's heat map does not support are dropped before blobs are formed.
+    if pothole_heat is not None:
+        from models import semantic_gate
+        heat_work = np.asarray(Image.fromarray(np.asarray(pothole_heat, dtype=np.float32), mode="F").resize(
+            (WORK_W, WORK_H), Image.Resampling.BILINEAR), dtype=np.float32)
+        labels[(labels == 2) & (heat_work < semantic_gate.DEFAULT_THRESHOLD)] = 0
 
     min_px_map = {1: 32, 2: 48}
     min_conf_map = {
@@ -446,8 +440,86 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None):
         "pothole_px_full": int((mask_full == 2).sum()),
         "defect_fraction": round(float((cleaned != 0).mean()), 4),
         "components": comp_boxes,
+        "backend": backend,
     }
 
+def _served_segmenter():
+    """'pixel_classifier' or 'unet', as decided by scripts/segmenter_deployment_check.py."""
+    try:
+        with open(os.path.join(CKPT_DIR, "segmenter_selection.json"), "r", encoding="utf-8") as fh:
+            return json.load(fh).get("served", "unet")
+    except Exception:
+        return "unet"
+
+
+def segment_image(img_rgb, object_mask_full=None, gray_full=None, pothole_heat=None):
+    import numpy as np
+    from PIL import Image
+    orig_h, orig_w = img_rgb.shape[:2]
+    # The segmenter the deployment check chose. The pixel classifier runs here through its
+    # ONNX export and a numpy port of its features (models/pixel_segmenter_lite.py; pixel
+    # labels agree with the scikit-learn/OpenCV original on 99.7% of pixels). Before this,
+    # the website always ran the U-Net, which lost that check.
+    if _served_segmenter() == "pixel_classifier":
+        from models import pixel_segmenter_lite as lite
+        proba = lite.predict_proba(img_rgb) if lite.available() else None
+        if proba is not None:
+            thresholds = lite.load()[1]["thresholds"]
+            p0, crack_p, pothole_p = proba[:, 0], proba[:, 1], proba[:, 2]
+            is_crack = crack_p >= float(thresholds.get("crack", 0.5))
+            is_pothole = pothole_p >= float(thresholds.get("pothole", 0.5))
+            # Same rule as models/defect_segmenter.mask_from_proba (the main engine).
+            flat = np.zeros(proba.shape[0], dtype=np.uint8)
+            flat[is_crack] = 1
+            flat[is_pothole & (pothole_p >= crack_p)] = 2
+            flat[is_pothole & ~is_crack] = 2
+            return _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w,
+                                        object_mask_full, gray_full, backend="pixel_classifier",
+                                        pothole_heat=pothole_heat)
+    s = _load_sessions()
+    seg = s.get("segmenter")
+    if not seg:
+        return None
+    pil_in = Image.fromarray(np.asarray(img_rgb, dtype=np.uint8)).resize(
+        (UNET_W, UNET_H), Image.Resampling.BILINEAR
+    )
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    x = (np.asarray(pil_in, dtype=np.float32) / 255.0 - mean) / std
+    x_chw = np.ascontiguousarray(x.transpose(2, 0, 1)[None])
+    sess = seg["session"]
+    in_name = seg["input_name"]
+    p = sess.run(None, {in_name: x_chw})[0][0]
+    if seg["meta"].get("tta_flip", True):
+        p_flip = sess.run(None, {in_name: np.ascontiguousarray(x_chw[:, :, :, ::-1])})[0][0][:, :, ::-1]
+        p = 0.5 * (p + p_flip)
+
+    chans = []
+    for c in range(p.shape[0]):
+        ch_img = Image.fromarray(np.asarray(p[c], dtype=np.float32), mode="F").resize(
+            (WORK_W, WORK_H), Image.Resampling.BILINEAR
+        )
+        chans.append(np.asarray(ch_img, dtype=np.float32))
+    proba = np.stack(chans, axis=-1).reshape(-1, p.shape[0])
+    proba = np.clip(proba, 0.0, 1.0)
+    proba = proba / np.maximum(proba.sum(axis=1, keepdims=True), 1e-6)
+
+    thresholds = seg["thresholds"]
+    p0 = proba[:, 0]
+    crack_p = proba[:, 1]
+    pothole_p = proba[:, 2]
+    t_crack = float(thresholds.get("crack", 0.40))
+    t_pothole = float(thresholds.get("pothole", 0.38))
+
+    flat = np.zeros(proba.shape[0], dtype=np.uint8)
+    # A pixel is crack/pothole ONLY if it exceeds threshold and is competitive with background sound road
+    is_crack = (crack_p >= t_crack) & (crack_p >= p0 * 0.92) & (crack_p >= pothole_p)
+    is_pothole = (pothole_p >= t_pothole) & (pothole_p >= p0 * 0.92) & (pothole_p > crack_p)
+    flat[is_crack] = 1
+    flat[is_pothole] = 2
+    return _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w,
+                                object_mask_full, gray_full, backend="unet",
+                                t_crack=t_crack, t_pothole=t_pothole, pothole_heat=pothole_heat)
 
 def _photometric_depth(gray, bbox, class_id):
     import numpy as np
@@ -1152,7 +1224,8 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     }
 
     # STAGE 4: Fusion of U-Net Segmentation & Salient Cavity Proposals
-    seg_out = segment_image(img_np, object_mask_full=object_mask, gray_full=gray)
+    pothole_heat = _pothole_heat(img_np)
+    seg_out = segment_image(img_np, object_mask_full=object_mask, gray_full=gray, pothole_heat=pothole_heat)
     detections = []
 
     # Gather proposals from U-Net components and salient anomaly detector
@@ -1162,7 +1235,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             proposals.append({
                 "bbox_pixels": comp["bbox_pixels"],
                 "seg_comp": comp,
-                "source": "unet_segmenter",
+                "source": (seg_out or {}).get("backend", "segmenter") + "_segmenter",
             })
 
     # Add salient optical anomaly proposals (crucial for water-filled / sky-reflecting potholes)
@@ -1215,45 +1288,24 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             if box_area_share < 0.012 and cls_info["confidence"] < 0.72:
                 continue
 
-        # Class determination: pavement distress must strictly be Crack, Pothole, or Waterlogging
+        # Class determination - the main engine's rules (pipeline/deep_inference_pipeline.py,
+        # region verification): the crop classifier's verdict stands. "Sound pavement" drops
+        # the region, and a zebra / divider / sign verdict drops a segmenter region. This path
+        # used to override both - keeping "sound" regions that had a small mask, relabelling
+        # zebra/divider/sign crops as pothole or crack at p >= 0.20, and calling a crop a
+        # pothole when p(normal) < 0.15 ("sky reflection") - which reported damage on about a
+        # third of clean-road check photographs.
         cls_id = cls_info["class_id"]
-        if cls_id in (4, 5, 6):
-            # Asset / corridor classes (Zebra, Divider, Sign) cannot be pavement surface distresses
-            if comp and comp["class_id"] in (1, 2):
-                cls_id = comp["class_id"]
-            else:
-                p_pothole = float(cls_info.get("probabilities", {}).get(CLASS_NAMES[2], 0.0))
-                p_crack = float(cls_info.get("probabilities", {}).get(CLASS_NAMES[1], 0.0))
-                p_norm = float(cls_info.get("probabilities", {}).get(CLASS_NAMES[0], 0.0))
-                if p_pothole >= 0.20 or p_crack >= 0.20:
-                    cls_id = 2 if p_pothole >= p_crack else 1
-                elif (by + bh) > H * 0.45 and p_norm < 0.15:
-                    # Specular daylight sky reflection in water puddle on road carriageway
-                    cls_id = 2
-                else:
-                    continue
-        elif cls_id == 0:
-            # Sound pavement verdict from crop: only accept if U-Net produced dense mask in this region
-            if comp and comp["class_id"] in (1, 2) and mask_full is not None:
-                mask_in_crop = (mask_full[by:by + bh, bx:bx + bw] == comp["seg_cls"]).sum()
-                if mask_in_crop >= 35 and (p_defect_frame >= 0.50 or p_defect_crop >= 0.25):
-                    cls_id = comp["class_id"]
-                else:
-                    continue
-            else:
-                continue
+        if cls_id == 0 or cls_id in (4, 5, 6):
+            continue
+        if float(cls_info.get("confidence", 0.0)) < MIN_REPORT_CONFIDENCE:
+            continue
 
         de = _photometric_depth(gray, [bx, by, bw, bh], cls_id)
         cls_name = CLASS_NAMES[cls_id]
-        # Bounded local neural confidence specific to this defect proposal
-        if cls_info["class_id"] == cls_id:
-            conf = float(cls_info["confidence"])
-        elif comp and comp.get("mean_conf") is not None:
-            conf = float(comp["mean_conf"])
-        else:
-            p_cls = float(cls_info.get("probabilities", {}).get(cls_name, 0.70))
-            p_norm = float(cls_info.get("probabilities", {}).get(CLASS_NAMES[0], 0.0))
-            conf = max(0.65, min(0.95, max(p_cls, 1.0 - p_norm)))
+        # The crop classifier's own probability for the reported class (no floor: a 0.65
+        # minimum used to be imposed here whatever the model said).
+        conf = float(cls_info["confidence"])
 
         # Surface area calculation: use pixel mask if >= 45 matching mask pixels exist, else perspective homography
         has_dense_mask = False
@@ -1413,29 +1465,19 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     # sliding-window heat map also sees a pothole. The main engine applies it to every
     # pixel-classifier mask; this path had none and reported potholes on 16 of the 36
     # clean-road check photographs.
-    if any(d.get("class_id") == 2 for d in detections):
-        try:
-            from models import semantic_gate
-
-            class _ServerlessClassifier:
-                @staticmethod
-                def predict_probabilities(rgb):
-                    return list(classify_crop(rgb)["probabilities"].values())
-
-            heat = semantic_gate.heatmaps(_ServerlessClassifier, img_np)[semantic_gate.POTHOLE]
-            kept = []
-            for d in detections:
-                if d.get("class_id") == 2 and d.get("bbox_pixels"):
-                    bx, by, bw, bh = d["bbox_pixels"]
-                    region = heat[by:by + bh, bx:bx + bw]
-                    peak = float(region.max()) if region.size else 0.0
-                    d["semantic_gate_pothole_heat"] = round(peak, 3)
-                    if peak < semantic_gate.DEFAULT_THRESHOLD:
-                        continue
-                kept.append(d)
-            detections = kept
-        except Exception as e:
-            print(f"[WARN] serverless semantic gate skipped: {e}")
+    if pothole_heat is not None and any(d.get("class_id") == 2 for d in detections):
+        from models import semantic_gate
+        kept = []
+        for d in detections:
+            if d.get("class_id") == 2 and d.get("bbox_pixels"):
+                bx, by, bw, bh = d["bbox_pixels"]
+                region = pothole_heat[by:by + bh, bx:bx + bw]
+                peak = float(region.max()) if region.size else 0.0
+                d["semantic_gate_pothole_heat"] = round(peak, 3)
+                if peak < semantic_gate.DEFAULT_THRESHOLD:
+                    continue
+            kept.append(d)
+        detections = kept
 
     # Sort detections by significance (potholes first, then largest surface area) and keep top 4
     detections.sort(key=lambda d: (1 if d["class_id"] == 2 else 0, d["surface_area_m2"]), reverse=True)

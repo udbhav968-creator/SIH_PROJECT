@@ -1,0 +1,11 @@
+{
+  "source": "checkpoints/defect_segmenter.joblib",
+  "source_sha256": "bccc135030c92560c991f3af469e275a8c862140439ad0f6a12d804d81667872",
+  "thresholds": {
+    "crack": 0.55,
+    "pothole": 0.3
+  },
+  "trees": 750,
+  "max_probability_difference_vs_sklearn": 8.191452722794423e-07,
+  "note": "same trees, same thresholds; features ported to numpy in models/pixel_segmenter_lite.py"
+}

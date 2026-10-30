@@ -111,4 +111,5 @@ mlruns/
 *.db-wal
 *.db-shm
 *.onnx
+!checkpoints/defect_segmenter_pixel.onnx
 .env*

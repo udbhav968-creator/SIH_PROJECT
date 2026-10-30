@@ -12,6 +12,7 @@ checkpoints/*.joblib
 checkpoints/*.onnx
 !checkpoints/deep_vision_mobilenet_v3_large_refit.onnx
 !checkpoints/defect_segmenter_unet.onnx
+!checkpoints/defect_segmenter_pixel.onnx
 !checkpoints/imu_shock_cnn.onnx
 !checkpoints/cnn_backbone_mobilenetv2.onnx
 !checkpoints/road_shield_detector.onnx

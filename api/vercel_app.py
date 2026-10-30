@@ -83,6 +83,18 @@ def list_reports(prefix, suffix):
                   if n.startswith(prefix) and n.endswith(suffix))
 
 
+
+def _segmenter_status():
+    """What the website actually runs, per checkpoints/segmenter_selection.json."""
+    try:
+        from api import vercel_inference as vi
+        from models import pixel_segmenter_lite as lite
+        if vi._served_segmenter() == "pixel_classifier" and lite.available():
+            return "LOADED (pixel classifier, ONNX export - served by the deployment check)"
+        return "LOADED (U-Net ResNet-18 ONNX)"
+    except Exception as e:
+        return f"UNKNOWN ({type(e).__name__})"
+
 class handler(BaseHTTPRequestHandler):
     server_version = "ROAD-SHIELD/vercel"
 
@@ -268,14 +280,14 @@ class handler(BaseHTTPRequestHandler):
                 "status": "ONLINE",
                 "timestamp_utc": int(time.time()),
                 "inference_available": live_onnx,
-                "note": ("Live ONNX Runtime deployment (MobileNetV3-Large + ResNet-34 U-Net)."
+                "note": ("Live ONNX Runtime deployment (MobileNetV3-Large classifier + served defect segmenter)."
                          if live_onnx else
                          "Static deployment. Measured results are served from the committed reports."),
                 "models": {
                     "vision_distress_net": ("LOADED (onnxruntime:deep_vision_mobilenet_v3_large_refit.onnx)"
                                             if live_onnx else
                                             f"REPORTED ({len(heads)} trained head(s)) - not loaded in this deployment"),
-                    "defect_segmenter": ("LOADED (U-Net ResNet-34 ONNX)"
+                    "defect_segmenter": (_segmenter_status()
                                          if seg_onnx else
                                          ("REPORTED - not loaded in this deployment" if seg else "NOT_TRAINED")),
                     "ood_input_guard": ("LOADED (MobileNetV2 + Outlier Exposure Logistic Regression, AUROC 0.9945)"

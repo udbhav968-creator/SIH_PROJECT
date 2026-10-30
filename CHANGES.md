@@ -1,6 +1,38 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
-## Latest: 30 Oct - invented values removed from serving paths, CI gates the served model
+## Latest: 30 Oct (2) - the website runs the served segmenter and the main engine's rules
+
+Website engine (`api/vercel_inference.py`, Vercel build), 36 clean / 24 defect check
+photographs, measured in an environment with only the Vercel packages (numpy, Pillow,
+onnxruntime):
+
+| Stage | Clean roads flagged | Defects found |
+|---|---|---|
+| Before 30 Oct | 32/36 | 21/24 |
+| + box-level semantic gate, no invented hazard boxes | 11/36 | 19/24 |
+| + served pixel segmenter (this change) | 12/36 | 22/24 |
+| + main engine's region rules | 11/36 | 22/24 |
+| + semantic gate per pixel, as in the main engine | **8/36** | **22/24** |
+| Main engine, for reference | 3/36 | 22/24 |
+
+- **Served segmenter on Vercel.** `scripts/export_pixel_segmenter_onnx.py` builds
+  `checkpoints/defect_segmenter_pixel.onnx` (1.5 MB) from the fitted trees; probabilities
+  match scikit-learn to 8e-7. `models/pixel_segmenter_lite.py` ports the 11 features to
+  numpy; on 42 photographs 99.7% of pixel labels agree with the OpenCV original and all 42
+  get the same defect / no-defect verdict (`--verify`). The website follows
+  `segmenter_selection.json`; it previously always ran the U-Net.
+- **Region rules match the main engine.** A crop the classifier calls sound pavement, or
+  zebra / divider / sign, is dropped; reports need confidence >= 0.45. Removed: keeping
+  "sound" regions with a small mask, relabelling zebra/divider/sign crops as damage at
+  p >= 0.20, a "sky reflection" pothole rule, and a 0.65 confidence floor.
+- **Semantic gate per pixel** before blobs are formed (as `models/semantic_gate.apply`),
+  heat map computed once and reused for the box check.
+- **Health page** reports the segmenter actually running, not "U-Net ResNet-34" (the
+  encoder is ResNet-18, and the U-Net is not served).
+- Remaining gap to the main engine: crack regions and the salient-cavity proposals, which
+  the main engine also filters with rim verification.
+
+## Previous: 30 Oct - invented values removed from serving paths, CI gates the served model
 
 - **Work-order seal key** (`api/vercel_inference.py`). The serverless path sealed work
   orders with HMAC key `ROAD-SHIELD-MORTH-SEAL` written in the public repository, so
