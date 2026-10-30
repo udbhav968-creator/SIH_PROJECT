@@ -1428,9 +1428,9 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 )
                 is_crater_complex = (
                     d["class_id"] == md["class_id"]
-                    and horiz_overlap >= 0.35
+                    and (horiz_overlap >= 0.20 or gap_x <= int(W * 0.05))
                     and gap_y <= int(H * 0.14)
-                    and comb_w <= int(W * 0.55)
+                    and comb_w <= int(W * 0.60)
                     and comb_h <= int(H * 0.55)
                     and (comb_w * comb_h) <= int(W * H * 0.33)
                 )
