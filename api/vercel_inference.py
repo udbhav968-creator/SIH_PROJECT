@@ -405,6 +405,12 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
             if (wy + wh * 0.5) < WORK_H * 0.35:
                 continue
 
+            # Roadway perspective envelope: road narrows toward horizon, reject off-road shoulder foliage/dirt
+            norm_y = (wy + wh * 0.5) / float(WORK_H)
+            norm_x = (wx + ww * 0.5) / float(WORK_W)
+            if norm_y < 0.45 and (norm_x < 0.18 or norm_x > 0.70):
+                continue
+
             sub_mask = c_mask[wy:wy + wh, wx:wx + ww]
             if not sub_mask.any():
                 continue
@@ -1294,6 +1300,12 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         if frame_cls_raw["class_id"] == 0 and frame_cls_raw["confidence"] >= 0.85 and cls_info["class_id"] not in (1, 2, 3):
             continue
 
+        # Reject roadside shoulder margin noise in upper road zone
+        if (by + bh * 0.5) < int(H * 0.45):
+            centroid_x = (bx + bw * 0.5) / float(W)
+            if centroid_x < 0.18 or centroid_x > 0.70:
+                continue
+
         # Heuristic salient proposal verification (matches pipeline/deep_inference_pipeline.py line 1252):
         if prop["source"] == "salient_cavity_detector":
             crop_is_distress = cls_info["class_id"] in (1, 2, 3) and cls_info["confidence"] >= 0.65
@@ -1303,6 +1315,17 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             box_area_share = (bw * bh) / float(W * H)
             if box_area_share < 0.012 and cls_info["confidence"] < 0.72:
                 continue
+            # Cracks cannot be proposed by optical saliency without segmentation agreement
+            if cls_info["class_id"] == 1:
+                crack_mask_px = int((mask_full[by:by + bh, bx:bx + bw] == 1).sum()) if mask_full is not None else 0
+                if crack_mask_px < 15:
+                    continue
+            # Salient potholes require either active cavity mask pixels or whole-frame confirmation
+            elif cls_info["class_id"] == 2:
+                pothole_mask_px = int((mask_full[by:by + bh, bx:bx + bw] == 2).sum()) if mask_full is not None else 0
+                frame_confirms_pothole = (frame_cls_raw["class_id"] == 2 and frame_cls_raw["confidence"] >= 0.60)
+                if pothole_mask_px < 20 and not frame_confirms_pothole:
+                    continue
 
         # Class determination - the main engine's rules (pipeline/deep_inference_pipeline.py,
         # region verification): the crop classifier's verdict stands. "Sound pavement" drops

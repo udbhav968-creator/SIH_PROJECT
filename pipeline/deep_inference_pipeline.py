@@ -522,7 +522,7 @@ class DeepInferencePipeline:
                 filtered_distress.append(d)
                 continue
             bx, by, bw, bh = b
-            if (bx < 20 or bx + bw > W - 20) and by < int(H * 0.50) and (bw * bh) < int(0.04 * W * H):
+            if (bx < 20 or bx + bw > W - 20) and by < int(H * 0.50) and (bw * bh) < int(0.04 * W * H) and d.get("area_method") != "segmentation_mask":
                 continue
             if (by + bh * 0.5) < int(H * 0.48) and bw > int(W * 0.30):
                 continue
@@ -1320,14 +1320,14 @@ class DeepInferencePipeline:
         Verifies a water-filled or rim-fragmented cavity when no single
         connected component in mask_work cleared the size floor on its own.
         Requires four independent checks to pass simultaneously:
-          1. Region classifier confidence >= 0.60.
+          1. Region classifier confidence >= 0.60 and class is Pothole Cavity (cls_id == 2).
           2. Not painted road markings (_paint_mask covers <= 2% of region).
           3. Segmenter probability map inside [bx, by, bw, bh] has at least
              min_px pixels above the calibrated class threshold and max >= 0.50.
           4. Road ROI crop (y >= ROAD_ROI_TOP_FRACTION * H) independently
              classifies as the same defect class with confidence >= 0.65.
         """
-        if crop_conf < 0.60:
+        if cls_id != 2 or crop_conf < 0.60:
             return None
         paint = getattr(self, "_paint_mask", None)
         if paint is not None:
