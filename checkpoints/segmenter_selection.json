@@ -1,7 +1,7 @@
 {
   "served": "pixel_classifier",
   "rule": "U-Net served only if, on the calibration photographs, its crack IoU AND pothole IoU both exceed the pixel classifier's, and its clean-road false-blob rate is no more than 5 points worse. Decided before the test set was scored.",
-  "why": "calibration IoU crack 0.268 vs 0.214, pothole 0.646 vs 0.119; clean false-blob rate 0.0 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 18/24 defects with 6/36 false positives; the pixel classifier found 22/24 with 3/36",
+  "why": "calibration IoU crack 0.268 vs 0.214, pothole 0.646 vs 0.119; clean false-blob rate 0.0 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 18/24 defects with 6/36 false positives; the pixel classifier found 20/24 with 2/36",
   "validation": {
     "unet": {
       "crack": {
@@ -159,7 +159,7 @@
   "deployment_check": {
     "rule": "U-Net served only if, through audit_image() on the detection-quality photographs (clean roads and annotated defects from other datasets, never the DNIT test split), it finds at least as many defects and reports no more false positives than the pixel classifier. Fixed before the pixel classifier's current end-to-end numbers were measured.",
     "passed": false,
-    "why": "end to end, U-Net found 18/24 defects with 6/36 false positives; the pixel classifier found 22/24 with 3/36",
+    "why": "end to end, U-Net found 18/24 defects with 6/36 false positives; the pixel classifier found 20/24 with 2/36",
     "results": {
       "unet": {
         "false_positive_photos": 6,
@@ -176,27 +176,29 @@
           "1053880_DF_020_020BDF0070_06061_RAW.jpg",
           "1014798_RS_386_386RS124739_30915_RAW.jpg"
         ],
-        "seconds": 46.6
+        "seconds": 44.0
       },
       "pixel_classifier": {
-        "false_positive_photos": 3,
+        "false_positive_photos": 2,
         "clean_photographs": 36,
-        "detected_photos": 22,
+        "detected_photos": 20,
         "defect_photographs": 24,
-        "false_positive_rate": 0.0833,
-        "detection_rate": 0.9167,
+        "false_positive_rate": 0.0556,
+        "detection_rate": 0.8333,
         "missed": [
           "kag_pothole-annotated_2_00288_potholes404.jpg",
-          "kag_pothole-annotated_2_00164_potholes280.jpg"
+          "kag_pothole-annotated_2_00164_potholes280.jpg",
+          "1014798_RS_386_386RS124739_30915_RAW.jpg",
+          "1014620_RS_386_386RS124739_30026_RAW.jpg"
         ],
-        "seconds": 121.3
+        "seconds": 116.4
       }
     },
-    "checked_unix": 1793290978,
+    "checked_unix": 1793329114,
     "served_end_to_end": {
       "segmenter": "pixel_classifier",
-      "detection_rate": 0.9167,
-      "false_positive_rate": 0.0833
+      "detection_rate": 0.8333,
+      "false_positive_rate": 0.0556
     }
   }
 }

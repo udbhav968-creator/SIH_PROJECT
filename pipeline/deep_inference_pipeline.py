@@ -82,7 +82,19 @@ ASSUMED_FRAME_PAVEMENT_AREA_M2 = 25.0  # rough visible-pavement extent in one da
 
 
 
-def _markings_outside_defects(markings, detections):
+def _markings_outside_defects(markings, detections, frame_cls=None):
+    # Same veto as the website engine (api/vercel_inference.py): when the whole frame is
+    # confidently a crack, pothole or waterlogging scene (>= 0.60), bright "bars" are taken
+    # to be glare or water, not paint. Measured through audit_image() with the box rule
+    # below: real crossings 4/19 -> 4/19, flooded streets 1/14 -> 0/14, and on 40 pothole
+    # photographs where the detector fires, false crossings 29/40 -> 1/40.
+    if markings and markings.get("found") and isinstance(frame_cls, dict):
+        name = str(frame_cls.get("class_name", ""))
+        conf = float(frame_cls.get("confidence") or 0.0)
+        if conf >= 0.60 and any(k in name for k in ("Crack", "Pothole", "Waterlogging")):
+            return {"found": False, "bars": [], "bar_count": 0, "all_crossings": [], "crossings_count": 0,
+                    "reason": f"frame is a {name.split(' (')[0]} scene ({conf:.2f}): bright bars "
+                              "taken as glare or water, not paint"}
     try:
         from models import marking_detector
         boxes = [d["bbox_pixels"] for d in detections
@@ -692,7 +704,8 @@ class DeepInferencePipeline:
             "frame_classification": frame_cls,
             # Paint cannot lie inside a pothole: bars inside a pothole / waterlogging box are
             # sky reflections on water (models/marking_detector.discard_bars_in_defects).
-            "markings": _markings_outside_defects(getattr(self, "_markings", {"found": False}), detections),
+            "markings": _markings_outside_defects(getattr(self, "_markings", {"found": False}), detections,
+                                                  frame_cls),
             # Non-zero means at least one region could not be classified, so the
             # number of detections below is a floor, not a count.
             "classifier_failures": getattr(self, "_classifier_failures", 0),

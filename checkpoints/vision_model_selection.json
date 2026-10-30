@@ -9,10 +9,10 @@
    "images": 531
   },
   "deep_cnn": {
-   "accuracy": 0.9492,
-   "macro_f1": 0.9207,
+   "accuracy": 0.9435,
+   "macro_f1": 0.8786,
    "images": 531
   }
  },
- "decided_unix": 1793165647
+ "decided_unix": 1793158497
 }

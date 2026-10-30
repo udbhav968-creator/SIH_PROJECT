@@ -1,6 +1,6 @@
 # ROAD-SHIELD model card
 
-Generated 2026-10-29 from `checkpoints/claims.json` by `scripts/build_model_card.py`. Regenerate after any retraining; do not edit by hand.
+Generated 2026-10-30 from `checkpoints/claims.json` by `scripts/build_model_card.py`. Regenerate after any retraining; do not edit by hand.
 
 ## System at a glance
 
@@ -26,8 +26,8 @@ Generated 2026-10-29 from `checkpoints/claims.json` by `scripts/build_model_card
 | metric | value |
 |---|---|
 | served model | mobilenet_v3_large_refit |
-| held out accuracy | 0.9492 |
-| held out macro f1 | 0.9207 |
+| held out accuracy | 0.9435 |
+| held out macro f1 | 0.8786 |
 | test images | 531 |
 | test photographs | 512 |
 | indian roads | images 1200, accuracy 0.9225, macro_f1 0.9224 |
@@ -63,7 +63,7 @@ Generated 2026-10-29 from `checkpoints/claims.json` by `scripts/build_model_card
 
 **Limits - do not rely on it for this.** IoU of 0.2314 (crack) and 0.1437 (pothole) is a working model, not a solved problem. On held-out clean roads the segmenter alone draws a false blob on 23.3% of 120 photographs. The CNN semantic gate in front of it reduced clean roads with a false blob from 8/50 to 2/50 and raised pothole IoU from 0.1024 to 0.2706 (checkpoints/semantic_gate_report.json, measured with the frozen-embedding classifier). Water-filled potholes are still under-detected.
 
-**Alternatives tried.** A U-Net (ResNet-18 encoder) was trained on the same polygons and did NOT replace this model: calibration IoU crack 0.268 vs 0.214, pothole 0.646 vs 0.119; clean false-blob rate 0.0 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 18/24 defects with 6/36 false positives; the pixel classifier found 22/24 with 3/36 Held-out test (same 500 photographs): U-Net crack IoU 0.3035, pothole IoU 0.4661; pixel classifier crack 0.2314, pothole 0.1437.
+**Alternatives tried.** A U-Net (ResNet-18 encoder) was trained on the same polygons and did NOT replace this model: calibration IoU crack 0.268 vs 0.214, pothole 0.646 vs 0.119; clean false-blob rate 0.0 vs 0.1807; NOT served after the end-to-end check: end to end, U-Net found 18/24 defects with 6/36 false positives; the pixel classifier found 20/24 with 2/36 Held-out test (same 500 photographs): U-Net crack IoU 0.3035, pothole IoU 0.4661; pixel classifier crack 0.2314, pothole 0.1437.
 
 **Evidence.** `checkpoints/defect_segmenter_report.json, checkpoints/segmenter_selection.json` · reproduce: `python -m training.train_segmenter --images 2000`
 

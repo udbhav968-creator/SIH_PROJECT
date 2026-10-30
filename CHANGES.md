@@ -1,6 +1,35 @@
 # ROAD-SHIELD AI Engine — rewrite notes
 
-## Latest: 30 Oct (3) - flooded potholes, duplicate boxes, labels, survey wording
+## Latest: 30 Oct (4) - documented classifier restored, zebra veto measured, samples re-recorded
+
+- **Classifier: the documented weights are served again** (`deep_vision_mobilenet_v3_large_refit.onnx`,
+  byte-identical to the Colab run in dd4f703, with its reports from 87000a9^). 87000a9 had
+  replaced them with weights that have no training script and no validation set (the model
+  is refit on train+val, so only the test set was held out), and its India figure was not
+  re-measured. Every published classifier number now belongs to the weights served and can
+  be reproduced from `training/train_finetune_cnn.py`: test accuracy 94.35%, macro-F1 0.879
+  (531 images), India 92.25% (1,200 crops). End to end on the 36 clean / 24 defect check
+  photographs (`scripts/segmenter_deployment_check.py`): 2/36 false positives, 20/24 found
+  (the replaced weights: 3/36, 22/24). Pitch deck, SIH submission, README, model card and
+  claims updated.
+- **Zebra crossings: one measured rule in both engines.** A crossing is withdrawn when the
+  whole frame is confidently a crack / pothole / waterlogging scene (>= 0.60) - the bright
+  bars are glare or water. Main engine (`_markings_outside_defects`, with the pothole-box
+  rule) and website, through each engine's own pipeline:
+
+  | | real crossings kept | flooded streets | pothole photos where the detector fires (40) |
+  |---|---|---|---|
+  | Main engine before | 4/19 | 1/14 | 29/40 false |
+  | Main engine now | 4/19 | **0/14** | **1/40** false |
+  | Website before (veto + solidity < 0.62) | 1/19 | 0/14 | 0/40 |
+  | Website now (veto only) | **4/19** | 0/14 | 1/40 |
+
+  The website's second rule (mean bar solidity < 0.62) removed three of four real crossings
+  and no false ones, and is gone.
+- **Homepage samples re-recorded** (`scripts/record_samples.py`) with the current engine; the
+  previous set dated from 28 Oct.
+
+## Previous: 30 Oct (3) - flooded potholes, duplicate boxes, labels, survey wording
 
 - **No zebra crossing inside a pothole** (`models/marking_detector.discard_bars_in_defects`,
   applied where the main engine assembles its result). Water in a pothole reflects the sky

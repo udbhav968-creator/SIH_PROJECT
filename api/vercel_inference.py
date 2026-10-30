@@ -1167,11 +1167,13 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     f_conf = frame_cls_raw.get("confidence", 0.0)
 
     # Semantic cross-verification: on severe distress roads (pothole cavity, waterlogging, or crack >= 0.60 conf),
-    # suppress zebra crossing detection completely (water reflections / specular puddle glare are not crosswalks)
+    # suppress zebra crossing detection completely (water reflections / specular puddle glare are not crosswalks).
+    # A second rule (mean bar solidity < 0.62) was removed: it discarded real crossings (1/19 kept; 4/19
+    # without it) and suppressed no extra false ones (flooded streets 0/14, pothole photographs 1/40).
     if markings_res.get("found"):
         bars = markings_res.get("bars", [])
         mean_solidity = float(np.mean([b.get("solidity", 0.0) for b in bars])) if bars else 0.0
-        if (f_cls in (1, 2, 3) and f_conf >= 0.60) or mean_solidity < 0.62:
+        if (f_cls in (1, 2, 3) and f_conf >= 0.60):
             markings_res = {
                 "found": False,
                 "bars": [],
