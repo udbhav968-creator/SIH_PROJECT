@@ -3,6 +3,9 @@ datasets
 .venv
 tests
 training
+scripts
+mlops
+reports
 *.zip
 *.docx
 __pycache__
@@ -11,7 +14,6 @@ requirements-train.txt
 checkpoints/*.joblib
 checkpoints/*.onnx
 !checkpoints/deep_vision_mobilenet_v3_large_refit.onnx
-!checkpoints/defect_segmenter_unet.onnx
 !checkpoints/defect_segmenter_pixel.onnx
 !checkpoints/imu_shock_cnn.onnx
 !checkpoints/cnn_backbone_mobilenetv2.onnx
@@ -21,6 +23,7 @@ checkpoints/*.db
 checkpoints/*.db-*
 checkpoints/int8
 checkpoints/detectors
+checkpoints/al_images
 runs
 docs
 scratch
