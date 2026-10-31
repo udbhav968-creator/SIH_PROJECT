@@ -1,5 +1,4 @@
-"""Priority Index, keyed work-order seals, the bus agent and its encrypted queue, the live feed, and the
-measurement scripts (benchmark, redactor recall, calibration)."""
+"""Tests for edge device agent, sensor ingest, and priority scoring."""
 
 import glob
 import json
@@ -171,7 +170,7 @@ class StoreForward(unittest.TestCase):
         got = []
         self.assertEqual(self.q.flush(lambda envs: (got.extend(envs), 1)[1], now=0), 1)
         self.assertEqual(self.q.stats()["queued"], 2)
-        self.assertEqual(self.q.flush(lambda envs: 2, now=1), 0)          # backing off after the partial batch
+        self.assertEqual(self.q.flush(lambda envs: 2, now=1), 0)
         self.assertEqual(self.q.flush(lambda envs: len(envs), now=100), 2)
         self.assertEqual(self.q.stats()["queued"], 0)
         self.assertEqual(crypto.unpack(got[0], self.key)[2], 1)
@@ -501,7 +500,7 @@ class BusAgentTest(unittest.TestCase):
             self.assertEqual(agent.tick(now=3), [])
             self.assertEqual(agent.counters["skipped_no_gps"], 1)
             self.assertEqual(agent.counters["defects"], 1)
-            self.assertEqual(q.stats()["queued"], 4)                   # pos, shock, shock (dark frame again), defect
+            self.assertEqual(q.stats()["queued"], 4)
             self.assertEqual(lookahead_s(0), 4.0)
             self.assertEqual(lookahead_s(200), 0.5)
             q.close()
@@ -516,7 +515,7 @@ class Measurements(unittest.TestCase):
         n = 4000
         true_logits = rng.normal(0, 1.5, (n, 3))
         y = np.array([rng.choice(3, p=p) for p in softmax(true_logits)])
-        over = true_logits * 3.0                                    # an over-confident model
+        over = true_logits * 3.0
         t = fit_temperature(over, y)
         self.assertGreater(t, 2.0)
         self.assertLess(t, 4.0)
@@ -573,7 +572,6 @@ class Measurements(unittest.TestCase):
         self.assertIn("onnxruntime", device_info())
 
 
-
 class HotspotNeedsTwoSources(unittest.TestCase):
     def test_same_source_twice_is_not_verification(self):
         from pipeline.fleet_deduplication_engine import FleetDeduplicationEngine
@@ -590,16 +588,15 @@ class HotspotNeedsTwoSources(unittest.TestCase):
             e.ingest_fleet_detection("BMTC-201", **dict(args, severity_pci=float("nan")))
 
 
-
 class FusionGateCalibration(unittest.TestCase):
     def test_ordinary_road_jolts_do_not_override_the_imu_classifier(self):
         from models.bayesian_fusion_gate import BayesianFusionGate
         g = BayesianFusionGate(prior_pothole_prob=0.05, decision_threshold_log_odds=1.8)
-        # a confident camera, an IMU classifier that felt nothing, and a jolt typical of plain road
+
         self.assertEqual(g.fuse(0.9, 0.05, delta_z_ms2=10.0)["verdict"], "REJECTED_OPTICAL_FALSE_ALARM")
-        # a weak camera and the same ordinary jolt is not a submerged pothole
+
         self.assertNotEqual(g.fuse(0.2, 0.05, delta_z_ms2=10.0)["verdict"], "SUBMERGED_MONSOON_POTHOLE")
-        # a jolt beyond anything plain road produced still counts
+
         self.assertEqual(g.fuse(0.2, 0.05, delta_z_ms2=45.0)["verdict"], "SUBMERGED_MONSOON_POTHOLE")
 
     def test_threshold_sits_between_plain_road_and_pothole_drives(self):

@@ -1,22 +1,4 @@
-"""
-Operational guard rails for the engine: what a deployment needs that a demo does not.
-
-  body limit     requests larger than ROAD_SHIELD_MAX_BODY_MB (default 25) are refused
-                 with 413 before the body is read, so one oversized upload cannot
-                 exhaust the server's memory
-  rate limit     the model endpoints (image analysis, video, redaction) allow
-                 ROAD_SHIELD_RATE_LIMIT requests per minute per client address
-                 (default 0 = off, so a demo is never throttled); over the limit
-                 the answer is 429 with Retry-After
-  metrics        GET /metrics in the Prometheus text format: requests by route,
-                 method and status, latency histogram, model readiness
-  readiness      GET /api/v1/ready is 200 only when the models a road frame
-                 needs are loaded, else 503 naming what is missing - the probe a
-                 load balancer or Kubernetes should route on (/api/v1/health only
-                 says the process is up)
-
-Everything here is standard library and thread-safe; the server is threaded.
-"""
+"""Operational health and deployment configuration endpoints."""
 
 import os
 import threading
@@ -24,7 +6,6 @@ import time
 
 MAX_BODY_BYTES = int(float(os.environ.get("ROAD_SHIELD_MAX_BODY_MB", "25")) * 1024 * 1024)
 
-# Endpoints that run a model on the request. Cheap reads and the static site are never limited.
 RATE_LIMITED = {
     "/api/v1/pipeline/deep-audit", "/api/v1/vision/analyze-photo", "/api/v1/vision/analyze-custom-photo",
     "/api/v1/video/ingest", "/api/v1/detect/objects", "/api/v1/pedestrian/detect",
@@ -64,12 +45,12 @@ class Metrics:
     def __init__(self, known_routes=()):
         self.known = set(known_routes)
         self._lock = threading.Lock()
-        self.requests = {}            # (route, method, status) -> count
-        self.latency = {}             # route -> [bucket counts..., +Inf count, sum]
+        self.requests = {}
+        self.latency = {}
         self.started = time.time()
 
     def route_of(self, path):
-        # Unknown paths share one label, so a scanner probing random URLs cannot blow up the series count.
+
         if path in self.known or path.startswith("/api/v1/"):
             return path if path in self.known else "/api/v1/other"
         if path.startswith("/web/") or path in ("/", "/inspect", "/models", "/data", "/corridor", "/works",

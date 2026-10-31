@@ -1,22 +1,4 @@
-"""
-Model M1: Pavement / road-context photo classifier.
-
-Classifies a road photo (or a candidate crop from CVCavityDetector) into one
-of the 7 classes below, using the classic hand-engineered feature vector from
-data/feature_extraction.py (HOG + LBP + color histogram) reduced with PCA and
-fed to a scikit-learn RBF-kernel SVM.
-
-Why not a CNN: a convolutional network would very likely do better, but it
-needs either a GPU + a lot more labeled images than we have, or pretrained
-ImageNet weights - and this project has to run on plain laptops with no
-internet access to a model zoo. An engineered-feature classifier is the
-standard fallback for that situation and, importantly, it's a real model
-that is actually trained on the ~160 real labeled photos under datasets/,
-not a hand-initialized network that was never fit to anything. See
-training/train_vision.py for the honest, leakage-free held-out accuracy
-this was chosen against (SVM+PCA tied or beat RandomForest/GradientBoosting/
-LogisticRegression at this dataset size).
-"""
+"""Vision-based road distress classifier with feature backbones."""
 
 import os
 import numpy as np
@@ -58,9 +40,6 @@ class VisionDistressNet:
         "Damaged Traffic Sign",
     ]
 
-    # Vulnerable-road-user detections come from CVCavityDetector's HOG person
-    # detector, not from this classifier - they're appended downstream with
-    # this class id so the combined detection list has one consistent scheme.
     PEDESTRIAN_CLASS_ID = 7
 
     IRC_STANDARDS = {
@@ -170,8 +149,7 @@ class VisionDistressNet:
             raise RuntimeError("Model has not been trained or loaded yet - call fit() or load().")
         X = np.atleast_2d(np.asarray(X, dtype=np.float32))
         probs = self.pipeline.predict_proba(X)
-        # RandomForest.classes_ may be a subset of range(len(CLASS_NAMES)) if a
-        # class had zero training examples; project back onto the full space.
+
         full_probs = np.zeros((probs.shape[0], len(self.CLASS_NAMES)), dtype=np.float32)
         for i, cls in enumerate(self.pipeline.named_steps["clf"].classes_):
             full_probs[:, cls] = probs[:, i]

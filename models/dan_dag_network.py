@@ -1,42 +1,4 @@
-"""
-Dual Attention Network (DAN) & Directed Acyclic Graph (DAG) Deep Learning
-Engine for Road-Shield AI.
-
-Implements two complementary deep learning architectures on top of the
-CNN backbone embeddings and pixel-level segmentation maps:
-
-1. DAN — Dual Attention Network (Fu et al., CVPR 2019 + Long et al. Domain
-   Adaptation Network):
-   * Position / Spatial Attention Module (PAM): Divides any road frame or
-     candidate crop into an 8x8 patch grid, extracts 6-D local structural,
-     chromatic, and basin descriptors per patch, and computes scaled
-     dot-product spatial self-attention A_pam = softmax(Q K^T / sqrt(d))
-     to highlight pothole cavities, water-filled rims, and crack networks
-     while suppressing sky, trees, and uniform asphalt glare.
-   * Channel Attention Module (CAM): Applies a learned two-layer bottleneck
-     excitation gate g(z) = sigmoid(W2 * ReLU(W1 * z + b1) + b2) weighted
-     by class-discriminative Fisher channel importance over the 1,280-D
-     deep CNN embedding.
-   * Domain Adaptation Alignment (MK-MMD / CORAL): Aligns feature
-     distributions across dry asphalt, wet/water-filled reflective pavement,
-     and low-light shadow regimes.
-
-2. DAG — Directed Acyclic Graph Deep Inference & Decision Network
-   (Platt et al., NIPS Decision DAG + Multi-Scale DAG-CNN Fusion):
-   * Multi-Scale Feature Fusion DAG: Connects Node L1 (16-D PAM spatial
-     structural features) and Node L3 (1,280-D DAN-attended deep CNN
-     features) via a skip-connection fusion vector (1,296-D).
-   * 21-Node Rooted Pairwise Decision DAG: Evaluates K(K-1)/2 = 21 pairwise
-     max-margin hyperplanes arranged in a 6-level rooted Directed Acyclic
-     Graph (recording the exact 6-hop decision trajectory) plus full
-     pairwise Bradley-Terry probability coupling.
-   * Deep Residual MLP Head (1296 -> 512 -> 256 -> 7) with LayerNorm, SiLU
-     activations, and skip projection stored as portable NumPy float32
-     tensors (immune to scikit-learn pickle version skew across Python
-     versions).
-   * PipelineExecutionDAG: Formal 10-node, 16-edge topological execution
-     graph for the full multi-target road audit pipeline.
-"""
+"""Dual Attention Network with DAG topology for road distress classification."""
 
 import os
 import time
@@ -121,14 +83,12 @@ class DualAttentionModule:
         cmin = np.minimum(np.minimum(r, g), b) / 255.0
         sat = np.where(cmax > 1e-4, (cmax - cmin) / np.maximum(cmax, 1e-4), 0.0)
 
-        # Fast Sobel-like horizontal and vertical gradients
         gx = np.zeros_like(lum)
         gy = np.zeros_like(lum)
         gx[:, 1:-1] = np.abs(lum[:, 2:] - lum[:, :-2]) * 0.5
         gy[1:-1, :] = np.abs(lum[2:, :] - lum[:-2, :]) * 0.5
         grad = np.hypot(gx, gy)
 
-        # Road-surface luminance reference (lower 65% of image)
         roi_y0 = max(0, int(H * 0.35))
         road_lum = lum[roi_y0:, :] if roi_y0 < H else lum
         p25 = float(np.percentile(road_lum, 25))
@@ -136,7 +96,6 @@ class DualAttentionModule:
         mean_lum = float(np.mean(road_lum))
         std_lum = float(np.std(road_lum))
 
-        # Patch descriptors F in R^(64 x 6)
         patch_feats = np.zeros((G * G, 6), dtype=np.float64)
         ys = np.linspace(0, H, G + 1, dtype=int)
         xs = np.linspace(0, W, G + 1, dtype=int)
@@ -165,7 +124,6 @@ class DualAttentionModule:
                 patch_feats[idx, 5] = ms
                 idx += 1
 
-        # Position Self-Attention (PAM): A = softmax((F_norm @ F_norm^T) / sqrt(6))
         f_mean = np.mean(patch_feats, axis=0, keepdims=True)
         f_std = np.std(patch_feats, axis=0, keepdims=True) + 1e-5
         f_norm = (patch_feats - f_mean) / f_std
@@ -173,7 +131,6 @@ class DualAttentionModule:
         attn_matrix = _softmax(sim, axis=-1)
         attended = attn_matrix @ patch_feats
 
-        # Salience score per patch combining attended structural energy + raw depression/edge cue
         raw_salience = (
             0.35 * patch_feats[:, 1]
             + 0.30 * patch_feats[:, 2]
@@ -194,11 +151,9 @@ class DualAttentionModule:
             spatial_vec = np.full_like(combined, 0.5)
         spatial_map = spatial_vec.reshape(G, G).astype(np.float32)
 
-        # Entropy of the spatial attention distribution
         prob_dist = _softmax(combined * 4.0)
         entropy_bits = float(-np.sum(prob_dist * np.log2(np.maximum(prob_dist, 1e-12))))
 
-        # Center vs border rim-contrast score (critical for water-filled potholes)
         center_grid = spatial_map[2:6, 2:6]
         rim_mask = np.ones((G, G), dtype=bool)
         rim_mask[2:6, 2:6] = False
@@ -212,7 +167,6 @@ class DualAttentionModule:
         )
         fracture_edge_score = float(np.percentile(patch_feats[:, 1], 90))
 
-        # Horizontal vs vertical gradient anisotropy (distinguishes cracks vs markings)
         gx_mean = float(np.mean(gx[roi_y0:, :]))
         gy_mean = float(np.mean(gy[roi_y0:, :]))
         grad_anisotropy = float((gx_mean - gy_mean) / max(gx_mean + gy_mean, 1e-5))
@@ -403,18 +357,15 @@ class DANDAGNetwork:
         dan = self.state["dan"]
         z = np.asarray(cnn_vec, dtype=np.float64).reshape(-1)
 
-        # 1. Domain Adaptation shift alignment (wet / shadow -> canonical manifold)
         if domain_regime == "WET_REFLECTIVE_PAVEMENT" and "domain_shift_wet" in dan:
             z = z - 0.35 * np.asarray(dan["domain_shift_wet"], dtype=np.float64)
         elif domain_regime == "SHADOW_LOW_LIGHT" and "domain_shift_shadow" in dan:
             z = z - 0.35 * np.asarray(dan["domain_shift_shadow"], dtype=np.float64)
 
-        # 2. Standardize CNN embedding
         z_mean = np.asarray(dan["z_mean"], dtype=np.float64)
         z_std = np.asarray(dan["z_std"], dtype=np.float64)
         z_norm = (z - z_mean) / np.maximum(z_std, 1e-6)
 
-        # 3. Channel Attention Module (CAM): Squeeze-and-Excitation + Fisher weights
         W1 = np.asarray(dan["cam_W1"], dtype=np.float64)
         b1 = np.asarray(dan["cam_b1"], dtype=np.float64)
         W2 = np.asarray(dan["cam_W2"], dtype=np.float64)
@@ -426,7 +377,6 @@ class DANDAGNetwork:
         channel_boost = 1.0 + 0.45 * gate * fisher
         z_attended = z_norm * channel_boost
 
-        # 4. Standardize PAM spatial attention features and concatenate (DAG skip fusion)
         p_mean = np.asarray(dan["pam_mean"], dtype=np.float64)
         p_std = np.asarray(dan["pam_std"], dtype=np.float64)
         p_norm = (np.asarray(pam_vec, dtype=np.float64).reshape(-1) - p_mean) / np.maximum(p_std, 1e-6)
@@ -461,7 +411,6 @@ class DANDAGNetwork:
         n_classes = len(self.CLASS_NAMES)
         x = np.asarray(fused_vec, dtype=np.float64).reshape(-1)
 
-        # Pairwise win probabilities P(class i beats class j)
         win_matrix = np.zeros((n_classes, n_classes), dtype=np.float64)
         margin_matrix = np.zeros((n_classes, n_classes), dtype=np.float64)
         for key, node in pairs.items():
@@ -470,14 +419,13 @@ class DANDAGNetwork:
             b = float(node["b"])
             scale = float(node.get("scale", 1.0))
             margin = float(np.dot(x, w) + b)
-            # Positive margin favors class j, negative favors class i (sklearn convention)
+
             p_j = float(_sigmoid(margin * scale))
             win_matrix[j, i] = p_j
             win_matrix[i, j] = 1.0 - p_j
             margin_matrix[j, i] = margin
             margin_matrix[i, j] = -margin
 
-        # Rooted 6-hop DAG traversal (candidates list shrinks by 1 at each hop)
         candidates = list(range(n_classes))
         dag_trace = []
         while len(candidates) > 1:
@@ -502,9 +450,8 @@ class DANDAGNetwork:
 
         leaf_class = int(candidates[0])
 
-        # Coupled multi-class probability distribution from all 21 pairwise nodes
         avg_win = np.sum(win_matrix, axis=1) / float(max(1, n_classes - 1))
-        # Boost the surviving DAG leaf slightly to respect topological consistency
+
         logits = avg_win * 5.0
         logits[leaf_class] += 0.35
         probs_dag = _softmax(logits)

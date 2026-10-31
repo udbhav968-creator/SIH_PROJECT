@@ -1,13 +1,4 @@
-"""
-Model M4: 100 Hz 3-axis IMU shock classifier.
-
-Turns a 1-second window (100 samples x 3 axes) of accelerometer readings into
-one of four classes: smooth asphalt, unmarked speed breaker / bump, marked
-speed breaker, or a pothole impact. The time -> feature step (extract_temporal_features) is
-plain, well-understood signal processing (mean/std/energy/zero-crossing-rate/
-jerk per axis); the classifier on top of it is a real scikit-learn model
-trained on datasets/04_mobile_imu_telemetry_100hz.
-"""
+"""100 Hz IMU shock signal classifier for vertical pavement anomalies."""
 
 import os
 import numpy as np
@@ -20,10 +11,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 
 
 class IMUShockClassifier:
-    # Names follow the source logs (plain_road / unmarked_sb / marked_sb /
-    # potholes in VishalSingh25/Pothole-Project). Classes 1 and 2 used to be
-    # called "Expansion Joint" and "Rumble Strip", which the data never contained:
-    # they are unmarked and marked speed breakers.
+
     CLASS_NAMES = ["Smooth Asphalt", "Unmarked Speed Breaker / Bump", "Marked Speed Breaker", "Pothole Impact"]
     POTHOLE_CLASS_ID = 3
 
@@ -63,13 +51,13 @@ class IMUShockClassifier:
             p1 = np.mean(centered[:, : T // 2] ** 2, axis=1, keepdims=True)
             p2 = np.mean(centered[:, T // 2 :] ** 2, axis=1, keepdims=True)
             ratio = (p2 + 1e-5) / (p1 + 1e-5)
-            # Higher-order shape & impulsiveness (crest factor, skewness, kurtosis)
+
             rms = np.sqrt(ac_energy + 1e-6)
             crest = np.max(np.abs(centered), axis=1, keepdims=True) / rms
             skew = np.mean((centered / std) ** 3, axis=1, keepdims=True)
             kurt = np.mean((centered / std) ** 4, axis=1, keepdims=True)
-            # Spectral sub-band energies via rFFT (low, mid, high frequency bands)
-            fft_mag = np.abs(np.fft.rfft(centered, axis=1))[:, 1:]  # drop DC
+
+            fft_mag = np.abs(np.fft.rfft(centered, axis=1))[:, 1:]
             nb = max(1, fft_mag.shape[1] // 3)
             b_low = np.mean(fft_mag[:, :nb] ** 2, axis=1, keepdims=True)
             b_mid = np.mean(fft_mag[:, nb : 2 * nb] ** 2, axis=1, keepdims=True)
@@ -81,7 +69,7 @@ class IMUShockClassifier:
                 crest, skew, kurt,
                 b_low / spec_tot, b_mid / spec_tot, b_high / spec_tot,
             ])
-        # Total 3D vector magnitude dynamic excursion
+
         vmag = np.sqrt(np.sum(X_raw**2, axis=2))
         v_ptp = (vmag.max(axis=1, keepdims=True) - vmag.min(axis=1, keepdims=True))
         v_std = vmag.std(axis=1, keepdims=True)
@@ -89,10 +77,7 @@ class IMUShockClassifier:
         return np.concatenate(feats, axis=1).astype(np.float32)
 
     def _build_pipeline(self):
-        # min_samples_leaf=3 prevents single-sample pure leaves where
-        # class_weight="balanced" cancels out (w_c / w_c = 1.0), and combining
-        # RandomForest + ExtraTrees + balanced LogisticRegression lifts 5-fold
-        # blocked CV macro-F1 on X_train from 0.5730 -> 0.6813.
+
         rf = RandomForestClassifier(
             n_estimators=self.n_estimators,
             max_depth=10,

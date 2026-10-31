@@ -1,34 +1,15 @@
-"""
-Models M7 & M8: forensic anti-fraud and repair-verification engine.
-
-- ForensicDuplicateHasher: flags duplicate/near-duplicate photo re-submission
-  ("ghost billing", where the same site photo is uploaded twice to draw two
-  payouts). This used to be framed as a "DINOv2-style deep metric embedder",
-  but the network was randomly initialized weights with no training data to
-  fit it on - it would have produced meaningless embeddings. Duplicate-image
-  detection does not need a trained model at all: a perceptual hash (a
-  DCT-based average hash, in the spirit of pHash) is deterministic, needs no
-  training data, and is the standard real-world tool for exactly this job -
-  it is robust to re-compression and minor exposure/crop differences while
-  still being sensitive to genuine content changes.
-- ForensicTextureAuditor: SSIM (structural similarity) + Laplacian-variance
-  surface-texture comparison between a before/after repair photo pair. This
-  part of the original module was already real, standard image-processing
-  math; it now optionally uses scikit-image / OpenCV's own implementations
-  where available for accuracy, falling back to the original hand-written
-  versions if those libraries are missing.
-"""
+"""Forensic image integrity and duplicate detection engine."""
 
 import numpy as np
 
 try:
     import cv2
-except ImportError:  # pragma: no cover
+except ImportError:
     cv2 = None
 
 try:
     from skimage.metrics import structural_similarity as _sk_ssim
-except ImportError:  # pragma: no cover
+except ImportError:
     _sk_ssim = None
 
 
@@ -62,7 +43,7 @@ class ForensicDuplicateHasher:
     def _resize(self, arr, side):
         if cv2 is not None:
             return cv2.resize(arr, (side, side), interpolation=cv2.INTER_AREA)
-        # Nearest-neighbour fallback resize (no cv2 available).
+
         h, w = arr.shape
         ys = (np.arange(side) * h / side).astype(np.int32)
         xs = (np.arange(side) * w / side).astype(np.int32)
@@ -70,8 +51,7 @@ class ForensicDuplicateHasher:
 
     @staticmethod
     def _dct2(block):
-        # Separable 2D DCT-II built from a real 1D DCT-II matrix, so this
-        # has no dependency on scipy being present.
+
         n = block.shape[0]
         k = np.arange(n).reshape(-1, 1)
         i = np.arange(n).reshape(1, -1)
@@ -86,8 +66,7 @@ class ForensicDuplicateHasher:
         gray = self._resize(self._to_gray_float(img), side)
         dct = self._dct2(gray)
         low_freq = dct[: self.hash_size, : self.hash_size]
-        # DC term (top-left) dominates scale, exclude it from the median used
-        # for thresholding, same as the standard pHash recipe.
+
         med = np.median(low_freq.flatten()[1:])
         return (low_freq > med).flatten()
 
@@ -111,7 +90,6 @@ class ForensicDuplicateHasher:
             "is_duplicate_or_near_duplicate": dist <= self.duplicate_hamming_threshold,
         }
 
-    # --- backward-compatible surface matching the old fake-embedder API ---
     def cosine_similarity(self, emb_or_img1, emb_or_img2):
         """
         Compatibility shim for callers that previously compared two
@@ -184,8 +162,8 @@ class ForensicTextureAuditor:
         lap_after = self.compute_laplacian_variance(img_after)
 
         geofence_passed = claimed_dist_m <= 2.5
-        physical_alteration_passed = ssim <= 0.75  # SSIM > 0.75 => images too identical, no repair happened
-        smooth_compaction_passed = lap_after <= 600.0  # smooth, well-compacted bitumen surface
+        physical_alteration_passed = ssim <= 0.75
+        smooth_compaction_passed = lap_after <= 600.0
 
         passed = geofence_passed and physical_alteration_passed and smooth_compaction_passed
 
@@ -233,6 +211,4 @@ class ForensicTextureAuditor:
         return result
 
 
-# Backward-compatible alias - see class docstring for why this is no longer
-# framed as a trained "deep metric embedder".
 ForensicMetricEmbedder = ForensicDuplicateHasher

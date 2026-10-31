@@ -1,20 +1,4 @@
-"""
-Experiment tracking: every training run leaves a record of what it was given and what it measured.
-
-    from mlops.tracking import start_run
-    with start_run("ood_guard", params={"pca_dims": 64}) as run:
-        ...
-        run.log_metrics({"auroc": 0.97})
-        run.log_artifact("checkpoints/ood_guard.npz")
-
-A run stores its parameters, metrics (with optional steps, for curves), tags, the git commit it ran
-from, and the SHA-256 and size of each file it produced, so a model in the registry can be traced
-back to the exact run and code that made it. Runs that raise are kept and marked FAILED.
-
-The store is SQLite under mlops_store/ and needs nothing installed. If MLflow is installed the same
-run is mirrored to it (MLFLOW_TRACKING_URI, default ./mlruns), so `mlflow ui` shows every run;
-set ROAD_SHIELD_MLFLOW=0 to turn the mirror off.
-"""
+"""Experiment tracking and run parameter logging."""
 import json
 import os
 import platform
@@ -71,7 +55,7 @@ class _MLflowMirror:
         if os.environ.get("ROAD_SHIELD_MLFLOW", "1") == "0":
             return
         try:
-            import mlflow  # noqa: F401
+            import mlflow
         except Exception:
             return
         try:

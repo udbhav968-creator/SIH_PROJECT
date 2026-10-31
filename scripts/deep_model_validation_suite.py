@@ -274,7 +274,6 @@ def check_level_4_civil_engineering_compliance():
     all_pass = True
     results = []
 
-    # MoRTH Section 500 Volumetric Equation: Mass = Area * Depth * Density * Compaction
     area_test = 1.50
     depth_test_cm = 6.0
     expected_vol = area_test * (depth_test_cm / 100.0)
@@ -293,7 +292,6 @@ def check_level_4_civil_engineering_compliance():
         results.append({"standard": "MoRTH Section 500", "test": "Mass & Cost Calculation", "status": "FAILED"})
         all_pass = False
 
-    # IRC:SP:83 Depth Interval Checks
     dummy_gray = np.ones((100, 100), dtype=np.uint8) * 128
     dummy_gray[30:70, 30:70] = 60
     de = pothole_depth(dummy_gray, bbox=(30, 30, 40, 40))
@@ -307,7 +305,6 @@ def check_level_4_civil_engineering_compliance():
         results.append({"standard": "IRC:SP:83", "test": "Depth Interval Monotonicity", "status": "FAILED"})
         all_pass = False
 
-    # ASTM D6433 Pavement Condition Index Bounds
     try:
         from models.pci_regressor_net import PavementConditionIndexEngine
         pci_engine = PavementConditionIndexEngine()

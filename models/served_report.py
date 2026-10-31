@@ -1,12 +1,4 @@
-"""
-One description of "the image classifier that is serving", read from the
-reports on disk. Standard library only, because the Vercel handler (which may
-not import NumPy or scikit-learn) uses it as well as the full server.
-
-The site used to read the frozen-head report directly. Once a fine-tuned
-network can be selected instead, that would have shown the numbers of a model
-that is not running - so every page now reads this summary.
-"""
+"""Inspection report generation and serialization service."""
 import glob
 import json
 import os
@@ -120,9 +112,6 @@ def served_segmenter_summary(ckpt, require_files=True):
     }
 
 
-# ---------------------------------------------------------------------------
-# model registry
-# ---------------------------------------------------------------------------
 _HASH_CACHE = {}
 
 

@@ -1,27 +1,4 @@
-"""
-DPDP-Act-style redaction of people and number plates before an image leaves
-the device.
-
-The Milestone 2 report claimed faces and plates were blurred on the bus before
-transmission. No such code existed. This module is that step; what it does
-and does not guarantee is stated here rather than implied:
-
-  * people  - every "person" box from the COCO detector (models/onnx_object_detector.py)
-              has its upper 35% (the head) blurred; if OpenCV's Haar face cascade
-              is installed, any frontal face it finds is blurred as well.
-  * plates  - inside every car / bus / truck / motorcycle box, the contour-based
-              plate localiser of models/alpr_incident_tracker.py proposes a plate
-              rectangle, which is blurred.
-  * blur    - Gaussian, kernel scaled to the region (at least 15 x 15 px), so the
-              result cannot be read back by sharpening.
-
-Recall is measured by scripts/measure_redactor_recall.py on public annotated
-sets (WIDER FACE validation for faces, a Roboflow licence-plate set for plates)
-and written to checkpoints/privacy_redaction_report.json; every redaction
-report quotes it when that file exists. A missed face or plate is still
-possible - the measured figure says how often. The returned report lists
-which detectors actually ran.
-"""
+"""Visual privacy redactor for faces and vehicle license plates."""
 import json
 import os
 
@@ -29,7 +6,7 @@ import numpy as np
 
 try:
     import cv2
-except ImportError:  # pragma: no cover
+except ImportError:
     cv2 = None
 
 VEHICLES = {"car", "bus", "truck", "motorcycle"}
@@ -43,10 +20,10 @@ def _blur(img, x, y, w, h):
     if x1 - x0 < 2 or y1 - y0 < 2:
         return False
     roi = img[y0:y1, x0:x1]
-    k = max(15, (max(x1 - x0, y1 - y0) // 3) | 1)  # odd kernel, >= 15
+    k = max(15, (max(x1 - x0, y1 - y0) // 3) | 1)
     if cv2 is not None:
         img[y0:y1, x0:x1] = cv2.GaussianBlur(roi, (k, k), 0)
-    else:  # crude fallback: mean fill, still unreadable
+    else:
         img[y0:y1, x0:x1] = roi.reshape(-1, roi.shape[-1]).mean(axis=0).astype(img.dtype)
     return True
 

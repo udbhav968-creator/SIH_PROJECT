@@ -1,4 +1,4 @@
-"""Repair lifecycle (issue -> repair -> verified by the fleet), alerts and the GIS export."""
+"""Tests for work order creation and repair verification lifecycle."""
 
 import csv
 import io
@@ -49,7 +49,7 @@ class Lifecycle(unittest.TestCase):
         o = self.w.issue(self.defect)
         oid = o["work_order_id"]
         with self.assertRaises(WorkflowError):
-            self.w.transition(oid, "ASSIGNED")                           # needs a contractor
+            self.w.transition(oid, "ASSIGNED")
         self.w.transition(oid, "ASSIGNED", contractor="Acme Roads")
         self.w.transition(oid, "IN_PROGRESS")
         self.clock.t += 3600
@@ -64,7 +64,7 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(o["seal_status"], "SEAL_VERIFIED_AUTHENTIC")
         self.assertTrue(o["history_chain_intact"])
         with self.assertRaises(WorkflowError):
-            self.w.issue(self.defect)                                    # one open order per defect
+            self.w.issue(self.defect)
         with self.assertRaises(WorkflowError):
             self.w.issue("DEF-NOPE")
 
@@ -114,7 +114,7 @@ class Lifecycle(unittest.TestCase):
     def test_a_pass_between_two_fixes_counts(self):
         oid = self._to_repaired()
         lat, lon = self.defect_latlon()
-        step = 0.0004                                   # ~44 m: neither fix is within 15 m of the defect
+        step = 0.0004
         self.assertEqual(self.w.on_bus_position("BUS-5", lat, lon - step), [])
         self.clock.t += 6
         self.w.on_bus_position("BUS-5", lat, lon + step)
@@ -122,10 +122,10 @@ class Lifecycle(unittest.TestCase):
         self.clock.t += 6
         self.w.on_bus_position("BUS-6", lat + 0.002, lon - step)
         self.clock.t += 6
-        self.w.on_bus_position("BUS-6", lat + 0.002, lon + step)      # parallel road 220 m away
+        self.w.on_bus_position("BUS-6", lat + 0.002, lon + step)
         self.assertEqual(self.w.get(oid)["fleet_passes_since_repair"], 1)
         self.clock.t += 600
-        self.w.on_bus_position("BUS-6", lat, lon - step)               # a jump after a long gap is not a track
+        self.w.on_bus_position("BUS-6", lat, lon - step)
         self.assertEqual(self.w.get(oid)["fleet_passes_since_repair"], 1)
 
     def test_segment_distance(self):
@@ -140,9 +140,9 @@ class Lifecycle(unittest.TestCase):
         lat, lon = self.defect_latlon()
         self.w.on_bus_position("BUS-7", lat, lon)
         self.clock.t += 5
-        self.w.on_bus_position("BUS-8", lat, lon)                    # enough passes...
+        self.w.on_bus_position("BUS-8", lat, lon)
         self.clock.t += 2
-        self.w.on_sighting(self.defect, "BUS-8")                     # ...but BUS-8's camera still sees it
+        self.w.on_sighting(self.defect, "BUS-8")
         self.clock.t += 120
         self.assertEqual(self.w.tick(), [])
         self.assertEqual(self.w.get(oid)["status"], "REOPENED")
@@ -153,7 +153,7 @@ class Lifecycle(unittest.TestCase):
         lat, lon = self.defect_latlon()
         for _ in range(4):
             self.w.on_bus_position("BUS-7", lat, lon)
-            self.clock.t += 700                                   # past the per-bus cooldown each time
+            self.clock.t += 700
         self.assertEqual(self.w.tick(), [])
         self.assertEqual(self.w.get(oid)["fleet_passes_since_repair"], 1, "passes count different buses")
 
@@ -212,7 +212,7 @@ class Lifecycle(unittest.TestCase):
 
     def test_sla_and_summary(self):
         o = self.w.issue(self.defect)
-        self.assertEqual(o["sla_hours"], 24)                               # a pothole is a 24 h order
+        self.assertEqual(o["sla_hours"], 24)
         self.assertFalse(o["overdue"])
         self.clock.t += 25 * 3600
         self.assertTrue(self.w.list()[0]["overdue"])
@@ -262,7 +262,7 @@ class AlertsTest(unittest.TestCase):
                     break
                 threading.Event().wait(0.05)
             self.assertEqual(len(got), 2)
-            texts = sorted(g["text"] for g in got)          # sent in parallel, so in either order
+            texts = sorted(g["text"] for g in got)
             self.assertTrue(texts[0].startswith("ROAD-SHIELD: P1"))
             self.assertIn("past its 24 h SLA", texts[1])
             self.assertEqual(a.status()["delivered"], 2)

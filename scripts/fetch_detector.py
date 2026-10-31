@@ -52,7 +52,6 @@ def main():
     os.makedirs(CKPT_DIR, exist_ok=True)
     target = os.path.join(CKPT_DIR, TARGET_NAME)
 
-    # Routes that need no PyTorch at all -------------------------------------
     if args.onnx_file:
         if not os.path.exists(args.onnx_file):
             sys.exit(f"No such file: {args.onnx_file}")

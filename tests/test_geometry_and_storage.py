@@ -1,13 +1,4 @@
-"""
-Regression tests for the measurement chain and the durable ledger.
-
-    python -m unittest tests.test_geometry_and_storage -v
-
-These cover the parts of the system that turn a photograph into a rupee figure,
-which is where a silent error is most expensive. Each test pins a property that
-would actually break the product, and the expected values are derived from the
-geometry rather than copied from whatever the code currently returns.
-"""
+"""Tests for spatial geometry calculations and SQLite storage."""
 
 import os
 import sys
@@ -22,25 +13,6 @@ import numpy as np
 
 CKPT = os.path.join(ENGINE_ROOT, "checkpoints")
 
-# One engine for the whole suite.
-#
-# Each DeepInferencePipeline holds a ResNet-50 session and a YOLO session. Three
-# were being built in one process - two test classes and a video test - which is
-# six ONNX sessions. On a laptop with 4.7 GB free that still produced
-#
-#     [ONNXRuntimeError] Exception during initialization: bad allocation
-#
-# and the classifier then fell back to the hand-crafted path, so the suite spent
-# its time measuring a model nobody ships. Nothing about the product needs three
-# engines; the tests just never shared one.
-# The cache lives on the CLASS, not in a module global.
-#
-# unittest discover imports this file as `test_geometry_and_storage`, and the
-# sibling test file imports it as `tests.test_geometry_and_storage`. Python
-# treats those as two separate modules with two separate globals, so a
-# module-level singleton was built twice - which is exactly the duplication
-# being removed. `pipeline.deep_inference_pipeline` is imported once under one
-# name, so an attribute on the class is genuinely shared.
 def shared_pipeline():
     from pipeline.deep_inference_pipeline import DeepInferencePipeline
     if getattr(DeepInferencePipeline, "_test_shared_instance", None) is None:
@@ -204,7 +176,7 @@ class DepthHonesty(unittest.TestCase):
         b = depth_estimator.pothole_depth(deep, mask=mask)
         self.assertGreater(b["depth_cm"], a["depth_cm"])
         self.assertGreater(b["method_confidence"], a["method_confidence"])
-        # and the interval should narrow as the cue strengthens
+
         self.assertLess(b["depth_high_cm"] - b["depth_low_cm"],
                         a["depth_high_cm"] - a["depth_low_cm"])
 
@@ -223,9 +195,7 @@ class DurableLedger(unittest.TestCase):
         self._stores = []
 
     def tearDown(self):
-        # Each store holds a sqlite connection per thread. Dropping the
-        # reference without closing leaks it, and the run prints
-        # "ResourceWarning: unclosed database" for every one.
+
         for st in self._stores:
             st.close()
 
@@ -257,14 +227,14 @@ class DurableLedger(unittest.TestCase):
         from pipeline.fleet_deduplication_engine import FleetDeduplicationEngine
         e1 = FleetDeduplicationEngine(store=self._store())
         for i in range(3):
-            # ~1 km apart so each is a genuinely distinct defect, not a merge
+
             e1.ingest_fleet_detection(f"BUS-{i}", 12.97 + i * 0.01, 77.59,
                                       "Pothole Cavity", 40.0, 1.0, enrich_location=False)
         ids_before = {d["defect_id"] for d in e1.get_all_deduplicated_defects()}
         self.assertEqual(len(ids_before), 3, "fixture should create three distinct defects")
 
         e2 = FleetDeduplicationEngine(store=self._store())
-        # somewhere none of the originals are, so this must be a new record
+
         res = e2.ingest_fleet_detection("BUS-9", 13.10, 77.70, "Crack", 60.0, 0.2,
                                         enrich_location=False)
         self.assertEqual(res["action"], "REGISTERED_NEW_DEFECT")
@@ -297,7 +267,7 @@ class DurableLedger(unittest.TestCase):
                              "reporting_buses": ["B"], "first_seen_timestamp": 1.0,
                              "last_seen_timestamp": 1.0})
         self.assertEqual(store.stats()["unique_defects"], 1)
-        # upserting the same id must not create a second row
+
         store.upsert_defect({"defect_id": "DEF-X-1", "lat": 1.0, "lon": 2.0,
                              "defect_class": "Crack", "confirmation_count": 2,
                              "reporting_buses": ["B", "C"], "first_seen_timestamp": 1.0,
@@ -313,7 +283,7 @@ class VideoIngest(unittest.TestCase):
                       {"t": 10, "lat": 10.001, "lon": 20.0}])
         mid = t.position_at(5.0)
         self.assertAlmostEqual(mid[0], 10.0005, places=6)
-        # outside the track it clamps rather than extrapolating into fiction
+
         self.assertEqual(t.position_at(-5.0), (10.0, 20.0))
         self.assertEqual(t.position_at(99.0), (10.001, 20.0))
 
@@ -323,7 +293,7 @@ class VideoIngest(unittest.TestCase):
 
     def test_haversine_matches_a_known_distance(self):
         from pipeline.video_ingest import GPSTrack
-        # 0.001 degrees of latitude is about 111 m anywhere on Earth
+
         d = GPSTrack.haversine_m(12.9716, 77.5946, 12.9726, 77.5946)
         self.assertAlmostEqual(d, 111.0, delta=3.0)
 
@@ -379,14 +349,7 @@ class FalsePositiveGate(unittest.TestCase):
                 if any(k in d.get("class_name", "") for k in ("Pothole", "Crack"))]
 
     def setUp(self):
-        # Reset per test: a run in which the classifier threw is not a
-        # measurement of the proposal filter, it is a measurement of the
-        # machine's free memory. ONNX Runtime raises "bad allocation" from a
-        # Conv node on a constrained host, the crop is dropped, and the
-        # detection count falls for a reason that has nothing to do with the
-        # code under test. Those runs are skipped, not failed - and not
-        # silently passed either, which is what happened before the pipeline
-        # counted them.
+
         self._classifier_trouble = []
 
     def _detection_baseline(self):
@@ -449,16 +412,10 @@ class FalsePositiveGate(unittest.TestCase):
         files = [p for p in sorted(glob.glob(os.path.join(ENGINE_ROOT, "datasets", folder,
                                                           "**", "*.jpg"), recursive=True))
                  if "_label_conflicts" not in p]
-        # Same corpus policy as the measurement, or the test and the number it
-        # compares against would be drawn from different populations.
+
         from pipeline.corpus_policy import filter_paths
         files, _ = filter_paths(files)
-        # These tests exercise the whole-frame pipeline (horizon rule, ground
-        # area). RDD2022 training crops (rddin_*) are tight cut-outs of a single
-        # defect with no road geometry, written into these folders by
-        # scripts/ingest_rdd2022_india.py on a training machine; sampling them
-        # made the proposals test fail because the horizon rule (correctly)
-        # discards a cut-out, not because the pipeline was wrong.
+
         files = [p for p in files if not os.path.basename(p).startswith(("rddin_", "rddw_"))]
         random.Random(seed).shuffle(files)
         return files[:n]
@@ -514,17 +471,9 @@ class FalsePositiveGate(unittest.TestCase):
                 f"  fix                  : {d.get('fix')}")
         self.skipTest("no segmenter trained yet - run training.train_segmenter")
 
-    # ---------------------------------------------------------------- wiring
     def test_proposal_thresholds_are_the_measured_ones(self):
         from pipeline.deep_inference_pipeline import DeepInferencePipeline as P
-        # Both came from scripts/tune_proposals.py sweeping end-to-end through
-        # audit_image(). Changing either without re-running that sweep is how
-        # the previous regression happened.
-        # Per class, because a pixel COUNT is shape-dependent: a crack of the
-        # same real extent as a pothole has an order of magnitude fewer pixels.
-        # One shared floor silently made the system pothole-only for thin
-        # cracks - it was discarding blobs of 52 and 107 px against a 256 px
-        # floor.
+
         self.assertIsInstance(P.MIN_COMPONENT_FRACTION, dict,
                               "the size floor must be per class")
         self.assertAlmostEqual(P.MIN_COMPONENT_FRACTION["pothole"], 0.004, places=4)
@@ -536,10 +485,6 @@ class FalsePositiveGate(unittest.TestCase):
             self.assertGreater(frac, 0.0, f"a zero {name} floor floods a clean road")
             self.assertLess(frac, 0.05, f"a large {name} floor discards real defects")
 
-        # The confidence floor must be a MARGIN, never an absolute probability.
-        # An absolute 0.45 measured well on the model trained here (pothole
-        # threshold 0.35) and discarded real potholes on a model calibrated to
-        # 0.20, because 0.45 is 2.25x that threshold.
         self.assertIsInstance(P.MIN_COMPONENT_MARGIN, dict,
                               "the floor must be per class: a crack is thin, so "
                               "its blob mean sits near its threshold by shape")
@@ -572,11 +517,7 @@ class FalsePositiveGate(unittest.TestCase):
             img = self.pipe.cv_detector.decode_image(path)
             H, W, _ = img.shape
             self.pipe._seg_out = self.pipe.segmenter.segment(img)
-            # This calls one stage directly, so it must also reset the other
-            # per-image state that stage reads. audit_image sets both on every
-            # call; left alone here they belong to whatever photograph an
-            # earlier test analysed (a zebra crossing's paint, a car), and they
-            # erased this photograph's pothole pixels.
+
             self.pipe._paint_mask = None
             self.pipe._object_mask = None
             for b in self.pipe._segmentation_proposals(H, W):
@@ -605,7 +546,6 @@ class FalsePositiveGate(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"box covering more than 60% of the frame: {offenders}")
 
-    # ------------------------------------------------------- false positives
     def test_zebra_crossings_are_not_reported_as_potholes(self):
         self._need_segmenter()
         files = self._sample("10_missing_zebra_crossing", 5)
@@ -613,10 +553,7 @@ class FalsePositiveGate(unittest.TestCase):
             self.skipTest("no zebra-crossing photographs on disk")
         bad = [os.path.basename(p) for p in files if self._defects(p)]
         self._skip_if_classifier_failed()
-        # Measured end-to-end: 3 of 36 clean photographs (8.3%) are still
-        # reported. A hard zero would be a test that passes by luck on this
-        # sample; the honest number lives in
-        # checkpoints/detection_quality_report.json.
+
         self.assertLessEqual(len(bad), len(files) // 2,
                              f"{len(bad)}/{len(files)} zebra crossings reported as a "
                              f"crack or pothole: {bad}")
@@ -632,7 +569,6 @@ class FalsePositiveGate(unittest.TestCase):
                              f"{len(bad)}/{len(files)} sound-pavement photographs "
                              f"reported as defective: {bad}")
 
-    # ------------------------------------------------------------- detection
     def test_real_defects_are_still_reported(self):
         """Without this, setting every threshold to 1.0 would pass the rest."""
         self._need_segmenter()
@@ -642,24 +578,10 @@ class FalsePositiveGate(unittest.TestCase):
         found = sum(1 for p in files if self._defects(p))
         self._skip_if_classifier_failed()
 
-        # The bar comes from a measurement taken on THIS machine, with THIS
-        # corpus and THIS model, not from a constant written here.
-        #
-        # A hard-coded 5-of-8 measured on 489 photographs failed on a machine
-        # holding 1,404 of them: the seeded sample drew eight different
-        # photographs, against a differently calibrated segmenter, and the
-        # assertion message blamed the proposal filter for it. Nothing was
-        # wrong with the build. When the recorded baseline does not describe
-        # what is on disk here, this test has no number it is entitled to
-        # assert, so it skips and says how to get one.
         baseline = self._detection_baseline()
         if baseline is None:
             self.skipTest(self._baseline_reason)
 
-        # Half the recorded rate, floored at a quarter. Eight photographs is a
-        # small sample and a bar set at the measured rate fails on noise; this
-        # is loose enough to survive that and tight enough to catch the
-        # collapse to 20.8% that over-tightening the proposal filter produced.
         bar = max(1, int(len(files) * max(0.25, baseline * 0.5)))
         self.assertGreaterEqual(
             found, bar,
@@ -704,7 +626,6 @@ class FalsePositiveGate(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"proposed a defect centred above the road ROI: {offenders}")
 
-    # --------------------------------------------------- plausible to price
     def test_an_implausible_area_is_flagged_not_priced(self):
         """
         A number that cannot be defended must not carry a rupee figure.
@@ -745,7 +666,6 @@ class FalsePositiveGate(unittest.TestCase):
                          f"priced a defect whose area or extent cannot be defended: "
                          f"{priced_but_absurd}")
 
-    # ------------------------------------------------------------- reporting
     def test_segmenter_report_measures_clean_road_false_positives(self):
         """IoU is computed only on photographs that contain a defect, so it is
         blind to inventing defects on clean roads. That blind spot is why the
@@ -854,8 +774,7 @@ class MarkingDetection(unittest.TestCase):
         files = [p for p in sorted(glob.glob(os.path.join(ENGINE_ROOT, "datasets", folder,
                                                           "**", "*.jpg"), recursive=True))
                  if "_label_conflicts" not in p]
-        # Same corpus policy as the measurement, or the test and the number it
-        # compares against would be drawn from different populations.
+
         from pipeline.corpus_policy import filter_paths
         files, _ = filter_paths(files)
         random.Random(seed).shuffle(files)

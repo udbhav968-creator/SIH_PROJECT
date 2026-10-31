@@ -1,27 +1,4 @@
-"""
-Deep 1-D CNN for the 100 Hz IMU shock classifier, compared honestly with the
-served RandomForest on hand-crafted features.
-
-    python -m training.train_imu_deep            # GPU optional - the data is tiny
-
-Data: datasets/04_mobile_imu_telemetry_100hz/imu_shock_100hz_{train,val}.npz -
-688 training and 164 held-out windows (100 samples x 3 axes, m/s^2) cut from
-10 real drive logs, split by time block upstream.
-
-Protocol
-    1. 5-fold stratified CV on the TRAIN windows only, for both the RandomForest
-       (same pipeline as models/imu_shock_classifier.py) and the CNN, with
-       several seeds for the CNN because 688 windows make single runs noisy.
-    2. Decision rule fixed before the held-out windows are scored: serve the
-       CNN only if its mean CV macro-F1 AND CV accuracy beat the forest's.
-    3. Fit both on all training windows, score the 164 held-out windows once,
-       report both. Export the CNN to ONNX (checked against PyTorch).
-
-Outputs (checkpoints/):
-    imu_shock_cnn.onnx + imu_shock_cnn.json   network + normalisation sidecar
-    imu_deep_report.json                      CV table, held-out metrics, decision
-    imu_model_selection.json                  which IMU model the pipeline serves
-"""
+"""Train deep 1-D CNN for 100 Hz IMU shock classification."""
 import json
 import os
 import sys
@@ -54,9 +31,7 @@ def normalise(X, scale):
 
 def scores(y, p):
     from sklearn.metrics import accuracy_score, f1_score
-    # Macro-F1 over the classes present in this fold's truth: a blocked fold can
-    # lack a class entirely, and scoring an absent class as F1 = 0 would penalise
-    # both models by an amount that depends only on how the blocks fell.
+
     present = sorted(set(np.asarray(y).tolist()))
     return float(accuracy_score(y, p)), float(f1_score(y, p, labels=present, average="macro", zero_division=0))
 
@@ -117,7 +92,7 @@ def fit_cnn(Xtr, ytr, seed, epochs=120, width=32, device=None):
         for i in range(0, len(Y), 64):
             idx = perm[i:i + 64]
             xb = X[idx]
-            # augmentation: circular time shift, amplitude scaling, sensor noise
+
             shift = int(rng.integers(-12, 13))
             xb = torch.roll(xb, shifts=shift, dims=2)
             xb = xb * torch.empty(len(idx), 1, 1, device=device).uniform_(0.8, 1.25)
@@ -138,7 +113,7 @@ def cnn_predict(net, X):
     return lo.softmax(1).cpu().numpy()
 
 
-BLOCK = 25   # windows per contiguous group (~25 s of driving)
+BLOCK = 25
 
 
 def blocked_groups(n, block=BLOCK):
@@ -156,13 +131,6 @@ def main():
     Xtr, Xva = normalise(Xtr_raw, scale), normalise(Xva_raw, scale)
     print(f"[IMU deep] train {len(ytr)} | held-out {len(yva)} | class counts train {np.bincount(ytr).tolist()}")
 
-    # Folds of contiguous TIME BLOCKS, not shuffled windows. The training windows
-    # are stored in time order per drive; neighbouring 1-second windows are nearly
-    # the same signal. The first version shuffled windows into folds, so a
-    # window's neighbour sat in the training fold: CV then rewarded memorisation,
-    # picked the CNN (CV acc 0.869 vs 0.849), and the time-separated held-out
-    # logs reversed the verdict (RF 0.872 vs CNN 0.787). Blocks of BLOCK windows
-    # stay together, mirroring how the held-out split itself was made.
     groups = blocked_groups(len(ytr))
     skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
     folds = list(skf.split(Xtr_raw, ytr, groups))
@@ -184,7 +152,6 @@ def main():
     rf_cv, cnn_cv = cv_table["random_forest"], cv_table[best_cnn]
     serve_cnn = cnn_cv["cv_macro_f1"] > rf_cv["cv_macro_f1"] and cnn_cv["cv_accuracy"] > rf_cv["cv_accuracy"]
 
-    # final fits on all training windows; held-out scored once each
     rf = IMUShockClassifier().fit(Xtr_raw, ytr)
     rf_pred = rf.predict(Xva_raw)[0]
     width = int(best_cnn.split("w")[1])
@@ -202,7 +169,6 @@ def main():
                                                    target_names=IMUShockClassifier.CLASS_NAMES,
                                                    output_dict=True, zero_division=0)}
 
-    # Export the 3-seed ensemble as one ONNX graph (mean of softmaxes).
     class Ens(torch.nn.Module):
         def __init__(self, ms):
             super().__init__()

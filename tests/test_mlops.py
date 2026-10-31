@@ -1,5 +1,4 @@
-"""MLOps: experiment tracking, model registry (gates, promotion, rollback), retraining pipeline,
-monitoring and drift, shadow, active learning, the traffic estimate and the input guard."""
+"""Unit tests for MLOps tracking, registry, and drift monitoring."""
 import json
 import os
 import shutil
@@ -77,11 +76,11 @@ class RegistryTest(_Tmp):
         self.assertTrue(reg.served_state("ood_guard")["matches"])
         self.assertEqual(reg.production("ood_guard")["metrics"]["auroc_combined"], 0.95)
 
-        self._model(0.97, payload="v2")                       # a better model
+        self._model(0.97, payload="v2")
         v2 = reg.register("ood_guard")
         self.assertEqual((v2["version"], v2["stage"]), (2, "candidate"))
         self.assertEqual(reg.register("ood_guard")["version"], 2, "same bytes, same version")
-        self._model(0.95)                                     # put production's files back
+        self._model(0.95)
         self.assertTrue(reg.gate("ood_guard", 2)["passed"])
         res = reg.promote("ood_guard", 2, actor="test")
         self.assertEqual((res["version"], res["previous"]), (2, 1))
@@ -95,7 +94,7 @@ class RegistryTest(_Tmp):
             self.assertEqual(fh.read(), "v1")
         self.assertIn("rollback", [e["action"] for e in reg.events("ood_guard")])
 
-        self._model(0.90, payload="v3")                       # worse than production by more than max_drop
+        self._model(0.90, payload="v3")
         v3 = reg.register("ood_guard")
         self._model(0.95)
         g = reg.gate("ood_guard", v3["version"])
@@ -120,7 +119,7 @@ class RegistryTest(_Tmp):
         self.assertEqual(reg.rollback("ood_guard")["version"], 1, "a second rollback goes further back")
         self._model(0.99, payload="copied by hand")
         with self.assertRaises(RegistryError):
-            reg.promote("ood_guard", 3, force=True)          # force overrides the gate, not this
+            reg.promote("ood_guard", 3, force=True)
         res = reg.promote("ood_guard", 3, overwrite_unregistered=True)
         from mlops.paths import sha256_file
         self.assertTrue(res)
@@ -179,7 +178,7 @@ class RetrainTest(_Tmp):
                        {"held_out_validation_accuracy": 0.85,
                         "per_class_report": {"macro avg": {"f1-score": 0.75 if better else 0.60},
                                              "Pothole Impact": {"recall": 0.92}}})
-                _write(os.path.join(self.ckpt, "pci_model.joblib"), "pci-touched")   # collateral
+                _write(os.path.join(self.ckpt, "pci_model.joblib"), "pci-touched")
                 return type("P", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
             return run
         if True:
@@ -261,13 +260,13 @@ class MonitorTest(_Tmp):
         self.assertEqual(d["status"], "stable")
         self.assertEqual(d["latency_ms"]["p50"], 129.5)
         clock[0] += 2 * 86400
-        for i in range(80):                                  # night-time camera: everything dark
+        for i in range(80):
             m.record("fleet", self._result(float(rng.normal(35, 8)), "Pothole Cavity", 0.55), latency_ms=90)
         d = m.drift(24)
         self.assertEqual(d["features"]["brightness"]["status"], "drift")
         self.assertEqual(d["status"], "drift")
         m._last_status = None
-        m.check_and_alert()                                  # normally run in the background every 50 records
+        m.check_and_alert()
         self.assertIn("model_drift", sent)
         self.assertEqual(d["by_source"], {"fleet": 80})
 
@@ -277,7 +276,7 @@ class MonitorTest(_Tmp):
         m = Monitor(os.path.join(self.tmp, "m.db"), self._ref())
         with self.assertRaises(ValueError):
             m.rebaseline(24)
-        for i in range(260):                                   # this city's cameras are darker than the datasets
+        for i in range(260):
             m.record("fleet", self._result(float(rng.normal(70, 10))), latency_ms=80)
         self.assertEqual(m.drift(24)["features"]["brightness"]["status"], "drift")
         ref = m.rebaseline(24, actor="op")
@@ -370,7 +369,7 @@ class TrafficTest(_Tmp):
         from pipeline.traffic import TrafficEstimator, HOURLY_SHARE, VIEW_LENGTH_M, local_hour
         t = TrafficEstimator(os.path.join(self.tmp, "t.db"))
         base = 1_790_000_000
-        base -= ((local_hour(base) - 7) % 24) * 3600          # 07:xx local: daytime, when flow is expanded
+        base -= ((local_hour(base) - 7) % 24) * 3600
         o = t.observe(12.97, 77.59, {"Car": 2, "Two-Wheeler": 2}, speed_kmh=20, at=base)
         expect_density = 3.0 / (VIEW_LENGTH_M / 1000)
         self.assertAlmostEqual(o["density_pcu_per_km"], expect_density)
@@ -385,7 +384,7 @@ class TrafficTest(_Tmp):
         self.assertNotIn("traffic_pcu_per_day", t.enrich(defect))
         for h in range(6):
             t.observe(12.97001, 77.59001, {"Car": 2, "Two-Wheeler": 2}, speed_kmh=20, at=base + h * 2 * 3600)
-        night = t.observe(12.97, 77.59, {"Car": 2}, speed_kmh=20, at=base - 5 * 3600)    # 02:xx
+        night = t.observe(12.97, 77.59, {"Car": 2}, speed_kmh=20, at=base - 5 * 3600)
         self.assertFalse(night["counted_for_flow"], "night hours are not expanded to a day")
         t._cache.clear()
         t.clock = lambda: base + 30 * 3600
@@ -419,7 +418,7 @@ class EdgeTrafficEventTest(_Tmp):
         for i in range(3):
             agent._count_traffic(audit, {"lat": 12.9705, "lon": 77.5905, "speed_kmh": 30}, 100 + i, [])
         self.assertEqual(out, [])
-        agent._count_traffic(audit, {"lat": 12.9725, "lon": 77.5905, "speed_kmh": 30}, 104, [])  # next cell
+        agent._count_traffic(audit, {"lat": 12.9725, "lon": 77.5905, "speed_kmh": 30}, 104, [])
         self.assertEqual(len(out), 1)
         self.assertEqual((out[0]["t"], out[0]["n"], out[0]["veh"], out[0]["spd"]), ("trf", 3, {"Car": 1.0}, 30.0))
         self.assertIsNone(traffic_event({"frames": 1}, 0))

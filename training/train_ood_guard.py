@@ -1,28 +1,4 @@
-"""
-Train and measure the input guard (models/ood_guard.py), and write the monitoring reference.
-
-    git clone --depth 1 https://github.com/EliSchwartz/imagenet-sample-images ../imagenet-sample-images
-    python -m training.train_ood_guard --ood-dir ../imagenet-sample-images
-
-Data
-  road photographs  every datasets/*/real_images photograph that the corpus policy counts as a road
-                    scene, one per source photograph (augmented copies share a source and are
-                    dropped so they cannot sit on both sides of a split); split 60/20/20 by a hash
-                    of the source name into train / calibration / test
-  everyday photos   the ImageNet sample set, one photograph per class, minus about 50 classes whose
-                    sample shows a road, a vehicle or street furniture (those are valid inputs);
-                    split 50/50 by hash into train (for the not-road classifier) / test
-  close-ups         the surface-crack texture patches the corpus policy excludes: reported
-                    separately, as what happens when someone photographs a crack from 20 cm
-
-Thresholds are set on the calibration road photographs only (novelty at the 99th percentile, so
-about 1 in 100 genuine road photographs is called unusual), then everything is scored once on the
-test sets. Synthetic darkening, blur and overexposure of the test road photographs check the
-quality limits.
-
-Outputs: checkpoints/ood_guard.npz, checkpoints/ood_guard_report.json,
-         checkpoints/monitoring_reference.json (the distributions production is compared against)
-"""
+"""Train out-of-distribution input validation guard."""
 import argparse
 import glob
 import hashlib
@@ -37,9 +13,9 @@ import numpy as np
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
-from models.ood_guard import (BACKBONE, MODEL_FILE, REPORT_FILE, QUALITY_KEYS, OODGuard, image_quality,  # noqa: E402
+from models.ood_guard import (BACKBONE, MODEL_FILE, REPORT_FILE, QUALITY_KEYS, OODGuard, image_quality,
                               _sha16)
-from pipeline.corpus_policy import non_road_source, policy_record  # noqa: E402
+from pipeline.corpus_policy import non_road_source, policy_record
 
 CKPT = os.path.join(ROOT, "checkpoints")
 EXTS = (".jpg", ".jpeg", ".png")
@@ -209,7 +185,7 @@ def main(argv=None):
         mean = X.mean(axis=0)
         _u, _s, vt = np.linalg.svd(X - mean, full_matrices=False)
         comps = vt[: a.pca_dims]
-        proj = lambda E: (l2(E) - mean) @ comps.T  # noqa: E731
+        proj = lambda E: (l2(E) - mean) @ comps.T
         Z_tr = proj(E_tr)
         lw = LedoitWolf().fit(Z_tr)
 
@@ -225,13 +201,13 @@ def main(argv=None):
                   "maha_precision": lw.precision_, "lr_mean": lr_mean, "lr_scale": lr_scale,
                   "lr_coef": lr.coef_.ravel(), "lr_intercept": np.asarray(lr.intercept_[0])}
 
-        class _E:  # scores from the arrays exactly as served
+        class _E:
             is_ready, name = True, BACKBONE
         g = OODGuard.__new__(OODGuard)
         g.params, g.embedder = arrays, _E()
 
         maha_ca, p_ca = g.scores(E_ca)
-        q = lambda key, fn, qq: float(np.quantile([fn(x[key]) for x in Q_ca], qq))  # noqa: E731
+        q = lambda key, fn, qq: float(np.quantile([fn(x[key]) for x in Q_ca], qq))
         thresholds = {
             "maha": float(np.quantile(maha_ca, a.novelty_quantile)),
             "p_not_road": float(max(0.5, np.quantile(p_ca, 0.99))),

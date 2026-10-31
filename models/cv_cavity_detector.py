@@ -1,17 +1,4 @@
-"""
-Classical computer-vision front end for the pipeline: turns a raw road photo
-into (a) a list of candidate "something's wrong with the pavement here"
-bounding boxes and (b) a list of detected pedestrians. Neither of these steps
-uses a trained model - the region proposals are gradient/brightness grid
-clustering (a normal pre-deep-learning technique for this kind of anomaly
-spotting), and pedestrian detection is OpenCV's bundled HOG+SVM person
-detector, which is genuinely pretrained (on the INRIA person dataset) and
-ships inside opencv-python, so it works completely offline.
-
-The actual "what kind of distress is this" decision is left to
-VisionDistressNet, which is called from pipeline/deep_inference_pipeline.py
-on the crops this module proposes - this file only does image processing.
-"""
+"""Computer vision cavity and contour detection engine."""
 
 import os
 import base64
@@ -26,9 +13,7 @@ class CVCavityDetector:
 
     def __init__(self, target_size=(640, 480)):
         self.target_w, self.target_h = target_size
-        # OpenCV 5 dropped HOGDescriptor from the main package. Rather than
-        # crash the whole server over one optional detector, run without
-        # pedestrian detection and say so (see pedestrian_detector_available).
+
         self._hog = None
         if hasattr(cv2, "HOGDescriptor"):
             self._hog = cv2.HOGDescriptor()
@@ -74,8 +59,7 @@ class CVCavityDetector:
             return []
         H, W = img_np.shape[:2]
         bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-        # winStride/scale tuned for dashcam-style frames; padding helps catch
-        # people near the image edge.
+
         rects, weights = self._hog.detectMultiScale(
             bgr, winStride=(8, 8), padding=(8, 8), scale=1.05
         )
@@ -83,7 +67,7 @@ class CVCavityDetector:
         pedestrians = []
         for i, (x, y, w, h) in enumerate(rects):
             score = float(weights[i]) if len(weights) > i else 0.5
-            # The SVM decision score is unbounded; squash it to a confidence.
+
             confidence = float(1.0 / (1.0 + np.exp(-score)))
             if confidence < 0.55:
                 continue
@@ -126,7 +110,6 @@ class CVCavityDetector:
             sx0, sx1 = max(0, ex - 35), min(W, ex + ew + 35)
             excl_mask[sy0:sy1, sx0:sx1] = True
 
-        # Suppress flat letterbox banner or watermark footer
         for y in range(H - 1, int(H * 0.90), -1):
             row = gray[y, :].astype(np.float32)
             if float(np.std(row)) < 3.0 and (float(np.median(row)) < 20.0 or float(np.median(row)) > 235.0):
@@ -143,7 +126,7 @@ class CVCavityDetector:
         mean_intensity = float(road_gray.mean())
         std_intensity = float(road_gray.std())
         if std_intensity < 6.5:
-            return []  # handled upstream as "not a pavement photo"
+            return []
 
         gx = cv2.Sobel(road_gray, cv2.CV_32F, 1, 0, ksize=3)
         gy = cv2.Sobel(road_gray, cv2.CV_32F, 0, 1, ksize=3)
@@ -172,7 +155,6 @@ class CVCavityDetector:
                 dark_diff = max(0.0, mean_intensity - float(sub_gray.mean()))
                 edge_peak = float(np.percentile(sub_mag, 90)) if sub_mag.size else 0.0
 
-                # de-emphasize the far left/right verges, emphasize the wheel path
                 col_weight = 0.40 if (c < 2 or c > 21) else (1.30 if 5 <= c <= 18 else 1.0)
                 pothole_score = dark_diff * 2.5 * col_weight if dark_diff > 14.0 else 0.0
                 crack_score = edge_peak * 2.2 * col_weight if edge_peak > 18.0 else 0.0
@@ -195,7 +177,6 @@ class CVCavityDetector:
 
         peaks.sort(key=lambda p: p[2], reverse=True)
 
-        # Fallback to highest road anomaly if no peak exceeded 60
         if not peaks and float(cell_score.max()) >= 35.0:
             max_idx = np.unravel_index(np.argmax(cell_score), cell_score.shape)
             peaks.append((int(max_idx[0]), int(max_idx[1]), float(cell_score[max_idx])))
@@ -246,7 +227,7 @@ class CVCavityDetector:
         for b in boxes:
             b_area = b[2] * b[3]
             if max_area > 8000 and b_area < 0.08 * max_area:
-                continue  # small peripheral noise once a dominant defect exists
+                continue
             keep = True
             for s in selected:
                 s_area = s[2] * s[3]

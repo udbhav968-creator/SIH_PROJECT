@@ -1,45 +1,4 @@
-"""
-Dashcam video -> deduplicated defect reports.
-
-The premise of this project is a bus fleet as a mobile sensing network. Until
-this module existed, nothing in the codebase decoded video: the pipeline took
-one photograph at a time, and a "video" endpoint existed that required the
-client to POST individual base64 frames. That is not a fleet ingest, it is a
-photograph uploader with extra steps.
-
-What this does
---------------
-Decodes a video file, samples frames at a fixed interval, runs each through the
-existing inference pipeline, and feeds the results into the deduplication
-engine with a GPS position - so the same pothole seen in forty consecutive
-frames becomes one defect, not forty.
-
-Two things make that work:
-
-1. **Sampling by distance, not by frame.** At 40 km/h a bus covers 11 m per
-   second. Sampling every frame wastes 95% of the compute on near-identical
-   views; sampling every N frames regardless of speed either misses defects in
-   slow traffic or floods the ledger at speed. When a GPS track is supplied,
-   frames are chosen to be roughly `sample_every_m` apart on the ground.
-
-2. **Perceptual-hash suppression between frames.** Consecutive frames of the
-   same defect look alike. Before a frame is analysed at all, it is hashed
-   against the last few accepted frames and skipped if it is a near-duplicate.
-   This is the same DCT pHash the forensic auditor uses, and it removes most
-   of the redundancy that survives distance sampling.
-
-GPS
----
-A track is a list of ``{"t": seconds_from_start, "lat": .., "lon": ..}``.
-Positions are linearly interpolated between fixes. If no track is supplied,
-frames get no position and the reports are not deduplicated spatially - the
-run still produces per-frame analysis, and says plainly that it could not
-locate anything. Inventing a location would be worse than having none.
-
-    from pipeline.video_ingest import VideoIngestor
-    ing = VideoIngestor(pipeline, dedup_engine)
-    summary = ing.process("dashcam.mp4", gps_track=track, bus_id="KA01F1234")
-"""
+"""Video stream frame ingestion and defect detection processing."""
 
 import json
 import os
@@ -113,7 +72,7 @@ class VideoIngestor:
     def __init__(self, pipeline, dedup_engine=None, hasher=None, traffic=None):
         self.pipeline = pipeline
         self.dedup = dedup_engine
-        self.traffic = traffic          # pipeline/traffic.TrafficEstimator: vehicle counts per road cell
+        self.traffic = traffic
         self._trf = {}
         if hasher is None:
             from models.forensic_audit_engine import ForensicDuplicateHasher
@@ -154,7 +113,6 @@ class VideoIngestor:
                 pass
         self._trf = {}
 
-    # ------------------------------------------------------------------
     @staticmethod
     def probe(path):
         """Duration, fps and frame count without decoding the whole file."""
@@ -215,7 +173,6 @@ class VideoIngestor:
 
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Cheap redundancy filter before the expensive part.
             digest = self.hasher.compute_hash(cv2.resize(rgb, (64, 64)))
             if any(self.hasher.hamming_distance(digest, h) <= hash_distance
                    for h in recent_hashes):
@@ -234,7 +191,7 @@ class VideoIngestor:
                 progress(analysed, frame_idx, info["frame_count"])
 
             top = (result.get("all_detections") or [{}])[0]
-            conf = float(top.get("confidence") or 0.0)  # None = rule decision, not a score
+            conf = float(top.get("confidence") or 0.0)
             cls_name = top.get("class_name", "")
             is_defect = conf >= min_confidence and "Normal" not in cls_name
 

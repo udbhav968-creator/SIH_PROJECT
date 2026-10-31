@@ -1,17 +1,4 @@
-"""
-Defect depth, estimated honestly with uncertainty intervals, backed by the
-monotonic gradient-boosted photometric regressor trained in
-`training/train_civil_models.py` (`checkpoints/depth_estimator_model.joblib`).
-
-A single monocular photograph carries no direct metric range channel, so every
-monocular estimate returned here carries:
-  - `depth_cm`, `depth_low_cm`, `depth_high_cm`
-  - `is_measurement: False` and `"ESTIMATE"` in `caveat`
-  - `method`, `basis`, and `method_confidence`
-
-Only `stereo_depth_from_disparity()` (calibrated stereo triangulation `Z = f*B/d`)
-returns `is_measurement: True`.
-"""
+"""Photometric and geometry-based defect depth estimation."""
 
 import os
 import joblib
@@ -110,8 +97,7 @@ def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
         bx, by, bw, bh = (int(v) for v in bbox)
         box_area = max(1, bw * bh)
         if float(sel.sum()) < 0.20 * box_area:
-            # Fragmented rim or reflective water puddle: mask is only a sparse sliver.
-            # Use bbox to sample the true defect basin vs outside surrounding pavement.
+
             use_mask = False
 
     if use_mask:
@@ -176,7 +162,7 @@ def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
         extra["distance_m"] = round(float(distance_m), 2)
         if float(distance_m) > 12.0:
             extra["distance_penalty"] = "beyond 12 m the cue is unreliable"
-    # Keep interval width within bounds
+
     width = min(2.0 * span, hi - lo)
     low = float(np.clip(central - span, lo, hi - width))
     high = low + width

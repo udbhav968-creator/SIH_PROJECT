@@ -1,28 +1,5 @@
-"""
-Training orchestrator: runs this project's real training scripts
-(training/train_vision.py, training/train_imu.py) and exposes their
-progress and results to the API.
+"""Pipeline coordinator for model training workflows."""
 
-The earlier version of this module trained two hand-rolled NumPy networks
-on pure Gaussian-noise "datasets" fabricated by data/dataset_generator.py
-and data/benchmark_dataset_hub.py, then wrote out a "SHA-256 model zoo
-registry" with invented accuracy numbers for the PCI and deterioration
-engines - which were never trainable models to begin with (they're
-deterministic formulas; see models/pci_regressor_net.py). This rewrite
-runs the real scikit-learn training pipelines this project actually has
-and reports their real, held-out results.
-
-One honesty note on shape: scikit-learn's Pipeline.fit() is a single
-blocking call, not an iterative per-epoch loop, so there is no real
-"epoch-by-epoch progress" to stream for these models. The streamer below
-tracks real *stages* (training vision, training IMU, done) instead of
-fabricating an epoch counter for a training process that doesn't have
-epochs.
-"""
-
-# Cap the BLAS thread pools before NumPy/scikit-learn are imported. On
-# laptops with modest RAM, OpenBLAS otherwise allocates a buffer per
-# thread per core and dies with "Memory allocation still failed".
 import os as _os
 for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     _os.environ.setdefault(_v, "2")
@@ -125,5 +102,4 @@ def run_training_suite(async_mode=False):
         return streamer.get_status()
 
 
-# Backward-compatible alias for the old entrypoint name.
 run_mega_training_suite = run_training_suite

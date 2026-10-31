@@ -1,18 +1,4 @@
-"""
-ROAD-SHIELD: Genuine Defect Segmentation Neural Network Trainer
-===============================================================
-Trains a genuine U-Net with ResNet-18 encoder on a balanced dataset:
-  1. Human-annotated defect polygons from DNIT (2,235 real highway images).
-  2. Genuine sound pavement negatives (Plain asphalt / Sound pavement from Kaggle & RDD2022).
-
-Key Architectural Advancements:
-  1. Balanced Focal Loss (gamma=2.0, alpha=[1.0, 1.8, 2.2]): Full 1.0 weight on sound road background
-     to prevent false-positive leakage onto dry asphalt pavement.
-  2. Per-Sample Soft Dice Loss with smooth=1.0: Penalizes false-positive defect predictions on clean roads.
-  3. Balanced Multi-Class Batching: Guarantees mix of potholes, cracks, and clean sound pavement in every batch.
-  4. Real Held-Out Validation: Measures true pixel IoU and clean road false positive rate.
-  5. Calibrated ONNX Export with Softmax head and threshold metadata.
-"""
+"""Train genuine U-Net convolutional architecture for defect segmentation."""
 
 import glob
 import os
@@ -42,7 +28,7 @@ class FocalDiceLoss(nn.Module):
     def __init__(self, gamma=2.0, alpha=None, smooth=1.0):
         super().__init__()
         self.gamma = gamma
-        self.alpha = alpha  # tensor of shape (C,)
+        self.alpha = alpha
         self.smooth = smooth
 
     def forward(self, logits, targets):
@@ -52,35 +38,31 @@ class FocalDiceLoss(nn.Module):
         """
         B, C, H, W = logits.shape
         probs = F.softmax(logits, dim=1)
-        
-        # 1. Focal Loss
+
         log_p = F.log_softmax(logits, dim=1)
-        target_one_hot = F.one_hot(targets, num_classes=C).permute(0, 3, 1, 2).float() # (B, C, H, W)
-        
-        pt = (probs * target_one_hot).sum(dim=1) # (B, H, W)
+        target_one_hot = F.one_hot(targets, num_classes=C).permute(0, 3, 1, 2).float()
+
+        pt = (probs * target_one_hot).sum(dim=1)
         focal_weight = (1.0 - pt) ** self.gamma
-        
+
         ce_loss = -log_p * target_one_hot
         if self.alpha is not None:
             alpha_tensor = self.alpha.view(1, C, 1, 1).to(logits.device)
             ce_loss = ce_loss * alpha_tensor
-            
+
         focal_loss = (ce_loss.sum(dim=1) * focal_weight).mean()
-        
-        # 2. Per-Sample Soft Dice Loss for defect classes (1=crack, 2=pothole)
+
         dice_loss = 0.0
         for c in (1, 2):
-            pred_c = probs[:, c] # (B, H, W)
-            targ_c = target_one_hot[:, c] # (B, H, W)
-            
-            # Compute per-sample dice
+            pred_c = probs[:, c]
+            targ_c = target_one_hot[:, c]
+
             intersection = (pred_c * targ_c).sum(dim=(1, 2))
             cardinality = pred_c.sum(dim=(1, 2)) + targ_c.sum(dim=(1, 2))
-            
-            # When target is absent, penalize false positive defect predictions
+
             sample_dice = (2.0 * intersection + self.smooth) / (cardinality + self.smooth)
             dice_loss += (1.0 - sample_dice).mean()
-            
+
         return focal_loss + 0.6 * dice_loss
 
 def build_unet(n_classes=3):
@@ -108,7 +90,7 @@ def build_unet(n_classes=3):
             self.l2 = r.layer2
             self.l3 = r.layer3
             self.l4 = r.layer4
-            
+
             self.d4 = Block(512 + 256, 256)
             self.d3 = Block(256 + 128, 128)
             self.d2 = Block(128 + 64, 64)
@@ -145,7 +127,7 @@ def load_defect_dataset(limit=240):
         rec = by_image.get(ann["image_id"])
         if rec and ann.get("segmentation"):
             rec["polys"].append((ann["category_id"], ann["segmentation"]))
-            
+
     potholes = []
     cracks = []
     for rec in by_image.values():
@@ -154,12 +136,11 @@ def load_defect_dataset(limit=240):
             continue
         rec["path"] = path
         cats = {c for c, _ in rec["polys"]}
-        if 3 in cats: # Pothole
+        if 3 in cats:
             potholes.append(rec)
-        elif 1 in cats: # Crack
+        elif 1 in cats:
             cracks.append(rec)
-            
-    # Load genuine clean sound road negatives (Plain asphalt / Sound pavement)
+
     clean_recs = []
     plain_dir = os.path.join(ENGINE_ROOT, "datasets", "incoming", "kaggle", "pothole-plain", "My Dataset", "train", "Plain")
     normal_dir = os.path.join(ENGINE_ROOT, "datasets", "incoming", "kaggle", "pothole-mix", "normal")
@@ -183,7 +164,7 @@ def load_defect_dataset(limit=240):
     np.random.shuffle(potholes)
     np.random.shuffle(cracks)
     np.random.shuffle(clean_recs)
-    
+
     n_each = limit // 3
     selected = potholes[:n_each] + cracks[:n_each] + clean_recs[:n_each]
     np.random.shuffle(selected)
@@ -223,17 +204,16 @@ class RealDefectDataset(Dataset):
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         rgb_resized = cv2.resize(rgb, (IN_W, IN_H), interpolation=cv2.INTER_AREA)
         mask = rasterize_mask(rec, IN_W, IN_H)
-        
+
         if self.augment:
             if np.random.rand() > 0.5:
                 rgb_resized = np.fliplr(rgb_resized).copy()
                 mask = np.fliplr(mask).copy()
-            # Random brightness jitter
+
             if np.random.rand() > 0.5:
                 factor = np.random.uniform(0.85, 1.15)
                 rgb_resized = np.clip(rgb_resized * factor, 0, 255).astype(np.uint8)
-                
-        # Normalization
+
         x = (rgb_resized.astype(np.float32) / 255.0 - MEAN) / STD
         x_t = torch.tensor(x.transpose(2, 0, 1), dtype=torch.float32)
         y_t = torch.tensor(mask, dtype=torch.long)
@@ -245,19 +225,19 @@ def train(epochs=10, batch_size=4, lr=3e-4, limit=240):
     print(f"  TRAINING GENUINE BALANCED U-NET DEFECT SEGMENTATION")
     print(f"  Device: {device} | Epochs: {epochs} | Batch Size: {batch_size}")
     print(f"=======================================================\n")
-    
+
     records = load_defect_dataset(limit=limit)
     n_test = max(15, int(len(records) * 0.20))
     test_recs = records[:n_test]
     train_recs = records[n_test:]
     print(f"Train samples: {len(train_recs)} | Test samples: {len(test_recs)}")
-    
+
     train_ds = RealDefectDataset(train_recs, augment=True)
     test_ds = RealDefectDataset(test_recs, augment=False)
-    
+
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=True)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
-    
+
     model = build_unet(n_classes=3).to(device)
     pt_path = os.path.join(CKPT_DIR, "defect_segmenter_unet.pt")
     if os.path.exists(pt_path):
@@ -267,17 +247,16 @@ def train(epochs=10, batch_size=4, lr=3e-4, limit=240):
             print(f"Loaded existing checkpoint from {pt_path} for progressive deep fine-tuning!")
         except Exception as e:
             print(f"Could not load checkpoint: {e}")
-            
-    # Full background weight (1.0) so sound asphalt is strongly preserved and never misclassified!
+
     alpha = torch.tensor([1.0, 1.8, 2.2], dtype=torch.float32)
     criterion = FocalDiceLoss(gamma=2.0, alpha=alpha, smooth=1.0)
-    
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-    
+
     best_iou = 0.0
     best_weights = None
-    
+
     for ep in range(1, epochs + 1):
         model.train()
         total_loss = 0.0
@@ -291,11 +270,10 @@ def train(epochs=10, batch_size=4, lr=3e-4, limit=240):
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0)
             optimizer.step()
             total_loss += loss.item()
-            
+
         scheduler.step()
         avg_loss = total_loss / len(train_loader)
-        
-        # Validation on held-out test split
+
         model.eval()
         inter_pothole, union_pothole = 0, 0
         inter_crack, union_crack = 0, 0
@@ -305,56 +283,52 @@ def train(epochs=10, batch_size=4, lr=3e-4, limit=240):
                 x, y = x.to(device), y.to(device)
                 logits = model(x)
                 preds = torch.argmax(logits, dim=1)
-                
-                # Pothole IoU
+
                 p_pred = (preds == 2)
                 p_targ = (y == 2)
                 inter_pothole += (p_pred & p_targ).sum().item()
                 union_pothole += (p_pred | p_targ).sum().item()
-                
-                # Crack IoU
+
                 c_pred = (preds == 1)
                 c_targ = (y == 1)
                 inter_crack += (c_pred & c_targ).sum().item()
                 union_crack += (c_pred | c_targ).sum().item()
 
-                # Clean image false positive rate
                 is_clean_mask = (y == 0)
                 clean_fp_px += ((preds != 0) & is_clean_mask).sum().item()
                 clean_total_px += is_clean_mask.sum().item()
-                
+
         iou_p = inter_pothole / max(1, union_pothole)
         iou_c = inter_crack / max(1, union_crack)
         mean_iou = (iou_p + iou_c) / 2.0
         clean_fp_rate = clean_fp_px / max(1, clean_total_px)
         elapsed = time.time() - t0
-        
+
         star = ""
         if mean_iou > best_iou:
             best_iou = mean_iou
             best_weights = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             star = " *"
-            
+
         print(f"Epoch {ep:2d}/{epochs:2d} ({elapsed:4.1f}s) | Loss: {avg_loss:.4f} | IoU: Pothole={iou_p:.3f}, Crack={iou_c:.3f}, Mean={mean_iou:.3f} | Clean FP: {clean_fp_rate*100:.2f}%{star}")
-        
+
     print(f"\nTraining Complete! Best Test Mean IoU: {best_iou:.3f}")
     if best_weights:
         model.load_state_dict(best_weights)
-        
-    # Export to ONNX with Softmax Head
+
     class ModelWithSoftmax(nn.Module):
         def __init__(self, m):
             super().__init__()
             self.m = m
         def forward(self, x):
             return torch.softmax(self.m(x), dim=1)
-            
+
     export_model = ModelWithSoftmax(model.cpu().eval())
     dummy_input = torch.zeros(1, 3, IN_H, IN_W, dtype=torch.float32)
     onnx_out = os.path.join(CKPT_DIR, "defect_segmenter_unet.onnx")
     pt_out = os.path.join(CKPT_DIR, "defect_segmenter_unet.pt")
     json_out = os.path.join(CKPT_DIR, "defect_segmenter_unet.json")
-    
+
     torch.save(best_weights or model.state_dict(), pt_out)
     torch.onnx.export(
         export_model,
@@ -366,7 +340,7 @@ def train(epochs=10, batch_size=4, lr=3e-4, limit=240):
         do_constant_folding=True,
         dynamo=False,
     )
-    
+
     meta = {
         "model": "U-Net, ResNet-18 encoder pretrained on ImageNet, Focal+Dice Loss trained on balanced DNIT + Sound Pavement",
         "input_size": [IN_W, IN_H],

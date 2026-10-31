@@ -1,32 +1,4 @@
-"""
-Active learning: keep the photographs the models are least sure about, so that the next round of
-labelling is spent where it changes the model most.
-
-Each analysed photograph is scored on four signals:
-
-    entropy        how evenly the classifier spreads its probability over the 7 classes (0-1)
-    margin         how close the top two classes are (1 - (p1 - p2))
-    disagreement   the classifier and the region analysis (segmenter + measurement) disagree: the
-                   classifier is confident of a pothole or crack and no region was found, or a region
-                   was measured where the classifier is confident the road is normal; or the YOLO
-                   damage detector boxed something the pipeline did not report
-    unusual        the input guard found the photograph unlike the training set without calling it
-                   "not a road" (the near-distribution cases a model learns most from)
-
-    score = 0.5 entropy + 0.2 margin + 0.3 disagreement + 0.2 unusual        (kept above MIN_SCORE)
-
-Near-duplicates are dropped by cosine similarity of the guard's 64-d embedding (a bus passing the
-same spot every 20 minutes would otherwise fill the queue with one pothole); the higher-scoring
-copy is kept. The queue holds CAPACITY photographs and drops the lowest-scoring one when full.
-
-Privacy: citizen photographs and anonymous uploads to a public deployment are never kept, and neither
-are the project's own dataset photographs (they would leak test images into training). Everything else
-is stored only when the COCO detector ran on it, after people and number plates are blurred
-(models/privacy_redactor.py).
-
-Operators label photographs on the MLOps page; `export` writes the labelled ones as one folder per
-class with a manifest, ready to add to the training corpus for the next run.
-"""
+"""Active learning queue for ambiguous defect inspection samples."""
 import io
 import json
 import math
@@ -41,7 +13,7 @@ import zipfile
 CAPACITY = 500
 MIN_SCORE = 0.35
 DUP_COSINE = 0.985
-SKIP_SOURCES = {"citizen", "public", "dataset"}   # citizens and anonymous visitors are promised nothing is kept
+SKIP_SOURCES = {"citizen", "public", "dataset"}
 SKIP_VERDICTS = {"not_road", "poor_quality"}
 CLASSES = ["Normal Road / Sound Pavement", "Crack (Longitudinal / Transverse / Alligator)", "Pothole Cavity",
            "Waterlogging / Flooding Hazard", "Missing Zebra Crossing", "Missing Road Divider", "Damaged Traffic Sign"]
@@ -157,8 +129,7 @@ class ActiveLearningQueue:
         ic = input_check or (result or {}).get("input_check") or {}
         if ic.get("verdict") in SKIP_VERDICTS:
             return None
-        # Blurring people needs the COCO detector's boxes. If it did not run, an empty list would read as
-        # "nobody in frame" and the photograph would be stored with faces and bodies visible: never.
+
         if not ((result or {}).get("scene_summary") or {}).get("available"):
             return None
         score, reasons = acquisition(result, ic)
@@ -177,7 +148,7 @@ class ActiveLearningQueue:
             redaction = {k: rep.get(k) for k in ("people_blurred", "faces_blurred", "plates_blurred")}
         except Exception as e:
             print(f"[active-learning] not kept, redaction failed: {e}")
-            return None            # an unredacted photograph is never stored
+            return None
         im = Image.fromarray(np.asarray(red, dtype=np.uint8))
         if max(im.size) > 1280:
             s = 1280 / max(im.size)
@@ -186,7 +157,7 @@ class ActiveLearningQueue:
         im.save(self._path(item_id), quality=88)
         fc = (result or {}).get("frame_classification") or {}
         with self._lock:
-            ok, drop = self._admission(score, projection)     # again: another request may have filled the slot
+            ok, drop = self._admission(score, projection)
             if not ok:
                 os.remove(self._path(item_id))
                 return None

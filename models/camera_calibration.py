@@ -1,51 +1,4 @@
-"""
-Per-vehicle camera calibration.
-
-Every square metre, tonne and rupee this system reports comes from projecting
-pixels onto the ground plane, and that projection needs four numbers: how high
-the camera is, how far it is tilted down, and its focal length in pixels.
-
-Until this module existed those numbers were constants in the source -
-1.45 m, 18.4 degrees, fx = fy = 1120 - which is to say every bus in a fleet was
-assumed to carry an identically mounted, identically lensed camera. It does not
-matter for a demo. It matters enormously for a bill: mounting the same camera
-30 cm higher changes the computed ground area of a defect by roughly 20%, and
-the asphalt tonnage with it.
-
-A profile is a small JSON file:
-
-    {
-      "device_id": "DL1PC1234-front",
-      "camera_height_m": 1.52,
-      "pitch_deg": 16.0,
-      "fx": 1180.0, "fy": 1180.0,
-      "cx": 640.0, "cy": 360.0,
-      "image_width": 1280, "image_height": 720,
-      "source": "checkerboard, 2026-09-12",
-      "notes": "Ashok Leyland Viking, windscreen mount, driver side"
-    }
-
-stored in `checkpoints/calibration/<device_id>.json`.
-
-Where the numbers come from
----------------------------
-`fx`/`fy`/`cx`/`cy` are camera intrinsics. Three routes, in descending order of
-trustworthiness:
-
-  1. A checkerboard calibration - `scripts/calibrate_camera.py` runs OpenCV's
-     standard routine over a dozen photographs of a printed chessboard.
-  2. The horizontal field of view, if the manufacturer publishes it:
-     fx = (W/2) / tan(HFOV/2). `from_field_of_view()` does this.
-  3. The default guess below, which assumes a ~60 degree horizontal FOV.
-
-Height and pitch are measured physically - a tape measure and a phone's
-inclinometer are enough, and are more accurate than any estimate from a single
-image.
-
-Nothing here guesses silently. A profile records `source`, and the API reports
-which profile answered, so a number can always be traced to the mount it
-assumed.
-"""
+"""Camera calibration and perspective homography utilities."""
 
 import json
 import os
@@ -53,8 +6,6 @@ import os
 CALIB_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checkpoints", "calibration")
 
-# The historical hard-coded values, kept as an explicitly-labelled fallback so
-# that behaviour does not change silently for anyone who has no profile yet.
 DEFAULT_PROFILE = {
     "device_id": "default",
     "camera_height_m": 1.45,
@@ -105,7 +56,7 @@ def from_field_of_view(width_px, height_px, hfov_deg, camera_height_m, pitch_deg
         "device_id": device_id,
         "camera_height_m": float(camera_height_m),
         "pitch_deg": float(pitch_deg),
-        "fx": float(fx), "fy": float(fx),          # square pixels assumed
+        "fx": float(fx), "fy": float(fx),
         "cx": width_px / 2.0, "cy": height_px / 2.0,
         "image_width": int(width_px), "image_height": int(height_px),
         "source": f"horizontal FOV {hfov_deg} deg, square pixels assumed",

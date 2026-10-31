@@ -37,10 +37,7 @@ def main():
         with open(p, encoding="utf-8") as fh:
             r = json.load(fh)
         heads[r.get("backbone")] = r
-    # M1 must describe the head the server actually serves. The loader prefers
-    # ResNet-50 only when its backbone is on disk; otherwise MobileNetV2 serves.
-    # Filling M1 from the ResNet-50 report regardless meant the architecture
-    # page quoted a model that was not running.
+
     def _served():
         for bb in ("resnet50", "mobilenetv2"):
             if bb in heads and os.path.exists(os.path.join(CKPT, f"cnn_backbone_{bb}.onnx")):
@@ -56,7 +53,6 @@ def main():
     deep_served = (vsel.get("served") == "deep_cnn" and ft
                    and glob.glob(os.path.join(CKPT, "deep_vision_*.onnx")))
 
-    # Refresh only the measured numbers; the prose is deliberate and stays.
     for sub in claims["subsystems"]:
         m = sub.setdefault("measured", {})
         if sub["id"] == "M1" and deep_served:
@@ -105,8 +101,7 @@ def main():
             b = heads[served].get("handcrafted_baseline", {})
             sub["evidence"] = f"checkpoints/cnn_head_{served}_report.json (scored on the identical split)"
             m.update(held_out_accuracy=b.get("accuracy"), held_out_macro_f1=b.get("macro_f1"))
-            # Measured from the fitted model, never carried over by hand: this
-            # value was 0.451 in the file while the retrained model kept 0.415.
+
             try:
                 import joblib
                 blob = joblib.load(os.path.join(CKPT, "vision_distress_model.joblib"))
@@ -136,9 +131,7 @@ def main():
                      training_pixels=seg.get("trained_on", {}).get("training_pixels"))
         elif sub["id"] == "M_GATE":
             q = rep("proposal_tuning_report.json") or {}
-            # The sweep's own best row was measured with the brightness grid
-            # still able to raise defects. The committed build closes it, so the
-            # authoritative numbers are the end-to-end ones.
+
             e2e = rep("detection_quality_report.json") or {}
             rec = dict(q.get("recommended") or {})
             if e2e:
@@ -150,9 +143,7 @@ def main():
                          defect_photographs=e2e.get("defect_photographs"),
                          measured_through=e2e.get("measured_through"))
             if rec:
-                # Replace, never merge: the earlier keys here held the 27.8%
-                # figure that was withdrawn, and a stale key beside a fresh one
-                # is how a withdrawn number survives a refresh.
+
                 m.clear()
                 m.update(
                     false_positive_rate_before=0.444,
@@ -177,8 +168,7 @@ def main():
                      random_forest_held_out_accuracy=imu_deep["held_out"]["random_forest"]["accuracy"],
                      random_forest_held_out_macro_f1=imu_deep["held_out"]["random_forest"]["macro_f1"])
         elif sub["id"] == "M4" and imu:
-            # The forest is served: describe the forest and quote ITS scores. A CNN description left
-            # over from when the CNN was served (before the time-blocked CV fix) is replaced here.
+
             sub["architecture"] = "RandomForest, 300 trees, on 62 statistical and FFT band-energy features per 1-second 100 Hz window"
             sub["evidence"] = "checkpoints/imu_shock_report.json, checkpoints/imu_model_selection.json"
             sub["reproduce"] = "python -m training.train_imu_deep"
@@ -348,7 +338,7 @@ def _deep_extras(claims, rep):
                                   f"{(fp.get('photo_rate_any_blob') or 0) * 100:.1f}% of "
                                   f"{fp.get('clean_photographs_scored')} photographs.")
         else:
-            # The pixel classifier serves: describe IT, not the U-Net text from when the U-Net was served.
+
             seg["architecture"] = ("HistGradientBoosting pixel classifier on 11 vectorised features, trained on defect "
                                    "polygons AND clean-road photographs, with hard-negative mining")
             seg["why"] = ("A bounding box around a diagonal crack overstates its area by about 13x, and area drives "
@@ -379,7 +369,7 @@ def _deep_extras(claims, rep):
                           "test then failed on Kaggle pothole photographs, and the end-to-end check through audit_image() "
                           "on other datasets reversed it: " + dc.get("why", "") + ". The pixel classifier serves; the "
                           "U-Net stays on disk, measured. A better mask on its training dataset was not a better product.")
-            # Served then withdrawn (first run) is REVERSED; won the IoU rule but never served is NOT SERVED.
+
             status = "NOT SERVED" if sel.get("trained_with") else "REVERSED"
             existing = next((c for c in claims["corrections"] if c.get("claim") == claim), None)
             if existing:

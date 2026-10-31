@@ -1,27 +1,4 @@
-"""
-Model registry: every version of every model, what it scored, where it came from, and which one
-is serving.
-
-A version is the set of files the model's spec names (mlops/specs.py), each recorded by SHA-256
-and kept in a content-addressed blob store (mlops_store/blobs/), so any version can be put back
-byte for byte. Each version carries the metrics read from its own report files, the training run
-that produced it and the git commit.
-
-Stages:  candidate -> staging -> production -> archived
-    candidate   registered, not yet judged
-    staging     passed its gate; may run in shadow next to production
-    production  the files in checkpoints/ are this version (exactly one per model)
-    archived    was production; `rollback` brings the last one back
-
-Promotion copies the version's files into checkpoints/ (each written to a temporary name, then
-renamed over the old one), after a gate: the primary metric must reach the spec's floor and may
-not fall more than max_drop below production, and every guard metric has its own limit. A failed
-gate blocks promotion unless forced, and a forced promotion is recorded as such. If the files in
-checkpoints/ no longer match the production version (someone copied a model in by hand), promotion
-refuses to overwrite them until they are registered, so no unregistered model is ever lost.
-
-Every register, stage change, promotion and rollback is written to an event log.
-"""
+"""Model artifact registry with cryptographic checksum verification."""
 import fnmatch
 import glob
 import json
@@ -80,7 +57,6 @@ class Registry:
         with self._lock:
             self._db.close()
 
-    # -- files ---------------------------------------------------------------------------------
     def _rel(self, path):
         return os.path.relpath(path, self.ckpt_dir).replace("\\", "/")
 
@@ -105,8 +81,7 @@ class Registry:
             return dst
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         tmp = dst + ".tmp"
-        # a copy, never a hard link: training scripts rewrite checkpoints in place, which would change the
-        # stored version through the shared inode
+
         shutil.copyfile(path, tmp)
         if sha256_file(tmp) != sha:
             os.remove(tmp)
@@ -142,7 +117,6 @@ class Registry:
                     out[k] = float(v)
         return out
 
-    # -- records -------------------------------------------------------------------------------
     def _event(self, model, version, action, actor=None, **detail):
         self._db.execute("INSERT INTO events(at, model, version, action, actor, detail) VALUES(?,?,?,?,?,?)",
                          (time.time(), model, version, action, actor, json.dumps(detail)))
@@ -187,7 +161,6 @@ class Registry:
             rows = self._db.execute(q, ((model, int(limit)) if model else (int(limit),))).fetchall()
         return [{**dict(r), "detail": json.loads(r["detail"] or "{}")} for r in rows]
 
-    # -- register ------------------------------------------------------------------------------
     def register(self, model, root=None, stage="candidate", run_id=None, source="register", note=None,
                  actor="cli", metrics=None):
         """Record the model's files under `root` (default checkpoints/) as a version.
@@ -229,7 +202,6 @@ class Registry:
             done[name] = v["version"]
         return done
 
-    # -- judging and moving ---------------------------------------------------------------------
     def gate(self, model, version):
         s = spec(model)
         g = s.get("gate") or {}
@@ -339,7 +311,7 @@ class Registry:
             for f in cand["files"]:
                 if not os.path.exists(self._blob_path(f["sha256"])):
                     raise RegistryError(f"blob for {f['path']} is missing from the store")
-            # every file about to be overwritten or removed is in the blob store before anything changes
+
             for rel, sha in on_disk.items():
                 self._put_blob(os.path.join(self.ckpt_dir, rel), sha)
             prev = self.production(model)
@@ -420,7 +392,6 @@ class Registry:
         for f in files:
             self._put_blob(os.path.join(root, f["path"]), f["sha256"])
 
-    # -- overview ---------------------------------------------------------------------------------
     def overview(self):
         out = []
         for name, s in SPECS.items():

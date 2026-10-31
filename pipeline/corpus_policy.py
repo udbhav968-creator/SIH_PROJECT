@@ -1,44 +1,7 @@
-"""
-Which photographs belong to the road-scene corpus, and which do not.
-
-The problem
------------
-`datasets/03_crack500_fatigue` and `datasets/05_morth_civil_hard_negatives`
-contain the concrete surface-crack dataset (2,376 files when fully fetched): 227x227 close-ups of
-cracked plaster and concrete walls. They are correctly labelled - a crack is a
-crack - and they are the wrong domain.
-
-ROAD-SHIELD audits a carriageway from a vehicle. Every rule it applies assumes
-that: the road surface is in the lower part of the frame, a repair has an area
-in square metres derived from camera geometry, and a proposal whose centroid
-sits above the horizon fraction is discarded. A 227x227 texture patch has no
-horizon, no perspective and no road, so those rules cannot apply to it. It is
-neither detected nor detectable, and counting it as a missed road defect
-measures the wrong thing.
-
-Leaving it in the negatives is the more harmful half. A pixel classifier
-trained to call cracked plaster "clean road" is being taught, with thousands of
-examples, that a high-contrast linear feature on a grey surface is not a
-defect - which is precisely the feature a road crack presents.
-
-The decision
-------------
-Excluded from road-scene training and from road-scene measurement. Not
-deleted, not hidden: the files stay on disk, the exclusion is listed with its
-reason in every report that depends on it, and anyone can reproduce the
-unfiltered number by setting ROAD_SHIELD_NO_CORPUS_FILTER=1.
-
-Why by source rather than by size
----------------------------------
-The obvious rule - drop anything smaller than 240 px - is wrong here. 325 of
-489 photographs in the pothole folder are annotated crops below that size and
-are genuine road imagery. Size does not separate the two; provenance does, and
-the ingest already records provenance in the filename prefix it assigns.
-"""
+"""Data retention and inspection corpus governance policy."""
 
 import os
 
-# prefix -> why it is not a road scene. Keep the reason publishable.
 NON_ROAD_SOURCES = {
     "kag_surface-crack": (
         "227x227 close-ups of cracked concrete and plaster surfaces (SDNET-style "

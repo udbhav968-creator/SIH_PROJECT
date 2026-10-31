@@ -1,25 +1,4 @@
-"""
-Geocoding, routing, elevation and nearby-facility lookups.
-
-Every lookup tries real data sources in order and says which one answered:
-
-    geocode / reverse geocode : Google Geocoding API (if GOOGLE_MAPS_API_KEY is set)
-                                -> OpenStreetMap Nominatim
-                                -> a small offline table of city bounding boxes and
-                                   well-known Bengaluru landmarks (approximate)
-    directions                : Google Directions API -> OSRM public router
-                                -> straight-line distance estimate (labelled as such)
-    elevation / drainage      : Google Elevation API -> Open-Meteo elevation API
-                                (Copernicus 90 m DEM) -> unavailable
-    nearby facilities         : Google Places API -> OpenStreetMap Overpass API
-                                -> unavailable
-
-When every source fails the response says "UNAVAILABLE" with empty values -
-nothing is filled in with made-up addresses, elevations or facilities.
-
-Set ROAD_SHIELD_CONTACT to an email/URL you control; OpenStreetMap's usage
-policies ask for a real contact in the User-Agent.
-"""
+"""Google Maps geocoding and reverse location service."""
 
 import os
 import json
@@ -49,8 +28,6 @@ class GoogleMapsService:
     OPEN_METEO_ELEVATION_URL = "https://api.open-meteo.com/v1/elevation"
     OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
-    # Offline fallback 1: coarse city bounding boxes. Only ever reported as an
-    # approximate, city-level match - never as a street address.
     OFFLINE_CITY_BOXES = [
         {"city": "Bengaluru", "state": "Karnataka", "lat": (12.80, 13.15), "lon": (77.45, 77.80)},
         {"city": "Delhi NCR", "state": "Delhi / Uttar Pradesh / Haryana", "lat": (28.30, 28.90), "lon": (76.85, 77.60)},
@@ -61,7 +38,6 @@ class GoogleMapsService:
         {"city": "Goa (Margao-Panaji)", "state": "Goa", "lat": (15.20, 15.60), "lon": (73.75, 74.10)},
     ]
 
-    # Offline fallback 2: a few well-known Bengaluru landmarks for forward geocoding.
     OFFLINE_LANDMARKS = [
         {"name": "Silk Board Junction", "lat": 12.9176, "lng": 77.6238, "addr": "Central Silk Board Junction, Hosur Road, Bengaluru, Karnataka"},
         {"name": "MG Road", "lat": 12.9750, "lng": 77.6080, "addr": "Mahatma Gandhi Road, Bengaluru, Karnataka"},
@@ -73,7 +49,7 @@ class GoogleMapsService:
     ]
     _GENERIC_QUERY_WORDS = {"road", "rd", "junction", "bengaluru", "bangalore", "nh", "the", "near", "karnataka", "india", "main", "cross"}
 
-    FAILURE_CACHE_SECONDS = 300  # don't hammer a source that just failed
+    FAILURE_CACHE_SECONDS = 300
 
     @staticmethod
     def _key_from_disk():
@@ -100,7 +76,6 @@ class GoogleMapsService:
         self.user_agent = f"ROAD-SHIELD/3.0 ({contact})"
         self._cache: Dict[str, Tuple[float, Any]] = {}
 
-    # ------------------------------------------------------------------ helpers
     def _get_json(self, url: str, timeout: float, data: Optional[bytes] = None) -> Any:
         req = urllib.request.Request(url, data=data, headers={"User-Agent": self.user_agent})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -126,7 +101,6 @@ class GoogleMapsService:
         a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2.0) ** 2
         return 2.0 * r * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
 
-    # ------------------------------------------------------------ key / status
     def set_api_key(self, key: str) -> Dict[str, Any]:
         """Sets (or clears) the Google Maps API key at runtime and checks it."""
         self.api_key = key.strip() if key else ""
@@ -192,7 +166,6 @@ class GoogleMapsService:
                            "attribution": "&copy; OpenStreetMap contributors &copy; CARTO", "max_zoom": 19, "type": "tactical_dark"},
         }
 
-    # --------------------------------------------------------- reverse geocode
     def reverse_geocode(self, lat: float, lon: float) -> Dict[str, Any]:
         """Coordinates -> address, with the source that produced it."""
         return self._cached(f"rev_{round(lat, 5)}_{round(lon, 5)}", lambda: self._reverse_geocode(lat, lon))
@@ -236,7 +209,6 @@ class GoogleMapsService:
         return {**base, "status": "UNAVAILABLE", "provider": None, "formatted_address": None,
                 "reason": "No geocoding service was reachable and the point is outside the offline city table."}
 
-    # --------------------------------------------------------- forward geocode
     def geocode(self, query: str) -> Dict[str, Any]:
         """Search text -> candidate coordinates."""
         query_clean = (query or "").strip()
@@ -281,7 +253,6 @@ class GoogleMapsService:
             {"formatted_address": m["addr"], "lat": m["lat"], "lng": m["lng"], "place_id": "",
              "google_maps_url": _maps_links(m["lat"], m["lng"])["google_maps_url"]} for m in matches]}
 
-    # -------------------------------------------------------------- directions
     def get_directions(self, origin_lat: float, origin_lng: float,
                        dest_lat: float, dest_lng: float,
                        avoid_defects: bool = False,
@@ -392,11 +363,6 @@ class GoogleMapsService:
             "google_maps_nav_url": nav_url,
         }
 
-    # --------------------------------------------------- elevation & drainage
-    # Drainage risk uses the topographic position index: the point's elevation
-    # minus the mean of 8 points on a ring ~250 m away. A point clearly lower
-    # than its surroundings collects runoff. It's a screening heuristic, not a
-    # hydrological model - it knows nothing about drains or kerbs.
     RING_RADIUS_M = 250.0
 
     def _ring_points(self, lat: float, lon: float) -> List[Tuple[float, float]]:
@@ -452,7 +418,7 @@ class GoogleMapsService:
     def _drainage_from_relief(self, lat, lon, elevs: List[float], provider: str) -> Dict[str, Any]:
         center = elevs[0]
         ring_mean = sum(elevs[1:]) / len(elevs[1:])
-        tpi = center - ring_mean  # negative = lower than surroundings
+        tpi = center - ring_mean
         if tpi <= -3.0:
             category = "HIGH_MONSOON_WATERLOGGING_RISK"
             rec = "Point sits in a local depression - check cross-drainage / culvert capacity (IRC:SP:42)."
@@ -462,7 +428,7 @@ class GoogleMapsService:
         else:
             category = "OPTIMAL_DRAINAGE"
             rec = "Not in a local depression - standard camber should shed water."
-        # Simple, documented mapping from relief to a 0-100 screening score.
+
         vulnerability = round(max(0.0, min(100.0, 30.0 - tpi * 12.0)), 1)
         return {
             "status": "OK", "provider": provider, "latitude": lat, "longitude": lon,
@@ -475,7 +441,6 @@ class GoogleMapsService:
             "method": f"Topographic position index: point elevation minus mean of 8 points {int(self.RING_RADIUS_M)} m away (screening heuristic).",
         }
 
-    # ------------------------------------------------------ nearby facilities
     FACILITY_TYPES = {"hospital": "hospital", "police": "police", "fire_station": "fire_station"}
 
     def find_nearby_civil_facilities(self, lat: float, lon: float, facility_type: str = "all", radius_m: int = 5000) -> Dict[str, Any]:
@@ -529,7 +494,6 @@ class GoogleMapsService:
         return {"status": "UNAVAILABLE", "provider": None, "query_center": center, "facilities": [],
                 "reason": "Neither Google Places nor the OpenStreetMap Overpass API was reachable."}
 
-    # ------------------------------------------------------------ street view
     def get_streetview_metadata(self, lat: float, lon: float) -> Dict[str, Any]:
         """Google Maps / Street View links for a point (thumbnail only with an API key)."""
         thumb = ""
@@ -547,7 +511,6 @@ class GoogleMapsService:
             "streetview_thumbnail_url": thumb,
         }
 
-    # ---------------------------------------------------------------- utility
     @staticmethod
     def _decode_polyline(encoded: str) -> List[List[float]]:
         """Decodes Google's encoded polyline format into [lat, lng] pairs."""

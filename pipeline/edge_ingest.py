@@ -1,31 +1,4 @@
-"""
-Server side of the bus link: opens sealed packets (edge/crypto.py) and applies them.
-
-    defect   -> fleet ledger (deduplication, Priority Index inputs), published to the live map
-    shock    -> IMU-only sighting: kept in a short list and shown on the map, not added to the ledger,
-                because a shock has no area or depth to price a repair from
-    cam      -> a camera sighting the wheel did not feel (another lane, the kerb side - or a shadow). Kept apart;
-                it enters the ledger when a second bus reports the same class within 8 m within 7 days, or
-                when the ledger already has that defect. A shadow rarely looks the same to two buses at
-                different times; a pothole outside the wheel path does
-    pos      -> latest position of the bus, for the live map (dropped from it 10 minutes after the server
-                last heard from the bus, by the server's clock: a bus with a wrong clock still shows)
-
-Replay protection: the highest sequence number accepted per bus and queue epoch is stored in SQLite (table
-edge_streams in the ledger database). A packet at or below it is acknowledged as a duplicate, so a bus that
-never got the answer to its last upload can safely send again, but it is not applied twice. A bus with a
-new queue database has a new epoch and starts again at 1 without losing anything.
-
-Every field is converted to the type it should have before it is stored or shown (numbers to float,
-labels to short strings), so a packet cannot carry markup to the operators' map. Defects from buses skip
-the network address lookup while the batch is processed; the map fills addresses in later.
-
-Known limit: the ledger write and the sequence update are two SQLite transactions. If the second fails
-after the first succeeded, a resent packet is counted once more.
-
-Packets are applied in order and processing stops at the first one that fails authentication, so the bus
-keeps it and everything after it; accepted_in_order tells the bus how many to drop from its queue.
-"""
+"""Edge device telemetry and survey packet ingestion."""
 import math
 import sqlite3
 import threading
@@ -78,8 +51,8 @@ class EdgeIngest:
         self.positions = {}
         self.shocks = []
         self.camera_only = []
-        self.position_listeners = []          # fn(bus_id, lat, lon, at): the repair workflow counts passes
-        self.event_listeners = []             # fn(bus_id, kind, event, at): traffic estimate, model monitoring
+        self.position_listeners = []
+        self.event_listeners = []
 
     @property
     def configured(self):
@@ -143,8 +116,7 @@ class EdgeIngest:
             self.positions[bus] = p
             if self.events:
                 self.events.publish("bus_position", p)
-            # the time the bus recorded the position (never later than now): a backlog uploaded after an
-            # outage carries its real times, so old positions are not counted as passes after a repair
+
             at = min(ts, time.time()) if ts else time.time()
             for fn in list(self.position_listeners):
                 try:

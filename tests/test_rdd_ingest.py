@@ -1,5 +1,4 @@
-"""RDD2022 India ingestion: class mapping, and the guarantee that the Indian
-test split never reaches a training folder."""
+"""Tests for RDD dataset parsing and bounding-box conversion."""
 import glob, os, sys, tempfile, unittest
 import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -48,7 +47,7 @@ class RDDIngestTest(unittest.TestCase):
         self.assertFalse([f for f in train_files if "_test_" in f], "Indian test photographs leaked into training")
         eval_files = glob.glob(os.path.join(ing.EVAL_DIR, "*", "*.jpg"))
         self.assertTrue(eval_files and all("_test_" in f for f in eval_files))
-        # per split: photo 0 -> 1 crack + 1 pothole, photo 1 -> normal band, photo 2 -> nothing ('Repair')
+
         self.assertEqual(m["training_crops"], {"normal": 2, "crack": 2, "pothole": 2})
         self.assertEqual(m["eval_crops"], {"normal": 1, "crack": 1, "pothole": 1})
         self.assertTrue(all(os.path.basename(f).startswith("rddin_") for f in train_files))

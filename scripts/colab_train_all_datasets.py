@@ -1,22 +1,13 @@
-# ===== ROAD-SHIELD: train on ALL the new datasets in one go (Colab or Kaggle, T4 GPU) =====
-# Paste this whole file into ONE Colab cell (or run: python scripts/colab_train_all_datasets.py).
-#   1. U-Net on DNIT + CrackSeg9k + Pothole Mix + Kaggle pothole outlines   (~1-1.5 h)
-#   2. YOLOv8 road-damage detector on RDD2022 India boxes                     (~1.5 h incl. a 13 GB download)
-# Each model gets a 1-minute smoke run first; a failed step is reported and the next one still runs.
-# Nothing here decides what is served: the laptop's end-to-end checks do that afterwards.
-# Output: /content/road_shield_<models>_results.zip (downloads automatically in Colab).
-# Safe to run after another training cell in the same session: it refreshes code only, never deletes results.
-
-POTHOLE_MIX_LINK = ""     # optional: Mendeley link to pothole-mix-v1.0-20220526.zip (right-click the download arrow -> Copy link)
-POTHOLE_MIX_DRIVE = ""    # or: path of that zip in Google Drive, e.g. "/content/drive/MyDrive/pothole-mix-v1.0-20220526.zip"
-TRAIN_UNET = True         # multi-dataset U-Net segmenter
-TRAIN_YOLO = True         # YOLOv8 road-damage boxes
+POTHOLE_MIX_LINK = ""
+POTHOLE_MIX_DRIVE = ""
+TRAIN_UNET = True
+TRAIN_YOLO = True
 UNET_EPOCHS = 30
-UNET_ENCODER = "resnet34"   # deeper encoder; "resnet18" is the faster original
-UNET_MIN_CROP = 0.35        # random zoom-in down to 35% of the frame, so close-ups are learned
-UNET_SAMPLES = 5000         # training images drawn per epoch
+UNET_ENCODER = "resnet34"
+UNET_MIN_CROP = 0.35
+UNET_SAMPLES = 5000
 YOLO_EPOCHS = 30
-SAVE_TO_DRIVE = False     # True: also copy the results zip to Google Drive (Colab only)
+SAVE_TO_DRIVE = False
 
 import glob, os, subprocess, sys, time
 
@@ -49,11 +40,10 @@ def step(name):
     print("\n" + "=" * 70 + f"\n{name}   [{(time.time() - T0) / 60:.0f} min elapsed]\n" + "=" * 70, flush=True)
 
 
-# ---------------------------------------------------------------- setup
 step("0. code + packages")
 os.chdir("/tmp")
 if os.path.isdir(os.path.join(WORK, ".git")):
-    # An earlier cell already trained here: refresh the CODE only, never delete its results or datasets.
+
     run(f"cd {WORK} && git fetch -q origin audit-2026-10-03 && "
         f"git checkout -q FETCH_HEAD -- scripts training models pipeline api")
 else:
@@ -63,7 +53,6 @@ run('pip install -q "scikit-learn>=1.8,<1.9" "opencv-python-headless>=4.8,<5" on
     'datasets kagglehub ultralytics', keep=["ERROR", "error:"])
 run('python -c "import torch; print(\'GPU:\', torch.cuda.get_device_name(0) if torch.cuda.is_available() else \'NONE - switch the runtime to a T4 GPU\')"')
 
-# ---------------------------------------------------------------- 1. U-Net on every outline dataset
 if TRAIN_UNET:
     step("1a. datasets with pixel outlines")
     pm_arg, z = "", ""
@@ -86,7 +75,7 @@ if TRAIN_UNET:
                                  else "no link or Drive path given") + " - continuing without it")
     run("python -m scripts.fetch_cracks_potholes_dataset --limit 2235 --workers 16", keep=["[", "Error", "error"])
     if os.path.isdir("datasets/seg_multi/crackseg9k/lab"):
-        # an earlier cell in this session already prepared CrackSeg9k and Kaggle: add only what is new
+
         if pm_arg:
             run(f"python -m scripts.fetch_seg_datasets --only pothole_mix {pm_arg}")
         else:
@@ -106,7 +95,6 @@ if TRAIN_UNET:
         STATUS["unet"] = False
         print("U-Net smoke run failed - full run skipped (the served models are unchanged)")
 
-# ---------------------------------------------------------------- 2. YOLOv8 on RDD2022 India
 if TRAIN_YOLO:
     step("2a. RDD2022 India boxes")
     if not os.path.isdir("datasets/rdd2022_india/images/train"):
@@ -116,7 +104,7 @@ if TRAIN_YOLO:
         print("India data:", india or "NOT FOUND")
         if india:
             run(f'python -m scripts.prepare_rdd2022_voc --src "{india}" --out datasets/rdd2022_india')
-            run("rm -rf datasets/_downloads/rdd2022")          # frees ~13 GB
+            run("rm -rf datasets/_downloads/rdd2022")
     step("2b. YOLO smoke run (1 minute)")
     if run("python -m training.train_rdd_detector --model yolov8n.pt --epochs 1 --fraction 0.05 --out /tmp/rdd_smoke",
            keep=["rdd-detector", "TEST", "exported", "Error", "error"]):
@@ -129,9 +117,8 @@ if TRAIN_YOLO:
         STATUS["yolo"] = False
         print("YOLO smoke run failed - full run skipped")
 
-# ---------------------------------------------------------------- package
 step("3. package the results")
-# Only the files THIS run produced, so unzipping never overwrites a newer model with an older one.
+
 wanted = []
 if STATUS.get("unet"):
     wanted += ["checkpoints/defect_segmenter_unet.onnx", "checkpoints/defect_segmenter_unet.json",

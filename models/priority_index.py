@@ -1,36 +1,4 @@
-"""
-Repair Priority Index, the formula proposed in the Milestone 2 report (section 3.5):
-
-    PI = w1 * (100 - PCI) + w2 * Vol + w3 * Traffic
-
-The report gives the formula but no scales and no weights, so a number could not be computed from it.
-Here each term is first put on a 0-100 scale, which makes the weights the share of the index each term
-can contribute and keeps PI itself on 0-100.
-
-    Severity  100 - PCI                       PCI from the ASTM D6433 engine (0 = failed, 100 = perfect)
-    Vol       repair volume, area x depth     100 at VOLUME_FULL_M3 (0.25 m3, e.g. 2.5 m2 at 10 cm deep)
-    Traffic   how much the road is used       measured PCU/day when the caller has a count (log scale,
-                                              100 at PCU_FULL); otherwise the fleet's own exposure:
-                                              distinct buses that reported the defect, 100 at BUSES_FULL
-
-Which traffic basis was used is returned with every score, because a bus count is a proxy (it measures
-how many routes pass, not how many vehicles) and should not be read as a traffic survey.
-
-Weights are a policy decision, not something learned from data. The defaults (0.5 / 0.2 / 0.3) put the
-condition of the pavement first and traffic second; a municipality can change them with
-ROAD_SHIELD_PI_WEIGHTS="w1,w2,w3" or per request. They must be non-negative and sum to 1.
-
-When a term cannot be computed (no depth, so no volume; no traffic count and no bus list) its weight is
-shared out over the other terms in proportion, and the term is listed under "missing". Nothing is filled
-in with a typical value, because a ranking built on invented inputs is worse than a shorter formula.
-
-Deliberately not inputs: ward, constituency, road name or any "VIP road" flag. The point of the index in
-the report is that repair order follows measured hazard and use, not influence.
-
-rank_stability() answers the obvious objection to any weighted index ("you chose the weights to get the
-order you wanted"): it re-ranks under every +/-0.1 shift of weight between two terms and reports Kendall's
-tau against the default order. A tau near 1 means the order barely depends on the policy choice.
-"""
+"""Road repair prioritization and ranking index."""
 import math
 import os
 

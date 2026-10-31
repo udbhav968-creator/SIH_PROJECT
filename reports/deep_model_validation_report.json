@@ -1,5 +1,5 @@
 {
-  "timestamp_utc": "2026-10-31T06:20:40.211680+00:00",
+  "timestamp_utc": "2026-10-31T06:32:43.469669+00:00",
   "overall_status": "CERTIFIED",
   "level_1_checkpoints": [
     {
@@ -153,7 +153,7 @@
     {
       "name": "Scene C: Foreground Crater",
       "passed": true,
-      "latency_ms": 8808.0,
+      "latency_ms": 8739.8,
       "class_name": "Pothole Cavity",
       "confidence": 0.8835,
       "bbox": [
@@ -169,7 +169,7 @@
     {
       "name": "Rural Dirt Road",
       "passed": true,
-      "latency_ms": 5038.0,
+      "latency_ms": 5012.0,
       "class_name": "Pothole Cavity",
       "confidence": 0.8907,
       "bbox": [
@@ -201,9 +201,9 @@
     }
   ],
   "level_5_benchmark": {
-    "onnx_vision_latency_ms": 10.2,
-    "onnx_effective_fps": 98.0,
-    "full_pipeline_latency_ms": 4743.9,
+    "onnx_vision_latency_ms": 9.8,
+    "onnx_effective_fps": 102.0,
+    "full_pipeline_latency_ms": 4312.0,
     "onnx_edge_budget_ms": 35.0,
     "passed": true
   }

@@ -124,11 +124,7 @@ def main():
     for frac in args.fractions:
         for conf in args.confidences:
             DeepInferencePipeline.MIN_COMPONENT_FRACTION = frac
-            # `conf` is swept as the POTHOLE margin above that class's own
-            # calibrated threshold, not as an absolute probability. An absolute
-            # value is only meaningful for the one model whose threshold happens
-            # to sit near it - which is how a hardcoded 0.45 discarded real
-            # potholes on a model calibrated to 0.20.
+
             DeepInferencePipeline.MIN_COMPONENT_MARGIN = {"crack": 0.0, "pothole": conf}
             fp = sum(1 for p in clean if reports_defect(p))
             hit = sum(1 for p in defect if reports_defect(p))
@@ -140,8 +136,6 @@ def main():
                   f"({row['false_positive_rate'] * 100:>5.1f}%)      "
                   f"{hit:>3}/{len(defect)} ({row['detection_rate'] * 100:>5.1f}%)", flush=True)
 
-    # A setting is only interesting if it still finds defects. Rank by detection
-    # minus false positives, then prefer the higher detection rate on ties.
     best = max(rows, key=lambda r: (r["detection_rate"] - r["false_positive_rate"],
                                     r["detection_rate"]))
     print(f"\nbest balance: size {best['min_component_fraction']} / "

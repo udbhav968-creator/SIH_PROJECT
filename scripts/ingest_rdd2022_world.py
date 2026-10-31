@@ -23,7 +23,7 @@ ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ENGINE_ROOT not in sys.path:
     sys.path.insert(0, ENGINE_ROOT)
 
-from scripts.ingest_rdd2022_india import (CLASS_FOLDERS, CRACK, EVAL_NAMES, NORMAL, POTHOLE,  # noqa: E402
+from scripts.ingest_rdd2022_india import (CLASS_FOLDERS, CRACK, EVAL_NAMES, NORMAL, POTHOLE,
                                           class_for, crops_from, read_names, train_dir)
 
 PREFIX = "rddw_"

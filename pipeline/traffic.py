@@ -1,46 +1,22 @@
-"""
-Traffic on each road, estimated from the buses' own cameras.
-
-The Priority Index weighs a defect by the traffic over it. Until now the only basis was how many
-buses had reported the defect, a count of routes rather than of vehicles. This module turns the
-COCO detector's vehicle counts in bus frames into a flow estimate per 100 m road cell:
-
-    density   k = PCU visible in the frame / length of road in view   (PCU per km of carriageway)
-    speed     v = the bus's own speed, as the speed of the stream it is moving in (km/h)
-    flow      q = k * v                                                (PCU per hour)
-    daily     Q = q / share of daily traffic in that hour             (PCU per day)
-
-k * v is the fundamental relation of traffic flow (q = kv). The bus's speed stands in for the
-stream's: a bus moves with general traffic except at stops, so frames with the bus below
-MIN_SPEED_KMH (a stop, or a red light) are counted for density but not for flow. The hour-of-day
-shares are a typical Indian urban arterial profile, not a count on these roads, and every estimate
-says so. A cell's value is the median over its observations of the last 30 days, and only cells with
-MIN_OBSERVATIONS in at least MIN_HOURS different hours are used by the Priority Index; the
-rest fall back to the bus-count basis, as before.
-
-What a city should do before relying on it: run classified volume counts (IRC:SP:41) on a few
-corridors, compare, and set VIEW_LENGTH_M and the hour profile from the result.
-"""
+"""Traffic corridor analysis and speed impact calculation."""
 import math
 import sqlite3
 import statistics
 import threading
 import time
 
-PCU = {"Car": 1.0, "Two-Wheeler": 0.5, "City Bus": 2.0, "Heavy Truck": 2.5}   # models/urban_traffic_net.py
-VIEW_LENGTH_M = 40.0          # road length a dashcam frame covers well enough to count vehicles, one direction
+PCU = {"Car": 1.0, "Two-Wheeler": 0.5, "City Bus": 2.0, "Heavy Truck": 2.5}
+VIEW_LENGTH_M = 40.0
 MIN_SPEED_KMH = 8.0
-CELL_DEG = 0.001              # about 110 m north-south
+CELL_DEG = 0.001
 WINDOW_S = 30 * 24 * 3600
 MIN_OBSERVATIONS = 6
 MIN_HOURS = 3
-# Share of a day's traffic in each hour (0-23). A generic Indian urban arterial profile with morning and evening
-# peaks; replace with the city's own counts.
+
 _PROFILE = [0.010, 0.007, 0.006, 0.006, 0.009, 0.018, 0.035, 0.058, 0.073, 0.072, 0.062, 0.057,
             0.055, 0.054, 0.053, 0.055, 0.061, 0.070, 0.074, 0.066, 0.049, 0.033, 0.022, 0.015]
-HOURLY_SHARE = [x / sum(_PROFILE) for x in _PROFILE]          # shares of one day: sums to 1
-# Night hours carry under 1% of the day each, so one frame's count would be multiplied about 150 times: flow is not
-# expanded from them (density is still recorded).
+HOURLY_SHARE = [x / sum(_PROFILE) for x in _PROFILE]
+
 MIN_HOUR_SHARE = 0.02
 
 SCHEMA = """
@@ -200,6 +176,6 @@ def counts_from_audit(audit):
     for v in audit.get("all_vehicles") or []:
         d = v.get("distance_meters")
         if d is not None and d > VIEW_LENGTH_M:
-            continue            # beyond the stretch the density is divided by
+            continue
         counts[v.get("vehicle_type", "Car")] = counts.get(v.get("vehicle_type", "Car"), 0) + 1
     return counts

@@ -1,11 +1,4 @@
-"""
-Model quality check for CI: python -m mlops.ci_check
-
-Reads the metrics of every model whose files are committed in checkpoints/ (the same report paths the
-registry uses) and fails if any is below its promotion floor or above a guard ceiling. A pull request
-that commits a worse model, or a report that no longer matches its spec, fails here before review.
-Models with no automatic gate (published weights) and models not on disk are listed and skipped.
-"""
+"""Continuous integration validation checks for model benchmarks."""
 import sys
 
 from mlops.paths import CKPT_DIR

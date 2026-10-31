@@ -1,16 +1,4 @@
-"""
-Urban traffic density / Passenger Car Unit (PCU) engine.
-
-The PCU-weighted congestion formula below is the real IRC:106-1990 method
-for scoring urban road capacity - a deterministic, standards-based
-computation, not something to train a network on. What used to sit in front
-of it (a hand-initialized "vehicle classifier" that turned meaningless noise
-features into fake car/bus/truck counts) has been removed: we don't have a
-trained vehicle detector in this project, so this module now expects real
-vehicle counts as input - either typed in by an operator, or produced by
-whatever object detector a deployment actually has available - rather than
-inventing them.
-"""
+"""Urban traffic and congestion density estimation module."""
 
 IRC_STANDARDS = {
     "Car": "IRC:106-1990: Passenger Car Unit basis (1.0 PCU)",

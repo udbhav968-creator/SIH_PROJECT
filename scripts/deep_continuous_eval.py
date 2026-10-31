@@ -30,8 +30,7 @@ def encode_image(img_path):
 
 def find_test_images():
     candidates = []
-    
-    # 1. Real user test scenes
+
     rural_road = os.path.join(ENGINE_ROOT, "scratch", "clean_original_road.png")
     if os.path.exists(rural_road):
         candidates.append({"type": "rural_flooded_puddles", "path": rural_road})
@@ -48,34 +47,26 @@ def find_test_images():
     if os.path.exists(scene2_road):
         candidates.append({"type": "flooded_street_cars", "path": scene2_road})
 
-    # 2. RDD2022 Indian road samples
     rdd_files = glob.glob(os.path.join(ENGINE_ROOT, "datasets", "01_rdd2022_india", "**", "*.jpg"), recursive=True)
     for p in rdd_files[:4]:
         candidates.append({"type": "rdd2022_asphalt_distress", "path": p})
 
-    # 3. Kaggle Potholes
     pothole_files = glob.glob(os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "**", "*.jpg"), recursive=True)
     for p in pothole_files[:4]:
         candidates.append({"type": "kaggle_asphalt_pothole", "path": p})
 
-    # 4. CRACK500 Fatigue cracks
     crack_files = glob.glob(os.path.join(ENGINE_ROOT, "datasets", "03_crack500_fatigue", "**", "*.jpg"), recursive=True)
     for p in crack_files[:3]:
         candidates.append({"type": "crack500_fatigue_crack", "path": p})
 
-    # 5. Monsoon waterlogging hazard
     water_files = glob.glob(os.path.join(ENGINE_ROOT, "datasets", "09_waterlogging_hazard", "**", "*.jpg"), recursive=True)
     for p in water_files[:3]:
         candidates.append({"type": "monsoon_waterlogging", "path": p})
 
-    # 6. Sound pavement: the suite must also see roads that should produce NO defect,
-    #    otherwise it can only ever count misses as passes.
     clean_files = sorted(glob.glob(os.path.join(ENGINE_ROOT, "datasets", "05_morth_civil_hard_negatives", "**", "*.jpg"), recursive=True))
     for p in clean_files[:4]:
         candidates.append({"type": "sound_pavement_clean", "path": p})
 
-    # The same photograph sits in more than one dataset folder (e.g. 1014620_RS_386... in both
-    # 01_rdd2022_india and 03_crack500_fatigue); score each image once, under its first label.
     seen, unique = set(), []
     for c in candidates:
         with open(c["path"], "rb") as fh:
@@ -86,8 +77,6 @@ def find_test_images():
     return unique
 
 
-# What each category should produce. Waterlogging and the scratch scenes have no fixed
-# expectation and are reported without being scored.
 EXPECT_DEFECT = {"rdd2022_asphalt_distress", "kaggle_asphalt_pothole", "crack500_fatigue_crack"}
 EXPECT_CLEAN = {"sound_pavement_clean"}
 
@@ -97,7 +86,7 @@ def render_visual_verification_image(orig_path, res, out_name):
         orig_im = Image.open(orig_path).convert("RGBA")
         seg = res.get("segmentation", {})
         mask_url = seg.get("mask_data_url")
-        
+
         composite = orig_im
         if mask_url and "base64," in mask_url:
             raw_png = base64.b64decode(mask_url.split("base64,")[1])
@@ -106,7 +95,6 @@ def render_visual_verification_image(orig_path, res, out_name):
                 mask_im = mask_im.resize(orig_im.size, Image.NEAREST)
             composite = Image.alpha_composite(orig_im, mask_im)
 
-        # Draw bounding boxes and labels
         draw = ImageDraw.Draw(composite)
         dets = res.get("all_detections", [])
         for d in dets:
@@ -119,7 +107,7 @@ def render_visual_verification_image(orig_path, res, out_name):
             cls_name = d.get("class_name", "Defect")
             conf = int(d.get("confidence", 0.90) * 100)
             cost = d.get("repair_cost_inr", 0.0)
-            # Cyan box for pothole, yellow for crack
+
             color = "#06b6d4" if d.get("class_id") == 2 else "#eab308"
             draw.rectangle([bx, by, bx + bw, by + bh], outline=color, width=2)
             label = f"{cls_name} {conf}% | Rs.{cost:.0f}"
@@ -157,7 +145,7 @@ def run_suite():
         path = info["path"]
         cat = info["type"]
         b64 = encode_image(path)
-        
+
         t0 = time.time()
         try:
             res = audit_image_base64(b64)
@@ -170,13 +158,13 @@ def run_suite():
         dets = res.get("all_detections", [])
         seg = res.get("segmentation", {})
         ledger = res.get("morth_civil_ledger", {})
-        
+
         giant_boxes = [d for d in dets if d.get("area_diagnostics", {}).get("box_share_of_frame", 0.0) > 0.35 and d.get("is_distress")]
         unpriced_defects = [d for d in dets if d.get("is_distress") and d.get("needs_manual_survey")]
         area_overflows = [d for d in dets if d.get("is_distress") and d.get("surface_area_m2", 0.0) > 3.0]
         impossible_classes = [d for d in dets if d.get("class_id") in (4, 5, 6) and d.get("is_distress")]
         degenerate_boxes = [d for d in dets if d.get("is_distress") and (d.get("bbox_pixels", [0,0,0,0])[2] < 14 or d.get("bbox_pixels", [0,0,0,0])[3] < 10)]
-        
+
         giant_box_violations += len(giant_boxes)
         unpriced_violations += len(unpriced_defects)
         area_overflow_violations += len(area_overflows)
@@ -195,7 +183,7 @@ def run_suite():
         elif cat in EXPECT_CLEAN:
             clean_photos += 1
             clean_false += int(distress_count > 0)
-        
+
         print(f"{os.path.basename(path)[:30]:<32} {cat:<25} {distress_count:<6} {len(giant_boxes):<6} {len(unpriced_defects):<9} {cost_str:<12} {os.path.basename(out_name)}")
 
         results.append({

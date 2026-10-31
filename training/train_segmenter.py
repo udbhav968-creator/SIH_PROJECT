@@ -1,63 +1,4 @@
-"""
-Train the pixel-level defect segmenter on the DNIT polygon annotations.
-
-    python -m training.train_segmenter                    # default: 700 photos
-    python -m training.train_segmenter --images 1200      # more data, slower
-    python -m training.train_segmenter --quick            # 200 photos, for a smoke test
-
-What it learns from
--------------------
-`datasets/incoming/cracks_potholes_dnit/coco.json` carries 4,720 polygons drawn
-by hand: 1,921 cracks, 564 potholes, and 2,235 lane outlines marking the
-drivable surface. Those polygons are rasterised into per-pixel labels:
-
-    inside a crack polygon      -> 1
-    inside a pothole polygon    -> 2      (drawn last; potholes win overlaps)
-    inside lane, outside both   -> 0      sound road
-    everywhere else             -> ignored, not trained on and not scored
-
-Excluding everything outside the lane is deliberate. Sky, verge and vegetation
-are not pavement, and a model rewarded for calling them "sound road" learns
-nothing useful about roads.
-
-Clean photographs, and why they were missing
---------------------------------------------
-Every DNIT photograph contains a defect. A model trained only on those has
-never been shown the most common thing that LOOKS like a defect and is not:
-fresh white paint. Measured on the first version of this model, a zebra
-crossing produced up to 148,000 pixels called "pothole" - more than any real
-pothole in the test set. The model had learned "high-contrast patch on dark
-asphalt", and a painted stripe is the purest example of that on any road.
-
-So `datasets/05_morth_civil_hard_negatives`, `10_missing_zebra_crossing` and
-`11_missing_road_divider` are now trained on as well, with every road pixel
-labelled sound. Then the model is asked to predict on those same photographs,
-and every pixel it still calls crack or pothole is fed back as a sound example
-and the model is retrained. That second pass is hard-negative mining: the
-cheapest way to spend training capacity on the pixels that are actually wrong
-rather than on the 97% that were already easy.
-
-The report carries a false-positive rate measured on clean photographs the
-model never saw, because a segmentation IoU says nothing about how often the
-model invents a defect on a road that has none.
-
-Protocol
---------
-Split by photograph, never by pixel: pixels from one photograph appear in
-exactly one of train or test. Scoring pixels from a photograph the model trained
-on would report an IoU that means nothing.
-
-Reported per class:
-    IoU     intersection over union - the standard segmentation metric
-    Dice    2|A∩B| / (|A|+|B|)
-    and pixel precision/recall, because for a thin structure like a crack the
-    two fail very differently and one number hides that.
-
-Outputs
--------
-    checkpoints/defect_segmenter.joblib
-    checkpoints/defect_segmenter_report.json
-"""
+"""Train dense pixel-level pavement defect segmenter."""
 
 import argparse
 import json
@@ -87,10 +28,6 @@ COCO_PATH = os.path.join(DNIT_DIR, "coco.json")
 
 COCO_CRACK, COCO_LANE, COCO_POTHOLE = 1, 2, 3
 
-# Photographs of roads with no crack and no pothole. Their road pixels are
-# sound by construction, and they contain the confusers - paint, joints,
-# shadows, kerbs, manholes - that the DNIT set never shows without a defect
-# somewhere else in frame.
 NEGATIVE_FOLDERS = ["05_morth_civil_hard_negatives",
                     "10_missing_zebra_crossing",
                     "11_missing_road_divider"]
@@ -127,10 +64,7 @@ def load_negatives(limit=None):
         for path in sorted(_glob.glob(os.path.join(root, "**", "*.jpg"), recursive=True)):
             if "_label_conflicts" in path:
                 continue
-            # A pixel classifier taught that cracked plaster is clean road is
-            # being taught that a high-contrast linear feature on grey is not a
-            # defect - the feature a road crack presents. See
-            # pipeline/corpus_policy.py.
+
             pre = corpus_policy.non_road_source(path) if corpus_policy.filtering_enabled() else None
             if pre:
                 _NEGATIVES_DROPPED[pre] = _NEGATIVES_DROPPED.get(pre, 0) + 1
@@ -173,7 +107,7 @@ def load_annotations():
         if rec is None:
             continue
         rec["polys"].append((ann["category_id"], ann.get("segmentation") or []))
-    # only photographs that are actually on disk and carry a defect polygon
+
     usable = []
     for rec in by_image.values():
         path = os.path.join(DNIT_DIR, rec["file_name"])
@@ -190,10 +124,7 @@ def rasterise(rec, work_w=WORK_W, work_h=WORK_H):
     """Polygons -> (work_h, work_w) label image. IGNORE outside the lane."""
     import cv2
     if rec.get("negative"):
-        # A clean photograph carries no polygons, so there is no lane outline to
-        # trust. The lower half of a road photograph is road; above it may be
-        # sky, buildings or traffic, and asserting "sound road" there would be
-        # a label this photograph does not support.
+
         label = np.full((work_h, work_w), IGNORE, dtype=np.uint8)
         label[work_h // 2:, :] = CLASS_SOUND
         return label
@@ -218,11 +149,10 @@ def rasterise(rec, work_w=WORK_W, work_h=WORK_H):
     if lane:
         cv2.fillPoly(label, lane, CLASS_SOUND)
     else:
-        # No lane outline: treat the lower half as road rather than discard the
-        # photograph. Conservative, and it only affects the negative class.
+
         label[work_h // 2:, :] = CLASS_SOUND
     cv2.fillPoly(label, polys_for(COCO_CRACK), CLASS_CRACK)
-    # potholes drawn after cracks so an overlap resolves to the more severe class
+
     cv2.fillPoly(label, polys_for(COCO_POTHOLE), CLASS_POTHOLE)
     return label
 
@@ -284,8 +214,7 @@ def available_memory_mb():
             st = MEMORYSTATUSEX()
             st.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
             ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st))
-            # The binding constraint is whichever is smaller: free RAM, or what
-            # the process can still commit.
+
             return min(st.ullAvailPhys, st.ullAvailPageFile) / 1e6
         if sys.platform.startswith("linux"):
             with open("/proc/meminfo", encoding="utf-8") as fh:
@@ -295,7 +224,7 @@ def available_memory_mb():
         if sys.platform == "darwin":
             import subprocess
             out = subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True)
-            return float(out.strip()) / 1e6 * 0.5      # rough; macOS compresses
+            return float(out.strip()) / 1e6 * 0.5
     except Exception:
         pass
     return None
@@ -342,11 +271,7 @@ def cap_pixels(X, y, max_pixels, rng):
     n = X.shape[0]
     if max_pixels <= 0 or n <= max_pixels:
         return X, y
-    # A boolean mask of float32 randoms, NOT rng.choice. Measured on 5.5M rows:
-    # rng.choice(n, k, replace=False) peaks at 80 MB building the index before
-    # the copy even starts. Asking for 80 MB to recover from an out-of-memory
-    # error is how the recovery path crashed in the field. This costs 4n bytes
-    # and lands within a fraction of a percent of the target.
+
     import gc
     frac = max_pixels / float(n)
     keep = rng.random(n, dtype=np.float32) < frac
@@ -375,11 +300,7 @@ def fit_with_headroom(make_clf, X, y, rng, label="fit"):
         except MemoryError:
             if X.shape[0] <= 300_000:
                 raise
-            # Every other row. A strided slice needs no index array at all, and
-            # because sample_pixels appends one block per class per photograph,
-            # taking every second row keeps both the class balance and the
-            # spread across photographs. Recovering from an out-of-memory error
-            # must not itself ask for memory.
+
             print(f"  [{label}] out of memory at {X.shape[0]:,} pixels - "
                   f"retrying with {X.shape[0] // 2:,}", flush=True)
             Xh, yh = np.ascontiguousarray(X[::2]), np.ascontiguousarray(y[::2])
@@ -517,7 +438,7 @@ def apply_thresholds(proba, thresholds, shape):
     labels = np.full(proba.shape[0], CLASS_SOUND, dtype=np.uint8)
     is_crack = crack_p >= thresholds["crack"]
     is_pothole = pothole_p >= thresholds["pothole"]
-    # where both fire, the more severe class wins if it is also more probable
+
     labels[is_crack] = CLASS_CRACK
     labels[is_pothole & (pothole_p >= crack_p)] = CLASS_POTHOLE
     labels[is_pothole & ~is_crack] = CLASS_POTHOLE
@@ -533,13 +454,7 @@ def calibrate_thresholds(clf, recs, rng, grid=None, max_images=60):
     """
     import cv2
     grid = grid if grid is not None else np.round(np.arange(0.10, 0.91, 0.05), 2)
-    # Defect AND clean photographs must both reach this step. The caller passes
-    # cal_recs + neg_cal (240 defect photographs, then the clean ones), and the
-    # previous recs[:max_images] kept only the first 60 - so no clean road was
-    # ever seen while choosing the operating point, and a looser pothole
-    # threshold won on a near-flat IoU curve. On a clean photograph every road
-    # pixel is truth = sound, so a false defect pixel enlarges the IoU union:
-    # the same objective, now penalising what users saw as zebra "potholes".
+
     defect = [r for r in recs if not r.get("negative")][:max_images]
     clean = [r for r in recs if r.get("negative")][:max_images // 2]
     sample = defect + clean
@@ -567,11 +482,7 @@ def calibrate_thresholds(clf, recs, rng, grid=None, max_images=60):
                 union += int(np.logical_or(t_mask, p_mask).sum())
             iou = inter / union if union else 0.0
             curve.append((float(t), iou))
-        # Near-ties go to the STRICTER threshold. The pothole IoU curve is
-        # nearly flat (0.070 at both 0.20 and 0.30 on one run), and taking the
-        # first maximum on an ascending grid always picked the loosest - the
-        # operating point that floods clean roads. When the objective cannot
-        # tell two thresholds apart, fewer false defects is the better answer.
+
         peak = max(iou for _t, iou in curve)
         tol = max(0.002, 0.03 * peak)
         best_t, best_iou = max((t, iou) for t, iou in curve if iou >= peak - tol)
@@ -667,7 +578,6 @@ def main():
     print("  split by photograph; the thresholds are tuned on the calibration set,")
     print("  so the reported test IoU is not the number they were fitted to")
 
-    # ---------------- clean photographs, split by SOURCE photograph ----------
     neg_train = neg_cal = neg_test = []
     negatives = [] if args.no_negatives else load_negatives()
     if negatives:
@@ -688,60 +598,17 @@ def main():
         print("[segmenter] NO clean photographs in training - this is the configuration "
               "that called a zebra crossing a pothole")
 
-    # ---------------- training pixels ----------------
     import cv2
     X, y, t0 = [], [], time.time()
     all_train = [(r, False) for r in train_recs] + [(r, True) for r in neg_train]
     n_neg_px = 0
 
-    # How many sound pixels each clean photograph may contribute.
-    #
-    # Every clean photograph is 100% sound, so giving each the same budget a
-    # defect photograph spends on sound makes the negatives scale with however
-    # many happen to be on disk. That is fine at 279 of them and wrong at 1,846:
-    # measured on a machine with the full dataset, clean photographs became 39%
-    # of all training pixels and pothole validation IoU dropped from 0.146 to
-    # 0.098. The model was being taught mostly that roads are fine.
-    #
-    # So the negatives get a fixed SHARE of the sound class instead of a fixed
-    # budget per photograph, and the share is a flag so it can be argued with.
-    # ---- size the sample to the machine, BEFORE collecting anything --------
-    #
-    # The previous version collected 5.5M pixels and then capped to 4.5M. That
-    # means the oversized matrix has to exist first - 242 MB - and the cap then
-    # allocates the copy beside it. On a laptop with little free memory the run
-    # died before the cap could help, and the recovery path died too.
-    #
-    # So the budgets are scaled down here instead, and the matrix is never built
-    # bigger than the machine can hold.
     pixel_cap, why_cap = affordable_pixels(args.max_pixels)
     print(f"  memory: {why_cap}")
 
     per_class = args.per_class_pixels
     defect_sound_px = len(train_recs) * per_class * 3
 
-    # The clean-road share is scaled by how many DISTINCT SCENES the clean set
-    # actually contains, not by how many files it has.
-    #
-    # Measured, and this is the whole reason the scaling exists. Two machines,
-    # same code, different clean sets:
-    #
-    #                    photos  scenes   clean share   end-to-end FP / found
-    #   small, augmented    279      46         21.3%     16.7% / 91.7%
-    #   same, share 8.2%    279      46          8.2%      8.3% / 87.5%
-    #
-    # At matched false positives the low-share model found 87.5% against 75.0%.
-    # Raising the share made the segmenter's OWN clean-road metric far better
-    # (5.5% -> 0.9% false blobs) and made the PRODUCT worse: 46 scenes copied up
-    # to 279 files buy weight without information, the model learns those 46
-    # scenes hard, and it suppresses defect pixels everywhere to do it.
-    #
-    # A clean set with 1,613 distinct scenes has no such problem and should get
-    # the full share. So diversity, not file count, sets the weight.
-    # The half-point constant: at this many distinct scenes the clean set gets
-    # half the requested share. 100 is not arbitrary - it is the value that
-    # reproduces the 8.2% share measured best end-to-end on a 26-scene clean
-    # set, while leaving a 1,000-scene set at 91% of the full share.
     SCENE_HALF_POINT = 100
     n_scenes = len({r["group"] for r in neg_train}) if neg_train else 0
     diversity = n_scenes / float(n_scenes + SCENE_HALF_POINT) if n_scenes else 0.0
@@ -753,9 +620,6 @@ def main():
     target_clean_px = int(effective_share * defect_sound_px)
     neg_budget = max(150, target_clean_px // max(1, len(neg_train))) if neg_train else 0
 
-    # Crack and pothole pixels are scarcer than the budget asks for, so the
-    # projection below is an upper bound; scaling on it is deliberately
-    # conservative.
     projected = (len(train_recs) * per_class * 5) + (len(neg_train) * neg_budget)
     if projected > pixel_cap:
         scale = pixel_cap / float(projected)
@@ -777,8 +641,7 @@ def main():
         feats, _ = extract_pixel_features(img)
         label = rasterise(rec)
         if is_neg:
-            # Only the sound class exists here; the budget is the share computed
-            # above, divided evenly across the clean photographs.
+
             xs, ys = sample_pixels(feats, label, neg_budget, rng, sound_multiplier=1)
         else:
             xs, ys = sample_pixels(feats, label, per_class, rng)
@@ -790,13 +653,11 @@ def main():
         if (i + 1) % 100 == 0:
             print(f"    {i + 1}/{len(all_train)} photographs featurised "
                   f"({time.time() - t0:.0f}s)", flush=True)
-    # float32 halves the feature matrix. The extra precision buys nothing here -
-    # the features are colour channels, gradients and local statistics - and the
-    # refit briefly holds two copies, which is where a laptop ran out of memory.
+
     X = np.concatenate(X).astype(np.float32, copy=False)
     y = np.concatenate(y)
     n_sampled = int(X.shape[0])
-    X, y = cap_pixels(X, y, pixel_cap, rng)          # belt and braces
+    X, y = cap_pixels(X, y, pixel_cap, rng)
     counts = {int(c): int((y == c).sum()) for c in np.unique(y)}
     print(f"  {X.shape[0]:,} training pixels, {X.shape[1]} features, per class {counts}")
     if n_neg_px:
@@ -817,7 +678,6 @@ def main():
     print("  calibrating decision thresholds (pass 1) ...")
     thresholds = calibrate_thresholds(clf, cal_recs + neg_cal, rng)
 
-    # ---------------- hard-negative mining -------------------------
     mining = {"ran": False}
     if neg_train and not args.no_mining:
         print("  mining hard negatives from clean photographs ...", flush=True)
@@ -829,9 +689,7 @@ def main():
               f"({mining['false_pixels_per_image_mean']:.0f} per photograph)")
         if hx is not None:
             import gc
-            # Drop the first model BEFORE building the bigger matrix. Holding the
-            # old classifier, the old X and the new X at once is what pushed a
-            # laptop over the edge; the old model is not needed again.
+
             del clf
             gc.collect()
             X = np.concatenate([X, hx.astype(np.float32, copy=False)])
@@ -847,7 +705,6 @@ def main():
             print("  calibrating decision thresholds (pass 2) ...")
             thresholds = calibrate_thresholds(clf, cal_recs + neg_cal, rng)
 
-    # ---------------- held-out scoring, whole masks ----------------
 
     from models.defect_segmenter import DefectSegmenter
     seg = DefectSegmenter.__new__(DefectSegmenter)
@@ -894,8 +751,7 @@ def main():
             "pixel_cap_applied": pixel_cap,
             "per_class_pixels_used": per_class,
             "memory_note": why_cap,
-            # The exclusion travels with the number it changed, so nobody has
-            # to take on trust what "clean road" was trained on.
+
             "corpus_policy": corpus_policy.policy_record(_NEGATIVES_DROPPED),
             "clean_pixel_share_requested": args.clean_pixel_share,
             "clean_scene_count": n_scenes,
@@ -925,9 +781,7 @@ def main():
                             "measured separately on photographs held out of training."),
         "inference_ms_per_image": round(per_image_ms, 1),
         "trained_at_unix": int(time.time()),
-        # Recorded so a load failure on another machine can NAME the cause. A
-        # pickled scikit-learn estimator is not portable across versions, and
-        # the error it raises ("No module named '_loss'") says nothing useful.
+
         "sklearn_version": _sklearn_version(),
         "joblib_version": _joblib_version(),
         "portability_note": ("This file is a pickled scikit-learn estimator. It loads "
@@ -939,7 +793,7 @@ def main():
 
     os.makedirs(CKPT_DIR, exist_ok=True)
     joblib.dump({"classifier": clf, **{k: v for k, v in report.items() if k != "classifier"}},
-                MODEL_PATH)  # report already carries `thresholds`
+                MODEL_PATH)
     with open(REPORT_PATH, "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2)
 

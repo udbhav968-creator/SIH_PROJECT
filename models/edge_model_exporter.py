@@ -1,27 +1,4 @@
-"""
-Edge / embedded model-export utility.
-
-The real trained models in this project are scikit-learn pipelines
-(StandardScaler -> PCA -> SVC for vision, StandardScaler -> RandomForest for
-IMU shock) saved with joblib - not the hand-rolled NumPy weight arrays the
-old version of this exporter looked for (npz files with keys like "w_cls",
-"conv_w", "W_q" that no longer exist anywhere in this project, since there
-never was a real CNN-Transformer to produce them).
-
-This rewrite does two honest things instead:
-1. Introspects the actual fitted scikit-learn pipelines and writes a real
-   JSON description of their structure (kernel, support-vector counts,
-   number of trees, feature counts, class names) - not a fabricated
-   "CNN-Transformer hybrid" architecture.
-2. Hand-ports the deterministic, formula-based engines (the ASTM D6433 PCI
-   deduct-value curve and the pavement-deterioration growth model) to a
-   dependency-free C header, since those are genuinely just arithmetic and
-   cheap to run on a microcontroller. The SVM / RandomForest models are
-   NOT exported to C here: real on-device inference for those needs their
-   fitted parameters (support vectors, tree splits) bundled with a small
-   runtime, which is a real but separate engineering task from generating
-   a single static header.
-"""
+"""ONNX and quantized edge model exporter for embedded platforms."""
 
 import os
 import json
@@ -29,7 +6,7 @@ import time
 
 try:
     import joblib
-except ImportError:  # pragma: no cover
+except ImportError:
     joblib = None
 
 
@@ -94,10 +71,6 @@ class EdgeModelExporter:
                         "note": "See checkpoints/imu_shock_report.json for honest held-out accuracy.",
                     }
 
-        # Deterministic formula-based engines - genuinely embeddable, no weights to export.
-        # The PCI engine moved from fixed severity caps to ASTM deduct-value
-        # curves; the exporter still read the removed SEVERITY_CAP constant and
-        # crashed on any fresh export. Export what the engine actually uses.
         from models.pci_regressor_net import DEFAULT_ASTM_CURVES, DEFAULT_DENSITY_GRID
 
         specs["Model_PCI_ASTM_D6433"] = {

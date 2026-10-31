@@ -1,11 +1,4 @@
-"""
-OpenAPI 3.0 description of the main ROAD-SHIELD endpoints.
-
-Served at GET /api/v1/openapi.json by both the engine and the static Vercel
-deployment, and rendered at /api-docs. Hand-written for the endpoints a client
-integrates with; the engine has more (maps, automotive, export) that are
-internal or demonstration-only and are not part of this contract.
-"""
+"""OpenAPI schema definition and API documentation."""
 
 NUM = {"type": "number"}
 STR = {"type": "string"}

@@ -153,7 +153,7 @@ def download_valid_rgb(url):
             scale = 640.0 / float(max(w, h))
             rgb = rgb.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.BILINEAR)
         arr = np.asarray(rgb, dtype=np.uint8)
-        # Reject near-uniform graphics/blank frames (must have natural scene texture)
+
         if float(arr.std()) < 22.0:
             return None
         return rgb, arr
@@ -173,7 +173,6 @@ def expand_classes(target_new_per_class=35):
         added = 0
         seen_urls = set()
 
-        # Count already-downloaded WM_ files so re-runs are idempotent
         already_wm = [f for f in os.listdir(out_dir) if f.startswith(prefix) and f.endswith(".png")]
         if len(already_wm) >= target_new_per_class:
             print(f"  [{folder}] already has {len(already_wm)} Wikimedia photos; skipping.")

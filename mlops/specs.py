@@ -1,14 +1,4 @@
-"""
-What each served model is, on disk and on paper.
-
-files      glob patterns under checkpoints/ that together are one version of the model
-metrics    report file -> {metric name: dotted path in that JSON}; recorded with every version
-gate       the promotion rule: the primary metric must be at least `floor` and may not fall more
-           than `max_drop` below the version in production; each guard metric has its own limit
-train      how to retrain it: a command run on this machine (CPU minutes), or "colab" when it
-           needs a GPU (notebooks/ and scripts/colab_*); the registry then takes the result in
-           with `python -m mlops register <name>` after the files are copied back
-"""
+"""Performance specifications and metric certification standards."""
 
 SPECS = {
     "vision_classifier": {
@@ -31,9 +21,7 @@ SPECS = {
         "task": "crack and pothole pixel masks",
         "files": ["defect_segmenter_unet.onnx", "defect_segmenter_unet.json", "defect_segmenter.joblib",
                   "defect_segmenter_report.json", "segmenter_selection.json", "semantic_gate_report.json"],
-        # Gated on the segmenter actually served (scripts/segmenter_deployment_check.py, through
-        # audit_image()). It used to gate the U-Net's IoU, which kept CI green while the U-Net
-        # was not served and never tested the pixel classifier that was.
+
         "metrics": {"segmenter_selection.json": {
             "served_detection_rate": "deployment_check.served_end_to_end.detection_rate",
             "served_false_positive_rate": "deployment_check.served_end_to_end.false_positive_rate",

@@ -1,14 +1,4 @@
-"""
-Alerts for the people who act on them: a P1 defect appears, or a work order passes its SLA.
-
-Each alert is published to the live map and kept in a short list (/api/v1/alerts). When
-ROAD_SHIELD_ALERT_WEBHOOK is set, it is also POSTed there as JSON in the background, which is how it reaches
-a team chat or a ticketing system: Slack and Microsoft Teams incoming webhooks, and most ticketing tools,
-accept a JSON POST with a "text" field, which every alert carries.
-
-An alert is sent once per subject (one P1 defect, one overdue order), not on every request that notices
-it. Only https URLs are accepted, plus http to this machine for testing.
-"""
+"""Priority-1 pavement safety alerts and notifications."""
 import json
 import os
 import threading
@@ -48,7 +38,7 @@ class Alerts:
         with self._lock:
             if (kind, key) in self._sent:
                 return None
-            if len(self._sent) > 20000:          # bounded memory on a long-running server
+            if len(self._sent) > 20000:
                 self._sent.clear()
             self._sent.add((kind, key))
             alert = {"kind": kind, "key": key, "text": text, "data": data or {}, "at": round(time.time(), 3)}
@@ -85,7 +75,6 @@ class Alerts:
                                                               else "not set (ROAD_SHIELD_ALERT_WEBHOOK)"),
                 "delivered": self.delivered, "failed": self.failed}
 
-    # ------------------------------------------------------------- checks
     def check_defect(self, defect, priority):
         if priority and priority.get("band") == "P1":
             return self.notify("p1_defect", defect["defect_id"],

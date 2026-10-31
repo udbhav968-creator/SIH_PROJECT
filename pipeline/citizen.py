@@ -1,21 +1,4 @@
-"""
-Citizen reports: anyone can send a photograph of a damaged road from the Report page.
-
-A public form is also a spam channel, so a citizen report never goes straight into the repair ledger:
-
-    PENDING     the engine found a pothole or crack in the photograph; it is pinned on the map for the
-                operators, with the measurements, and waits
-    CONFIRMED   a bus later reported the same class of defect within MATCH_RADIUS_M (automatic), or the
-                ledger already had it, or an operator added it after looking ("promote")
-    DISMISSED   an operator decided it was not a defect, or a duplicate
-
-What is kept: location, class, PCI, area, depth estimate, model confidence, time, and a salted hash of the
-sender's network address (for the per-sender limit only; the address itself is never stored). The
-photograph is analysed in memory and not stored, so a citizen's picture of a street with people in it is
-never kept by the city.
-
-Limit: MAX_PER_HOUR reports per sender, on top of the server's general rate limit.
-"""
+"""Citizen defect reporting and photo submission handler."""
 import hashlib
 import math
 import os

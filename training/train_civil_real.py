@@ -1,45 +1,4 @@
-"""
-ROAD-SHIELD Civil Engineering Models — REAL POLYGON-GROUNDED Training Script
-============================================================================
-
-Trains all three civil engineering models against independent, human-annotated
-ground truth from the DNIT highway survey dataset (`datasets/incoming/cracks_potholes_dnit/coco.json`,
-2,235 photographs with 4,720 hand-drawn polygons for cracks, potholes, and lanes)
-plus clean road hard-negative photographs (`datasets/05_morth_civil_hard_negatives`):
-
-  1. PCI (Pavement Condition Index — ASTM D6433-20)
-       - Ground-truth target `y_pci`: Computed strictly from the HUMAN-DRAWN
-         COCO segmentation polygons (`true_crack_area / true_lane_area`,
-         `true_pothole_count`, `true_pothole_area / true_lane_area`, polygon
-         hydraulic severity) via the published ASTM D6433-20 iterative
-         Corrected Deduct Value (CDV) standard.
-       - Input features `X` (8 features): Extracted via blind morphological
-         bottom-hat crack & cavity detection on raw pixels (with fixed physical
-         thresholds, NO label hints, and NO access to the human polygons).
-       - Train/test split is grouped by highway survey route segment so adjacent
-         frames from the same highway corridor never cross train and test.
-
-  2. Deterioration Forecaster (IRC:37-2018 / CSIR-CRRI Paper 267)
-       - Extracts initial defect states from real highway survey images and
-         pairs sequential frames along the same highway route corridor to capture
-         real empirical distress variance alongside IRC:37-2018 / CSIR-CRRI
-         Paper 267 Table 3 progression constants.
-       - Split by highway route corridor (no route leakage between train and test).
-
-  3. Depth Estimator (IRC:SP:83 / IRC:82)
-       - Ground-truth target `y_depth`: Computed from the RASTERIZED HUMAN-DRAWN
-         COCO POLYGON MASK (`inside = g[human_polygon_mask]`,
-         `outside = g[human_polygon_ring]`) + metric hydraulic radius R_h = Area/Perimeter
-         calibrated by the human-annotated 3.5 m highway lane width.
-       - Input features `X`: Computed strictly from the COARSE RECTANGULAR
-         BOUNDING BOX (`[box_contrast, box_grad_norm, dist_flag]`), matching
-         what `models/depth_estimator.py` receives from a bounding-box detector
-         at inference time when no human polygon exists.
-       - Split by highway route corridor and scored once on held-out test routes.
-
-Run:
-    python -m training.train_civil_real
-"""
+"""Train civil engineering regression models for PCI and deterioration forecasting."""
 
 import collections
 import glob
@@ -71,9 +30,6 @@ COCO_PATH = os.path.join(DNIT_DIR, "coco.json")
 
 COCO_CRACK, COCO_LANE, COCO_POTHOLE = 1, 2, 3
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Shared: ASTM D6433-20 Deduct Curves (digitized control points)
-# ──────────────────────────────────────────────────────────────────────────────
 ASTM_DENSITY_GRID = np.array([0.0, 0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 35.0, 50.0, 75.0, 100.0])
 
 ASTM_CURVES = {
@@ -202,9 +158,6 @@ def _ensure_coco_annotations():
         return None
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Blind Morphological Feature Extraction (Fixed physical thresholds, NO hints)
-# ──────────────────────────────────────────────────────────────────────────────
 _K_BLACKHAT = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
 _K_CAVITY = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
 
@@ -227,16 +180,14 @@ def extract_image_defect_features(img_path, detected_proposals=None):
             rgb = np.asarray(im, dtype=np.float32) / 255.0
 
         gray = 0.299 * rgb[:, :, 0] + 0.587 * rgb[:, :, 1] + 0.114 * rgb[:, :, 2]
-        # Focus on drivable trapezoid in lower 55% of frame, excluding sky and outer verges
+
         road_roi = gray[int(work_h * 0.45) :, int(work_w * 0.12) : int(work_w * 0.88)]
         total_road_px = float(road_roi.size)
 
-        # Normalize road ROI illumination by local median background
         road_u8 = np.clip(road_roi * 255.0, 0, 255).astype(np.uint8)
         bg_blur = cv2.GaussianBlur(road_u8, (31, 31), 0).astype(np.float32)
         rel_drop = np.maximum(0.0, bg_blur - road_u8.astype(np.float32)) / np.maximum(bg_blur, 25.0)
 
-        # Morphological black-hat for thin dark linear cracks (fixed physical threshold >= 0.14)
         blackhat = cv2.morphologyEx(road_u8, cv2.MORPH_BLACKHAT, _K_BLACKHAT).astype(np.float32) / np.maximum(bg_blur, 25.0)
         gy, gx = np.gradient(road_roi)
         grad_mag = np.hypot(gx, gy)
@@ -244,7 +195,6 @@ def extract_image_defect_features(img_path, detected_proposals=None):
         crack_px = (blackhat > 0.13) & (grad_mag > 0.045)
         crack_density_raw = float(np.sum(crack_px)) / total_road_px * 100.0
 
-        # Broad dark depression filter for pothole cavities (fixed physical drop >= 0.22)
         cavity_hat = cv2.morphologyEx(road_u8, cv2.MORPH_BLACKHAT, _K_CAVITY).astype(np.float32) / np.maximum(bg_blur, 25.0)
         pothole_px = (cavity_hat > 0.20) & (rel_drop > 0.22)
         labeled_blobs, n_blobs = scipy_label(pothole_px)
@@ -254,8 +204,6 @@ def extract_image_defect_features(img_path, detected_proposals=None):
         pothole_count_est = len(significant_blobs)
         pothole_density_raw = float(sum(significant_blobs)) / total_road_px * 100.0
 
-        # If object detector / region proposals are available for this frame, measure blind
-        # morphological black-hat / cavity response inside each proposal box (no polygon access)
         crack_sev_override = None
         pot_sev_override = None
         if detected_proposals is not None:
@@ -383,7 +331,6 @@ def _ground_truth_pci_and_box_proposals(anns, img_w, img_h):
     crack_anns = [a for a in anns if a.get("category_id") == COCO_CRACK]
     pothole_anns = [a for a in anns if a.get("category_id") == COCO_POTHOLE]
 
-    # --- 1. Ground truth from exact human segmentation polygons ---
     true_crack_area = sum(float(a.get("area", 0.0)) for a in crack_anns)
     true_pothole_area = sum(float(a.get("area", 0.0)) for a in pothole_anns)
 
@@ -419,15 +366,11 @@ def _ground_truth_pci_and_box_proposals(anns, img_w, img_h):
 
     gt_pci = float(np.clip(100.0 - astm_cdv(deducts), 0.0, 100.0))
 
-    # --- 2. Coarse bounding-box proposal estimate (inference-time detector view) ---
     crack_boxes = [a["bbox"] for a in crack_anns if "bbox" in a]
     pothole_boxes = [a["bbox"] for a in pothole_anns if "bbox" in a]
     return gt_pci, (crack_boxes, pothole_boxes, img_w, img_h)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 1. PCI Model — Detector+Morphological Features (X) → Human Polygon PCI (y)
-# ──────────────────────────────────────────────────────────────────────────────
 def train_pci_model_real():
     print("\n" + "=" * 70)
     print("[PCI Model] Training detector/image features -> human polygon ASTM PCI ...")
@@ -459,8 +402,6 @@ def train_pci_model_real():
             groups.append(_route_group_from_filename(fname))
             n_dnit += 1
 
-    # If raw uncommitted DNIT incoming images are not present, source real defect images
-    # directly from committed real pothole and crack repositories (02_kaggle_pothole_600 & 03_crack500_fatigue)
     if n_dnit == 0:
         pothole_files = sorted(glob.glob(os.path.join(DATASETS_DIR, '02_kaggle_pothole_600', 'real_images', '*')))
         for p in pothole_files[:350]:
@@ -496,7 +437,6 @@ def train_pci_model_real():
             groups.append('crk_' + _route_group_from_filename(os.path.basename(p)))
             n_dnit += 1
 
-    # Add verified clean road photographs (0 proposals, ground-truth PCI = 100.0)
     clean_files = sorted(glob.glob(os.path.join(DATASETS_DIR, "05_morth_civil_hard_negatives", "real_images", "*")))
     for p in clean_files:
         if not p.lower().endswith((".jpg", ".jpeg", ".png")):
@@ -518,8 +458,6 @@ def train_pci_model_real():
     X_tr, X_te = X[tr_idx], X[te_idx]
     y_tr, y_te = y[tr_idx], y[te_idx]
 
-    # Add ASTM D6433-20 boundary anchors to the TRAINING split ONLY so explicit
-    # surveyor calls across [0, 100]% density remain well-calibrated
     anchor_X, anchor_y = [], []
     for cd in [0.0, 2.0, 8.0, 20.0, 45.0, 80.0]:
         for c_sev_str, c_sev_num in SEV_MAP.items():
@@ -588,9 +526,6 @@ def train_pci_model_real():
     return report
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 2. Deterioration Forecaster — Longitudinal Highway Corridor Pairs + IRC:37
-# ──────────────────────────────────────────────────────────────────────────────
 def train_deterioration_model_real():
     print("\n" + "=" * 70)
     print("[Deterioration Model] Training on highway corridor distress progression ...")
@@ -738,9 +673,6 @@ def train_deterioration_model_real():
     return report
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 3. Depth Estimator — Coarse Bounding Box (X) → Rasterized Human Polygon Mask (y)
-# ──────────────────────────────────────────────────────────────────────────────
 def train_depth_model_real():
     """
     Trains the photometric cavity & crack depth regressors:
@@ -803,7 +735,6 @@ def train_depth_model_real():
             px_per_cm = max(1.2, lane_bbox_w / 350.0)
             route_grp = _route_group_from_filename(im_meta["file_name"])
 
-            # --- Pothole annotations ---
             for pa in potholes:
                 bx, by, bw, bh = [int(round(v)) for v in pa.get("bbox", [0, 0, 0, 0])]
                 bx, by = max(0, bx), max(0, by)
@@ -811,7 +742,6 @@ def train_depth_model_real():
                 if bw < 8 or bh < 8:
                     continue
 
-                # 1. COARSE BOUNDING-BOX INPUT FEATURES X (exact match to models/depth_estimator.py)
                 inside_box = g[by : by + bh, bx : bx + bw].ravel()
                 outside_frame = g.ravel()
                 rx0, ry0 = max(0, bx - 25), max(0, by - 25)
@@ -827,7 +757,6 @@ def train_depth_model_real():
                 cy_norm = (by + 0.5 * bh) / float(H)
                 dist_flag = 1.0 if cy_norm < 0.55 else 0.0
 
-                # 2. RASTERIZED HUMAN POLYGON MASK GROUND-TRUTH TARGET y
                 poly_mask = _rasterize_coco_polygons(pa.get("segmentation"), H, W)
                 if np.any(poly_mask):
                     poly_inside = g[poly_mask]
@@ -863,7 +792,6 @@ def train_depth_model_real():
                 y_pot_conf.append(gt_conf)
                 pot_groups.append(route_grp)
 
-            # --- Crack annotations ---
             if cracks:
                 roi = g[int(H * 0.35) :, :]
                 gy_r, gx_r = np.gradient(roi)
@@ -887,7 +815,6 @@ def train_depth_model_real():
                 y_crk.append(gt_crack_depth)
                 crk_groups.append(route_grp)
 
-    # If DNIT uncommitted image crops are absent, extract from committed real repositories
     if len(X_pot) == 0:
         pothole_files = sorted(glob.glob(os.path.join(DATASETS_DIR, '02_kaggle_pothole_600', 'real_images', '*')))
         for p in pothole_files[:450]:

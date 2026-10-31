@@ -282,7 +282,6 @@ def stage_package_checkpoints(drive_dir=None):
     sz_mb = os.path.getsize(zip_path) / 1e6
     print(f"  Archive Size        : {sz_mb:.2f} MB", flush=True)
 
-    # Copy to Google Drive if present or specified
     target_drive = drive_dir or ("/content/drive/MyDrive/ROAD_SHIELD_Checkpoints" if os.path.isdir("/content/drive/MyDrive") else None)
     if target_drive:
         try:
@@ -311,7 +310,6 @@ def print_forensic_summary(timings, zip_mb):
     print(f"  {'TOTAL PIPELINE EXECUTION TIME':<58} | {total_sec:>10.1f} s ({total_sec/60.0:.1f} min)", flush=True)
     print("=" * 82, flush=True)
 
-    # Read committed reports to display official metrics
     print("\nMODEL QUALITY AUDIT REPORT & FORENSIC METRICS:")
     reports = [
         ("PCI Regressor (ASTM D6433)", "pci_model_report.json", [("held_out_r2", "Held-out R²"), ("held_out_mae", "Held-out MAE (pts)")]),

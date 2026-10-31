@@ -64,22 +64,11 @@ from models.automotive_telematics_engine import AutomotiveTelematicsEngine
 import urllib.parse
 from services.google_maps_service import google_maps_service
 
-
-# ==============================================================================
-# GLOBAL MODEL INITIALIZATION
-# ==============================================================================
 CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
 
-# On Vercel (and similar serverless hosts) the deployed files are read-only
-# and only /tmp is writable - and /tmp is wiped between cold starts. Anything
-# the server writes at runtime goes to WRITABLE_DIR; trained models are
-# still read from CKPT_DIR.
 IS_SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 _ckpt_writable = os.access(CKPT_DIR, os.W_OK) if os.path.isdir(CKPT_DIR) else os.access(ENGINE_ROOT, os.W_OK)
 WRITABLE_DIR = CKPT_DIR if (_ckpt_writable and not IS_SERVERLESS) else os.path.join("/tmp", "road_shield")
-# Explicit override: the test suite points this at a temporary directory so it
-# never writes work orders or sightings into the real fleet ledger, and an
-# operator can put the ledger on a mounted volume without moving checkpoints/.
 if os.environ.get("ROAD_SHIELD_WRITABLE_DIR"):
     WRITABLE_DIR = os.environ["ROAD_SHIELD_WRITABLE_DIR"]
     os.makedirs(WRITABLE_DIR, exist_ok=True)
@@ -96,9 +85,6 @@ if imu_model is None:
 print("  ✓ IMU shock classifier", f"loaded ({imu_backend})" if imu_model.is_ready else "NOT TRAINED YET (run training/train_imu.py)")
 
 bayesian_gate = BayesianFusionGate(prior_pothole_prob=0.05, decision_threshold_log_odds=1.8)
-# Standalone IPM for the /civil/ipm-tonnage endpoint. Built from the default
-# calibration profile rather than repeating the constants here, so there is one
-# place where an assumed mount is defined and it is labelled as assumed.
 from models.camera_calibration import DEFAULT_PROFILE as _DEFAULT_CALIB
 ipm_engine = IPMHomographyEngine.from_calibration(_DEFAULT_CALIB)
 forensic_embedder = ForensicMetricEmbedder(hash_size=16, duplicate_hamming_threshold=6)
@@ -118,31 +104,22 @@ alpr_tracker = ALPRIncidentTracker()
 deep_pipeline = DeepInferencePipeline(CKPT_DIR)
 print("  ✓ Deep inference pipeline initialized.")
 
-# The ledger is durable: a municipality's repair backlog cannot live in a
-# process's memory. On a serverless filesystem the database goes to the
-# writable tmp directory and is therefore per-instance, which is reported
-# honestly by /api/v1/fleet/telemetry rather than hidden.
 from pipeline.defect_store import DefectStore
 defect_store = DefectStore(os.path.join(WRITABLE_DIR, "road_shield.db"))
 fleet_dedup_engine = FleetDeduplicationEngine(proximity_threshold_meters=8.0,
                                               store=defect_store)
 
-# Live map feed (server-sent events) and the encrypted link from the bus agents (edge/).
 from pipeline.live_events import live_events, sse_frame
 from pipeline.edge_ingest import EdgeIngest
 edge_ingest = EdgeIngest(os.path.join(WRITABLE_DIR, "road_shield.db"), fleet_dedup_engine, live_events)
 SSE_MAX_SECONDS = 1800
 
-# Repair lifecycle (issue -> repair -> verified by the fleet) and alerts.
 from pipeline.works import WorkOrders, WorkflowError, STATES as ORDER_STATES
 from pipeline.alerts import Alerts
 works = WorkOrders(os.path.join(WRITABLE_DIR, "road_shield.db"), fleet_dedup_engine, dispatch_agent, live_events)
 alerts = Alerts(live_events)
 
-# MLOps: model registry, production monitoring, shadow testing, active learning and the traffic estimate
-# (mlops/, pipeline/traffic.py, api/mlops_routes.py).
 from api import mlops_routes
-
 
 def _reload_pipeline():
     """Load every model again from checkpoints/ (after a promotion or rollback) and swap them in: the pipeline
@@ -157,7 +134,6 @@ def _reload_pipeline():
     pci_model, degrade_model = pm, dm
     return new
 
-
 try:
     MLOPS = mlops_routes.MLOps(WRITABLE_DIR, CKPT_DIR, deep_pipeline, edge_ingest=edge_ingest, events=live_events,
                                alerts=alerts, reload_pipeline=_reload_pipeline)
@@ -165,15 +141,12 @@ except Exception as _e:
     print(f"[WARN] MLOps unavailable: {_e}")
     MLOPS = None
 
-
 def _upload_source():
     """Where an uploaded photograph came from, for monitoring and active learning: an anonymous visitor to a
     public deployment is promised that nothing is kept."""
     return "public" if os.environ.get("ROAD_SHIELD_PUBLIC") == "1" else "api"
 
-
 def _safe_priority(defect):
-    # defined here, not with the other helpers: the demo seed below fires _on_sighting at import time
     from models import priority_index
     try:
         if MLOPS is not None:
@@ -182,13 +155,11 @@ def _safe_priority(defect):
     except (ValueError, TypeError):
         return None
 
-
 def _with_traffic(defects):
     """Ledger defects with the camera traffic estimate attached where a road cell has one."""
     if MLOPS is None:
         return defects
     return [MLOPS.traffic.enrich(d) for d in defects]
-
 
 def _on_sighting(bus_id, result, at=None):
     works.on_sighting(result["defect_id"], bus_id, at=at)
@@ -196,16 +167,13 @@ def _on_sighting(bus_id, result, at=None):
     if rec is not None:
         alerts.check_defect(rec, _safe_priority(rec))
 
-
 fleet_dedup_engine.listeners.append(_on_sighting)
 
-# Citizen reports from the public Report page: pinned, and confirmed by a bus or an operator before the ledger.
 from pipeline.citizen import CitizenReports, CitizenError
 citizen = CitizenReports(os.path.join(WRITABLE_DIR, "road_shield.db"), fleet_dedup_engine, live_events)
 fleet_dedup_engine.listeners.append(citizen.on_sighting)
 edge_ingest.position_listeners.append(lambda bus, lat, lon, at=None: works.on_bus_position(bus, lat, lon, at=at))
 
-# Operational guard rails: body limit, rate limit, Prometheus metrics, readiness (api/ops.py).
 from api import ops
 try:
     from api.openapi import spec as _openapi_spec
@@ -215,16 +183,11 @@ except Exception:
 METRICS = ops.Metrics(_KNOWN_ROUTES)
 LIMITER = ops.RateLimiter()
 
-
 def _readiness():
     seg = getattr(deep_pipeline, "segmenter", None)
     return ops.readiness(vision_model.is_ready, bool(seg is not None and seg.is_ready),
                          imu_model.is_ready, defect_store is not None)
 
-# Demo defects are OFF by default: five invented bus reports in a ledger that
-# the dashboard presents as the city's repair backlog is fabricated data.
-# Set ROAD_SHIELD_SEED_DEMO=1 to seed them for a demo (only when the ledger is
-# empty - re-seeding a durable store would duplicate the fixtures).
 SEED_DEMO = os.environ.get("ROAD_SHIELD_SEED_DEMO") == "1"
 if SEED_DEMO and not fleet_dedup_engine.defect_registry:
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9716, 77.5946, "Pothole Cavity", 42.0, 1.85, enrich_location=False)
@@ -242,7 +205,6 @@ active_feedback_counter = 0
 video_trackers = {}
 FEEDBACK_LOG_PATH = os.path.join(WRITABLE_DIR, "active_feedback_log.jsonl")
 
-
 def find_or_export_artifact(filename):
     """Path to an exported spec/header, looking in checkpoints/ first, then
     WRITABLE_DIR; exports into WRITABLE_DIR if neither has it yet."""
@@ -254,15 +216,8 @@ def find_or_export_artifact(filename):
     candidate = os.path.join(WRITABLE_DIR, filename)
     return candidate if os.path.exists(candidate) else None
 
-
-# ------------------------------------------------------------------------------
-# Static site
-# ------------------------------------------------------------------------------
 WEB_DIR = os.path.join(ENGINE_ROOT, "web")
 
-# Clean URLs -> files in web/. Keeping this explicit rather than mapping any
-# path to any file means the server cannot be talked into reading outside the
-# web directory, which a naive static handler usually can.
 PAGE_ROUTES = {
     "/": "index.html",
     "/inspect": "inspect.html",
@@ -281,10 +236,6 @@ PAGE_ROUTES = {
     "/api-docs": "api-docs.html",
 }
 
-# Write endpoints that change shared state. When ROAD_SHIELD_API_KEY is set they
-# require it (X-API-Key header, or Authorization: Bearer <key>); when it is not
-# set - the default, and the demo - behaviour is unchanged. Analysis endpoints
-# stay open: they read an image and return a result, and change nothing stored.
 PROTECTED_POST = {
     "/api/v1/fleet/report-defect",
     "/api/v1/dispatch/work-order",
@@ -298,14 +249,6 @@ PROTECTED_POST = {
     "/api/v1/citizen/review",
 } | mlops_routes.PROTECTED_POST
 
-
-# Public demo (ROAD_SHIELD_PUBLIC=1, set by deploy/huggingface/Dockerfile): anyone on the internet can reach
-# the engine, so
-#   * the write endpoints above are locked - with a random key if the operator set none - so a visitor
-#     cannot add defects to the ledger, launch training or change settings;
-#   * no request can name a file on the server outside datasets/ (image paths, video paths, batch folders):
-#     uploads come in as base64, and the bundled photographs stay usable.
-# Analysis endpoints stay open and store nothing.
 PUBLIC = os.environ.get("ROAD_SHIELD_PUBLIC") == "1"
 if PUBLIC and not os.environ.get("ROAD_SHIELD_API_KEY"):
     import secrets as _secrets
@@ -314,7 +257,6 @@ if PUBLIC and not os.environ.get("ROAD_SHIELD_API_KEY"):
 DATASETS_ROOT = os.path.realpath(os.path.join(ENGINE_ROOT, "datasets"))
 PATH_KEYS = ("image_base64", "image_path", "before_image_base64", "after_image_base64", "before_base64",
              "after_base64", "frame_base64", "vehicle_image_base64", "video_path", "path", "directory_path")
-
 
 def _server_path_refused(body):
     """In public mode: the first request field that names an existing server file outside datasets/, else None."""
@@ -333,7 +275,6 @@ def _server_path_refused(body):
             return k
     return None
 
-
 def _client_key(headers, client_address):
     """
     Who a request is from, for the rate limit. Behind a Cloudflare tunnel every request arrives from
@@ -347,7 +288,6 @@ def _client_key(headers, client_address):
         if cf and len(cf) <= 64:
             return cf
     return peer
-
 
 def _api_key_ok(headers):
     key = os.environ.get("ROAD_SHIELD_API_KEY", "")
@@ -366,16 +306,11 @@ STATIC_TYPES = {
     ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
 }
 
-
 def get_session_tracker(session_id="default", reset=False):
     if reset or session_id not in video_trackers:
         video_trackers[session_id] = SpatialTemporalVideoTracker(iou_threshold=0.25, max_age_frames=5)
     return video_trackers[session_id]
 
-
-# ==============================================================================
-# HTTP REQUEST HANDLER WITH CORS SUPPORT
-# ==============================================================================
 def _first(src, *keys):
     """First present, non-empty value among keys in a dict (or a parse_qs dict)."""
     for k in keys:
@@ -387,15 +322,12 @@ def _first(src, *keys):
                 return v
     return None
 
-
 def _text_or_none(v, n):
     return None if v is None or v == "" else str(v)[:n]
-
 
 def _actor(body):
     a = _text_or_none(body.get("actor"), 40) if isinstance(body, dict) else None
     return a if a and all(c.isalnum() or c in " ._-@" for c in a) else "operator"
-
 
 def _float_or_none(src, *keys):
     v = _first(src, *keys)
@@ -406,11 +338,8 @@ def _float_or_none(src, *keys):
     except (TypeError, ValueError):
         raise ValueError(f"{keys[0]} must be a number, got {v!r}")
 
-
 def _require_latlon(src, lat_keys=("lat", "latitude"), lon_keys=("lon", "lng", "longitude")):
-    """(lat, lon, error). The API never substitutes a default city centre for a
-    missing coordinate - that is how a request with no location used to come
-    back with an address in Bengaluru or Delhi."""
+    """Extract and validate latitude and longitude coordinates."""
     try:
         lat, lon = _float_or_none(src, *lat_keys), _float_or_none(src, *lon_keys)
     except ValueError as e:
@@ -421,10 +350,8 @@ def _require_latlon(src, lat_keys=("lat", "latitude"), lon_keys=("lon", "lng", "
         return None, None, "lat/lon out of range"
     return lat, lon, None
 
-
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
     daemon_threads = True
-
 
 class RoadShieldAPIHandler(BaseHTTPRequestHandler):
     """
@@ -434,7 +361,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
     with a traceback on stdout. During a demonstration that reads as a crash.
     Those three exceptions are caught and reported as a single quiet line.
     """
-
 
     def _send_cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -449,8 +375,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         self._status = code
 
     def log_request(self, code="-", size="-"):
-        # Structured access log, one JSON line per request, when
-        # ROAD_SHIELD_ACCESS_LOG=1. Off by default so a demo console stays quiet.
         if os.environ.get("ROAD_SHIELD_ACCESS_LOG") != "1":
             return
         try:
@@ -521,18 +445,11 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload.encode("utf-8"))
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
-            # The client went away mid-response. Entirely normal - a page
-            # navigated, a tab closed, a fetch was cancelled - and there is
-            # nothing to do about it. Left unhandled it printed a full
-            # WinError 10053 traceback on the console, which looks like a crash
-            # to anyone watching a demo and is not one.
             self._client_gone = True
 
     def handle_one_request(self):
         """Swallow client-side disconnects; let everything else behave normally."""
         import uuid
-        # One id per request, returned as X-Request-ID and written to the access
-        # log, so a client report can be matched to the server line that served it.
         self._rid = uuid.uuid4().hex[:16]
         self._t_req = time.time()
         self._status = None
@@ -545,7 +462,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 METRICS.observe(self.path.split("?")[0], self.command, self._status, time.time() - self._t_req)
 
     def log_error(self, fmt, *args):
-        # BaseHTTPRequestHandler routes broken pipes through here too.
         msg = fmt % args if args else fmt
         if any(k in str(msg) for k in ("10053", "10054", "Broken pipe", "aborted", "reset")):
             return
@@ -562,21 +478,14 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             return {}
 
     def log_message(self, format, *args):
-        # Keep default stderr logging quiet in normal operation; uncomment for debugging.
         pass
 
-    # ------------------------------------------------------------------
-    # GET
-    # ------------------------------------------------------------------
     def do_GET(self):
         full_path = self.path
         path = full_path.split("?")[0]
         t0 = time.time()
 
         accept_header = self.headers.get("Accept", "")
-        # ---------------- static site ----------------
-        # The frontend is a real multi-page site under web/, not one HTML file.
-        # Each page is served by name; unknown names fall through to the API.
         page = PAGE_ROUTES.get(path)
         if page is None and path.startswith("/web/"):
             page = path[len("/web/"):]
@@ -585,7 +494,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             if served:
                 return
         if path in ("/dashboard", "/frontend", "/gui", "/app") or (path == "/" and "text/html" in accept_header):
-            # Legacy single-file dashboard, kept so old links keep working.
             for candidate in ("index.html", "road_shield_frontend.html"):
                 fp = os.path.join(ENGINE_ROOT, candidate)
                 if os.path.exists(fp):
@@ -656,7 +564,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # ---------------- Google Maps / GIS ----------------
         if path == "/api/v1/maps/status":
             self._send_json(200, google_maps_service.get_service_status())
             return
@@ -708,7 +615,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, google_maps_service.get_streetview_metadata(lat, lon))
             return
 
-        # ---------------- Fleet / GIS dashboard ----------------
         if path == "/api/v1/gis/map-data":
             defects = fleet_dedup_engine.get_all_deduplicated_defects()
             for d in defects:
@@ -721,8 +627,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     elev = google_maps_service.get_elevation(d["lat"], d["lon"])
                     d["elevation_m"] = elev.get("elevation_meters")
                     d["drainage_risk"] = elev.get("drainage_risk_category")
-            # Depots near the ledger's own defects (their centroid), not near a
-            # hard-coded city centre; none at all when the ledger is empty.
             if defects:
                 c_lat = sum(d["lat"] for d in defects) / len(defects)
                 c_lon = sum(d["lon"] for d in defects) / len(defects)
@@ -746,16 +650,12 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
 
         if path == "/api/v1/fleet/telemetry":
             stats = fleet_dedup_engine.get_deduplication_stats()
-            # Pass the storage facts through unchanged. Whether the ledger is
-            # durable, and where it lives, is exactly the sort of thing a pilot
-            # needs to know and a demo tends to hide.
             self._send_json(200, {
                 **stats,
                 "fleet_status": "DEMO_SEED_DATA_NO_LIVE_GPS_FEED",
             })
             return
 
-        # ---------------- Training / models ----------------
         if path == "/api/v1/training/metrics":
             out = {"active_vision_backend": VISION_BACKEND}
             reports = (
@@ -773,8 +673,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                         out[name] = json.load(f)
                 elif name != "deep_vision":
                     out[name] = {"status": "NOT_YET_TRAINED"}
-            # CNN-embedding heads, one report per backbone; report the one the
-            # server actually loaded rather than the best-looking file on disk.
             loaded = getattr(vision_model, "report", None) or {}
             for cnn_report in sorted(glob.glob(os.path.join(CKPT_DIR, "cnn_head_*_report.json"))):
                 with open(cnn_report, "r", encoding="utf-8") as f:
@@ -818,9 +716,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/v1/claims":
-            # The claims registry, served live so every statement this project
-            # makes can be checked against the engine that is actually running -
-            # including the ones that were withdrawn or corrected.
             claims_path = os.path.join(CKPT_DIR, "claims.json")
             if not os.path.exists(claims_path):
                 self._send_json(404, {"error": "claims.json not present",
@@ -828,8 +723,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 return
             with open(claims_path, "r", encoding="utf-8") as fh:
                 claims = json.load(fh)
-            # Attach LIVE status to each subsystem, so the page shows what is
-            # loaded right now rather than what a document says should be.
             live = {
                 "M1": bool(vision_model.is_ready),
                 "M1-fallback": os.path.exists(os.path.join(CKPT_DIR, "vision_distress_model.joblib")),
@@ -864,9 +757,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     "fix": "python -m training.train_segmenter",
                 }
                 if seg is not None and seg.file_exists:
-                    # Trained, but will not load here (usually a scikit-learn
-                    # version gap). Say that, and show the measured report,
-                    # rather than claiming it was never trained.
                     out["model_on_disk"] = True
                     out["load_error"] = seg.load_error_detail
                     out["fix"] = (seg.load_error_detail or {}).get("fix", out["fix"])
@@ -898,8 +788,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/v1/models/registry":
-            # Read-only: the dashboard polls this, so it must not rewrite files
-            # on every call. Exporting is /api/v1/models/export-edge-spec's job.
             spec_path = find_or_export_artifact("road_shield_open_model_spec.json")
             header_path = find_or_export_artifact("road_shield_edge_inference.h")
             with open(spec_path, "r", encoding="utf-8") as fh:
@@ -1117,13 +1005,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "road_shield_open_model_spec.json not found"})
             return
 
-        # ---------------- Automotive exports ----------------
         if path == "/api/v1/automotive/can-stream":
             scenario = self.path.split("scenario=")[1].split("&")[0] if "scenario=" in self.path else "highway_pothole"
             snapshot = automotive_telematics.get_simulated_telemetry_snapshot(scenario)
-            # Canned UI fixture: the telemetry is a scripted scenario and the vision
-            # probability below is an assumed input, not a model output. Both are
-            # declared in the response so the cockpit demo cannot pass as vehicle data.
             assumed_p_vision = 0.85 if snapshot["hazard_class_id"] != 0 else 0.05
             fused_conf = fusion_gate.fuse_evidence(
                 p_vision=assumed_p_vision,
@@ -1186,9 +1070,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
 
         self._send_json(404, {"error": f"Endpoint {path} not found"})
 
-    # ------------------------------------------------------------------
-    # POST
-    # ------------------------------------------------------------------
     def do_POST(self):
         path = self.path.split("?")[0]
         try:
@@ -1231,7 +1112,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
         if mlops_routes.handle_post(self, MLOPS, path, body, _actor(body)):
             return
 
-        # ---------------- Google Maps (POST) ----------------
         if path == "/api/v1/maps/config":
             self._send_json(200, google_maps_service.set_api_key(body.get("api_key", "")))
             return
@@ -1268,9 +1148,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, google_maps_service.get_elevation(lat, lon))
             return
 
-        # ----------------------------------------------------------------------
-        # Vision distress classification (Model M1) - real image in, real class out
-        # ----------------------------------------------------------------------
         if path in ("/api/v1/detect/vision", "/api/v1/vision/predict"):
             img_b64 = body.get("image_base64") or body.get("image_path")
             if not img_b64:
@@ -1309,9 +1186,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # ----------------------------------------------------------------------
-        # IMU telemetry classification (Model M4)
-        # ----------------------------------------------------------------------
         if path == "/api/v1/telemetry/imu":
             data_source = "caller_supplied_real_series"
             if "raw_series" in body:
@@ -1346,15 +1220,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # ----------------------------------------------------------------------
-        # Bayesian dual-sensor fusion (Model M5)
-        # ----------------------------------------------------------------------
         if path == "/api/v1/fusion/gate":
             p_vision = float(body.get("vision_pothole_prob", body.get("p_visual", 0.5)))
             accel_delta_z = float(body.get("peak_delta_z_ms2", body.get("delta_z_ms2", 0.0)))
-            # Without a full 100-sample IMU window there's no real classifier
-            # output to use, so an explicit p_imu_shock is required unless
-            # the caller only wants the peak-shock heuristic below.
             p_imu = body.get("p_imu_shock")
             from models.bayesian_fusion_gate import SEVERE_JOLT_MS2
             p_imu = float(p_imu) if p_imu is not None else (0.9 if accel_delta_z >= SEVERE_JOLT_MS2 else 0.05)
@@ -1365,9 +1233,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, fusion_res)
             return
 
-        # ----------------------------------------------------------------------
-        # Civil volumetrics (Model M2 - real photogrammetry + material rates)
-        # ----------------------------------------------------------------------
         if path == "/api/v1/civil/ipm-tonnage":
             area_m2 = float(body.get("area_m2", body.get("area_sqm", 1.8)))
             depth_cm = float(body.get("depth_cm", 6.5))
@@ -1378,9 +1243,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, civil_res)
             return
 
-        # ----------------------------------------------------------------------
-        # Forensic repair verification (Models M7/M8) - requires real before/after photos
-        # ----------------------------------------------------------------------
         if path == "/api/v1/audit/verify-repair":
             before_b64 = body.get("before_image_base64")
             after_b64 = body.get("after_image_base64")
@@ -1405,16 +1267,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, audit_res)
             return
 
-        # ----------------------------------------------------------------------
-        # MoRTH cryptographic work-order dispatch (Model M10)
-        # ----------------------------------------------------------------------
         if path == "/api/v1/dispatch/work-order":
-            # A sealed work order is a billing document. Every measured field
-            # must come from the caller; the old defaults (a 2.2 m2, 6.5 cm
-            # pothole at PCI 42 in Delhi) sealed an invented defect whenever a
-            # field was missing - and web/works.html sends defect_class/pci,
-            # which were silently ignored. GPS is optional: without it the
-            # order is issued with dispatch_status HELD_NO_GPS.
             try:
                 fields = {
                     "distress_class": _first(body, "distress_class", "distress_type", "defect_class"),
@@ -1466,9 +1319,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # ----------------------------------------------------------------------
-        # ASTM D6433 PCI (real deduct-value formula, not a trained regressor)
-        # ----------------------------------------------------------------------
         if path == "/api/v1/priority/score":
             from models import priority_index
             try:
@@ -1507,9 +1357,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, result)
             return
 
-        # ----------------------------------------------------------------------
-        # Pavement deterioration lifecycle forecast (Model M_DEGRADE)
-        # ----------------------------------------------------------------------
         if path == "/api/v1/forecast/deterioration":
             roi_res = degrade_model.predict_lifecycle_roi(
                 init_area_m2=float(body.get("initial_area_m2", 1.5)),
@@ -1523,9 +1370,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, roi_res)
             return
 
-        # ----------------------------------------------------------------------
-        # Launch real training (vision + IMU) - runs the actual scikit-learn fits
-        # ----------------------------------------------------------------------
         if path == "/api/v1/training/launch":
             if IS_SERVERLESS:
                 self._send_json(503, {
@@ -1539,9 +1383,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, launch_res)
             return
 
-        # ----------------------------------------------------------------------
-        # Real-photo demo classification via the deep pipeline
-        # ----------------------------------------------------------------------
         if path == "/api/v1/vision/analyze-photo":
             class_id = body.get("class_id")
             preset = media_engine.get_photo_preset(class_id=class_id)
@@ -1551,8 +1392,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             try:
                 result = deep_pipeline.audit_image(image_input=preset["image_path"], corridor_id=f"Demo preset ({preset['class_name']})",
                                                    _source="dataset")
-                # Hand the dashboard the actual photo that was analysed, so the
-                # overlay it draws is over the real input rather than a stand-in.
                 try:
                     import base64 as _b64, mimetypes as _mt
                     with open(preset["image_path"], "rb") as _fh:
@@ -1571,9 +1410,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, result)
             return
 
-        # ----------------------------------------------------------------------
-        # Analyze an arbitrary uploaded field photograph via the deep pipeline
-        # ----------------------------------------------------------------------
         if path == "/api/v1/vision/analyze-custom-photo":
             img_b64 = body.get("image_base64")
             filename = body.get("filename", "")
@@ -1593,9 +1429,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": f"Failed to analyze image: {str(e)}"})
             return
 
-        # ----------------------------------------------------------------------
-        # Analyze one video-stream frame + real IoU tracking across frames
-        # ----------------------------------------------------------------------
         if path in ("/api/v1/vision/process-video-frame", "/api/v1/vision/analyze-custom-frame"):
             frame_b64 = body.get("frame_base64") or body.get("image_base64")
             frame_idx = int(body.get("frame_idx", 0))
@@ -1642,9 +1475,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": f"Failed to analyze video frame: {str(e)}"})
             return
 
-        # ----------------------------------------------------------------------
-        # Active-feedback logging (real, durable log for the next retraining run)
-        # ----------------------------------------------------------------------
         if path == "/api/v1/training/active-feedback":
             global active_feedback_counter
             true_cls = int(body.get("true_class", 0))
@@ -1667,11 +1497,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 "notes": notes,
                 "timestamp_unix": int(time.time()),
             }
-            # Store the correction for the next real retraining pass rather than
-            # claiming an in-place gradient update: SVC/RandomForest pipelines
-            # don't support a meaningful single-sample online update, so
-            # pretending one just happened (as the old endpoint did) would be
-            # fabricating a result.
             try:
                 os.makedirs(WRITABLE_DIR, exist_ok=True)
                 with open(FEEDBACK_LOG_PATH, "a", encoding="utf-8") as f:
@@ -1701,17 +1526,12 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # ----------------------------------------------------------------------
-        # Full deep-inference pipeline audit
-        # ----------------------------------------------------------------------
         if path == "/api/v1/pipeline/deep-audit":
             image_input = body.get("image_base64") or body.get("image_path")
             corridor = body.get("corridor_id", "NH-44")
             filename = body.get("filename", "")
             if filename and filename not in corridor:
                 corridor = f"{corridor} {filename}"
-            # Absent GPS stays absent (None) and absent forecast inputs are
-            # filled by the pipeline and listed under modelling_assumptions.
             try:
                 lat = _float_or_none(body, "latitude", "lat")
                 lng = _float_or_none(body, "longitude", "lng", "lon")
@@ -1726,13 +1546,9 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             device_id = body.get("device_id")  # camera calibration profile, if the caller has one
 
             if not image_input:
-                # Used to audit a bundled pothole photograph instead, so an
-                # empty request came back with a confident pothole detection.
                 self._send_json(400, {"error": "Missing image_base64 or image_path payload"})
                 return
             if not body.get("image_base64"):
-                # image_path is a convenience for local datasets only; a remote
-                # caller must not be able to make the server open any file.
                 datasets_root = os.path.realpath(os.path.join(ENGINE_ROOT, "datasets"))
                 real = os.path.realpath(os.path.join(ENGINE_ROOT, str(image_input)))
                 if not real.startswith(datasets_root + os.sep) or not os.path.isfile(real):
@@ -1760,8 +1576,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/v1/video/ingest":
-            # Decodes a real video file, samples frames by ground distance and
-            # feeds them through the pipeline into the durable ledger.
             src = body.get("video_path") or body.get("path")
             if not src:
                 self._send_json(400, {
@@ -1790,7 +1604,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                     device_id=body.get("device_id"),
                     recorded_at=_float_or_none(body, "recorded_at_unix"),
                 )
-                # The frame-by-frame list can be enormous; return it only if asked.
                 if not body.get("include_frames"):
                     summary["detections"] = summary["detections"][:25]
                     summary["detections_truncated_to"] = 25
@@ -1826,9 +1639,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": f"Batch deep audit failed: {str(e)}"})
             return
 
-        # ----------------------------------------------------------------------
-        # Urban traffic congestion (real IRC:106-1990 PCU formula on caller-supplied counts)
-        # ----------------------------------------------------------------------
         if path == "/api/v1/traffic/analyze":
             counts = body.get("vehicle_counts", {"Car": 16, "City Bus": 4, "Heavy Truck": 2, "Two-Wheeler": 10})
             capacity = body.get("road_capacity", 35)
@@ -1842,13 +1652,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # ----------------------------------------------------------------------
-        # Pedestrian-situation risk (deterministic rules over caller-supplied facts)
-        # ----------------------------------------------------------------------
-        # ----------------------------------------------------------------------
-        # COCO object detection (people, vehicles, traffic control) - real
-        # inference over published weights, or an honest "not installed".
-        # ----------------------------------------------------------------------
         if path == "/api/v1/detect/objects":
             detector = deep_pipeline.object_detector
             if not detector.is_ready:
@@ -1897,12 +1700,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # ----------------------------------------------------------------------
-        # Fleet defect ingestion / deduplication
-        # ----------------------------------------------------------------------
         if path == "/api/v1/fleet/report-defect":
-            # Every field of a sighting comes from the bus. Missing GPS used to
-            # become Bengaluru's city centre and a missing class a pothole.
             bus_id = body.get("bus_id", "BUS-UNKNOWN")
             lat, lon, err = _require_latlon(body)
             cls_name = _first(body, "defect_class")
@@ -2033,13 +1831,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, edge_ingest.ingest(packets))
             return
 
-        # ----------------------------------------------------------------------
-        # ALPR / rash-driving incident report (real kinematics + real OCR when an image is given)
-        # ----------------------------------------------------------------------
         if path == "/api/v1/privacy/redact":
-            # Blur people (head region) and number plates before an image is
-            # shared. Returns the redacted JPEG and what was found, plus the measured recall when
-            # scripts/measure_redactor_recall.py has written one.
             b64 = body.get("image_base64")
             if not b64:
                 self._send_json(400, {"error": "image_base64 is required"})
@@ -2066,8 +1858,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             if not isinstance(track_history, list) or len(track_history) < 3 or not all(
                     isinstance(t, dict) and "timestamp" in t and isinstance(t.get("bbox"), list)
                     and len(t["bbox"]) == 4 for t in track_history):
-                # This endpoint used to substitute a demo track and a fixed GPS
-                # fix when none was sent, then seal the result as an incident.
                 self._send_json(400, {
                     "error": "track_history is required: at least 3 entries of "
                              "{timestamp: seconds, bbox: [x, y, w, h]} from a real tracker",
@@ -2083,9 +1873,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, incident)
             return
 
-        # ----------------------------------------------------------------------
-        # Automotive ADAS policy + CAN + fusion (Model RL-1 / MM-1)
-        # ----------------------------------------------------------------------
         if path == "/api/v1/automotive/rl-action":
             h_cls = int(body.get("hazard_class_id", 2))
             conf = float(body.get("confidence", 0.95))
@@ -2142,10 +1929,6 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
 
         self._send_json(404, {"error": f"Endpoint {path} not found"})
 
-
-# ==============================================================================
-# SERVER ENTRYPOINT
-# ==============================================================================
 def _overdue_loop(every_s=300):
     import threading as _t
     stop = _t.Event()
@@ -2160,7 +1943,6 @@ def _overdue_loop(every_s=300):
     _t.Thread(target=loop, daemon=True).start()
     return stop
 
-
 def start_server(port=8000, host="0.0.0.0"):
     _overdue_loop(every_s=30)
     server_address = (host, port)
@@ -2174,7 +1956,6 @@ def start_server(port=8000, host="0.0.0.0"):
     except KeyboardInterrupt:
         print("\n[AI Server] Shutting down...")
         httpd.server_close()
-
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000

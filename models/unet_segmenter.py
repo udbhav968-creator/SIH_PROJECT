@@ -1,34 +1,4 @@
-"""
-Deep defect segmentation: a U-Net with an ImageNet ResNet-18 encoder.
-
-Why it exists
--------------
-The pixel classifier (models/defect_segmenter.py) sees eleven hand-designed
-measurements per pixel and nothing else. It cannot see shape: a crack is a thin
-connected line and a pothole is a closed dark cavity, and neither fact is in a
-per-pixel feature vector. Its held-out IoU (crack 0.23, pothole 0.14) is the
-weakest number in the measurement chain, and area -> tonnage -> cost all rest
-on the mask.
-
-A U-Net sees the whole frame at several scales and keeps full-resolution detail
-through its skip connections, which is what thin cracks need.
-
-What is shared with the pixel classifier
-----------------------------------------
-Everything after the probabilities: models.defect_segmenter.mask_from_proba
-turns (H*W, 3) probabilities at 320x200 into the same segment() dictionary,
-with the same per-class thresholds rule and the same blob-size floor. So area,
-confidence and the semantic gate mean the same thing whichever model produced
-the probabilities, and swapping the model changes nothing downstream.
-
-Which one is served is decided by checkpoints/segmenter_selection.json, written
-by training/train_unet_segmenter.py from a rule fixed before the test set is
-scored. Absent that file, or if the ONNX model fails to load, the pixel
-classifier is used exactly as before.
-
-    seg = load_best_segmenter()
-    out = seg.segment(image_rgb)
-"""
+"""U-Net convolutional neural network for road defect segmentation."""
 
 import json
 import os
@@ -43,8 +13,6 @@ ONNX_NAME = "defect_segmenter_unet.onnx"
 META_NAME = "defect_segmenter_unet.json"
 SELECTION_NAME = "segmenter_selection.json"
 
-# Network input. 512x320 keeps the 1.6 aspect of the 320x200 working grid and
-# is divisible by 32, which the five encoder stages need.
 IN_W, IN_H = 512, 320
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -116,7 +84,7 @@ class UNetSegmenter(_UNetBase):
                 import onnxruntime as ort
                 self._session = ort.InferenceSession(self.model_path, providers=["CPUExecutionProvider"])
                 self._input = self._session.get_inputs()[0].name
-            except Exception as e:     # an unloadable model must not take the pipeline down
+            except Exception as e:
                 self.load_error = str(e)
                 self.load_error_detail = {"path": self.model_path, "error": str(e)}
                 self._session = None

@@ -1,11 +1,4 @@
-"""
-In-process event feed for the live map (GET /api/v1/live/stream, server-sent events).
-
-Publishers are the request handlers: a defect reported or merged, a bus position, an IMU-only shock, a
-work order issued. Each subscriber (one open browser tab) gets its own bounded queue; a slow tab loses its
-oldest events rather than holding memory or slowing the publisher. The last RECENT events are kept so a tab
-that reconnects with Last-Event-ID receives what it missed.
-"""
+"""Server-sent events emitter for real-time frontend updates."""
 import itertools
 import json
 import queue

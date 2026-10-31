@@ -1,22 +1,7 @@
-"""
-Model M5: dual-sensor Bayesian fusion gate.
-
-Combines the vision model's "this looks like a pothole" probability with the
-IMU model's "this felt like a pothole" probability using log-odds (Bayesian)
-evidence combination, to cut down on false positives that only one sensor
-would produce on its own - a tree shadow can fool the camera, a bad
-expansion joint can fool the accelerometer, but both agreeing is a much
-stronger signal.
-"""
+"""Bayesian fusion gate for multimodal sensor confidence scoring."""
 
 import numpy as np
 
-# Peak-to-peak vertical acceleration in one second (m/s^2) that counts as a severe jolt on its own. Set from the
-# project's real drive logs (datasets/04_mobile_imu_telemetry_100hz/raw_logs, 1-second windows): plain road
-# reaches 8.9 at the median and 27.7 at the 99th percentile, pothole drives 14.0 and 40.9 at the median and 90th.
-# The earlier thresholds (3.5 and 6.0, and "under 1.0" for no jolt) sat below what ordinary road produces in
-# 78-96% of plain-road windows, so a jolt "confirmed" almost anything and the optical-false-alarm rule could
-# never fire on real data. Below this value the IMU classifier's probability is the evidence, not the jolt.
 SEVERE_JOLT_MS2 = 28.0
 
 

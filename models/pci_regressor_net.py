@@ -1,16 +1,4 @@
-"""
-Model M_PCI: ASTM D6433-20 Pavement Condition Index Engine & Trained Regressor.
-
-Replaces the earlier single-equation `1 - exp(-0.06 * d)` analytic stand-in with:
-  1. Digitized ASTM D6433-20 empirical deduct-value curves across distress
-     families (cracking, potholes, rutting, roughness) and severity levels
-     (LOW, MEDIUM, HIGH).
-  2. A trained monotonic `HistGradientBoostingRegressor` saved in
-     `checkpoints/pci_model.joblib` (trained and evaluated on a held-out test
-     split by `training/train_civil_models.py`), enforcing strict monotonicity
-     so higher distress density, severity, rutting, roughness, or age never
-     increases the PCI score.
-"""
+"""ASTM D6433 Pavement Condition Index (PCI) deduction and rating regressor."""
 
 import os
 import numpy as np
@@ -165,7 +153,7 @@ class PavementConditionIndexEngine:
                     max(0.0, float(age_yr) - 5.0),
                 ]], dtype=np.float32)
                 reg_pci = float(np.clip(self.model.predict(feats)[0], 0.0, 100.0))
-                # Combine trained monotonic regressor with exact ASTM CDV bound
+
                 pci_score = float(np.clip(0.5 * reg_pci + 0.5 * (100.0 - cdv), 0.0, 100.0))
                 cdv = 100.0 - pci_score
             else:

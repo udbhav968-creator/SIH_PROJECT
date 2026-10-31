@@ -56,12 +56,9 @@ PATCH_DIR = os.path.join(DATASETS_DIR, "patches")
 LABEL_MAP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "label_map.json")
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-MIN_CROP_PX = 24          # smaller boxes carry no usable texture
-CROP_CONTEXT = 0.12       # keep 12% of the box size as surrounding road
+MIN_CROP_PX = 24
+CROP_CONTEXT = 0.12
 
-# Suggested starting points. These are *candidates*: the download step reports
-# clearly when a slug no longer exists rather than pretending it worked, and
-# `search` is there to find current alternatives.
 SUGGESTED_KAGGLE = [
     ("andrewmvd/pothole-detection", "665 road photos with Pascal VOC pothole boxes"),
     ("chitholian/annotated-potholes-dataset", "Annotated potholes, VOC format"),
@@ -77,9 +74,6 @@ SUGGESTED_URLS = [
 ]
 
 
-# ----------------------------------------------------------------------------
-# label mapping
-# ----------------------------------------------------------------------------
 DEFAULT_LABEL_MAP = {
     "_comment": "Maps a source dataset's label onto this project's class folders. "
                 "Edit freely; keys are lower-cased and matched exactly, then by substring. "
@@ -129,9 +123,6 @@ def resolve_label(raw_label, label_map):
     return None
 
 
-# ----------------------------------------------------------------------------
-# Kaggle
-# ----------------------------------------------------------------------------
 def kaggle_api():
     try:
         from kaggle.api.kaggle_api_extended import KaggleApi
@@ -216,9 +207,6 @@ def cmd_download(args):
             print("         The slug may have changed. Try: python -m scripts.fetch_datasets search <keyword>")
 
 
-# ----------------------------------------------------------------------------
-# annotation readers  (each returns [(label, x1, y1, x2, y2), ...])
-# ----------------------------------------------------------------------------
 def read_voc(xml_path):
     boxes = []
     try:
@@ -312,9 +300,6 @@ def find_yolo_class_names(root):
     return []
 
 
-# ----------------------------------------------------------------------------
-# ingest
-# ----------------------------------------------------------------------------
 def cmd_ingest(args):
     from PIL import Image
     from models.forensic_audit_engine import ForensicDuplicateHasher
@@ -373,8 +358,7 @@ def cmd_ingest(args):
                     boxes = coco_boxes[fname]
 
                 if not boxes:
-                    # No annotation: keep the whole image for manual sorting, or
-                    # treat the folder name as the label if it maps cleanly.
+
                     folder_label = resolve_label(os.path.basename(root), label_map)
                     if folder_label is not None:
                         out_dir = os.path.join(PATCH_DIR, class_folders[folder_label], "real_images")

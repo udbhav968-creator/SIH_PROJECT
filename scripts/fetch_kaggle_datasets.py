@@ -91,13 +91,6 @@ PREFIX = "kag_"
 IMG_EXT = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 MIN_SIDE = 48
 
-# ---------------------------------------------------------------------------
-# Catalogue. `slug` is the Kaggle dataset id; `folder_overrides` wins over
-# FOLDER_RULES when a dataset's directory names are ambiguous.
-# Run --verify before trusting any entry: Kaggle datasets get renamed and
-# deleted, and this script reports what the API actually returns rather than
-# assuming the catalogue is current.
-# ---------------------------------------------------------------------------
 CATALOG = [
     {
         "key": "surface-crack",
@@ -133,8 +126,6 @@ CATALOG = [
     },
 ]
 
-# folder name fragment -> class. Checked longest-first against the lowercased
-# path of every image, so `.../train/potholes/x.jpg` resolves on "pothole".
 FOLDER_RULES = [
     ("waterlog", WATER), ("flood", WATER), ("standing_water", WATER),
     ("zebra", ZEBRA), ("crosswalk", ZEBRA), ("pedestrian_crossing", ZEBRA),
@@ -149,9 +140,6 @@ FOLDER_RULES = [
 FOLDER_RULES.sort(key=lambda kv: -len(kv[0]))
 
 
-# ---------------------------------------------------------------------------
-# Credentials and the Kaggle API
-# ---------------------------------------------------------------------------
 def kaggle_config_dir():
     return os.environ.get("KAGGLE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".kaggle")
 
@@ -180,8 +168,6 @@ def kaggle_credentials():
     if os.environ.get("KAGGLE_USERNAME") and os.environ.get("KAGGLE_KEY"):
         return f"environment KAGGLE_USERNAME/KAGGLE_KEY (user {os.environ['KAGGLE_USERNAME']})"
 
-    # Newer bearer token ("KGAT_..."). Some kaggle package versions read it,
-    # others only understand the username/key pair, so say which one this is.
     token_file = os.path.join(cfg, "access_token")
     if not os.environ.get("KAGGLE_API_TOKEN") and os.path.exists(token_file):
         try:
@@ -274,7 +260,7 @@ def download(api, entry, force=False):
     except Exception as e:
         print(f"  {entry['key']}: download failed - {str(e)[:200]}")
         return None
-    # some versions leave the zip behind
+
     for name in os.listdir(target):
         if name.endswith(".zip"):
             try:
@@ -289,9 +275,6 @@ def download(api, entry, force=False):
     return target
 
 
-# ---------------------------------------------------------------------------
-# Mapping and ingest
-# ---------------------------------------------------------------------------
 def classify_path(rel_path, overrides):
     """Which class this file belongs to, from the folders above it. None = skip."""
     parts = [p.lower() for p in rel_path.replace("\\", "/").split("/")[:-1]]
@@ -331,14 +314,6 @@ class NearDuplicateIndex:
     XOR-and-count over every hash so far - fast enough for tens of thousands.
     """
 
-    # Threshold measured, not guessed. Over 60 photographs from this dataset,
-    # 64-bit pHash distance between an image and a copy of it was:
-    #   re-encoded at JPEG q80          max  2
-    #   half size, q55 (typical re-up)  max  8, 98% within 6
-    #   quarter size, q45               max 12
-    # while distinct photographs sat at 18 bits and above (5th percentile).
-    # 8 therefore catches every half-size re-upload measured and still leaves a
-    # 10-bit margin before it would start merging genuinely different photos.
     def __init__(self, hasher, threshold=8, capacity=60000):
         self.hasher = hasher
         self.threshold = int(threshold)
@@ -363,7 +338,7 @@ class NearDuplicateIndex:
             self._matrix = np.zeros((1024, digest.size), dtype=bool)
         if self._n >= self._matrix.shape[0]:
             if self._n >= self._capacity:
-                return  # index is full; later images are simply not compared against
+                return
             grow = np.zeros((min(self._matrix.shape[0], self._capacity - self._n),
                              digest.size), dtype=bool)
             self._matrix = np.concatenate([self._matrix, grow], axis=0)
@@ -393,9 +368,7 @@ def index_existing(index, classes, limit_per_class=4000):
 
 def ingest(entries_dirs, plan_only=False, seed=42):
     hasher = ForensicDuplicateHasher()
-    # Hash every class we might write into. With no caps declared (--from-dir),
-    # that is all of them - skipping this would let a duplicate of an image
-    # already in the dataset through, which is exactly the leak this guards.
+
     all_classes = sorted({c for _k, _d, caps in entries_dirs for c in caps}) or sorted(CLASS_FOLDERS)
     print(f"\n[ingest] hashing existing images in {len(all_classes)} class folders ...", flush=True)
     known = index_existing(NearDuplicateIndex(hasher), all_classes)
@@ -494,7 +467,6 @@ def undo():
           "folder by hand if you want the disk space back.")
 
 
-# ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)

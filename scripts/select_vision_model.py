@@ -39,7 +39,7 @@ def decide(head, ft):
     hc = head["heads_compared"][head["head"] + "|" + head.get("features", "plain")] \
         if head.get("head") and head.get("heads_compared") else None
     if hc is None:
-        # fall back to the best CV entry recorded
+
         hc = max(head.get("heads_compared", {}).values(), key=lambda r: r.get("score", 0), default=None)
     if hc is None:
         return "deep_cnn", "head report has no cross-validation record"

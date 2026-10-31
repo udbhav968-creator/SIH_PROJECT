@@ -1,32 +1,4 @@
-"""
-Encrypted, authenticated packets between a bus and the server.
-
-Each event leaves the bus as one small JSON packet sealed with AES-256-GCM:
-
-    {"v": 1, "bus": "<bus id>", "ep": "<queue epoch>", "seq": <n>, "nonce": "<base64 12 bytes>",
-     "ct": "<base64 ciphertext+tag>"}
-
-    confidentiality  only a holder of the fleet key can read the packet
-    integrity        GCM's tag fails on any change to the ciphertext
-    binding          bus id, queue epoch and sequence number are additional authenticated data, so a packet
-                     cannot be re-labelled as coming from another bus or replayed under a new number
-    replay           the server keeps the highest sequence number it accepted per bus and epoch and refuses
-                     anything at or below it (pipeline/edge_ingest.py)
-    epoch            a random id created with each queue database. A bus whose SD card is replaced starts
-                     again at sequence 1 in a new epoch, so its new packets are not mistaken for replays
-
-Bus ids are limited to letters, digits, '.', '_' and '-' (at most 40), because they are shown on the
-operators' map.
-
-Nonces are random (96 bits) under one fleet key: rotate the key well before 2^32 packets in total.
-
-The same ciphertext is what the bus stores while it is offline (edge/store_forward.py), so packets are
-encrypted at rest on the device too: a stolen SD card does not expose the queue without the key.
-
-Key: ROAD_SHIELD_FLEET_KEY, either 64 hex characters / 44 base64 characters (32 raw bytes), or any other
-string, which is stretched with PBKDF2-HMAC-SHA256 (200,000 rounds, fixed salt). One key per fleet keeps a
-pilot simple; per-bus keys are the next step once a key-distribution process exists.
-"""
+"""Cryptographic signing and payload verification for edge packets."""
 import base64
 import hashlib
 import json

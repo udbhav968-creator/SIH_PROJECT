@@ -1,27 +1,4 @@
-"""
-Retraining pipeline: validate data -> train -> register -> restore production -> gate -> stage/promote.
-
-    python -m mlops retrain imu_classifier                 # candidate only, production untouched
-    python -m mlops retrain imu_classifier --promote       # promote if the gate passes
-    python -m mlops retrain ood_guard --ood-dir ../imagenet-sample-images
-
-The training scripts write straight into checkpoints/. To keep production serving while a candidate
-is judged, the pipeline:
-
-  1. validates the data the script reads (photographs or windows per folder, label-conflict folder,
-     a fingerprint of which files) and records it on the run
-  2. stores every file in checkpoints/ in the blob store (content-addressed: unchanged files cost
-     nothing) and makes sure the current files are registered
-  3. runs the training command; its output goes to the run log
-  4. registers the files of this model that changed as a new candidate version, with its metrics
-  5. puts every changed file back as it was, the model's own and any other the script touched
-     (training/train_civil_models.py, for example, also rewrites the segmenter)
-  6. runs the gate against production: passed -> staging (and promoted with --promote); failed ->
-     the candidate stays in the registry with the reasons, and production is unchanged
-
-GPU models (the CNN, the U-Net, the YOLO detector) train in Colab; copy the outputs back
-(scripts/apply_colab_outputs.ps1) and run `python -m mlops register <model>` and `gate` / `promote`.
-"""
+"""Automated model retraining triggers and evaluation gates."""
 import glob
 import os
 import subprocess
@@ -122,7 +99,7 @@ def retrain(model, registry=None, promote=False, actor="cli", ood_dir=None, runn
             t0 = time.time()
             try:
                 proc = runner(cmd)
-            except Exception as e:           # a timeout or a crash still ends with production restored
+            except Exception as e:
                 proc = type("Failed", (), {"returncode": -1, "stdout": "", "stderr": f"{type(e).__name__}: {e}"})()
             out = (getattr(proc, "stdout", "") or "") + (getattr(proc, "stderr", "") or "")
             log = os.path.join(reg.store, "runs", f"{run.run_id}.log")
@@ -155,7 +132,7 @@ def retrain(model, registry=None, promote=False, actor="cli", ood_dir=None, runn
             summary["candidate"] = {"version": cand["version"], "metrics": cand["metrics"]}
             step("register", version=cand["version"], changed=mine, metrics=cand["metrics"])
         finally:
-            if not changed:                  # the run died before comparing: compare now
+            if not changed:
                 now = _snapshot(reg)
                 changed = sorted(p for p in set(before) | set(now)
                                  if (before.get(p) or {}).get("sha256") != (now.get(p) or {}).get("sha256"))

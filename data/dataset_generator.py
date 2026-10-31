@@ -1,21 +1,4 @@
-"""
-Real-sample helpers for demo endpoints that need one example input.
-
-The earlier version of this module was a synthetic-data generator:
-`generate_vision_dataset` produced pure Gaussian noise with a few
-dimensions nudged per class (never an image, never used to train anything
-real), `generate_imu_dataset` fabricated accelerometer windows from
-hand-tuned impulse/oscillation shapes, and `generate_forensic_triplets`
-made up random unit vectors for a metric-learning setup nothing in this
-project actually trains. None of it was real sensor data.
-
-This project now has real, trained models: VisionDistressNet (trained on
-photos under datasets/*/real_images) and IMUShockClassifier (trained on
-datasets/04_mobile_imu_telemetry_100hz). When a demo endpoint needs "an
-example input", the honest thing is to hand it a real one from those same
-sources - which is what the functions below do - rather than fabricate a
-new one.
-"""
+"""Dataset synthesis and sample extraction utilities."""
 
 import os
 import numpy as np

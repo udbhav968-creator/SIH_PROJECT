@@ -1,11 +1,4 @@
-"""
-The MLOps side of the API server: model registry, monitoring, shadow, active learning, traffic.
-
-server.py calls setup() once and then offers each GET/POST to handle_get()/handle_post(), which
-return True when they answered. Reads are open (they show model metadata and aggregate numbers),
-except the active-learning photographs; everything that changes a model, a label or a stage
-needs the operator key, like the other write endpoints.
-"""
+"""MLOps endpoints for model registry, metrics, and monitoring."""
 import os
 import threading
 import time
@@ -38,8 +31,7 @@ class MLOps:
         self._loaded_versions = {}
         try:
             from mlops.registry import Registry
-            # the same store as the command line (ROAD_SHIELD_MLOPS_DIR, else the repository's mlops_store/), so a
-            # promotion from either side is one history over one checkpoints/
+
             self.registry = Registry(ckpt_dir=ckpt_dir)
             self.registry.listeners.append(self._on_registry_event)
         except Exception as e:
@@ -53,7 +45,6 @@ class MLOps:
             edge_ingest.event_listeners.append(self._on_edge_event)
         threading.Thread(target=self._bootstrap, daemon=True).start()
 
-    # -- wiring ---------------------------------------------------------------------------------
     def attach(self, pipeline):
         self.pipeline = pipeline
         if self._after_audit not in pipeline.audit_hooks:
@@ -99,7 +90,7 @@ class MLOps:
 
     def _after_audit(self, img, result, source, projection, latency_ms):
         if source == "dataset":
-            return              # the project's own photographs say nothing about production and must not be relabelled
+            return
         versions = getattr(self.pipeline, "model_versions", None)
         self.monitor.record(source, result, latency_ms=latency_ms, versions=versions)
         if source != "citizen":
@@ -129,13 +120,12 @@ class MLOps:
         self.reload_state = {"state": "reloading", "since": time.time(), "reason": reason}
 
         def work():
-            # one reload at a time; a promotion during a reload triggers one more pass, so the models loaded
-            # last are always the files deployed last
+
             while True:
                 self._reload_again = False
                 try:
                     with self.registry._lock if self.registry is not None else threading.Lock():
-                        new = self.reload_pipeline()      # files cannot change while they are read
+                        new = self.reload_pipeline()
                     self.attach(new)
                     self.monitor.reload_reference()
                     if self.shadow is not None:
@@ -153,7 +143,6 @@ class MLOps:
             return
         threading.Thread(target=work, daemon=True).start()
 
-    # -- views ----------------------------------------------------------------------------------
     def overview(self):
         from mlops import tracking
         guard = getattr(self.pipeline, "input_guard", None)
@@ -182,7 +171,7 @@ class MLOps:
 
 def handle_get(h, m, path, full_path, key_ok):
     q = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
-    one = lambda k, d=None: (q.get(k) or [d])[0]  # noqa: E731
+    one = lambda k, d=None: (q.get(k) or [d])[0]
     if not (path.startswith("/api/v1/mlops") or path.startswith("/api/v1/traffic")):
         return False
     if m is None:

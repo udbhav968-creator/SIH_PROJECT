@@ -1,16 +1,4 @@
-"""
-Model M_DEGRADE: Pavement Deterioration Forecaster.
-
-Projects how a road distress cavity's surface area and depth progress over
-30, 60, 90, and 180 days under traffic loading (ESAL/day), seasonal monsoon
-rainfall (mm), and existing pavement age (years).
-
-Uses the trained monotonic `HistGradientBoostingRegressor` models saved in
-`checkpoints/deterioration_model.joblib` (trained and evaluated on a held-out
-test split by `training/train_civil_models.py` against HDM-4 / CSIR-CRRI /
-FHWA LTPP pavement progression curves), falling back cleanly to the baseline
-physical growth rate only if the checkpoint file is absent.
-"""
+"""HDM-4 structural deterioration forecaster for pavement lifetime estimation."""
 
 import math
 import os
@@ -72,7 +60,7 @@ class PavementDeteriorationForecaster:
                 for h in self.HORIZONS
             ]
             mults = np.maximum(1.0, self.area_model.predict(np.asarray(rows, dtype=np.float32)))
-            # Ensure strict monotonicity across horizons [30, 60, 90, 180]
+
             mults = np.maximum.accumulate(mults)
             return {h: round(float(area0 * m), 3) for h, m in zip(self.HORIZONS, mults)}
         k = self._growth_rate_per_day(esal_trucks, rain_mm)

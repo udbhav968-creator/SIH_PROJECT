@@ -1,17 +1,4 @@
-"""
-The served pixel segmenter without scikit-learn or OpenCV, for the Vercel build
-(numpy + Pillow + onnxruntime only).
-
-- Features: a numpy port of models/defect_segmenter.extract_pixel_features
-  (area resize, sRGB->CIELAB, Sobel, Laplacian, box blur with OpenCV's default
-  reflect-101 border).
-- Classifier: checkpoints/defect_segmenter_pixel.onnx, built from the fitted
-  HistGradientBoostingClassifier by scripts/export_pixel_segmenter_onnx.py
-  (probabilities agree with scikit-learn to < 1e-6).
-
-How closely this reproduces the OpenCV/scikit-learn segmenter is measured by
-scripts/export_pixel_segmenter_onnx.py --verify, not assumed.
-"""
+"""Lightweight pixel-level pavement segmenter for inference."""
 import json
 import os
 
@@ -38,7 +25,7 @@ def _area_weights(n_in, n_out):
 
 def _resize_area_uint8(img, w, h):
     H, W_ = img.shape[:2]
-    if W_ < w or H < h:  # enlarging: OpenCV's INTER_AREA is bilinear here
+    if W_ < w or H < h:
         from PIL import Image
         return np.asarray(Image.fromarray(img).resize((w, h), Image.Resampling.BILINEAR))
     Wy, Wx = _area_weights(H, h), _area_weights(W_, w)
@@ -67,7 +54,7 @@ def _rgb_to_lab_uint8(img):
 
 
 def _conv3(src, k):
-    p = np.pad(src, 1, mode="reflect")  # numpy "reflect" == OpenCV BORDER_REFLECT_101
+    p = np.pad(src, 1, mode="reflect")
     H, W = src.shape
     out = np.zeros_like(src, dtype=np.float32)
     for dy in range(3):

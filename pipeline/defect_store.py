@@ -1,32 +1,4 @@
-"""
-Durable storage for the fleet defect ledger.
-
-The deduplication engine held its registry in a Python dict. Restart the
-server and every confirmed defect, every merge, every work order was gone.
-That is acceptable for a demo and disqualifying for a pilot: a municipal
-corporation's repair backlog cannot live in a process's memory.
-
-This is a SQLite store behind the same interface. SQLite because it needs no
-server, ships with Python, survives power loss, and comfortably handles the
-write rate of a bus fleet - a few thousand reports a day is nothing for it.
-
-Schema
-------
-    defects          one row per physical defect, after deduplication
-    reports          one row per raw sighting, with the defect it merged into
-    work_orders      issued orders and their SHA-256 seals
-
-The `reports` table is the part worth arguing for. Storing only deduplicated
-defects loses the evidence that deduplication happened - and that evidence is
-exactly what a contractor disputes ("you billed this pothole twice"). Keeping
-every raw sighting with a foreign key to the defect it merged into means the
-merge can always be re-examined, and the dedup rate is a real query rather
-than a counter.
-
-Concurrency: WAL mode, one connection per thread. The HTTP server is
-single-threaded today, but the store should not be the thing that breaks when
-it stops being.
-"""
+"""Persistent SQLite defect storage and spatial querying."""
 
 import json
 import os
@@ -93,13 +65,12 @@ class DefectStore:
         self._local = threading.local()
         self._memory_conn = None
         if self.db_path == ":memory:":
-            # One shared connection, or each thread would get its own empty DB.
+
             self._memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
             self._memory_conn.row_factory = sqlite3.Row
         with self._cursor() as cur:
             cur.executescript(SCHEMA)
 
-    # ------------------------------------------------------------------
     def close(self):
         """
         Release the connections this store owns.
@@ -163,7 +134,6 @@ class DefectStore:
     def _cursor(self):
         return DefectStore._Cursor(self._conn())
 
-    # ------------------------------------------------------------------
     def upsert_defect(self, record):
         """Insert or update one deduplicated defect. `record` uses engine field names."""
         known = {"defect_id", "lat", "lon", "defect_class", "severity_pci", "area_m2",

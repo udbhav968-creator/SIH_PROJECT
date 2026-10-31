@@ -1,19 +1,4 @@
-"""
-Semantic gate for the pixel segmenter.
-
-The segmenter labels each pixel from 11 local features (brightness, texture,
-edges). It has no idea what a pothole looks like as a whole, so it paints rough
-foreground asphalt and dark crack lines as "pothole" and misses water-filled
-cavities. The CNN classifier (MobileNetV2 + ensemble, 88.8% held-out) sees whole
-regions. Scoring overlapping windows with it gives a coarse pothole heat map;
-segmenter pothole pixels where that map is below the threshold are dropped.
-
-Measured on 110 annotated photographs with no crop in the classifier's training
-data, plus 50 clean roads from the classifier's test split:
-    pothole IoU 0.102 -> 0.271, precision 0.12 -> 0.53, recall 0.39 -> 0.36,
-    crack IoU unchanged, clean roads with a false blob 8/50 -> 2/50.
-(evidence: checkpoints/semantic_gate_report.json)
-"""
+"""Semantic gate verifying pixel masks against CNN patch predictions."""
 import numpy as np
 
 POTHOLE, CRACK = 2, 1

@@ -3,16 +3,12 @@ Create a camera calibration profile for one vehicle.
 
 Three ways, most accurate first:
 
-    # 1. Checkerboard - the proper way. Print an A4 chessboard, photograph it
-    #    a dozen times from different angles with the mounted camera.
     python -m scripts.calibrate_camera --device DL1PC1234-front \
         --checkerboard photos/calib/ --height 1.52 --pitch 16.0
 
-    # 2. From the published field of view - one number from the datasheet.
     python -m scripts.calibrate_camera --device DL1PC1234-front \
         --hfov 78 --width 1920 --height-px 1080 --height 1.52 --pitch 16.0
 
-    # 3. Inspect what is already stored.
     python -m scripts.calibrate_camera --list
     python -m scripts.calibrate_camera --show DL1PC1234-front
 

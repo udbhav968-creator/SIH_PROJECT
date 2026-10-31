@@ -1,29 +1,4 @@
-"""
-Deep CNN image embeddings through ONNX Runtime - no PyTorch required.
-
-The classifier's original features were hand-engineered: HOG gradients, local
-binary patterns and colour histograms. This module replaces them with the
-output of a convolutional network trained on ImageNet (1.28 million images),
-which encodes far richer visual structure than any hand-written descriptor.
-
-Why ONNX rather than PyTorch: the published weights run under ONNX Runtime,
-a 50 MB dependency that installs cleanly everywhere, including the laptops
-where PyTorch's DLLs refuse to load. Training the head on top of those
-embeddings is ordinary scikit-learn, so the whole pipeline stays light.
-
-Weights come from the official ONNX Model Zoo (github.com/onnx/models) and
-are downloaded once by scripts/fetch_cnn_backbone.py into checkpoints/.
-
-    embedder = CNNEmbedder()                    # picks whatever is on disk
-    vec = embedder.embed(image_rgb)             # (1000,) float32
-    mat = embedder.embed_batch(list_of_images)  # (N, 1000)
-
-The embedding is the network's final layer. Using it as a feature vector is
-standard transfer learning: the values describe what the network recognises
-in the image, and a small classifier on top learns to map those descriptions
-onto road-distress classes with a few hundred examples per class instead of
-the hundreds of thousands a network needs from scratch.
-"""
+"""Convolutional neural network feature embedder for pavement patches."""
 
 import glob
 import os
@@ -32,7 +7,6 @@ import numpy as np
 
 CKPT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checkpoints")
 
-# ImageNet preprocessing, as the ONNX Model Zoo documents for these models.
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
@@ -59,30 +33,13 @@ def _session_options(ort):
     """
     opts = ort.SessionOptions()
 
-    # Arena OFF. It reserves a large pool up front and never returns it, which
-    # is right for a server on one fixed shape and wrong for a process holding
-    # several sessions over crops of varying size.
     opts.enable_cpu_mem_arena = False
 
-    # Memory pattern ON. Disabling it was a guess, and the wrong one: the
-    # pattern planner works out the intermediate tensor layout once and
-    # allocates it as a block, so turning it off replaces one allocation with
-    # many small ones - more fragmentation, not less. The failure that followed
-    # was a Conv node failing mid-inference with 4.8 GB free, which is what
-    # fragmentation looks like rather than exhaustion.
     opts.enable_mem_pattern = True
 
-    # Threads matter for memory, not just speed: each intra-op thread gets its
-    # own scratch buffers, so eight threads means eight copies of the working
-    # set for no benefit on a request-at-a-time workload.
     opts.intra_op_num_threads = max(1, min(2, (os.cpu_count() or 2)))
     opts.inter_op_num_threads = 1
 
-    # ORT_DISABLE_ALL keeps the graph as exported. The NCHWc layout transform is
-    # part of the extended optimisations and allocates a transformed copy of
-    # every convolution weight - which is the node that failed. Opting out costs
-    # some speed on a machine that has memory to spare; ROAD_SHIELD_LITE_ORT=1
-    # is for one that does not.
     if os.environ.get("ROAD_SHIELD_LITE_ORT") == "1":
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     return opts
@@ -113,7 +70,7 @@ class CNNEmbedder:
         ort = None
         try:
             try:
-                import sklearn  # noqa: F401 - ensures VC++ runtime DLLs are loaded on Windows
+                import sklearn
             except Exception:
                 pass
             import onnxruntime as _ort
@@ -152,7 +109,7 @@ class CNNEmbedder:
             except Exception as e:
                 self.load_error = str(e)
                 print(f"[CNNEmbedder] {path} failed to load: {e}")
-        # last resort: any backbone file that happens to be present
+
         for path in sorted(glob.glob(os.path.join(self.ckpt_dir, "cnn_backbone_*.onnx"))):
             if ort is not None:
                 try:
@@ -173,7 +130,6 @@ class CNNEmbedder:
             except Exception:
                 continue
 
-    # ------------------------------------------------------------------
     def preprocess(self, image_rgb):
         """Resize shorter side to 256, centre-crop 224, normalise - the standard recipe."""
         from PIL import Image

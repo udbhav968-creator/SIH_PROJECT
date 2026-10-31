@@ -71,7 +71,7 @@ def main(argv=None):
         t0 = time.time()
         res = pipe.audit_image(path, corridor_id="Recorded example")
         ms = round((time.time() - t0) * 1000)
-        res = json.loads(json.dumps(res, default=str))       # plain JSON, exactly what the API would send
+        res = json.loads(json.dumps(res, default=str))
         res["image_data_url"] = small_jpeg_data_url(path)
         res["image_source_file"] = os.path.basename(path)
         found = defects_in(res)

@@ -20,7 +20,7 @@ import argparse, glob, json, os, re, shutil, sys
 
 ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ENGINE_ROOT)
-from data.image_dataset import CLASS_FOLDERS                          # noqa: E402
+from data.image_dataset import CLASS_FOLDERS
 
 DATASETS = os.path.join(ENGINE_ROOT, "datasets")
 EVAL_DIR = os.path.join(DATASETS, "_eval_rdd2022_india")

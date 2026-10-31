@@ -63,9 +63,6 @@ def _print_header(title):
     print("=" * 72)
 
 
-# ---------------------------------------------------------------------------
-# 1. leakage
-# ---------------------------------------------------------------------------
 def audit_leakage(items, hamming_threshold=5, max_images=4000):
     _print_header("LEAKAGE AUDIT - near-duplicate photographs across classes and splits")
     hasher = ForensicDuplicateHasher(hash_size=8, duplicate_hamming_threshold=hamming_threshold)
@@ -112,9 +109,6 @@ def audit_leakage(items, hamming_threshold=5, max_images=4000):
     }
 
 
-# ---------------------------------------------------------------------------
-# 2. grouped cross-validation
-# ---------------------------------------------------------------------------
 def _features_for(items, cache={}):
     from data.feature_extraction import extract_image_features
     X, y, groups = [], [], []
@@ -159,9 +153,6 @@ def cross_validate(items, folds=5, seed=42):
             "random_guess_baseline": round(1.0 / len(CLASS_NAMES), 4)}
 
 
-# ---------------------------------------------------------------------------
-# 3. calibration
-# ---------------------------------------------------------------------------
 def calibration(items, seed=42, bins=10):
     _print_header("CALIBRATION - does a stated confidence mean what it says?")
     from models.vision_distress_net import VisionDistressNet
@@ -203,9 +194,6 @@ def calibration(items, seed=42, bins=10):
             "brier_score": round(brier, 4), "reliability_table": table, "n_evaluated": int(len(conf))}
 
 
-# ---------------------------------------------------------------------------
-# 4. latency
-# ---------------------------------------------------------------------------
 def latency(items, n=40):
     _print_header("LATENCY - measured on real images, not estimated")
     from data.feature_extraction import extract_image_features
@@ -239,9 +227,6 @@ def latency(items, n=40):
     return result
 
 
-# ---------------------------------------------------------------------------
-# 5. robustness
-# ---------------------------------------------------------------------------
 def robustness(items, seed=42, per_class=12):
     _print_header("ROBUSTNESS - accuracy under dashcam-like image degradation")
     from models.vision_distress_net import VisionDistressNet
@@ -257,10 +242,7 @@ def robustness(items, seed=42, per_class=12):
         if len(by_class[cls]) < per_class:
             by_class[cls].append(path)
     eval_set = [(p, c) for c, ps in by_class.items() for p in ps]
-    # Sampling is capped per class, so the rare classes make up about half of
-    # this set. The figure is therefore CLASS-BALANCED accuracy, comparable to
-    # macro recall - not to the headline accuracy, which is dominated by the
-    # three large classes. What matters here is the change under degradation.
+
     counts = {int(c): len(ps) for c, ps in sorted(by_class.items())}
     print(f"  {len(eval_set)} held-out images, class-balanced {counts}")
     print("  (absolute level ~ macro recall; read the DELTA column, not the level)")
@@ -310,7 +292,6 @@ def robustness(items, seed=42, per_class=12):
     return results
 
 
-# ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", default="leakage,cv,calibration,latency,robustness",

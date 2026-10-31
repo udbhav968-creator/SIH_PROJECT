@@ -1,22 +1,4 @@
-"""
-Store-and-forward queue for a bus that is often out of mobile coverage.
-
-Every event is sealed (edge/crypto.py) the moment it is queued and only the sealed envelope is written to
-SQLite, so the queue on the SD card is encrypted at rest. flush() sends the oldest envelopes first and
-stops at the first failure, which keeps sequence numbers arriving in order: the server refuses a number at
-or below the last one it accepted, so sending out of order would lose packets.
-
-The sequence counter lives in the same database and is advanced in the same transaction as the insert, so
-a power cut can never hand out one number twice. Each database also gets a random epoch when it is created;
-a new SD card is a new epoch, so the server does not mistake its packets for replays of the old card's.
-
-A packet the server answers but refuses (it cannot be opened: a key change, a corrupted row) is moved to
-the dead_letter table after MAX_REFUSALS answers, so one bad row cannot stop a bus's uploads for good.
-A network failure is not a refusal and never dead-letters anything, however long the outage lasts.
-
-Disk is bounded: past max_rows the oldest undelivered position heartbeats are dropped first, then the
-oldest events, and every drop is counted (stats()["dropped"]) rather than silent.
-"""
+"""Offline buffer and store-and-forward edge sync queue."""
 import json
 import os
 import sqlite3

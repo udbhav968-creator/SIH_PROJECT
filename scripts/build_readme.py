@@ -26,12 +26,11 @@ def _engine_url():
     import re
     try:
         with open(os.path.join(ROOT, "web", "config.js"), encoding="utf-8") as fh:
-            # the assignment at the start of a line, not the example inside the file's comment
+
             m = re.search(r'^window\.ROAD_SHIELD_ENGINE_URL\s*=\s*"([^"]*)"', fh.read(), re.M)
         return (m.group(1) if m else "").rstrip("/")
     except OSError:
         return ""
-
 
 
 def _unet_status(seg_sel):

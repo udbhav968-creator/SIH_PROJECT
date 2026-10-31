@@ -3,11 +3,9 @@ A whole city loop in one command, for a demonstration: several buses replay road
 accelerometer data along a road, report sealed packets to the engine, and one repair is taken from order
 to fleet verification while you watch the Road map and Works pages.
 
-    # window 1: the engine, with settings that let a repair be verified in minutes instead of a day
     $env:ROAD_SHIELD_FLEET_KEY = "demo-fleet-key"; $env:ROAD_SHIELD_VERIFY_MIN_HOURS = "0"; $env:ROAD_SHIELD_VERIFY_PASSES = "2"
     python -m api.server 8001
 
-    # window 2: three buses for five minutes, and the repair story
     $env:ROAD_SHIELD_FLEET_KEY = "demo-fleet-key"
     python -m scripts.demo_city --server http://127.0.0.1:8001 --buses 3 --minutes 8 --repair-demo
 
@@ -40,8 +38,7 @@ if ENGINE_ROOT not in sys.path:
     sys.path.insert(0, ENGINE_ROOT)
 
 ROUTE = os.path.join(ENGINE_ROOT, "edge", "samples", "demo_route.csv")
-# a mix of damaged and sound road: RDD2022 India, pothole photographs, and clean "hard negatives" (markings,
-# patches, shadows that look like damage), so most frames are not potholes - as on a real road
+
 PHOTOS = [os.path.join(ENGINE_ROOT, "datasets", d) for d in
           ("01_rdd2022_india", "02_kaggle_pothole_600", "05_morth_civil_hard_negatives")]
 IMU_LOGS = [os.path.join(ENGINE_ROOT, "datasets", "04_mobile_imu_telemetry_100hz", "raw_logs", f)
@@ -56,7 +53,7 @@ class LockedPipeline:
         self._p = DeepInferencePipeline()
         self._lock = threading.Lock()
         self.object_detector = getattr(self._p, "object_detector", None)
-        self.bayesian_gate = self._p.bayesian_gate          # pure arithmetic, safe to share
+        self.bayesian_gate = self._p.bayesian_gate
 
     def audit_image(self, *a, **kw):
         with self._lock:
@@ -152,7 +149,7 @@ def main(argv=None):
     agents, threads = [], []
     for i in range(a.buses):
         bus = f"DEMO-BMTC-{201 + i}"
-        # spread the buses around the loop: a westbound bus's offset counts from the other end of the road
+
         frac = (i / max(1, a.buses) + (0.5 if i % 2 else 0.0)) % 1.0
         gps = sensors.ReplayGps(ROUTE, offset_s=route_len * frac, reverse=bool(i % 2))
         cam = sensors.ReplayFrames(PHOTOS, start=i * 211, seed=7)

@@ -1,22 +1,4 @@
-"""
-Model M6: rash-driving / hit-and-run incident detector & license-plate OCR.
-
-analyze_vehicle_kinematics is real, unchanged math: bounding-box growth
-rate approximates closing speed, and lateral-centroid jitter approximates
-swerving, from a sequence of tracked bounding boxes.
-
-extract_license_plate used to fabricate a random but plate-format-looking
-string (with a random 94-99.8% "OCR confidence") whenever it was called,
-regardless of whether an image was even provided - there was no OCR
-happening at all. This rewrite runs a real classical ALPR pipeline
-(edge/contour-based plate-region localization + Tesseract OCR via
-pytesseract) against an actual image crop, and returns a plain "not
-detected" result - not a fabricated plate - whenever no image is given or
-no plate-shaped region is found. This project has no annotated
-license-plate dataset to validate detection rate against, so this should
-be treated as a real but unbenchmarked OCR pipeline, not a claimed
-accuracy figure.
-"""
+"""Automated license plate recognition and incident tracking module."""
 
 import time
 import re
@@ -25,19 +7,17 @@ import numpy as np
 
 try:
     import cv2
-except ImportError:  # pragma: no cover
+except ImportError:
     cv2 = None
 
 try:
     import pytesseract
-except ImportError:  # pragma: no cover
+except ImportError:
     pytesseract = None
 
 
 class ALPRIncidentTracker:
-    # Indian State/UT registration-authority codes, used only to sanity-check
-    # OCR output against the real HSRP format (e.g. "DL 01 AB 1234"), never
-    # to fabricate a plate.
+
     STATE_CODES = {"DL", "MH", "KA", "TN", "UP", "HR", "GJ", "WB", "TS", "AP", "RJ", "PB", "KL", "MP", "BR"}
 
     def __init__(self):
@@ -73,10 +53,6 @@ class ALPRIncidentTracker:
         elif lateral_jerk > 60.0:
             anomaly_type = "RECKLESS_LANE_CUTTING"
 
-        # There is no labelled driving data behind these thresholds, so no
-        # probability is claimed. The old "confidence" was a made-up formula
-        # with a 0.75 floor; what is reported instead is how far past its
-        # threshold the strongest signal went (>= 1.0 means it fired).
         threshold_ratio = max(max_growth / 3500.0, lateral_jerk / 60.0)
 
         return {
@@ -119,7 +95,7 @@ class ALPRIncidentTracker:
             aspect = w / float(h)
             area_ratio = (w * h) / float(img_area)
             if 2.0 <= aspect <= 5.5 and 0.01 <= area_ratio <= 0.6:
-                # Prefer larger, more plate-shaped (closer to a ~3.5:1 HSRP aspect) candidates.
+
                 score = area_ratio * (1.0 / (1.0 + abs(aspect - 3.5)))
                 if score > best_score:
                     best_score = score
@@ -205,8 +181,7 @@ class ALPRIncidentTracker:
             "incident_id": f"INC-BEL-{int(time.time() * 1000) % 1000000:06d}",
             "reporting_bus_unit": bus_id,
             "timestamp_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            # No GPS fix means no location. Defaulting to a city centre put
-            # incidents on the map at a place they did not happen.
+
             "gps_coordinates": (
                 {"latitude": float(gps_coords["lat"]),
                  "longitude": float(gps_coords.get("lng", gps_coords.get("lon"))),
@@ -247,8 +222,7 @@ class ALPRIncidentTracker:
         if speed_kmh > 100.0:
             incident_class = "EXCESSIVE_APPROACH_VELOCITY"
         elif speed_kmh > 80.0:
-            # A scalar speed cannot observe lane changes; lane cutting is only
-            # ever inferred from a track, in analyze_vehicle_kinematics().
+
             incident_class = "OVERSPEEDING"
         else:
             incident_class = "NORMAL_FLOW"

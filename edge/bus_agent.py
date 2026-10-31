@@ -1,35 +1,4 @@
-"""
-ROAD-SHIELD bus agent: what runs on the Raspberry Pi in each bus.
-
-    python -m edge.bus_agent --bus BMTC-KA01-1234 --server https://<engine>        # real camera, MPU-6050, GPS
-    python -m edge.bus_agent --bus DEMO-1 --server http://127.0.0.1:8001 \\
-        --replay-frames datasets/02_kaggle_pothole_600 --replay-imu data/drive.csv --replay-gps data/route.csv
-
-Every tick (default every 2 s, about what a Pi 4 can analyse):
-
-    1. read a frame, the last second of accelerometer data (100 samples) and the GPS fix
-    2. frame quality check (edge/frame_quality.py)
-         usable    -> the vision pipeline on the frame. The camera sees the road about LOOKAHEAD_M ahead, so a
-                      candidate defect waits until the bus has driven that far (distance / speed, 0.5-4 s); the
-                      accelerometer second from THAT moment is fused with it (models/bayesian_fusion_gate.py), and
-                      the position at that moment, when the bus is over the defect, is the one reported
-                      felt or not contradicted -> "defect" event
-                      seen but not felt (another lane, the kerb side, or a shadow) -> "cam" event: the server
-                      keeps it apart and adds it to the ledger only when a second bus sees the same thing
-         unusable  -> IMU only; a shock the classifier calls a pothole becomes an IMU-only sighting
-    3. a confirmed defect becomes a compact event (well under 1 KB), sealed with AES-256-GCM and queued
-    4. a position heartbeat is queued every --position-every seconds, for the live map
-    5. vehicles counted by the COCO detector are averaged per 100 m road cell and sent as a "trf" event
-       when the bus leaves the cell (pipeline/traffic.py turns them into traffic per day for the Priority Index)
-    6. a background thread sends the queue to the server whenever there is a connection
-
-What never leaves the bus: the photograph. Events carry the class, measurements and location only. With
---evidence-dir, the frame behind each defect is kept on the device after people and number plates are
-blurred (models/privacy_redactor.py), for a supervisor to inspect at the depot.
-
-No GPS fix, no defect event: a defect without a location cannot be repaired and would only be guessed at
-later. The tick is counted under "skipped_no_gps".
-"""
+"""Bus-mounted edge inspection daemon for real-time survey captures."""
 import argparse
 import json
 import os
@@ -42,11 +11,9 @@ from edge import crypto, frame_quality
 from edge.store_forward import StoreAndForward
 
 AREA_CLASS_IDS = {1, 2, 3}
-LOOKAHEAD_M = 8.0            # where a dashcam's lower frame meets the road, roughly; calibrate per mount
+LOOKAHEAD_M = 8.0
 LOOKAHEAD_MIN_S, LOOKAHEAD_MAX_S = 0.5, 4.0
-# An IMU-only sighting needs the trained shock classifier to say pothole (>= 0.85: 18% of 1-second windows on the
-# recorded pothole drives, 0% on plain road), or a jolt beyond anything plain road produced (models/
-# bayesian_fusion_gate.SEVERE_JOLT_MS2). A raw 6 m/s^2 jolt, the first rule here, fired on 78-96% of plain road.
+
 from models.bayesian_fusion_gate import SEVERE_JOLT_MS2
 SHOCK_MIN_PROBABILITY = 0.85
 SHOCK_MIN_DELTA_Z = SEVERE_JOLT_MS2
@@ -140,9 +107,9 @@ class BusAgent:
         self.device_id = device_id or bus_id
         self.quality_thresholds = quality_thresholds
         self._last_pos = float("-inf")
-        self._pending = []           # camera candidates waiting for the bus to reach them
+        self._pending = []
         self.traffic_every = float(traffic_every)
-        self._trf = None             # vehicle counts in the current road cell (pipeline/traffic.py)
+        self._trf = None
         self.counters = {"ticks": 0, "frames_usable": 0, "frames_unusable": 0, "defects": 0, "shocks": 0,
                          "camera_only": 0, "positions": 0, "traffic": 0, "skipped_no_gps": 0, "skipped_no_frame": 0, "errors": 0}
 
@@ -180,7 +147,7 @@ class BusAgent:
         from pipeline.traffic import cell_of, counts_from_audit
         counts = counts_from_audit(audit)
         if counts is None:
-            return                   # no COCO detector on this bus: no traffic, rather than zero traffic
+            return
         cell = cell_of(fix["lat"], fix["lon"])
         acc = self._trf
         if acc is not None and (acc["cell"] != cell or now - acc["t0"] >= self.traffic_every):
@@ -250,7 +217,7 @@ class BusAgent:
         try:
             if q["usable"]:
                 self.counters["frames_usable"] += 1
-                # vision only here: the wheel has not reached what the camera sees yet
+
                 audit = self._pipeline().audit_image(frame, corridor_id=self.corridor, latitude=fix["lat"],
                                                      longitude=fix["lon"], imu_series=None,
                                                      device_id=self.device_id,

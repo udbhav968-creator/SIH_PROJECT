@@ -1,4 +1,4 @@
-"""Citizen reports: pinned, confirmed by a bus or an operator, rate-limited, photograph never stored."""
+"""Unit tests for citizen portal defect reporting."""
 
 import os
 import shutil

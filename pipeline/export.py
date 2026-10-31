@@ -1,11 +1,4 @@
-"""
-The defect ledger as files a municipality's GIS team can open: GeoJSON (QGIS, ArcGIS, Google Earth via
-conversion, any web map) and CSV (Excel). One row / feature per deduplicated defect, with its priority and
-the status of its latest work order.
-
-CSV cells that start with = + - or @ are prefixed with an apostrophe so a spreadsheet does not run them as
-formulas (a defect class or address is text from the field, and must stay text).
-"""
+"""Data export utilities for GeoJSON and CSV formats."""
 import csv
 import io
 import json
@@ -53,7 +46,7 @@ def _safe_cell(v):
 
 def ledger_csv(defects, priority_fn, repair):
     buf = io.StringIO()
-    buf.write("\ufeff")                      # byte-order mark: Excel then reads non-English addresses correctly
+    buf.write("\ufeff")
     w = csv.DictWriter(buf, fieldnames=FIELDS, lineterminator="\n")
     w.writeheader()
     for d in defects:

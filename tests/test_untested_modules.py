@@ -1,13 +1,4 @@
-"""
-Unit tests for modules that had no coverage at all: the ALPR incident tracker,
-the video tracker, the edge exporter, the augmentation pipeline, late fusion,
-the ADAS policy agent and the CAN telematics encoder.
-
-Several of these pin behaviour that was wrong before this file was written:
-  - incident reports invented a Delhi GPS fix when none was supplied
-  - a scalar speed reading was labelled "reckless lane cutting"
-  - every non-pothole hazard was counted as a crack by the video tracker
-"""
+"""Unit tests for standalone helper modules and services."""
 
 import json
 import os
@@ -24,7 +15,6 @@ if ENGINE_ROOT not in sys.path:
 CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
 
 
-# ---------------------------------------------------------------------------
 class ALPRIncidentTrackerTest(unittest.TestCase):
     def setUp(self):
         from models.alpr_incident_tracker import ALPRIncidentTracker
@@ -66,7 +56,7 @@ class ALPRIncidentTrackerTest(unittest.TestCase):
     def test_plate_shaped_region_is_located(self):
         import cv2
         img = np.full((200, 300, 3), 90, np.uint8)
-        cv2.rectangle(img, (90, 120), (210, 155), (255, 255, 255), -1)   # ~3.4:1 white plate
+        cv2.rectangle(img, (90, 120), (210, 155), (255, 255, 255), -1)
         cv2.rectangle(img, (90, 120), (210, 155), (0, 0, 0), 2)
         box = self.t.locate_plate_candidate(img)
         self.assertIsNotNone(box)
@@ -94,7 +84,6 @@ class ALPRIncidentTrackerTest(unittest.TestCase):
         self.assertFalse(self.t.detect_incident(speed_kmh=80)["is_emergency"])
 
 
-# ---------------------------------------------------------------------------
 class VideoTrackerTest(unittest.TestCase):
     def setUp(self):
         from models.realworld_video_tracker import SpatialTemporalVideoTracker
@@ -140,7 +129,6 @@ class VideoTrackerTest(unittest.TestCase):
         self.assertEqual(out["total_unique_potholes_counted"], 2)
 
 
-# ---------------------------------------------------------------------------
 class AugmentationTest(unittest.TestCase):
     def test_expand_keeps_originals_shapes_and_labels(self):
         from data.augmentation_pipeline import CivilDataAugmentor
@@ -163,7 +151,6 @@ class AugmentationTest(unittest.TestCase):
         np.testing.assert_array_equal(a, b)
 
 
-# ---------------------------------------------------------------------------
 class LateFusionTest(unittest.TestCase):
     def setUp(self):
         from models.multimodal_transformer_fusion import MultimodalLateFusionNet, CLASS_NAMES
@@ -193,7 +180,6 @@ class LateFusionTest(unittest.TestCase):
             self.net.fuse([0.5, 0.5])
 
 
-# ---------------------------------------------------------------------------
 class ADASPolicyAndCANTest(unittest.TestCase):
     def setUp(self):
         from models.automotive_rl_policy_agent import AutomotiveRLPolicyAgent
@@ -237,7 +223,7 @@ class ADASPolicyAndCANTest(unittest.TestCase):
 
     def test_dbc_and_header_are_well_formed(self):
         def text(out):
-            # these generators write a file and return its path
+
             if isinstance(out, str) and os.path.isfile(out):
                 with open(out, encoding="utf-8") as fh:
                     return fh.read()
@@ -249,7 +235,6 @@ class ADASPolicyAndCANTest(unittest.TestCase):
         self.assertIn("RoadShieldECUInference", hdr)
 
 
-# ---------------------------------------------------------------------------
 class EdgeExporterTest(unittest.TestCase):
     def test_export_writes_spec_and_header_from_trained_models(self):
         from models.edge_model_exporter import EdgeModelExporter
@@ -267,7 +252,7 @@ class EdgeExporterTest(unittest.TestCase):
             header = fh.read()
         self.assertIn("#ifndef", header)
         self.assertIn("#endif", header)
-        # the exporter must never write into checkpoints/ when told not to
+
         self.assertTrue(r["spec_json_path"].startswith(out))
 
 

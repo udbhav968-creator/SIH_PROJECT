@@ -41,7 +41,7 @@ ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ENGINE_ROOT not in sys.path:
     sys.path.insert(0, ENGINE_ROOT)
 
-from scripts.prepare_rdd2022_voc import KEEP, find_split_root, parse_xml  # noqa: E402
+from scripts.prepare_rdd2022_voc import KEEP, find_split_root, parse_xml
 
 DEFAULT_COUNTRIES = ["Japan", "Czech", "United_States", "China_MotorBike"]
 DOWNLOADS = os.path.join(ENGINE_ROOT, "datasets", "_downloads", "rdd2022")
@@ -87,7 +87,7 @@ def country_root(c, base=RAW):
     """The folder holding train/images and train/annotations/xmls for a country."""
     for d, subdirs, _ in os.walk(os.path.join(base, c)):
         try:
-            return find_split_root(d)            # raises SystemExit when d is not a split root
+            return find_split_root(d)
         except (SystemExit, Exception):
             continue
     return None

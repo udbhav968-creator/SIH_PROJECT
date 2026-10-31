@@ -102,7 +102,6 @@ def main(argv=None):
            f"{u['false_positive_photos']}/{u['clean_photographs']} false positives; the pixel classifier found "
            f"{p['detected_photos']}/{p['defect_photographs']} with {p['false_positive_photos']}/{p['clean_photographs']}")
 
-    # Keep the IoU selection's own decision and reason, so re-running is idempotent.
     sel.setdefault("iou_selection_served", sel.get("served"))
     sel.setdefault("why_iou", sel.get("why", ""))
     sel["deployment_check"] = {"rule": RULE, "passed": passed, "why": why, "results": res,
@@ -112,10 +111,10 @@ def main(argv=None):
         sel["why"] = sel["why_iou"] + ("; confirmed by the end-to-end check: " if passed
                                        else "; NOT served after the end-to-end check: ") + why
     else:
-        # The U-Net already lost the IoU selection; the check is recorded, it does not overturn the rule.
+
         sel["served"] = "pixel_classifier"
         sel["why"] = sel["why_iou"] + "; end-to-end check recorded for information (it cannot overturn the IoU rule): " + why
-    # What CI gates on: the end-to-end numbers of the segmenter actually served.
+
     served_res = res["unet" if sel["served"] == "unet" else "pixel_classifier"]
     sel["deployment_check"]["served_end_to_end"] = {
         "segmenter": sel["served"],

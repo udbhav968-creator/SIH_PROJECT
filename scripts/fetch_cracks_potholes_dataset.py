@@ -166,8 +166,6 @@ def main():
                 crop.save(out, quality=92)
                 written[cls] += 1
 
-            # A photograph with a lane marking but no crack or pothole is a
-            # genuine sound-pavement example - the class this project lacked.
             if not defects and anns and written[NORMAL_CLASS] < args.max_per_class:
                 band = img.crop((int(W * 0.15), int(H * 0.45), int(W * 0.85), int(H * 0.95)))
                 digest = hasher.compute_hash(np.asarray(band.resize((64, 64)), dtype=np.uint8))

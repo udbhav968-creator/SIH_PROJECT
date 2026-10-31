@@ -1,43 +1,4 @@
-"""
-Real deep learning for the road-condition classifier: fine-tunes an
-ImageNet-pretrained CNN on the photographs under datasets/.
-
-This replaces the hand-crafted HOG/LBP + SVM baseline in training/train_vision.py.
-That baseline stays in the repo so the two can be compared honestly on the
-same split.
-
-    python -m training.train_deep_vision --epochs 12
-    python -m training.train_deep_vision --smoke        # 2 min sanity run
-    python -m training.train_deep_vision --arch efficientnet_b0 --epochs 20
-
-Design decisions that matter for the numbers being trustworthy:
-
-Grouped splitting.  The dataset contains augmented copies named
-`aug_mega_<n>_<original>`. Splitting at file level would put copies of the
-same photograph in both training and test, which inflates accuracy. Every
-file is therefore assigned to a *group* (its original photograph) and whole
-groups go to train, validation or test.
-
-Three-way split.  Validation drives early stopping and model selection; the
-test set is touched exactly once, at the end. A score you tuned against is
-not a held-out score.
-
-Class imbalance.  Classes here range from ~14 to ~270 images, so batches are
-drawn with a weighted sampler and the loss is class-weighted. Accuracy alone
-would be misleading, so macro-F1 is the selection metric and per-class
-precision/recall are always reported.
-
-Two-phase fine-tune.  Phase 1 trains only the new classifier head with the
-backbone frozen (fast, stable on CPU). Phase 2 unfreezes the last backbone
-block at a 10x lower learning rate. On a laptop CPU this is minutes per
-epoch, not hours.
-
-Outputs (checkpoints/):
-    deep_vision_<arch>.pt          weights + class names + normalisation
-    deep_vision_<arch>.onnx        portable graph for ONNX Runtime inference
-    deep_vision_report.json        split sizes, per-class metrics, confusion
-                                   matrices for validation and test, timings
-"""
+"""Train deep vision convolutional classifier for road distress."""
 
 import argparse
 import json
@@ -65,8 +26,8 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 
 def require_torch():
     try:
-        import torch  # noqa: F401
-        import torchvision  # noqa: F401
+        import torch
+        import torchvision
     except ImportError:
         sys.exit(
             "PyTorch is not installed in this environment.\n"
@@ -75,9 +36,6 @@ def require_torch():
         )
 
 
-# ---------------------------------------------------------------------------
-# dataset
-# ---------------------------------------------------------------------------
 def group_key(filename):
     """The original photograph a file belongs to, so copies stay together."""
     stem = _AUG_RE.sub("", os.path.basename(filename))
@@ -85,7 +43,7 @@ def group_key(filename):
     for suffix in ("_RAW", "_CRACK", "_POTHOLE", "_LANE"):
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
-    for pre in ("rddin_", "rddw_"):         # rdd*_<RDD photo>_<box>: one group per photograph
+    for pre in ("rddin_", "rddw_"):
         if stem.startswith(pre):
             return pre + "_".join(stem.split("_")[1:-1])
     if stem.startswith("cpr_"):
@@ -169,9 +127,6 @@ def build_datasets(train_items, val_items, test_items, img_size):
     return PhotoSet(train_items, train_tf), PhotoSet(val_items, eval_tf), PhotoSet(test_items, eval_tf)
 
 
-# ---------------------------------------------------------------------------
-# model
-# ---------------------------------------------------------------------------
 def build_model(arch, n_classes):
     import torch.nn as nn
     from torchvision import models
@@ -180,7 +135,7 @@ def build_model(arch, n_classes):
         try:
             return fn(weights=weights_enum.DEFAULT)
         except Exception:
-            return fn(pretrained=True)  # older torchvision
+            return fn(pretrained=True)
 
     if arch == "resnet18":
         m = pretrained(models.resnet18, models.ResNet18_Weights)
@@ -212,9 +167,6 @@ def set_requires_grad(module, flag):
         p.requires_grad = flag
 
 
-# ---------------------------------------------------------------------------
-# metrics
-# ---------------------------------------------------------------------------
 def evaluate(model, loader, device, n_classes):
     import torch
     model.eval()
@@ -257,9 +209,6 @@ def per_class_report(cm, class_names):
     return out, float(np.mean(f1s)) if f1s else 0.0
 
 
-# ---------------------------------------------------------------------------
-# training
-# ---------------------------------------------------------------------------
 def run_training(arch="resnet18", epochs=12, batch_size=24, img_size=224, lr=3e-4,
                  seed=42, smoke=False, workers=0, save_dir=None):
     require_torch()

@@ -1,13 +1,4 @@
-"""
-Verification Test for Large-Scale Multi-Defect and Multi-Zebra Detection
-========================================================================
-Validates that:
-  1. A road scene with 3 separate zebra crossings produces exactly 3 distinct,
-     tight bounding boxes with stripe counts and confidence metrics.
-  2. A road scene with 100 pothole cavities produces 100 distinct defect bounding
-     boxes, each with metric area (m^2), photometric depth (cm), and MoRTH cost.
-  3. A combined complex scene correctly separates markings from 100 defect instances.
-"""
+"""Verification tests for multi-defect scenes and zebra crossings."""
 
 import unittest
 import numpy as np
@@ -23,32 +14,28 @@ class TestMultiDefectAndMultiZebra(unittest.TestCase):
 
     def test_three_distinct_zebra_crossings_tight_boxes(self):
         """Verify that 3 spatially separated zebra crossings produce exactly 3 tight boxes."""
-        # Standard camera resolution: 720 x 1280
-        H, W = 720, 1280
-        img = np.full((H, W, 3), 55, dtype=np.uint8)  # Asphalt background
 
-        # Crossing 1: Left lane (7 stripes, X: 60..325, Y: 420..480)
+        H, W = 720, 1280
+        img = np.full((H, W, 3), 55, dtype=np.uint8)
+
         for x in range(60, 340, 40):
             img[420:480, x:x+25] = 230
 
-        # Crossing 2: Center lane (7 stripes, X: 490..755, Y: 420..480)
         for x in range(490, 770, 40):
             img[420:480, x:x+25] = 230
 
-        # Crossing 3: Right lane (7 stripes, X: 910..1175, Y: 420..480)
         for x in range(910, 1190, 40):
             img[420:480, x:x+25] = 230
 
         crossings = detect_all_zebras(img)
         self.assertEqual(len(crossings), 3, f"Expected 3 zebra crossings, got {len(crossings)}")
 
-        # Sort left to right by x0
         crossings = sorted(crossings, key=lambda c: c["bbox_pixels"][0])
 
         expected_ranges = [
-            (50, 70, 250, 280),   # Box 1: x0 ~60, w ~265
-            (480, 500, 250, 280), # Box 2: x0 ~490, w ~265
-            (900, 920, 250, 280), # Box 3: x0 ~910, w ~265
+            (50, 70, 250, 280),
+            (480, 500, 250, 280),
+            (900, 920, 250, 280),
         ]
 
         for i, (c, (min_x, max_x, min_w, max_w)) in enumerate(zip(crossings, expected_ranges)):
@@ -58,7 +45,6 @@ class TestMultiDefectAndMultiZebra(unittest.TestCase):
             self.assertEqual(c["stripe_count"], 7, f"Crossing {i+1} stripe_count={c['stripe_count']}")
             self.assertGreaterEqual(c["confidence"], 0.70)
 
-        # Test wrapper detect_zebra also contains all 3
         res = detect_zebra(img)
         self.assertTrue(res["found"])
         self.assertEqual(res["crossings_count"], 3)
@@ -66,28 +52,25 @@ class TestMultiDefectAndMultiZebra(unittest.TestCase):
 
     def test_one_hundred_potholes_connected_components(self):
         """Verify that a dense distribution of 100 pothole defects yields 100 boxes."""
-        # Working grid for segmenter: 200 x 320
+
         mask_h, mask_w = 200, 320
         binary_pothole = np.zeros((mask_h, mask_w), dtype=bool)
 
-        # Layout 100 distinct non-overlapping spots in a 10 x 10 grid
         count = 0
         for r_idx in range(10):
             y_c = 15 + r_idx * 18
             for c_idx in range(10):
                 x_c = 15 + c_idx * 30
-                # Pothole blob 6x8 pixels (>= 24 px minimum connected component)
+
                 binary_pothole[y_c-3:y_c+3, x_c-4:x_c+4] = True
                 count += 1
 
         self.assertEqual(count, 100)
 
-        # Connected components extraction
         cleaned, boxes = _connected_components_8(binary_pothole, min_blob_px=24)
 
         self.assertEqual(len(boxes), 100, f"Expected exactly 100 pothole boxes, got {len(boxes)}")
 
-        # Verify each box has valid geometry
         orig_w, orig_h = 1280, 720
         sx = orig_w / float(mask_w)
         sy = orig_h / float(mask_h)
@@ -108,7 +91,6 @@ class TestMultiDefectAndMultiZebra(unittest.TestCase):
         H, W = 720, 1280
         img = np.full((H, W, 3), 60, dtype=np.uint8)
 
-        # 3 Zebra Crossings in upper highway zone (Y: 280..340)
         for x in range(60, 340, 40):
             img[280:340, x:x+25] = 235
         for x in range(490, 770, 40):
@@ -116,22 +98,19 @@ class TestMultiDefectAndMultiZebra(unittest.TestCase):
         for x in range(910, 1190, 40):
             img[280:340, x:x+25] = 235
 
-        # Marking detector isolated 3 zebras
         crossings = detect_all_zebras(img)
         self.assertEqual(len(crossings), 3)
 
-        # 100 Potholes distributed across lower pavement zone (Y: 360..700)
         boxes_gt = []
         for r in range(10):
             y = 370 + r * 32
             for c in range(10):
                 x = 50 + c * 115
-                img[y:y+18, x:x+24] = 20  # Dark shadow cavity
+                img[y:y+18, x:x+24] = 20
                 boxes_gt.append([x, y, 24, 18])
 
         self.assertEqual(len(boxes_gt), 100)
 
-        # Pass 100 boxes through physical cavity measurement (IPM + photometric depth + MoRTH)
         gray = (0.299 * img[:, :, 0] + 0.587 * img[:, :, 1] + 0.114 * img[:, :, 2]).astype(np.float32)
         calib, _ = cam_cal.resolve(None, width_px=W, height_px=H)
         ipm = IPMHomographyEngine.from_calibration(calib)

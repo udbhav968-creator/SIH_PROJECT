@@ -1,14 +1,4 @@
-"""
-Model M2: Inverse Perspective Mapping (IPM) & MoRTH Section 500 material
-volumetrics.
-
-Maps a 2D bounding box in a dashcam frame to a real ground-plane area (m^2)
-using a pinhole-camera + flat-road-plane assumption, then converts that area
-into an asphalt tonnage and repair cost using MoRTH Section 500 material
-specs. This is standard photogrammetry, not a learned model - the only
-"calibration" involved is knowing (or estimating) the camera's mount height
-and pitch angle.
-"""
+"""Inverse Perspective Mapping (IPM) engine for planar metric ground projection."""
 
 import numpy as np
 
@@ -71,7 +61,6 @@ class IPMHomographyEngine:
         area = 0.5 * abs(np.dot(xs, np.roll(ys, 1)) - np.dot(ys, np.roll(xs, 1)))
         return float(np.clip(area, 0.005, 25.0))
 
-    # ------------------------------------------------------------------
     def row_pixel_area_m2(self, image_height, image_width, row_stride=1):
         """
         Ground area of ONE pixel, per image row.

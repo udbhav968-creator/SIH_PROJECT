@@ -15,7 +15,7 @@ class _Fake:
 
 class SemanticGateTest(unittest.TestCase):
     def test_drops_pothole_pixels_outside_pothole_heat(self):
-        img = np.zeros((100, 200, 3), np.uint8); img[:, :100] = 200     # bright left half = "pothole" windows
+        img = np.zeros((100, 200, 3), np.uint8); img[:, :100] = 200
         mask = np.zeros((100, 200), np.uint8); mask[40:60, 10:30] = 2; mask[40:60, 170:190] = 2; mask[5:8, :] = 1
         out = semantic_gate.apply({"mask": mask, "pothole_px": int((mask == 2).sum())}, _Fake(200), img)
         self.assertTrue((out["mask"][40:60, 10:30] == 2).all(), "pothole inside the heat region must survive")

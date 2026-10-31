@@ -1,23 +1,4 @@
-"""
-Is this camera frame worth analysing?
-
-A bus camera spends much of its time producing frames the vision models cannot judge: motion blur over
-speed breakers, night, low sun straight into the lens, rain on the windscreen. Analysing them wastes the
-Pi's time and produces confident nonsense, so each frame is checked first on the road part of the image
-(below ROAD_TOP of the height):
-
-    sharpness   variance of the Laplacian; low means blurred
-    exposure    mean brightness, and the share of pixels crushed to black or blown to white
-    contrast    standard deviation of brightness; a flat grey frame is fog, glare or a dirty lens
-
-When a frame fails, the agent does not drop the moment: it falls back to the IMU alone (the SIH design's
-"IMU takes precedence in rain or darkness"), and reports a strong enough shock as an IMU-only sighting,
-clearly labelled as such.
-
-The thresholds sit near the 1st percentile of 600 of the project's road photographs (datasets 01-03, a
-fixed random sample, seed 0): 6 of those 600 (1%) are turned away. Those are still photographs, not footage from a moving bus; record a day
-of the real camera and re-tune with tune() before trusting the pass rate on the road.
-"""
+"""Camera frame quality and blur estimation for edge capture."""
 import numpy as np
 
 ROAD_TOP = 0.35

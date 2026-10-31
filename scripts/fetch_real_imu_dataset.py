@@ -23,11 +23,6 @@ RAW_DIR = os.path.join(IMU_DIR, "raw_logs")
 
 BASE_URL = "https://raw.githubusercontent.com/VishalSingh25/Pothole-Project/master/"
 
-# Real field-recorded Indian road drives:
-#   Class 0: Smooth Asphalt (plain_road)
-#   Class 1: Expansion Joint / Unmarked Bump (plain_road_unmarked_sb)
-#   Class 2: Rumble Strip / Marked Speed Breaker (plain_road_marked_sb)
-#   Class 3: Pothole Impact (plain_road_potholes)
 DRIVE_FILES = [
     (0, "plain_road_1.csv", "data/plain_road/1.csv"),
     (0, "plain_road_2.csv", "data/plain_road/2.csv"),
@@ -68,7 +63,7 @@ def fetch_or_load_csv(local_name, remote_rel):
             ay = float(r["Ay"])
             az = float(r["Az"])
             if ax == 0.0 and ay == 0.0 and az == 0.0:
-                continue  # skip sensor power-on zero row
+                continue
             rows.append((ax, ay, az))
         except (KeyError, ValueError, TypeError):
             continue
@@ -101,14 +96,11 @@ def select_event_windows(windows, class_id):
     score = ptp_z + 1.5 * std_all
 
     if class_id == 0:
-        # Smooth asphalt: keep calm baseline windows (below 55th percentile of shock excursion)
-        # so unannotated bumps during a plain-road drive don't pollute class 0.
+
         cutoff = np.percentile(score, 55)
         mask = score <= cutoff
     else:
-        # Obstacle drive: a vehicle spends most of a drive on plain road between
-        # speed breakers / potholes; select the top 30% excursion windows where
-        # the obstacle traversal actually occurs.
+
         cutoff = np.percentile(score, 70)
         mask = score >= cutoff
     return windows[mask]
@@ -133,10 +125,7 @@ def build_datasets():
     split_manifest = {}
 
     for cls_id, file_entries in by_class_files.items():
-        # Temporal block split: for each drive file, first 80% of contiguous
-        # non-overlapping windows go to train, final 20% go to held-out val,
-        # with a 2-window guard gap at the boundary so not even adjacent seconds
-        # straddle the split.
+
         cls_tr, cls_va = 0, 0
         for fname, wins in file_entries:
             n = len(wins)

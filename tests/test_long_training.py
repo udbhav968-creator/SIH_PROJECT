@@ -1,4 +1,4 @@
-"""Long runs across Colab sessions, and training on the user's own outlined photographs."""
+"""Tests for continuous training loops and active learning buffers."""
 
 import json
 import os
@@ -48,12 +48,12 @@ class ResumeRules(unittest.TestCase):
     def test_time_budget_leaves_room_for_one_epoch_and_the_finish(self):
         from training.train_unet_multi import out_of_time
         h = 3600
-        self.assertFalse(out_of_time(1 * h, 120, 0, 25))                    # no budget: never pauses
-        self.assertFalse(out_of_time(1 * h, 150, 3.5, 25))                  # plenty of time
-        # 3 h in, 150 s epochs: the next epoch fits, but not if it could also be the last one (25 min to finish)
+        self.assertFalse(out_of_time(1 * h, 120, 0, 25))
+        self.assertFalse(out_of_time(1 * h, 150, 3.5, 25))
+
         self.assertFalse(out_of_time(3 * h, 150, 3.5, 25, may_finish=False))
         self.assertTrue(out_of_time(3 * h, 150, 3.5, 25, may_finish=True))
-        self.assertTrue(out_of_time(3.48 * h, 60, 3.5, 0, may_finish=False))  # 72 s left; the epoch + save needs 198 s
+        self.assertTrue(out_of_time(3.48 * h, 60, 3.5, 0, may_finish=False))
 
     def test_changing_epochs_or_learning_rate_refuses_to_resume(self):
         from training.train_unet_multi import check_resume_config, resume_config
@@ -110,8 +110,8 @@ class OwnPhotographs(unittest.TestCase):
             (2, "polygon", [[20, 20], [60, 20], [60, 60], [20, 60]]),
             (1, "linestrip", [[0, 40], [99, 40]]),
         ])
-        self.assertEqual(lab[40, 40], 2)          # inside the pothole, even where the crack line crosses it
-        self.assertEqual(lab[40, 90], 1)          # the crack outside the pothole
+        self.assertEqual(lab[40, 40], 2)
+        self.assertEqual(lab[40, 90], 1)
         self.assertEqual(lab[90, 90], 0)
 
     def _write_coco(self, root, names):
@@ -143,7 +143,7 @@ class OwnPhotographs(unittest.TestCase):
         lab = cv2.imread(os.path.join(self.out, "own_india", "lab", s and os.listdir(
             os.path.join(self.out, "own_india", "lab"))[0]), cv2.IMREAD_GRAYSCALE)
         self.assertEqual(set(np.unique(lab).tolist()), {0, 1, 2})
-        # both photographs of a spot always land in the same split, also when the manifest is rebuilt
+
         with open(os.path.join(self.out, "own_india", "groups.json")) as fh:
             groups = json.load(fh)
         by_spot = {}
@@ -183,7 +183,7 @@ class OwnPhotographs(unittest.TestCase):
         m[50:100, 50:150] = 2
         m[150:155, :] = 1
         cv2.imwrite(os.path.join(mf, "masks", "r2.png"), m)
-        binary = (m > 0).astype(np.uint8) * 255                 # 0/255: crack or pothole cannot be told apart
+        binary = (m > 0).astype(np.uint8) * 255
         cv2.imwrite(os.path.join(mf, "images", "r3.jpg"), _road(seed=3))
         cv2.imwrite(os.path.join(mf, "masks", "r3.png"), binary)
         s = self.fsd.fetch_own_photos(_NoLeak(), mf)
@@ -206,7 +206,7 @@ class OwnPhotographs(unittest.TestCase):
         names = [f"IMG_{1000 + i}.jpg" for i in range(8)]
         self._write_coco(src, names)
         base = _road(seed=99)
-        for i, n in enumerate(names[:4]):                   # four near-identical frames of one spot
+        for i, n in enumerate(names[:4]):
             frame = np.clip(base.astype(int) + i, 0, 255).astype(np.uint8)
             cv2.imwrite(os.path.join(src, n), frame)
         s = self.fsd.fetch_own_photos(_NoLeak(), src)

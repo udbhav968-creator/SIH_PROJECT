@@ -1,22 +1,4 @@
-"""
-Inference for the fine-tuned CNN produced by training/train_deep_vision.py.
-
-Two runtimes are supported, tried in this order:
-
-  1. ONNX Runtime on checkpoints/deep_vision_<arch>.onnx  - ~50 MB dependency,
-     fast on CPU, and what a deployment should use.
-  2. PyTorch on checkpoints/deep_vision_<arch>.pt         - used when ONNX
-     Runtime isn't installed but torch is.
-
-If neither the weights nor a runtime are present, `is_ready` stays False and
-the caller falls back to the scikit-learn classifier in
-models/vision_distress_net.py. Nothing here fabricates a prediction when the
-model is missing.
-
-Output dictionaries are identical in shape to VisionDistressNet's, so the
-pipeline and the dashboard don't care which classifier answered - except that
-`backend` says which one did.
-"""
+"""Deep vision convolutional classifier for road surface distress inspection."""
 
 import glob
 import os
@@ -51,7 +33,6 @@ class DeepVisionNet(VisionDistressNet):
         self._torch_model = None
         self._load()
 
-    # ------------------------------------------------------------------
     @property
     def is_ready(self):
         return self._session is not None or self._torch_model is not None
@@ -83,8 +64,7 @@ class DeepVisionNet(VisionDistressNet):
         self.temperature = 1.0
         self.sidecar = None
         if onnx_path:
-            # training/train_finetune_cnn.py writes a sidecar with the exact
-            # preprocessing the network was validated with (size, flip TTA).
+
             side = os.path.splitext(onnx_path)[0] + ".json"
             if os.path.exists(side):
                 import json
@@ -92,13 +72,12 @@ class DeepVisionNet(VisionDistressNet):
                     self.sidecar = json.load(fh)
                 self.tta_flip = bool(self.sidecar.get("tta_flip"))
                 self.resize_ratio = float(self.sidecar.get("resize_ratio", 1.15))
-                # written by scripts/measure_calibration.py --apply, only when it improved held-out NLL;
-                # it rescales confidence and never changes which class wins
+
                 self.temperature = float(self.sidecar.get("temperature", 1.0)) or 1.0
                 if self.sidecar.get("class_names"):
                     self.class_names = list(self.sidecar["class_names"])
             try:
-                import sklearn  # noqa: F401
+                import sklearn
                 import onnxruntime as ort
                 self._session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
                 self._input_name = self._session.get_inputs()[0].name
@@ -134,7 +113,6 @@ class DeepVisionNet(VisionDistressNet):
             except Exception as e:
                 print(f"[DeepVisionNet] PyTorch weights found but could not be loaded: {e}")
 
-    # ------------------------------------------------------------------
     def _preprocess(self, image_rgb):
         """Resize shorter side, centre-crop, normalise - matches the eval transform used in training."""
         from PIL import Image
@@ -162,7 +140,7 @@ class DeepVisionNet(VisionDistressNet):
             raise RuntimeError("No fine-tuned CNN available. Train one with training/train_deep_vision.py")
         batch = self._preprocess(image_rgb)
         if self.tta_flip:
-            # same test-time augmentation the validation numbers were measured with
+
             batch = np.concatenate([batch, batch[:, :, :, ::-1].copy()], axis=0)
         if self._session is not None:
             logits = self._session.run(None, {self._input_name: batch})[0]
@@ -235,7 +213,7 @@ class CNNHeadClassifier(VisionDistressNet):
             print(f"[CNNHead] dependency missing: {e}")
             return
 
-        best = None  # (macro_f1, path, blob, backbone)
+        best = None
         for path in self._candidates():
             try:
                 blob = joblib.load(path)
@@ -247,11 +225,9 @@ class CNNHeadClassifier(VisionDistressNet):
             if spec is None:
                 continue
             if not os.path.exists(os.path.join(self.ckpt_dir, spec["file"])):
-                # head trained on a backbone this machine doesn't have - skip it
+
                 continue
-            # Mean of accuracy and macro-F1. Macro-F1 alone decides on classes
-            # with two or three held-out examples, where a single image moves it
-            # by 0.1; accuracy alone ignores the rare classes entirely.
+
             score = 0.5 * (float(blob.get("macro_f1") or 0.0) + float(blob.get("accuracy") or 0.0))
             if best is None or score > best[0]:
                 best = (score, path, blob, backbone)
@@ -265,14 +241,7 @@ class CNNHeadClassifier(VisionDistressNet):
         _score, path, blob, backbone = best
         embedder = CNNEmbedder(checkpoints_dir=self.ckpt_dir, prefer=(backbone,))
         if not embedder.is_ready or embedder.name != backbone:
-            # Record WHY, and whether the machine or the file is at fault.
-            #
-            # This fallback is silent by design - a missing backbone should not
-            # stop the product - but it swaps the classifier for a different,
-            # weaker one. On a machine that had run out of memory, ONNX Runtime
-            # answered "bad allocation", the hand-crafted path took over, and a
-            # test suite then reported zebra crossings as potholes. The suite was
-            # measuring a model nobody intended to ship.
+
             err = getattr(embedder, "load_error", "") or ""
             self.backbone_fallback = {
                 "requested": backbone,
@@ -299,14 +268,13 @@ class CNNHeadClassifier(VisionDistressNet):
             raise RuntimeError("CNN head not available")
         vec = self.embedder.embed(image_rgb).reshape(1, -1)
         if self.report.get("tta_flip"):
-            # The head was trained on the mean of an image's embedding and its
-            # mirror's, so inference must present the same averaged vector.
+
             import numpy as _np
             flipped = _np.ascontiguousarray(_np.asarray(image_rgb)[:, ::-1])
             vec = 0.5 * (vec + self.embedder.embed(flipped).reshape(1, -1))
         if hasattr(self.head, "predict_proba"):
             return self.head.predict_proba(vec)[0]
-        # decision_function fallback, squashed to a distribution
+
         scores = np.asarray(self.head.decision_function(vec)).reshape(-1)
         e = np.exp(scores - scores.max())
         return e / e.sum()

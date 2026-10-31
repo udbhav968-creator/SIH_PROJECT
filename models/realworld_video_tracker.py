@@ -1,12 +1,4 @@
-"""
-Multi-frame defect tracker for dashcam video.
-
-A minimal IoU-based tracker (the same greedy-matching idea behind SORT):
-associates each frame's detections with existing tracks by highest IoU,
-ages out tracks that haven't been seen recently, and keeps a running count
-of distinct potholes/cracks seen across a clip so the same cavity isn't
-counted once per frame as the vehicle drives over it.
-"""
+"""Real-world video tracking and frame association engine."""
 import numpy as np
 
 class SpatialTemporalVideoTracker:
@@ -47,7 +39,6 @@ class SpatialTemporalVideoTracker:
 
         tracked_outputs = []
 
-        # 1. Match new detections to existing active tracks
         for det_idx, det in enumerate(raw_detections):
             det_box = det.get("bbox_normalized", [0, 0, 0, 0])
             best_iou = 0.0
@@ -62,7 +53,7 @@ class SpatialTemporalVideoTracker:
                     best_trk_id = trk_id
 
             if best_iou >= self.iou_thresh and best_trk_id is not None:
-                # Update existing track
+
                 trk = self.active_tracks[best_trk_id]
                 trk["bbox"] = det_box
                 trk["last_frame"] = frame_idx
@@ -71,22 +62,21 @@ class SpatialTemporalVideoTracker:
                 trk["distance_meters"] = det.get("distance_meters", 5.0)
                 matched_tracks.add(best_trk_id)
                 matched_dets.add(det_idx)
-                
+
                 det_out = dict(det)
                 det_out["persistent_track_id"] = f"TRK-{best_trk_id:03d}"
                 det_out["track_age_frames"] = trk["hits"]
                 tracked_outputs.append(det_out)
 
-        # 2. Register unmatched detections as new persistent tracks
         for det_idx, det in enumerate(raw_detections):
             if det_idx not in matched_dets:
-                # Check if it's a valid distress (not suppressed hard negative)
+
                 is_distress = det.get("is_distress", True)
                 cls_name = det.get("class_name", "")
-                
+
                 new_id = self.next_track_id
                 self.next_track_id += 1
-                
+
                 self.active_tracks[new_id] = {
                     "id": new_id,
                     "bbox": det.get("bbox_normalized", [0, 0, 0, 0]),
@@ -94,20 +84,18 @@ class SpatialTemporalVideoTracker:
                     "first_frame": frame_idx,
                     "last_frame": frame_idx,
                     "hits": 1,
-                    "confidence": float(det.get("confidence") or 0.0),  # no invented 0.9 default
+                    "confidence": float(det.get("confidence") or 0.0),
                     "distance_meters": det.get("distance_meters", 10.0),
                     "is_distress": is_distress
                 }
-                
+
                 if is_distress:
                     if "Pothole" in cls_name:
                         self.total_unique_potholes_counted += 1
                     elif "Crack" in cls_name:
                         self.total_unique_cracks_counted += 1
                     else:
-                        # waterlogging, missing markings, damaged signs: real
-                        # hazards, but counting them as cracks inflated the
-                        # crack tally and the repair estimate built on it
+
                         self.total_unique_other_hazards_counted += 1
 
                 det_out = dict(det)
@@ -115,7 +103,6 @@ class SpatialTemporalVideoTracker:
                 det_out["track_age_frames"] = 1
                 tracked_outputs.append(det_out)
 
-        # 3. Clean up stale tracks older than max_age frames
         stale_ids = [
             trk_id for trk_id, trk in self.active_tracks.items()
             if (frame_idx - trk["last_frame"]) > self.max_age

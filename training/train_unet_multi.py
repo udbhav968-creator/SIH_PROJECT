@@ -1,45 +1,4 @@
-"""
-Train the U-Net on DNIT plus the extra pixel-labelled datasets
-(scripts/fetch_seg_datasets.py), so it learns outlines from many roads and
-cameras instead of one.
-
-    python -m training.train_unet_multi                    # T4: ~45-60 min
-    python -m training.train_unet_multi --smoke            # 1 epoch, a few hundred images
-    python -m training.train_unet_multi --epochs 80 --ckpt-dir /content/drive/MyDrive/rs/unet \
-        --time-budget-hours 3.5                             # long run across several Colab sessions
-
-Long runs
----------
---ckpt-dir saves the network, optimiser, schedule and best weights after every
-epoch (atomically, so a disconnect mid-write cannot corrupt it); running the same
-command again resumes from the last finished epoch. --time-budget-hours stops
-cleanly before the budget runs out, saves, and exits with status 3 ("paused,
-run again to continue"), leaving time for nothing to be lost when Colab ends
-the session. Resuming never changes the split, the selection rule or the test:
-those are fixed before any epoch runs.
-
-Why
----
-The first U-Net (training/train_unet_segmenter.py) learned from DNIT only. It won
-mask IoU on DNIT's own test photographs (pothole 0.641 vs 0.144) and then found
-only 9 of 24 defects through the full pipeline on other datasets. A model that
-has seen one camera has learned that camera. This run keeps the same network,
-loss and DNIT split, and adds outlines from other sources.
-
-Same protocol as before, plus more test sets
---------------------------------------------
-* DNIT: the identical split (seed 42), so the 500 DNIT test photographs are the
-  same ones every segmenter in this project was scored on.
-* Each extra source: 75/10/15 by image id (seeded); test images never trained on.
-* Thresholds are tuned on the combined calibration images; the IoU selection
-  against the pixel classifier uses DNIT calibration photographs exactly as before.
-* Test IoU is reported per source, for the U-Net and (on a sample) the pixel
-  classifier, and the exported ONNX file itself is scored on the DNIT test split.
-* The result is NOT served by this script. segmenter_selection.json is written
-  with the pixel classifier still serving and the IoU decision recorded;
-  scripts/segmenter_deployment_check.py (the end-to-end check through
-  audit_image on other datasets) decides, as it did for the first U-Net.
-"""
+"""Train multi-class U-Net segmenter on crack and pothole masks."""
 
 import argparse
 import json
@@ -62,8 +21,7 @@ from training.train_unet_segmenter import (SEL_RULE, TorchUNet, build_unet, deci
 CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
 MULTI = os.path.join(ENGINE_ROOT, "datasets", "seg_multi")
 PT_NAME = "defect_segmenter_unet.pt"
-# Close-up texture patches with no road scene, horizon or camera geometry. They teach what a crack looks
-# like, but the serving threshold is calibrated on what the bus camera sees (protocol v2).
+
 TEXTURE_PATCH_SOURCES = {"crackseg9k"}
 PROTOCOL_V2 = {
     "version": 2,
@@ -76,7 +34,7 @@ PROTOCOL_V2 = {
                   "the DNIT split and the end-to-end check are unchanged, and v1's result stays on record "
                   "(previous_run). Read v2's test numbers with that in mind.",
 }
-# share of each epoch drawn from each source (renormalised over the sources present)
+
 SHARES = {"dnit": 0.35, "dnit_clean": 0.10, "crackseg9k": 0.25, "pothole_mix": 0.20, "kaggle_pothole": 0.10,
           "own_india": 0.25}
 RESUME_NAME, BEST_NAME, SPLIT_NAME = "unet_resume.pt", "unet_best_weights.pt", "dnit_split.json"
@@ -274,8 +232,7 @@ def main(argv=None):
     np.random.seed(a.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     sp = split_like_pixel_classifier(2000, 42)
-    # A resumed run must use the DNIT split it started with: the split shuffles the photographs that are on
-    # disk, so one more (or one fewer) downloaded photograph would otherwise put trained-on photographs in test.
+
     if a.ckpt_dir:
         split_path = os.path.join(a.ckpt_dir, SPLIT_NAME)
         if os.path.exists(split_path):
@@ -303,8 +260,7 @@ def main(argv=None):
     dnit_train = [p for p in (load_pair(r) for r in sp["train"]) if p is not None]
     dnit_clean = [p for p in (load_pair(r) for r in sp["neg_train"]) if p is not None]
     dnit_cal = [p for p in (load_pair(r) for r in sp["cal"]) if p is not None]
-    # Pothole Mix republishes DNIT photographs. Any extra training image that is a near-copy of a DNIT
-    # calibration or test photograph is dropped here, so the IoU rule and the DNIT test stay unseen.
+
     overlap = drop_dnit_eval_copies(extra, sp)
     for src, n in overlap.items():
         if any(n.values()):
@@ -319,7 +275,6 @@ def main(argv=None):
     if not extra:
         print("  [!] no extra datasets found (run scripts/fetch_seg_datasets.py); training on DNIT only")
 
-    # class weights from DNIT plus a sample of each extra source
     counts = np.zeros(3)
     for src, pairs in parts.items():
         for i in range(0, len(pairs), max(1, len(pairs) // 300)):
@@ -365,7 +320,6 @@ def main(argv=None):
             dice = dice + 1 - (2 * (pc * t).sum() + 1) / (pc.sum() + t.sum() + 1)
         return ce + 0.5 * dice
 
-    # validation every epoch: DNIT calibration + up to 150 calibration images per extra source
     val_pairs = list(dnit_cal)
     for src, d in extra.items():
         dp = DiskPairs(src, d["cal"])
@@ -392,7 +346,7 @@ def main(argv=None):
                 best_state = torch.load(best_path, map_location="cpu", weights_only=False)
             print(f"  RESUMED from {resume_path}: {ck['epoch']} epochs done, best VAL {best:.4f}"
                   + (" (training finished; going straight to thresholds and test)" if done_training else ""))
-            torch.manual_seed(a.seed + start_ep)       # fresh sampling and augmentation, not a replay of session 1
+            torch.manual_seed(a.seed + start_ep)
             np.random.seed(a.seed + start_ep)
 
     last_save, best_dirty = [time.time()], [False]
@@ -457,7 +411,6 @@ def main(argv=None):
     model.load_state_dict(best_state)
     model.eval()
 
-    # thresholds on DNIT calibration + extra calibration
     unet = TorchUNet(model, device)
     thr_sources = ["dnit"] + [src for src in extra
                               if a.threshold_sources == "all" or src not in TEXTURE_PATCH_SOURCES]
@@ -468,7 +421,6 @@ def main(argv=None):
     unet.thresholds = tune_thresholds(cal_cached)
     print(f"  thresholds (calibration photographs from {', '.join(thr_sources)}): {unet.thresholds}")
 
-    # IoU selection on DNIT calibration, exactly as the first U-Net
     from models.defect_segmenter import DefectSegmenter
     from training.train_segmenter import clean_false_positive_rate
     pixel = DefectSegmenter(os.path.join(a.out, "defect_segmenter.joblib"))
@@ -485,7 +437,6 @@ def main(argv=None):
     def iou(d, c):
         return ((d or {}).get(c) or {}).get("iou") or 0.0
 
-    # test, once: DNIT + every extra source
     test = {"dnit": {"unet": score(unet, sp["test"])}}
     test["dnit"]["unet"]["clean"] = clean_false_positive_rate(unet, sp["neg_test"]) if sp["neg_test"] else None
     rp = os.path.join(a.out, "defect_segmenter_report.json")
@@ -504,7 +455,6 @@ def main(argv=None):
         print(f"  TEST {src:15s} U-Net crack {iou(u, 'crack'):.3f} pothole {iou(u, 'pothole'):.3f}   |   "
               f"pixel classifier crack {iou(p, 'crack'):.3f} pothole {iou(p, 'pothole'):.3f}")
 
-    # export, then check the exported file reproduces the network on real photographs
     os.makedirs(a.out, exist_ok=True)
     torch.save(model.state_dict(), os.path.join(a.out, PT_NAME))
     onnx_path = os.path.join(a.out, ONNX_NAME)
@@ -580,7 +530,7 @@ def main(argv=None):
     selection = {
         "protocol": PROTOCOL_V2 if a.threshold_sources == "road" else {"version": 1, "change": "thresholds on every source"},
         "previous_run": previous,
-        "served": "pixel_classifier",                         # until the end-to-end check says otherwise
+        "served": "pixel_classifier",
         "iou_selection_served": served_by_iou, "rule": SEL_RULE, "why_iou": why,
         "why": why + "; awaiting the end-to-end check (python -m scripts.segmenter_deployment_check)",
         "validation": val, "test": {"unet": test["dnit"]["unet"],

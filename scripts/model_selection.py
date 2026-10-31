@@ -123,7 +123,7 @@ def main():
     args = ap.parse_args()
 
     items = collect_files()
-    # cap per class so no single class dominates the comparison or the memory
+
     per_class, capped = {}, []
     rng = np.random.default_rng(args.seed)
     by_class = {}

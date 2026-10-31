@@ -1,18 +1,4 @@
-"""
-Sensor sources for the bus agent: the real hardware, and replay from recorded files so the whole agent can
-be run and tested without a bus.
-
-Hardware (Raspberry Pi):
-    camera   any V4L2 / USB dashcam OpenCV can open (cv2.VideoCapture)
-    IMU      MPU-6050 on I2C bus 1, address 0x68, read at 100 Hz (smbus2)
-    GPS      Neo-6M on a serial port, NMEA 0183 at 9600 baud (pyserial); $GPRMC/$GNRMC and $GPGGA/$GNGGA
-
-Replay:
-    frames   a folder of JPEG/PNG photographs, one per tick
-    imu      CSV with ax, ay, az columns in m/s^2 at 100 Hz (any case, other columns ignored), e.g. the drive
-             logs in datasets/04_mobile_imu_telemetry_100hz/raw_logs
-    gps      CSV with columns t,lat,lon[,speed_kmh]; positions between rows are interpolated
-"""
+"""IMU and GPS sensor readers with synthetic fallback."""
 import csv
 import glob
 import math
@@ -26,7 +12,6 @@ import numpy as np
 G = 9.80665
 
 
-# --------------------------------------------------------------------------- NMEA
 def _nmea_checksum_ok(sentence):
     if "*" not in sentence:
         return False
@@ -103,7 +88,6 @@ class SerialGps:
         return None
 
 
-# --------------------------------------------------------------------------- IMU
 class Mpu6050:
     """MPU-6050 accelerometer at 100 Hz into a ring buffer; window() returns the last second."""
     ADDR = 0x68
@@ -220,7 +204,6 @@ class ReplayGps:
         return None
 
 
-# --------------------------------------------------------------------------- camera
 class Camera:
     def __init__(self, index=0, width=1280, height=720):
         import cv2

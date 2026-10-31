@@ -1,23 +1,4 @@
-"""
-Real object detection through ONNX Runtime: people, vehicles, bicycles,
-traffic lights and signs in front of the camera.
-
-The weights are a YOLO model trained on COCO (330k images, 80 classes) -
-downloaded and exported by scripts/fetch_detector.py. Nothing here is trained
-in this repo; this is inference over published weights, which is the honest
-and sensible way to get 80-class detection.
-
-Supported output layouts, detected from the tensor shape:
-  * YOLOv8 / v9 / v11 : (1, 4 + n_classes, n_boxes)   - no objectness channel
-  * YOLOv5 / v7       : (1, n_boxes, 5 + n_classes)   - objectness channel
-
-Everything except the network forward pass is plain NumPy (letterbox resize,
-score thresholding, class-wise non-maximum suppression, coordinate
-un-letterboxing), so it can be unit-tested without the runtime installed.
-
-If the weights or onnxruntime are missing, `is_ready` is False and callers
-skip the detection stage rather than inventing detections.
-"""
+"""ONNX-based object detection for vehicles, pedestrians, and road assets."""
 
 import glob
 import os
@@ -40,7 +21,6 @@ COCO_CLASSES = [
     "toothbrush",
 ]
 
-# What a road-safety system cares about, and how the dashboard colours it.
 ROAD_RELEVANT = {
     "person": ("Vulnerable road user", "#ef4444"),
     "bicycle": ("Vulnerable road user", "#f97316"),
@@ -58,9 +38,6 @@ ROAD_RELEVANT = {
 VULNERABLE = {"person", "bicycle", "motorcycle"}
 
 
-# ---------------------------------------------------------------------------
-# geometry helpers (pure numpy, unit-testable without onnxruntime)
-# ---------------------------------------------------------------------------
 def letterbox(image_rgb, target=640, pad_value=114):
     """Resize keeping aspect ratio and pad to a square. Returns (image, scale, pad_x, pad_y)."""
     from PIL import Image
@@ -119,16 +96,16 @@ def decode_output(raw, n_classes, conf_threshold):
     arr = np.asarray(raw)
     if arr.ndim == 3:
         arr = arr[0]
-    # Orient to (n_boxes, attributes). v8-style exports are (attributes, n_boxes).
+
     if arr.shape[1] not in (4 + n_classes, 5 + n_classes) and arr.shape[0] in (4 + n_classes, 5 + n_classes):
         arr = arr.T
 
-    if arr.shape[1] == 4 + n_classes:          # v8/v9/v11: no objectness
+    if arr.shape[1] == 4 + n_classes:
         boxes = arr[:, :4]
         cls_scores = arr[:, 4:]
         conf = cls_scores.max(axis=1)
         cls_ids = cls_scores.argmax(axis=1)
-    elif arr.shape[1] == 5 + n_classes:        # v5/v7: objectness * class score
+    elif arr.shape[1] == 5 + n_classes:
         boxes = arr[:, :4]
         obj = arr[:, 4]
         cls_scores = arr[:, 5:]
@@ -152,9 +129,6 @@ def unletterbox(boxes_xyxy, scale, pad_x, pad_y, orig_w, orig_h):
     return out
 
 
-# ---------------------------------------------------------------------------
-# detector
-# ---------------------------------------------------------------------------
 class ONNXObjectDetector:
     """COCO-pretrained detector served through ONNX Runtime."""
 
@@ -186,7 +160,7 @@ class ONNXObjectDetector:
             return
         try:
             try:
-                import sklearn  # noqa: F401 - ensures VC++ runtime DLLs are loaded on Windows
+                import sklearn
             except Exception:
                 pass
             import onnxruntime as ort

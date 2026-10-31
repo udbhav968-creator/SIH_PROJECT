@@ -1,13 +1,5 @@
-"""
-Trains Model M1 (VisionDistressNet) on the real labeled photos under
-datasets/*/real_images and reports genuine held-out validation metrics.
+"""Train baseline road distress classifier."""
 
-Run directly: python -m training.train_vision
-"""
-
-# Cap the BLAS thread pools before NumPy/scikit-learn are imported. On
-# laptops with modest RAM, OpenBLAS otherwise allocates a buffer per
-# thread per core and dies with "Memory allocation still failed".
 import os as _os
 for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     _os.environ.setdefault(_v, "2")
@@ -38,18 +30,13 @@ def run_training(val_ratio=0.25, copies_per_image=7, seed=42, save_dir=None, max
     os.makedirs(save_dir, exist_ok=True)
 
     print("[M1 Vision] Loading real labeled photos from datasets/ ...")
-    # max_per_class bounds peak memory: the feature matrix is samples x 4419
-    # floats, and an RBF SVM's kernel matrix grows with the square of the
-    # sample count. 800 per class trains comfortably in about 2 GB.
+
     if max_per_class is None:
         max_per_class = int(os.environ.get("ROAD_SHIELD_MAX_PER_CLASS", "1500"))
     images, labels, paths = load_labeled_dataset(dedupe_augmented=True, max_per_class=max_per_class)
     print(f"  {len(images)} distinct real photos across {len(set(labels.tolist()))} classes "
           f"(cap {max_per_class} per class)")
 
-    # Split at the base-photo level FIRST, then augment only the training
-    # side - an augmented copy of a validation photo must never leak into
-    # training, or the validation accuracy below would be meaningless.
     idx = np.arange(len(images))
     train_idx, val_idx = train_test_split(idx, test_size=val_ratio, stratify=labels, random_state=seed)
     train_imgs = [images[i] for i in train_idx]
@@ -58,10 +45,6 @@ def run_training(val_ratio=0.25, copies_per_image=7, seed=42, save_dir=None, max
     val_labels = labels[val_idx]
     print(f"  train photos: {len(train_imgs)} | held-out validation photos: {len(val_imgs)}")
 
-    # Augmentation exists to stretch a tiny dataset. Once real images arrive in
-    # volume it costs training time without adding information, so scale it
-    # down as the dataset grows (and keep it for the classes that are still
-    # short of examples).
     if len(train_imgs) > 900:
         copies_per_image = 1
     elif len(train_imgs) > 400:

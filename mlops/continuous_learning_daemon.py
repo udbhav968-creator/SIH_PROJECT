@@ -1,15 +1,4 @@
-"""
-Continuous 24/7 Automated MLOps Engine for ROAD-SHIELD AI.
-
-Runs autonomously as a background daemon or scheduled service to provide:
-  1. Automated ingestion, quality auditing, and drift monitoring.
-  2. Active learning & hard-negative uncertainty mining (Shannon entropy H >= 1.0).
-  3. Scheduled deep continuous evaluation across held-out test benchmarks.
-  4. Automated retraining of model subsystems when data batches accumulate.
-  5. Automated production gating: candidate promoted and hot-reloaded only if
-     it beats production metrics on held-out test sets without regressions.
-  6. Persistent audit ledger (reports/continuous_mlops_ledger.json) for 24/7 traceability.
-"""
+"""Continuous learning daemon for retraining triggers."""
 
 import os
 import sys
@@ -104,13 +93,11 @@ class ContinuousMLOpsEngine:
             "status": "SUCCESS"
         }
 
-        # 1. System Health & Model Asset Verification
         try:
             report["tasks"]["model_verification"] = self._verify_models()
         except Exception as e:
             report["tasks"]["model_verification"] = {"status": "FAILED", "error": str(e)}
 
-        # 2. Continuous Deep Benchmark Evaluation
         try:
             bench_res = self._run_continuous_eval()
             report["tasks"]["benchmark_evaluation"] = bench_res
@@ -118,14 +105,12 @@ class ContinuousMLOpsEngine:
         except Exception as e:
             report["tasks"]["benchmark_evaluation"] = {"status": "FAILED", "error": str(e)}
 
-        # 3. Active Learning & Uncertainty Mining
         try:
             al_res = self._mine_uncertain_samples()
             report["tasks"]["active_learning_mining"] = al_res
         except Exception as e:
             report["tasks"]["active_learning_mining"] = {"status": "FAILED", "error": str(e)}
 
-        # 4. Automated Candidate Retraining & Production Gate (if enabled)
         if self.auto_retrain:
             try:
                 retrain_res = self._check_and_retrain_candidates()
@@ -147,7 +132,7 @@ class ContinuousMLOpsEngine:
                 self.run_single_cycle()
             except Exception as e:
                 print(f"[MLOps 24/7 ERROR] Cycle failed: {e}\n{traceback.format_exc()}")
-            # Sleep in 1-second ticks so stop() is responsive
+
             for _ in range(int(self.interval)):
                 if not self.running:
                     break
@@ -182,7 +167,6 @@ class ContinuousMLOpsEngine:
         pipe = DeepInferencePipeline(CKPT_DIR)
         test_images = []
 
-        # Gather sample test images across distinct real classes
         patterns = [
             os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "real_images", "*.jpg"),
             os.path.join(ENGINE_ROOT, "datasets", "03_crack500_fatigue", "real_images", "*.jpg"),
@@ -191,7 +175,7 @@ class ContinuousMLOpsEngine:
         for pat in patterns:
             files = sorted(glob.glob(pat))
             if files:
-                test_images.extend(files[:3])  # Sample top 3 from each category for fast 24/7 audit
+                test_images.extend(files[:3])
 
         if not test_images:
             return {"status": "SKIPPED", "reason": "No test images found on disk"}
@@ -253,14 +237,12 @@ class ContinuousMLOpsEngine:
         al = ActiveLearningQueue(db_path, al_dir)
         labeled = al.list_labeled(limit=100)
 
-        # Retrain triggered only when >= 15 new human-labeled ground truth samples exist
         if len(labeled) < 15:
             return {
                 "status": "STANDBY",
                 "reason": f"Active learning buffer has {len(labeled)}/15 labeled samples needed for automated retraining."
             }
 
-        # Run automated retrain pipeline on IMU / Segmenter
         from mlops.retrain import retrain_model
         res = retrain_model("imu_classifier", promote_if_passed=True)
         return {"status": "RETRAINED", "result": res}
@@ -279,7 +261,6 @@ class ContinuousMLOpsEngine:
         }
 
 
-# Singleton engine instance
 CONTINUOUS_ENGINE = ContinuousMLOpsEngine(check_interval_sec=120)
 
 if __name__ == "__main__":
@@ -301,5 +282,5 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             engine.stop()
     else:
-        # Default: run one cycle for immediate test
+
         engine.run_single_cycle()

@@ -1,26 +1,4 @@
-"""
-Input guard: should the road models be trusted on this photograph at all?
-
-Every model in the pipeline was trained on road photographs taken from a vehicle or by hand at
-street level. Shown a selfie, a document, a night shot with nothing visible or a blurred frame, a
-classifier still returns a class with a confidence, and the pipeline would price a repair for it.
-The guard answers the question before that happens, in two parts:
-
-  novelty     Mahalanobis distance of the photograph's CNN embedding (MobileNetV2, PCA to 64
-              dimensions) from the training photographs. Needs no examples of what "not a road"
-              looks like, so it also catches kinds of input nobody thought of.
-  not-road    a logistic regression on the same 64 dimensions, trained with road photographs
-              against a broad set of everyday photographs (outlier exposure). Sharper on the
-              common cases: people, rooms, screens, animals.
-
-  quality     brightness, contrast, sharpness and clipped highlights, with limits set from the
-              training photographs, so a frame that is too dark or blurred is named as such
-              rather than reported as "not a road".
-
-The fitted model is stored as plain arrays (checkpoints/ood_guard.npz) and evaluated with NumPy
-only, so it loads under any scikit-learn version. The measurement that set the thresholds is in
-checkpoints/ood_guard_report.json; training/train_ood_guard.py rebuilds both.
-"""
+"""Out-of-distribution (OOD) input validation guard for roadway imagery."""
 import hashlib
 import json
 import os
@@ -125,7 +103,6 @@ class OODGuard:
     def is_ready(self):
         return self.params is not None
 
-    # -- scoring on embeddings (used by training and serving alike) ---------------------------
     def project(self, emb):
         p = self.params
         x = np.atleast_2d(np.asarray(emb, dtype=np.float64))

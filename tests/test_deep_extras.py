@@ -1,8 +1,4 @@
-"""
-The U-Net segmenter and the RDD2022 road-damage detector: selection rules,
-fallbacks, and the shared post-processing. None of this needs PyTorch or the
-trained weights, so it runs everywhere.
-"""
+"""Additional tests for auxiliary neural network models and export."""
 
 import json
 import os
@@ -26,7 +22,7 @@ class SharedMaskPostProcessing(unittest.TestCase):
         p[:, 0] = 0.9
         p[:, 1] = 0.05
         p[:, 2] = 0.05
-        p[1000:4000, 1] = 0.9           # a crack blob
+        p[1000:4000, 1] = 0.9
         p[1000:4000, 0] = 0.05
         out = mask_from_proba(p, (WORK_H, WORK_W), (400, 640), {"crack": 0.5, "pothole": 0.5})
         self.assertEqual(out["mask"].shape, (400, 640))
@@ -39,7 +35,7 @@ class SharedMaskPostProcessing(unittest.TestCase):
         from models.defect_segmenter import WORK_H, WORK_W, mask_from_proba
         p = np.zeros((WORK_H * WORK_W, 3), dtype=np.float32)
         p[:, 0] = 1.0
-        p[500, :] = [0.0, 0.0, 1.0]     # one isolated pothole pixel
+        p[500, :] = [0.0, 0.0, 1.0]
         out = mask_from_proba(p, (WORK_H, WORK_W), (200, 320), {"crack": 0.5, "pothole": 0.5})
         self.assertEqual(out["pothole_px"], 0)
 
@@ -71,15 +67,15 @@ class UNetServingInterface(unittest.TestCase):
                   "pothole_px_full", "defect_fraction", "scale_x", "scale_y"):
             self.assertIn(k, out)
         self.assertEqual(out["mask"].shape, (360, 600))
-        self.assertGreater(out["pothole_px"], 0)        # right side of the frame is above 0.6
+        self.assertGreater(out["pothole_px"], 0)
 
     def test_flip_tta_averages_the_mirrored_prediction(self):
         img = np.zeros((320, 512, 3), dtype=np.uint8)
         p = _fake_unet(tta=True).predict_work(img)
-        # a left-right ramp averaged with its mirror is flat at 0.5
+
         self.assertTrue(np.allclose(p[:, 2], 0.5, atol=0.02))
         out = _fake_unet(tta=True).segment(img)
-        self.assertEqual(out["pothole_px"], 0)          # 0.5 < 0.6 threshold everywhere
+        self.assertEqual(out["pothole_px"], 0)
 
 
 class SegmenterSelection(unittest.TestCase):
@@ -128,7 +124,7 @@ class SegmenterLoaderFallsBack(unittest.TestCase):
         _write(self.d, "defect_segmenter_report.json", {"iou": {"crack": {"iou": 0.23}}})
         _write(self.d, "defect_segmenter_unet.json", {"iou": {"crack": {"iou": 0.41}}})
         _write(self.d, "segmenter_selection.json", {"served": "unet", "rule": "r", "why": "w"})
-        # onnx missing -> the pixel classifier is what actually serves
+
         self.assertEqual(served_segmenter_summary(self.d)["kind"], "pixel_classifier")
         open(os.path.join(self.d, "defect_segmenter_unet.onnx"), "wb").close()
         s = served_segmenter_summary(self.d)
@@ -161,7 +157,7 @@ class RoadDamageDetector(unittest.TestCase):
         from models.onnx_object_detector import decode_output
         raw = np.zeros((1, 8, 8400), dtype=np.float32)
         raw[0, :4, 7] = [320, 320, 100, 50]
-        raw[0, 4 + 3, 7] = 0.9                      # D40 pothole
+        raw[0, 4 + 3, 7] = 0.9
         boxes, conf, cls = decode_output(raw, 4, 0.25)
         self.assertEqual(len(boxes), 1)
         self.assertEqual(int(cls[0]), 3)
@@ -182,7 +178,7 @@ class RoadDamageDetector(unittest.TestCase):
     def test_a_loaded_but_unverified_model_is_not_ready(self):
         from models.road_damage_detector import RoadDamageDetector as R
         r = R(checkpoints_dir=self.d)
-        r._session = object()                      # pretend the ONNX file loaded
+        r._session = object()
         self.assertFalse(r.is_ready)
         r.meta = {"artefact_check": {"passed": True}, "deployment_check": {"passed": True}}
         self.assertTrue(r.is_ready)

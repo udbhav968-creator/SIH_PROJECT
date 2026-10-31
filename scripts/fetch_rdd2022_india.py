@@ -27,7 +27,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUT = os.path.join(ROOT, "datasets", "_downloads", "rdd2022")
 S3_INDIA = ("https://bigdatacup.s3.ap-northeast-1.amazonaws.com/2022/CRDDC2022/RDD2022/"
             "Country_Specific_Data_CRDDC2022/RDD2022_India.zip")
-FIGSHARE_ALL = "https://ndownloader.figshare.com/files/38030910"   # RDD2022_released_through_CRDDC2022.zip
+FIGSHARE_ALL = "https://ndownloader.figshare.com/files/38030910"
 
 
 def download(url, dest, min_bytes=1_000_000):

@@ -1,12 +1,4 @@
-"""
-The Vercel deployment: public site + measured evidence + lightweight ONNX Runtime inference.
-
-When `onnxruntime`, `Pillow`, `numpy`, and the exported ONNX checkpoints
-(`deep_vision_mobilenet_v3_large_refit.onnx` and `defect_segmenter_unet.onnx`)
-are bundled in the function, `/api/v1/pipeline/deep-audit`,
-`/api/v1/vision/analyze-photo`, `/api/v1/vision/analyze-custom-photo`, and
-`/api/v1/privacy/redact` execute live ONNX inference directly on Vercel.
-"""
+"""Vercel serverless entrypoint and API routing adapter."""
 
 import json
 import os
@@ -83,7 +75,6 @@ def list_reports(prefix, suffix):
                   if n.startswith(prefix) and n.endswith(suffix))
 
 
-
 def _segmenter_status():
     """What the website actually runs, per checkpoints/segmenter_selection.json."""
     try:
@@ -152,7 +143,6 @@ class handler(BaseHTTPRequestHandler):
         if page and self._static(page):
             return
 
-        # 1. Live ONNX inference for uploaded photographs when image_base64 is supplied
         if path in ("/api/v1/pipeline/deep-audit", "/api/v1/vision/analyze-custom-photo"):
             body = self._json_body()
             img_b64 = body.get("image_base64") or body.get("image")
@@ -173,7 +163,6 @@ class handler(BaseHTTPRequestHandler):
                     self._send(400, {"error": f"Image analysis failed: {e}"})
                     return
 
-        # 2. Live ONNX inference on sample photographs ("Try an example photograph")
         if path == "/api/v1/vision/analyze-photo":
             body = self._json_body()
             rec_path = os.path.join(WEB_DIR, "samples", "recorded_results.json")
@@ -202,7 +191,6 @@ class handler(BaseHTTPRequestHandler):
                     self._send(500, {"error": f"Sample analysis failed: {e}"})
                     return
 
-        # 3. Privacy redaction
         if path == "/api/v1/privacy/redact":
             body = self._json_body()
             img_b64 = body.get("image_base64") or body.get("image")
@@ -215,7 +203,6 @@ class handler(BaseHTTPRequestHandler):
                     self._send(400, {"error": f"Redaction failed: {e}"})
                     return
 
-        # 4. MLOps & Registry endpoints
         if path in ("/api/v1/mlops/overview", "/api/v1/mlops/versions", "/api/v1/mlops/runs",
                     "/api/v1/mlops/drift", "/api/v1/mlops/al/queue", "/api/v1/mlops/gate",
                     "/api/v1/models/registry"):

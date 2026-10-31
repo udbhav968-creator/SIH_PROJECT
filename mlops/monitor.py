@@ -1,31 +1,4 @@
-"""
-What the served models see in production, compared with what they were trained on.
-
-Every analysed photograph (uploads, citizen reports, video frames, bus frames) adds one row:
-source, the versions that served it, the classifier's top class and confidence, the input guard's
-verdict and novelty score, four image-quality measures and the latency. Bus events add the class
-and confidence the bus reported. Nothing identifying is stored; no image, no location.
-
-Drift is the Population Stability Index of each measure in a recent window against the histogram
-in checkpoints/monitoring_reference.json (written by training/train_ood_guard.py from held-out road
-photographs):
-
-    PSI = sum over bins of (p_now - p_ref) * ln(p_now / p_ref)
-    < 0.10 stable     0.10-0.25 watch     > 0.25 drift (the usual credit-scoring convention)
-
-On a small window PSI is mostly sampling noise, so a shift is only called watch or drift when a
-two-sample chi-square test (the reference is itself a sample; sparse bins merged) also says it is
-unlikely to be chance, at 0.01 split across the measures tested (Bonferroni).
-
-and of the class mix against the reference class mix. A window with fewer than MIN_SAMPLES rows
-is reported as "not enough data" rather than judged. The out-of-distribution rate, latency
-percentiles and a per-day series are reported beside it. When the overall status changes to drift
-an alert goes out on the live feed and, if configured, to the webhook (pipeline/alerts.py).
-
-Shadow testing: when a model has a version in "staging" (mlops/registry.py) the shadow runner loads
-it next to production and runs it on a sample of the same photographs in a background thread,
-recording whether it agrees with production. The request never waits for the shadow.
-"""
+"""Production inference monitoring, drift detection, and telemetry."""
 import json
 import math
 import os
@@ -108,8 +81,7 @@ def bin_probs(values, edges):
 
 
 def _status(p, p_value=None, alpha=None):
-    # PSI on a small window is mostly sampling noise (about (bins-1)/n when nothing has changed), so a shift
-    # that the two-sample test cannot tell from chance is reported as stable whatever its PSI
+
     if p_value is not None and p_value >= (alpha if alpha is not None else P_VALUE):
         return "stable"
     return "stable" if p < PSI_WATCH else "watch" if p < PSI_DRIFT else "drift"
@@ -169,7 +141,7 @@ class Monitor:
         self.alerts = alerts
         self.clock = clock
         self.reference_path = reference_path or os.path.join(CKPT_DIR, "monitoring_reference.json")
-        # a reference rebuilt from production (rebaseline) takes precedence over the training one
+
         self.override_path = override_path or os.path.join(os.path.dirname(os.path.abspath(db_path)),
                                                            "monitoring_reference_production.json")
         self.reference = self._load_reference()
@@ -238,7 +210,6 @@ class Monitor:
     def reload_reference(self):
         self.reference = self._load_reference()
 
-    # -- recording -------------------------------------------------------------------------------
     def record(self, source, result, latency_ms=None, input_check=None, versions=None, at=None):
         fc = (result or {}).get("frame_classification") or {}
         pd = (result or {}).get("primary_distress") or {}
@@ -267,7 +238,7 @@ class Monitor:
             if self._since_check >= 50:
                 self._since_check, check = 0, True
         if check:
-            # off the request thread: a drift check reads up to a day of rows
+
             threading.Thread(target=self._safe_check, daemon=True).start()
 
     def _safe_check(self):
@@ -291,7 +262,6 @@ class Monitor:
                               _num(event.get("conf"), 0, 1),
                               "camera_only" if kind == "cam" else "felt"))
 
-    # -- reading ---------------------------------------------------------------------------------
     def _rows(self, since, source=None):
         with self._lock:
             if source:
@@ -348,7 +318,7 @@ class Monitor:
         }
         lat = [r["latency_ms"] for r in rows if r["latency_ms"] is not None]
         out["latency_ms"] = {"p50": _pct(lat, .5), "p95": _pct(lat, .95), "p99": _pct(lat, .99), "samples": len(lat)}
-        # one test per measure: Bonferroni, so that seven measures do not give seven chances of a false alarm
+
         tested = [f for f in out["features"].values() if f.get("psi") is not None]
         if out["class_mix"] and out["class_mix"].get("psi") is not None:
             tested.append(out["class_mix"])
@@ -450,7 +420,6 @@ class Monitor:
         self._last_status = st
         return st
 
-    # -- shadow ----------------------------------------------------------------------------------
     def record_shadow(self, model, production, candidate, prod_class, cand_class, prod_conf, cand_conf, cand_ms):
         with self._lock:
             self._db.execute("""INSERT INTO shadow(at, model, production, candidate, prod_class, cand_class, agree,

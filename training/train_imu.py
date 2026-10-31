@@ -1,15 +1,5 @@
-"""
-Trains Model M4 (IMUShockClassifier) on the real logged windows in
-datasets/04_mobile_imu_telemetry_100hz/imu_shock_100hz_{train,val}.npz and
-reports genuine held-out validation metrics (the val.npz file is never
-touched during fitting).
+"""Train baseline IMU shock classifier."""
 
-Run directly: python -m training.train_imu
-"""
-
-# Cap the BLAS thread pools before NumPy/scikit-learn are imported. On
-# laptops with modest RAM, OpenBLAS otherwise allocates a buffer per
-# thread per core and dies with "Memory allocation still failed".
 import os as _os
 for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     _os.environ.setdefault(_v, "2")

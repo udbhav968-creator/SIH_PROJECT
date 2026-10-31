@@ -81,7 +81,7 @@ def main(argv=None, ckpt=CKPT, tag="world"):
             sys.exit(f"candidate files missing in {ckpt}: {cand_files}")
         shutil.copy(os.path.join(ckpt, cand_files[0]), os.path.join(ckpt, SERVED[0]))
         meta = _load(os.path.join(ckpt, cand_files[1]))
-        meta.pop("artefact_check", None)            # a new file has to pass its own checks
+        meta.pop("artefact_check", None)
         meta.pop("deployment_check", None)
         with open(os.path.join(ckpt, SERVED[1]), "w", encoding="utf-8") as fh:
             json.dump(meta, fh, indent=2)

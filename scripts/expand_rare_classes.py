@@ -41,7 +41,6 @@ from models.forensic_audit_engine import ForensicDuplicateHasher
 API_URL = "https://commons.wikimedia.org/w/api.php"
 USER_AGENT = "ROAD-SHIELD-ITS-Agent/2.0 (https://github.com/udbhav968-creator/SIH_PROJECT; educational road safety dataset)"
 
-# Exhaustive queries targeting real-world road and street hazards
 EXPANDED_QUERIES = {
     3: (
         "09_waterlogging_hazard",
@@ -178,7 +177,7 @@ def download_and_validate(url):
             scale = 640.0 / float(max(w, h))
             rgb = rgb.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.BILINEAR)
         arr = np.asarray(rgb, dtype=np.uint8)
-        # Texture check: natural asphalt & road scenes have variance > 22
+
         if float(arr.std()) < 22.0:
             return None
         return rgb, arr
@@ -242,7 +241,7 @@ def expand_dataset(target_total_per_class=100):
                         continue
                     pil_img, arr = res
                     ph = hasher.compute_hash(arr)
-                    # Check near-duplicates
+
                     is_dup = any(hasher.hamming_distance(ph, h) <= 8 for h in existing_hashes)
                     if is_dup:
                         continue

@@ -1,56 +1,37 @@
-# ===== ROAD-SHIELD: long training across several Colab sessions (T4 GPU, Google Drive) =====
-# Paste this whole file into ONE Colab cell and run it. When Colab ends the session (or you stop for the day),
-# open a new session and run the SAME cell again: it continues where it stopped. Nothing is trained twice.
-#
-#   1. U-Net segmenter, ResNet-34, up to 80 epochs, on DNIT + CrackSeg9k + Kaggle + Pothole Mix + YOUR photos
-#   2. YOLOv8s road-damage detector on RDD2022 India, up to 100 epochs
-#   3. YOLOv8s on RDD2022 India + Japan + Czech + USA + China (~4x the photographs); served only if it beats
-#      the India-only detector on India's validation photographs (scripts/select_rdd_detector.py)
-#   4. image classifier retrained with crops from those countries too; served only if it beats the current
-#      classifier on the selection half of the Indian held-out crops (scripts/select_vision_candidate.py)
-#   5. measurements, no training: privacy-redactor recall on WIDER FACE + a licence-plate set, and the
-#      classifier's confidence calibration (temperature fitted on one half, reported on the other)
-#
-# What takes long lives in Google Drive (MyDrive/road_shield_week): the prepared datasets, the checkpoints
-# (saved every 30 minutes and whenever a session pauses), and the finished results. The U-Net pauses cleanly
-# before SESSION_HOURS. If Colab cuts a session off without warning, at most ~30 minutes of training is lost.
-# Stages 3 and 4 only replace a served model under the rules above (fixed before scoring, test data never used
-# to choose). Run the end-to-end and clean-road checks on the laptop ONCE on the final result.
+OWN_PHOTOS = ""
 
-OWN_PHOTOS = ""           # your outlined Indian road photos in Drive: a Roboflow/CVAT "COCO Segmentation" export zip,
-                          # a LabelMe folder, or images/ + masks/  e.g. "/content/drive/MyDrive/road_photos_coco.zip"
-POTHOLE_MIX_DRIVE = ""    # e.g. "/content/drive/MyDrive/pothole-mix-v1.0-20220526.zip"
-POTHOLE_MIX_LINK = ""     # or a direct download link instead
-RUN_NAME = "run1"         # change it to start a completely new run (new checkpoints); keep it to resume
+POTHOLE_MIX_DRIVE = ""
+POTHOLE_MIX_LINK = ""
+RUN_NAME = "run1"
 
 TRAIN_UNET = True
 UNET_ENCODER = "resnet34"
-UNET_EPOCHS = 80          # upper limit; early stopping ends it when validation stops improving for UNET_PATIENCE
+UNET_EPOCHS = 80
 UNET_PATIENCE = 15
-UNET_SAMPLES = 6000       # training images per epoch
-UNET_MIN_CROP = 0.35      # random zoom-ins down to 35% of the frame: teaches close-ups (where the last U-Net missed)
-UNET_BATCH = 8            # 16 on an A100 / L4
+UNET_SAMPLES = 6000
+UNET_MIN_CROP = 0.35
+UNET_BATCH = 8
 
 TRAIN_YOLO = True
-YOLO_MODEL = "yolov8s.pt"  # "yolov8m.pt" is stronger but ~2x slower and too slow to serve on a laptop CPU
+YOLO_MODEL = "yolov8s.pt"
 YOLO_EPOCHS = 100
 YOLO_PATIENCE = 25
 YOLO_BATCH = 16
 
-TRAIN_YOLO_WORLD = True   # stage 3 (downloads the full RDD2022 release, ~13 GB, once)
+TRAIN_YOLO_WORLD = True
 WORLD_EPOCHS = 50
 WORLD_PATIENCE = 12
-WORLD_CACHE_TO_DRIVE = True   # ~4-5 GB in Drive; set False if your Drive is nearly full
+WORLD_CACHE_TO_DRIVE = True
 
-TRAIN_CLASSIFIER = True   # stage 4
+TRAIN_CLASSIFIER = True
 CLS_ARCHS = "mobilenet_v3_large,efficientnet_b0,efficientnet_b2"
 CLS_EPOCHS = 40
 CLS_MAX_PER_CLASS = 3000
 
-MEASURE = True           # stage 5 (~410 MB download once, ~20 min)
+MEASURE = True
 
-SESSION_HOURS = 3.5       # U-Net pauses before this many hours in one session (free Colab often ends at 3-4 h)
-SAVE_EVERY_MIN = 30       # how often checkpoints are copied to Drive
+SESSION_HOURS = 3.5
+SAVE_EVERY_MIN = 30
 
 import glob, hashlib, json, os, shutil, subprocess, sys, threading, time
 
@@ -59,7 +40,7 @@ BRANCH = "audit-2026-10-03"
 WORK = "/tmp/SIH_PROJECT"
 T0 = time.time()
 STATUS = {}
-OUTPUT = []        # every line the last command printed
+OUTPUT = []
 
 
 def run(cmd, keep=None):
@@ -166,14 +147,13 @@ def copy_run(src, dst, min_age_s=15):
         tmp = f"{out}.{os.getpid()}.{threading.get_ident()}.part"
         shutil.copy2(f, tmp)
         if (os.path.getsize(f), os.path.getmtime(f)) != before or os.path.getsize(tmp) != before[0]:
-            os.remove(tmp)                        # rewritten mid-copy: the next copy picks it up
+            os.remove(tmp)
             continue
         os.replace(tmp, out)
 
 
-# ---------------------------------------------------------------- 0. Drive, code, packages
 step("0. Google Drive, code, packages")
-if globals().get("_RS_SYNC_STOP") is not None:          # left over from an interrupted run of this cell
+if globals().get("_RS_SYNC_STOP") is not None:
     _RS_SYNC_STOP.set()
     if globals().get("_RS_SYNC_THREAD") is not None:
         _RS_SYNC_THREAD.join(timeout=600)
@@ -217,7 +197,6 @@ if not gpu:
     raise SystemExit("No GPU. Runtime -> Change runtime type -> T4 GPU. If Colab says you hit the GPU usage limit, "
                      "come back later (usually within a day) and run this cell again: your checkpoints wait in Drive.")
 
-# ---------------------------------------------------------------- 1. U-Net
 unet_done = load_json(f"{RESULTS}/unet_done.json")
 if TRAIN_UNET and unet_done:
     print(f"\nU-Net already finished in this run ({unet_done.get('finished')}); skipping. "
@@ -227,9 +206,8 @@ unet_go = False
 if TRAIN_UNET and not unet_done:
     step("1a. pixel-labelled datasets (restored from Drive after the first session)")
     DNIT = "datasets/incoming/cracks_potholes_dnit"
-    started = os.path.exists(f"{UNET_CK}/dnit_split.json")      # this run has begun: its data is frozen
-    # DNIT is restored, never re-downloaded once cached: the split depends on which photographs are on disk.
-    # The tar also holds the clean-road crops the download makes (cpr_*), which the U-Net uses as negatives.
+    started = os.path.exists(f"{UNET_CK}/dnit_split.json")
+
     dnit_ready = untar(f"{CACHE}/dnit.tar", "datasets")
     if not dnit_ready:
         code = run("python -m scripts.fetch_cracks_potholes_dataset --limit 2235 --workers 16", keep=["[", "Error"])
@@ -289,8 +267,8 @@ if TRAIN_UNET and not unet_done and unet_go:
                 shutil.rmtree("datasets/seg_multi/own_india", ignore_errors=True)
                 run("python -m scripts.fetch_seg_datasets --only own_india", keep=["total"])
                 cache_meta["own_photos"] = None
-        if manifest_counts()[0] != before or cache_meta != meta_before:     # re-cache only when something arrived
-            shutil.rmtree("datasets/seg_multi/_pothole_mix_raw", ignore_errors=True)   # raw zip contents
+        if manifest_counts()[0] != before or cache_meta != meta_before:
+            shutil.rmtree("datasets/seg_multi/_pothole_mix_raw", ignore_errors=True)
             shutil.rmtree("datasets/seg_multi/_own_raw", ignore_errors=True)
             tar_to_drive("datasets/seg_multi", f"{CACHE}/seg_multi.tar")
             save_json(f"{CACHE}/seg_multi.json", cache_meta)
@@ -300,7 +278,6 @@ if TRAIN_UNET and not unet_done and unet_go:
         sp = {k: sum(1 for i in man["items"]["own_india"] if i["split"] == k) for k in ("train", "cal", "test")}
         print(f"your photos: {sp} (train / calibration / test, split by spot)")
 
-    # a run that has started must keep the data it started with
     data_sig = {"sources": counts, "own_photos": cache_meta.get("own_photos")}
     saved_sig = load_json(f"{UNET_CK}/data_signature.json")
     resuming = os.path.exists(f"{UNET_CK}/unet_resume.pt")
@@ -351,7 +328,7 @@ if TRAIN_UNET and not unet_done and unet_go:
 
 def ensure_rdd_india():
     """datasets/rdd2022_india (India's fixed 70/15/15 split), restored from Drive or built once."""
-    if os.path.exists("datasets/rdd2022_india/data.yaml"):        # written last: the split is complete
+    if os.path.exists("datasets/rdd2022_india/data.yaml"):
         return True
     shutil.rmtree("datasets/rdd2022_india", ignore_errors=True)
     if untar(f"{CACHE}/rdd2022_india.tar", "datasets") and os.path.exists("datasets/rdd2022_india/data.yaml"):
@@ -370,7 +347,7 @@ def ensure_rdd_india():
 
 def ensure_rdd_world():
     """datasets/rdd2022_world, restored from Drive or built once (downloads the full release)."""
-    if os.path.exists("datasets/rdd2022_world/manifest.json"):    # written last: the set is complete
+    if os.path.exists("datasets/rdd2022_world/manifest.json"):
         return True
     shutil.rmtree("datasets/rdd2022_world", ignore_errors=True)
     if untar(f"{CACHE}/rdd2022_world.tar", "datasets") and os.path.exists("datasets/rdd2022_world/manifest.json"):
@@ -429,7 +406,6 @@ def train_yolo(tag, args, drive_run):
         copy_run(local, drive_run, min_age_s=0)
 
 
-# ---------------------------------------------------------------- 2. YOLOv8 detector
 yolo_done = load_json(f"{RESULTS}/yolo_done.json")
 if TRAIN_YOLO and yolo_done:
     print(f"\nYOLO already finished in this run ({yolo_done.get('finished')}); skipping.")
@@ -458,7 +434,7 @@ elif TRAIN_YOLO:
     if not ok:
         STATUS["yolo"] = "smoke run failed"
     else:
-        # trains on local disk (fast); a background copy keeps Drive at most SAVE_EVERY_MIN behind
+
         _RS_SYNC_STOP = threading.Event()
 
         def sync_loop(stop):
@@ -493,7 +469,6 @@ elif TRAIN_YOLO:
         else:
             STATUS["yolo"] = f"stopped (exit {code}) - see the lines above; run the cell again to resume"
 
-# ---------------------------------------------------------------- 3. YOLOv8 on several countries
 SERVED_DET = ("damage_rdd2022_india.onnx", "damage_rdd2022_india.json", "road_damage_detector_report.json")
 world_done = load_json(f"{RESULTS}/yolo_world_done.json")
 if TRAIN_YOLO_WORLD and world_done:
@@ -509,8 +484,7 @@ elif TRAIN_YOLO_WORLD:
     else:
         m = load_json("datasets/rdd2022_world/manifest.json") or {}
         print("photographs:", m.get("photographs"), "| countries:", list((m.get("countries") or {}).keys()))
-        # the India-only detector this one is compared with. A copy is kept in Drive before anything can
-        # replace it; a previous attempt that stopped half way is undone from that copy first.
+
         DET_BACKUP = f"{D}/detector_before_world"
         if os.path.isdir(DET_BACKUP) and all(os.path.exists(f"{DET_BACKUP}/{f}") for f in SERVED_DET):
             for f in SERVED_DET:
@@ -536,7 +510,7 @@ elif TRAIN_YOLO_WORLD:
                 verified = run("python -m scripts.verify_rdd_detector --artefact --run-name rdd_world "
                                "--data-dir datasets/rdd2022_world", keep=None) == 0
                 if not verified and all(os.path.exists(f"{DET_BACKUP}/{f}") for f in SERVED_DET):
-                    for f in SERVED_DET:                     # the India-only detector stays served
+                    for f in SERVED_DET:
                         shutil.copy(f"{DET_BACKUP}/{f}", f"checkpoints/{f}")
                     sel.update(served="india", why=sel.get("why", "") + "; but the multi-country ONNX failed "
                                "the artefact check, so the India-only detector stays")
@@ -555,7 +529,6 @@ elif TRAIN_YOLO_WORLD:
         else:
             STATUS["yolo_world"] = f"stopped (exit {code}) - run the cell again to resume"
 
-# ---------------------------------------------------------------- 4. image classifier with more data
 cls_done = load_json(f"{RESULTS}/classifier_done.json")
 if TRAIN_CLASSIFIER and cls_done:
     print(f"\nClassifier already finished in this run ({cls_done.get('finished')}); skipping.")
@@ -602,7 +575,6 @@ elif TRAIN_CLASSIFIER:
         else:
             STATUS["classifier"] = f"stopped (exit {code}) - run the cell again; finished architectures are kept"
 
-# ---------------------------------------------------------------- 5. measurements
 meas_done = load_json(f"{RESULTS}/measure_done.json")
 if MEASURE and meas_done:
     print(f"\nMeasurements already finished in this run ({meas_done.get('finished')}); skipping.")
@@ -630,7 +602,6 @@ elif MEASURE:
     else:
         STATUS["measure"] = f"failed (redaction exit {red}, calibration exit {cal}) - see above; run the cell again"
 
-# ---------------------------------------------------------------- 6. results
 step("6. results")
 files = [f for f in sorted(os.listdir(RESULTS)) if not f.endswith(".pt")]
 print("finished files in Drive:", files)
@@ -640,7 +611,7 @@ everything_done = all(STATUS.get(k, "done").startswith("done") for k, on in
 zip_path = (f"/content/road_shield_{RUN_NAME}_results.zip" if os.path.isdir("/content")
             else f"/tmp/road_shield_{RUN_NAME}_results.zip")
 if everything_done and files:
-    # same layout as the repository, so the laptop unzips it straight into SIH_PROJECT
+
     stage = "/tmp/rs_zip"
     shutil.rmtree(stage, ignore_errors=True)
     os.makedirs(f"{stage}/checkpoints", exist_ok=True)
@@ -655,7 +626,7 @@ if everything_done and files:
         shutil.copy(zip_path, f"{D}/")
 if ON_DRIVE:
     try:
-        drive.flush_and_unmount()          # make sure the last checkpoint has reached Drive before the runtime ends
+        drive.flush_and_unmount()
         print("Drive flushed: everything above is saved.")
     except Exception as e:
         print("Drive flush:", e)

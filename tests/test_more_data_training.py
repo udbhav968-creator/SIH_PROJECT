@@ -1,4 +1,4 @@
-"""Training on more data: the multi-country detector set and the rules that decide which model is served."""
+"""Tests for data augmentation and multi-dataset ingest."""
 
 import glob
 import json
@@ -71,7 +71,7 @@ class DetectorSelection(unittest.TestCase):
                 self.assertEqual(fh.read(), b"WORLD")
             with open(os.path.join(d, "damage_rdd2022_india.json")) as fh:
                 meta = json.load(fh)
-            self.assertNotIn("artefact_check", meta)          # a new file must pass its own checks
+            self.assertNotIn("artefact_check", meta)
             with open(os.path.join(d, "road_damage_detector_report.json")) as fh:
                 rep = json.load(fh)
             self.assertEqual(rep["previous_model"]["tag"], "india")
@@ -89,7 +89,7 @@ class DetectorSelection(unittest.TestCase):
 class WorldDataset(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp()
-        # a tiny India split, as prepare_rdd2022_voc writes it
+
         self.india = os.path.join(self.d, "india")
         for split, stems in (("train", ["India_000001", "India_000002"]), ("valid", ["India_000003"]),
                              ("test", ["India_000004"])):
@@ -98,7 +98,7 @@ class WorldDataset(unittest.TestCase):
             for s in stems:
                 _jpg(os.path.join(self.india, "images", split, s + ".jpg"))
                 _write(os.path.join(self.india, "labels", split, s + ".txt"), "0 0.5 0.5 0.2 0.2")
-        # a full-release zip holding a nested Japan archive
+
         inner = os.path.join(self.d, "Japan.zip")
         with zipfile.ZipFile(inner, "w") as z:
             for i in range(20):
@@ -107,7 +107,7 @@ class WorldDataset(unittest.TestCase):
                 z.write(img, f"Japan/train/images/Japan_{i:06d}.jpg")
                 objs = [("D40", 10, 10, 30, 30)] if i % 3 else []
                 if i == 19:
-                    objs = [("D43", 1, 1, 20, 20)]       # only an unkept class: skipped
+                    objs = [("D43", 1, 1, 20, 20)]
                 z.writestr(f"Japan/train/annotations/xmls/Japan_{i:06d}.xml", _xml(64, 48, objs))
         self.full = os.path.join(self.d, "RDD2022_all.zip")
         with zipfile.ZipFile(self.full, "w") as z:
@@ -130,15 +130,15 @@ class WorldDataset(unittest.TestCase):
         self.assertEqual(stems("valid_india"), ["India_000003"])
         self.assertIn("India_000003", stems("valid"))
         japan = [s for s in stems("train") + stems("valid") if s.startswith("Japan")]
-        self.assertEqual(len(japan), 19)                 # Japan_000019 had only an unkept class
+        self.assertEqual(len(japan), 19)
         self.assertFalse(set(stems("train")) & set(stems("valid")))
-        self.assertEqual(man["countries"]["Japan"]["valid"], 2)   # round(19 * 0.1)
+        self.assertEqual(man["countries"]["Japan"]["valid"], 2)
         for lp in glob.glob(os.path.join(out, "labels", "*", "Japan_*.txt")):
             with open(lp) as fh:
                 text = fh.read()
             for ln in text.split("\n"):
                 if ln:
-                    self.assertEqual(ln.split()[0], "3")   # D40 -> index 3
+                    self.assertEqual(ln.split()[0], "3")
         self.assertTrue(os.path.exists(os.path.join(out, "data.yaml")))
 
     def test_split_is_deterministic(self):

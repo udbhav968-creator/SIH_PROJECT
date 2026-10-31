@@ -79,9 +79,7 @@ def sample(folders, n, seed):
                                                           "**", "*.jpg"), recursive=True))
                  if "_label_conflicts" not in p]
         files, dropped = filter_paths(files)
-        # RDD2022 training crops (rddin_*) are tight cut-outs written into these
-        # folders on a training machine: no horizon, no road geometry. Same
-        # exclusion as the pipeline tests, so every machine samples road scenes.
+
         files = [p for p in files if not os.path.basename(p).startswith(("rddin_", "rddw_"))]
         for k, v in dropped.items():
             DROPPED[k] = DROPPED.get(k, 0) + v
@@ -178,10 +176,7 @@ def main():
         "false_positive_photos": fp, "false_positive_rate": round(fp_rate, 4),
         "detected_photos": hit, "detection_rate": round(det_rate, 4),
         "segmenter_loaded": seg_ready,
-        # What this number is a measurement OF. Without it the figure travels
-        # to a machine with a different corpus and a different model and is
-        # read there as a property of the code. See
-        # pipeline/corpus_fingerprint.py for the failure that taught this.
+
         "fingerprint": fingerprint(pipe.segmenter, CLEAN_FOLDERS + DEFECT_FOLDERS),
         "corpus_policy": policy_record(DROPPED),
         "seconds": round(time.time() - t0, 1),

@@ -1,50 +1,16 @@
-"""
-Painted road markings, found geometrically rather than statistically.
-
-Why this is not a learned model
--------------------------------
-A zebra crossing is the most regular structure on any road: three or more
-bright bars of similar size, parallel to each other, evenly spaced. That
-regularity is the signal, and it is far easier to measure directly than to
-learn from nineteen photographs - which is all the zebra data this project has.
-
-Two jobs, and the second is the one that matters
-------------------------------------------------
-1. Report where markings are, so a frame with a crossing, a pothole, two cars
-   and a pedestrian shows all of them rather than only the pothole.
-
-2. Tell the defect pipeline which pixels are PAINT. Every remaining false
-   positive in the end-to-end measurement came from a zebra crossing or a road
-   divider, and the reason is stated plainly in the segmenter's own design: its
-   features are lightness, colour, gradient and local variance, and fresh white
-   paint on dark asphalt is the strongest example of a bright high-contrast
-   patch that a road can contain. The segmenter cannot separate paint from a
-   cavity on those features. Geometry can: a cavity does not come in a row of
-   evenly spaced parallel bars.
-"""
+"""Geometric road marking and zebra crossing analyzer."""
 
 import numpy as np
 
-# A bar must be at least this elongated. Zebra stripes are long rectangles;
-# a pothole's highlight is not.
 MIN_ASPECT = 1.6
-# Bars are grouped when their orientations agree to within this many degrees.
+
 ORIENTATION_TOLERANCE_DEG = 25.0
-# Below this many parallel bars it is a lane line, a patch or a reflection -
-# not a crossing. Three is the minimum that establishes a repeating pattern.
+
 MIN_BARS = 3
-# Spacing between adjacent bars must be REGULAR - but regular does not mean
-# constant, and assuming it did was the first version's mistake.
+
 MAX_SPACING_VARIATION = 0.65
 MAX_RATIO_VARIATION = 0.55
-# How much of a bar's bounding box must be paint. Measured on the 19 zebra, 14
-# waterlogging and 90 defect photographs on disk (scripts: see CHANGES.md):
-#   0.35 -> zebras found 4/19, puddles fired 2/14, defect photos fired 8/90
-#   0.55 -> zebras found 2/19, puddles fired 0/14, defect photos fired 3/90
-# 0.55 removed the puddle false alarms but halved an already-low recall and
-# broke the "better than nothing" recall test, so the documented 0.35 stands.
-# With 19 positives no threshold separates worn paint from puddle glare; more
-# zebra data is the fix, not a tighter constant.
+
 MIN_SOLIDITY = 0.35
 
 
@@ -82,7 +48,7 @@ def _bar_candidates_from_mask(binary_mask, roi_y0, min_area):
     except Exception:
         from collections import deque
         h_roi, w_roi = binary_mask.shape
-        # Pure-NumPy 3x3 binary opening (erosion then dilation) to separate bars without cv2
+
         eroded = np.zeros_like(binary_mask)
         eroded[1:-1, 1:-1] = (
             binary_mask[1:-1, 1:-1] & binary_mask[:-2, 1:-1] & binary_mask[2:, 1:-1] &
@@ -158,7 +124,6 @@ def _all_regular_groups(bars):
         if len(same) < MIN_BARS:
             continue
 
-        # Spatial connected components: cluster bars belonging to the same crosswalk
         adj = {i: [] for i in range(len(same))}
         for i in range(len(same)):
             for j in range(i + 1, len(same)):
@@ -222,7 +187,6 @@ def _all_regular_groups(bars):
 
             stripes.sort(key=lambda s: s[key])
 
-            # Split stripes if there are large spatial breaks (> 2.6 * stripe dimension)
             sub_clusters = []
             cur_sub = [stripes[0]]
             for k in range(len(stripes) - 1):
@@ -392,7 +356,6 @@ def paint_mask(image_rgb, zebra):
         x1 = min(W, b["x"] + b["w"] + pad_x)
         mask[y0:y1, x0:x1] = True
     return mask
-
 
 
 def discard_bars_in_defects(zebra, defect_boxes):

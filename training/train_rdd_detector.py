@@ -1,46 +1,4 @@
-"""
-Train a YOLOv8 road-damage detector on RDD2022 India, score it once on the
-held-out photographs, and export it to ONNX for CPU serving.
-
-    pip install ultralytics
-    python -m training.train_rdd_detector                    # T4: ~45-70 min
-    python -m training.train_rdd_detector --epochs 2 --fraction 0.05 --model yolov8n.pt   # smoke
-
-Multi-country: --data-dir datasets/rdd2022_world --tag world (scripts/prepare_rdd2022_world.py) trains on
-RDD2022 India plus Japan, Czech, United States and China. Its outputs are written under their own names
-(damage_rdd2022_world.*, road_damage_detector_world_report.json), so the served India-only detector is never
-overwritten here; scripts/select_rdd_detector.py decides between them on India validation photographs. In that
-layout the serving confidence and the reported "validation" use India's validation photographs
-(images/valid_india) and "test" is India's test photographs - the same ones the India-only model was scored on.
-
-Long runs: Ultralytics saves runs/rdd_india/weights/last.pt after every epoch.
-If a session ends mid-training, running the same command again resumes from it
-(link runs/rdd_india to Google Drive so it survives the session). --fresh
-ignores an unfinished run and starts again.
-
-Data
-----
-datasets/rdd2022_india, written by scripts/prepare_rdd2022_voc.py from the
-official CRDDC 2022 release: labelled photographs split 70/15/15 BY PHOTOGRAPH
-(seed 42) into train / valid / test, boxes for D00 longitudinal crack, D10
-transverse crack, D20 alligator crack and D40 pothole. The official RDD2022
-test split has no public labels, so "test" here is the held-out 15%.
-
-Protocol
---------
-* Model weights are chosen on `valid` only (Ultralytics keeps best.pt by
-  validation fitness); `test` is scored exactly once, after training.
-* The confidence threshold used when serving is chosen on `valid` too: the one
-  that maximises F1 there. It is not tuned on test.
-* Reported: mAP@0.5, mAP@0.5:0.95, precision, recall, and AP@0.5 per class.
-
-Outputs
--------
-    checkpoints/damage_rdd2022_india.onnx      (named so the COCO detector's
-                                                 *detector*.onnx glob never picks it up)
-    checkpoints/damage_rdd2022_india.json      class names, input size, threshold, test metrics
-    checkpoints/road_damage_detector_report.json
-"""
+"""Train road damage bounding-box detector on RDD2022."""
 
 import argparse
 import json
@@ -82,7 +40,7 @@ def _best_conf_on_valid(m):
     """Confidence that maximises mean F1 over classes on the validation split."""
     try:
         import numpy as np
-        f1 = np.asarray(m.box.f1_curve)          # (n_classes, 1000) over confidence 0..1
+        f1 = np.asarray(m.box.f1_curve)
         if f1.ndim == 2 and f1.shape[1] > 1:
             xs = np.linspace(0, 1, f1.shape[1])
             return round(float(xs[int(np.argmax(f1.mean(0)))]), 3)
@@ -142,13 +100,11 @@ def main(argv=None):
                  f"(or prepare_rdd2022_world.py); run this in the same session.")
     from ultralytics import YOLO
 
-    # Absolute-path dataset file, so the result does not depend on the working directory.
     yaml_path = os.path.join(data_dir, "data_abs.yaml")
     with open(yaml_path, "w") as fh:
         fh.write(f"path: {data_dir}\ntrain: images/train\nval: images/valid\ntest: images/test\n"
                  f"nc: {len(CLASS_NAMES)}\nnames: [{', '.join(CLASS_NAMES)}]\n")
-    # Multi-country layout: India's validation photographs choose the confidence and are reported as
-    # "validation"; India's test photographs are "test". Single-country: the usual valid/test.
+
     eval_yaml = yaml_path
     if os.path.isdir(os.path.join(data_dir, "images", "valid_india")):
         eval_yaml = os.path.join(data_dir, "india_eval_abs.yaml")
@@ -174,7 +130,7 @@ def main(argv=None):
             YOLO(last_pt).train(resume=True)
         except Exception:
             if unfinished(last_pt):
-                raise                           # a real failure mid-training: never evaluate a half-trained model
+                raise
             print("  the run had already finished; evaluating its best.pt")
         resumed = True
     elif state == "finished" and os.path.exists(best_pt):

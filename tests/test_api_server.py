@@ -1,17 +1,4 @@
-"""
-Integration tests for api/server.py - the REST API the eight-page site calls.
-
-Before this file the server had 0% test coverage: CI only curled /health and
-checked that pages returned 200. These tests start the real server on an
-ephemeral port and drive it over HTTP, so they exercise routing, JSON
-serialisation, validation, and the model stack behind each endpoint together.
-
-Isolation: ROAD_SHIELD_WRITABLE_DIR is pointed at a temporary directory BEFORE
-api.server is imported, so work orders, sightings and feedback written here
-never reach the real fleet ledger in checkpoints/road_shield.db.
-
-Run alone:  python -m unittest tests.test_api_server -v
-"""
+"""Unit and integration tests for Road-Shield API server endpoints."""
 
 import base64
 import glob
@@ -33,13 +20,12 @@ if ENGINE_ROOT not in sys.path:
 
 _TMP = tempfile.mkdtemp(prefix="road_shield_api_test_")
 os.environ["ROAD_SHIELD_WRITABLE_DIR"] = _TMP
-os.environ["ROAD_SHIELD_MLOPS_DIR"] = os.path.join(_TMP, "mlops_store")   # never the repository's model registry
+os.environ["ROAD_SHIELD_MLOPS_DIR"] = os.path.join(_TMP, "mlops_store")
 os.environ["ROAD_SHIELD_MLFLOW"] = "0"
-# Demo fixtures are opt-in since they are invented reports; these tests use
-# them to check deduplication end to end, so they switch them on explicitly.
+
 os.environ["ROAD_SHIELD_SEED_DEMO"] = "1"
 
-import api.server as srv  # noqa: E402  (must follow the env override)
+import api.server as srv
 
 
 def _first_image(folder):
@@ -75,7 +61,6 @@ class APIServerTest(unittest.TestCase):
             pass
         shutil.rmtree(_TMP, ignore_errors=True)
 
-    # -- helpers -----------------------------------------------------------
     def _req(self, method, path, body=None, raw=None, headers=None, timeout=120):
         data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
         req = urllib.request.Request(self.base + path, data=data, method=method,
@@ -94,8 +79,6 @@ class APIServerTest(unittest.TestCase):
         code, _h, payload = self._req("POST", path, body if body is not None else {}, **kw)
         return code, json.loads(payload)
 
-    # -- isolation ---------------------------------------------------------
-    # -- operations (api/ops.py) -------------------------------------------
     def test_metrics_endpoint_is_prometheus_text(self):
         self.get_json("/api/v1/health")
         code, headers, body = self._req("GET", "/metrics")
@@ -121,7 +104,7 @@ class APIServerTest(unittest.TestCase):
         conn.putrequest("POST", "/api/v1/pipeline/deep-audit")
         conn.putheader("Content-Type", "application/json")
         conn.putheader("Content-Length", str(srv.ops.MAX_BODY_BYTES + 1))
-        conn.endheaders()                                  # no body sent: the server must not wait for it
+        conn.endheaders()
         r = conn.getresponse()
         self.assertEqual(r.status, 413)
         self.assertIn(b"larger than", r.read())
@@ -146,7 +129,6 @@ class APIServerTest(unittest.TestCase):
         self.assertTrue(srv.defect_store.db_path.startswith(_TMP))
         self.assertFalse(srv.defect_store.db_path.startswith(srv.CKPT_DIR))
 
-    # -- pages and static --------------------------------------------------
     def test_every_site_page_serves_html(self):
         for page in ("/", "/inspect", "/video", "/corridor", "/works", "/models", "/data", "/system"):
             code, headers, body = self._req("GET", page, headers={"Accept": "text/html"})
@@ -187,7 +169,7 @@ class APIServerTest(unittest.TestCase):
         old = srv.PUBLIC
         srv.PUBLIC = True
         try:
-            # files and folders that exist on every OS, all outside datasets/
+
             server_file = os.path.join(srv.ENGINE_ROOT, "api", "server.py")
             reqs = os.path.join(srv.ENGINE_ROOT, "requirements.txt")
             api_dir = os.path.join(srv.ENGINE_ROOT, "api")
@@ -198,7 +180,7 @@ class APIServerTest(unittest.TestCase):
                                ("/api/v1/pipeline/deep-audit-batch", {"directory_path": api_dir})):
                 code, r = self.post_json(path, body)
                 self.assertEqual(code, 403, f"{path} {body}: {r}")
-            # the bundled photographs stay usable, and base64 is never mistaken for a path
+
             self.assertIsNone(srv._server_path_refused({"image_path": img} if img else {}))
             self.assertIsNone(srv._server_path_refused({"image_base64": "aGVsbG8="}))
         finally:
@@ -237,7 +219,6 @@ class APIServerTest(unittest.TestCase):
         code, _h, _ = self._req("POST", "/api/v1/does-not-exist", {})
         self.assertNotEqual(code, 200)
 
-    # -- read-only status endpoints the frontend calls ---------------------
     def test_frontend_get_endpoints_return_json(self):
         for path in ("/api/v1/health", "/api/v1/calibration/profiles", "/api/v1/claims",
                      "/api/v1/datasets/benchmarks", "/api/v1/fleet/telemetry",
@@ -261,13 +242,12 @@ class APIServerTest(unittest.TestCase):
     def test_ledger_was_seeded_and_deduplicated(self):
         _c, led = self.get_json("/api/v1/ledger/defects")
         blob = json.dumps(led)
-        # five demo reports, two of which are 5 m apart and must merge
+
         self.assertIn("Pothole Cavity", blob)
         self.assertEqual(len(srv.fleet_dedup_engine.defect_registry), 4)
 
     def test_fresh_edge_export_succeeds(self):
-        # /models/registry reuses files already on disk, which hid an exporter
-        # crash; this route always exports from scratch into the writable dir.
+
         code, r = self.get_json("/api/v1/models/export-edge-spec")
         self.assertEqual(code, 200, str(r)[:300])
         self.assertIn("Model_PCI_ASTM_D6433", r["models_exported"])
@@ -281,7 +261,6 @@ class APIServerTest(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertIsNone(r["gps_coordinates"])
 
-    # -- work orders and the tamper seal -----------------------------------
     def test_work_order_round_trip_and_tamper_detection(self):
         code, wo = self.post_json("/api/v1/dispatch/work-order", {
             "corridor_id": "NH-44", "latitude": 28.7, "longitude": 77.1,
@@ -311,7 +290,6 @@ class APIServerTest(unittest.TestCase):
             ids.add(wo["work_order_id"])
         self.assertEqual(len(ids), 5, "work-order IDs collided for orders issued in the same second")
 
-    # -- nothing is invented for a missing field (October 2026 audit) -------
     def test_work_order_refuses_missing_measurements(self):
         code, r = self.post_json("/api/v1/dispatch/work-order", {"corridor_id": "NH-48"})
         self.assertEqual(code, 400, "a work order was sealed for an invented defect")
@@ -319,7 +297,7 @@ class APIServerTest(unittest.TestCase):
             self.assertIn(f, r["error"])
 
     def test_work_order_accepts_the_field_names_the_site_sends(self):
-        # web/works.html posts defect_class / area_m2 / pci; these used to be ignored
+
         code, wo = self.post_json("/api/v1/dispatch/work-order", {
             "defect_class": "Crack (Longitudinal / Transverse / Alligator)", "area_m2": 0.7,
             "depth_cm": 2.0, "pci": 55})
@@ -362,7 +340,7 @@ class APIServerTest(unittest.TestCase):
             "bus_id": "B-1", "lat": 12.97161, "lon": 77.59461, "defect_class": "Pothole Cavity",
             "severity_pci": 40, "area_m2": 0.9})
         self.assertEqual(code, 200, r)
-        # lands on the seeded pothole, so it merges rather than growing the ledger
+
         self.assertEqual(r["action"], "DEDUPLICATED_AND_UPDATED")
 
     def test_privacy_redaction_endpoint(self):
@@ -383,7 +361,6 @@ class APIServerTest(unittest.TestCase):
             self.assertIn(code, (200, 400), body)
             self.assertFalse(data.get("is_valid", False), body)
 
-    # -- deterministic engineering engines ---------------------------------
     def test_pci_is_monotone_in_damage(self):
         _c, clean = self.post_json("/api/v1/pci/predict", {})
         _c, bad = self.post_json("/api/v1/pci/predict", {
@@ -429,7 +406,6 @@ class APIServerTest(unittest.TestCase):
         self.assertEqual(r["data_source"], "caller_supplied_real_series")
         self.assertAlmostEqual(r["peak_delta_z_ms2"], 0.0, places=3)
 
-    # -- vision ------------------------------------------------------------
     def test_vision_requires_an_image(self):
         code, r = self.post_json("/api/v1/vision/analyze-custom-photo", {})
         self.assertEqual(code, 400)
@@ -461,7 +437,7 @@ class APIServerTest(unittest.TestCase):
         code, r = self.post_json("/api/v1/vision/analyze-custom-photo",
                                  {"image_base64": base64.b64encode(b"definitely not a jpeg").decode()})
         if code == 200:
-            # the pipeline may reject at its own gate; it must not claim a defect
+
             blob = json.dumps(r).lower()
             self.assertTrue("reject" in blob or "invalid" in blob or "error" in blob or "fail" in blob,
                             blob[:300])
@@ -484,7 +460,6 @@ class APIServerTest(unittest.TestCase):
         code, _r = self.post_json("/api/v1/audit/verify-repair", {"before_image_base64": "x"})
         self.assertEqual(code, 400)
 
-    # -- video -------------------------------------------------------------
     def test_video_endpoints_validate_paths(self):
         code, _r = self.post_json("/api/v1/video/ingest", {})
         self.assertEqual(code, 400)
@@ -512,17 +487,16 @@ class APIServerTest(unittest.TestCase):
         w.release()
         code, probe = self.post_json("/api/v1/video/probe", {"video_path": clip})
         self.assertEqual(code, 200, probe)
-        self.assertIn("12", json.dumps(probe))  # 12 frames written
+        self.assertIn("12", json.dumps(probe))
 
         code, r = self.post_json("/api/v1/video/ingest",
                                  {"video_path": clip, "bus_id": "TEST-BUS", "max_frames": 4},
                                  timeout=300)
         self.assertEqual(code, 200, str(r)[:400])
-        # No GPS track was supplied, so no location may be invented
+
         blob = json.dumps(r).lower()
         self.assertNotIn("12.9716", blob)
 
-    # -- feedback ----------------------------------------------------------
     def test_active_feedback_is_logged_to_isolated_dir(self):
         img = _first_image("02_kaggle_pothole_600")
         if not img:
@@ -537,7 +511,6 @@ class APIServerTest(unittest.TestCase):
         self.assertIn(code, (200, 400))
 
 
-    # -- Priority Index, sealed bus packets, live feed ----------------------
     def _report(self, bus, lat, lon, cls="Pothole Cavity", pci=40, area=1.2, depth=None):
         body = {"bus_id": bus, "lat": lat, "lon": lon, "defect_class": cls, "severity_pci": pci, "area_m2": area}
         if depth is not None:
@@ -768,10 +741,7 @@ class APIServerTest(unittest.TestCase):
         srv.edge_ingest.key = key
         try:
             now = int(_time.time())
-            # One reading at each of seven daytime IST hours, each the most recent
-            # occurrence within the last 24 h. Spacing them back from "now" made the
-            # test fail when run at night (23:00-05:00 IST): night hours carry too
-            # little of the daily profile to be counted, leaving 5 of the 6 needed.
+
             ist = 5.5 * 3600
 
             def last_ist_hour(hour):

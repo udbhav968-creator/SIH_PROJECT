@@ -1,23 +1,4 @@
-"""
-Large-Scale Deep Inference Pipeline Testing & Auto-Training Suite.
-==================================================================
-Scalable end-to-end evaluation capable of testing 1,000s of real road defect images
-across global and Indian pavement datasets, verifying multi-defect instance bounding boxes
-(up to 100 holes / cracks per image) and tight zebra crossing fitting.
-
-Features:
-- Cryptographic SHA-256 deduplication ensuring distinct authentic road photographs.
-- Multi-defect instance segmentation & bounding box tracking.
-- Automated self-evaluation quality gate:
-    If accuracy, false-alarm rate, or civil regression metrics fall below target floors,
-    the pipeline automatically triggers re-training & calibration to self-heal.
-- Generates detailed JSON audit reports at checkpoints/large_scale_deep_pipeline_report.json.
-
-Usage:
-    python -m tests.test_deep_pipeline_large_scale --count 50
-    python -m tests.test_deep_pipeline_large_scale --count 500
-    python -m tests.test_deep_pipeline_large_scale --count 1000 --auto-train
-"""
+"""Large-scale batch inference tests for pipeline robustness."""
 
 import argparse
 from collections import Counter
@@ -55,7 +36,6 @@ def harvest_large_scale_images(target_count=100):
     seen_hashes = set()
     harvested = []
 
-    # Prioritized folders representing real distress and controls
     folders = [
         "02_kaggle_pothole_600",
         "03_crack500_fatigue",
@@ -74,7 +54,7 @@ def harvest_large_scale_images(target_count=100):
             continue
 
         raw_files = _list_photos(folder_path)
-        # Filter augmented variants so we test on authentic base photographs
+
         base_files = [f for f in raw_files if not _AUG_PREFIX_RE.match(os.path.basename(f))]
         import random
         rng = random.Random(42)
@@ -140,7 +120,6 @@ def run_benchmark(target_count=50, auto_train=True):
     print(f"ROAD-SHIELD: LARGE-SCALE DEEP INFERENCE BENCHMARK ({target_count} IMAGES)")
     print("=" * 110)
 
-    # 1. Harvest distinct real images
     staged = harvest_large_scale_images(target_count)
     control = create_non_pavement_control()
     staged.append(control)
@@ -148,7 +127,6 @@ def run_benchmark(target_count=50, auto_train=True):
     print(f"Successfully staged {len(staged)} test frames ({len(staged)-1} real + 1 control).")
     print(f"Deduplication: 100% unique SHA-256 cryptographic hashes verified.")
 
-    # 2. Initialize inference pipeline
     print("Initializing DeepInferencePipeline (models + segmenter + geometry + fusion)...")
     init_t0 = time.time()
     pipeline = DeepInferencePipeline()
@@ -217,13 +195,11 @@ def run_benchmark(target_count=50, auto_train=True):
         except Exception as e:
             print(f"{i:<4} | {src:<22} | {fname[:20]:<20} | {h_short:<8} | ERROR: {str(e)[:30]}")
 
-    # Remove temporary control image
     if os.path.exists(control["path"]):
         os.remove(control["path"])
 
     print("-" * 110)
 
-    # Calculate summary metrics
     real_results = [r for r in results if not r.get("is_control")]
     ctrl_results = [r for r in results if r.get("is_control")]
 
@@ -256,7 +232,6 @@ def run_benchmark(target_count=50, auto_train=True):
         pct = (cnt / len(real_results)) * 100
         print(f"   * {cls}: {cnt} ({pct:.1f}%)")
 
-    # Save forensic report
     report_path = os.path.join(ENGINE_ROOT, "checkpoints", "large_scale_deep_pipeline_report.json")
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump({
@@ -276,7 +251,6 @@ def run_benchmark(target_count=50, auto_train=True):
     print(f"\nPersisted complete forensic report to: {report_path}")
     print("=" * 110)
 
-    # Auto-Train trigger check
     needs_train = False
     if clean_false_alarm_rate > 0.05:
         print("[FAIL] Clean road false alarm rate exceeds 5.0% threshold!")

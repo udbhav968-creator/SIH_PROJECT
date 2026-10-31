@@ -1,24 +1,4 @@
-"""
-A fingerprint of the data and the model a measurement was taken with.
-
-Why this file exists
---------------------
-A test asserted `found >= 5` out of 8 photographs. The 5 was measured here,
-on a machine holding 489 photographs in datasets/02_kaggle_pothole_600 and a
-segmenter calibrated to {crack 0.55, pothole 0.35}. It then ran on a machine
-holding 1,404 photographs in that folder and a segmenter calibrated to
-{crack 0.5, pothole 0.2}. The seeded sample drew eight photographs with ZERO
-overlap with the eight the number came from, and the failure message blamed
-the proposal filter.
-
-Nothing was wrong with the build. The constant was a measurement of one
-corpus and one model, written down as if it were a property of the code.
-
-So a recorded figure now carries a fingerprint of what produced it, and a
-test that finds a fingerprint it does not match refuses to judge rather than
-reporting a failure it cannot support. Two machines legitimately disagree;
-the mistake is letting one of them assert a number about the other.
-"""
+"""Image hash and perceptual fingerprinting utilities."""
 
 import glob
 import hashlib
@@ -51,10 +31,7 @@ def corpus_fingerprint(folders):
             for p in glob.glob(os.path.join(ENGINE_ROOT, "datasets", f, "**", "*.jpg"),
                                recursive=True)
             if "_label_conflicts" not in p)
-        # The corpus is what the measurement actually drew from. Fingerprinting
-        # the raw folder would let a change to the exclusion policy pass
-        # unnoticed, and the baseline would then describe a population that no
-        # longer exists.
+
         files, _ = filter_paths(files)
         out[f] = {"count": len(files), "digest": _sha(files)}
     return out

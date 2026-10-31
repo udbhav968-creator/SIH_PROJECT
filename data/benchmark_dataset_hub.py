@@ -1,18 +1,4 @@
-"""
-Benchmark dataset inventory - reports what this project actually has on disk.
-
-The earlier version of this module hard-coded a catalog of "canonical
-benchmark datasets" (RDD2022, Kaggle Pothole-600, CRACK500, Mobile-IMU,
-"Hard Negatives Repo") with invented sample counts (45000, 25000, 15000,
-30000, 10000 - none of them real) and shipped a set of "load_*" methods
-that generated pure Gaussian-noise feature vectors nudged per class,
-labeled with those datasets' real names. This rewrite reports real counts
-off disk instead - see data/image_dataset.py (photo counts) and the real
-.npz files under datasets/04_mobile_imu_telemetry_100hz (IMU window
-counts) - and drops the fabricated feature generators, since nothing in
-this project's real training scripts (training/train_vision.py,
-training/train_imu.py) uses them; they load their data directly from disk.
-"""
+"""Benchmark dataset loader for pavement defect evaluations."""
 import os
 import numpy as np
 

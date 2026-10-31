@@ -1,34 +1,4 @@
-"""
-Deep inference pipeline: orchestrates the real models in this project into
-one end-to-end road-photo audit.
-
-Stages:
-1. Decode the input image and standardize it to 640x480.
-2. Texture gatekeeper - rejects non-pavement photos via a real luminance
-   standard-deviation check (rolled asphalt has visible grain; screenshots,
-   walls, and flat graphics don't).
-3. Classical CV region proposals (CVCavityDetector): gradient/darkness grid
-   clustering for candidate distress regions, OpenCV's pretrained HOG+SVM
-   detector for pedestrians. Neither step uses a trained model - they're
-   real, standard pre-deep-learning CV techniques.
-4. VisionDistressNet classifies each candidate crop (a real scikit-learn
-   model trained on the project's labeled photos - see
-   training/train_vision.py for its honest, leakage-free held-out accuracy).
-5. IPMHomographyEngine converts pixel boxes to real ground-plane area via
-   pinhole-camera geometry, and prices asphalt tonnage from MoRTH Section
-   500 material rates.
-6. IMUShockClassifier scores a real accelerometer window when the caller
-   supplies one. If no real IMU reading is available, this pipeline reports
-   that plainly instead of fabricating one - the previous version invented
-   an IMU signal by transforming the vision model's own output, which
-   defeated the entire point of having two independent sensors agree.
-7. BayesianFusionGate combines vision + IMU evidence (log-odds).
-8. PavementConditionIndexEngine computes a real ASTM D6433-style PCI from
-   the frame's actual detected distress, not a placeholder score.
-9. PavementDeteriorationForecaster projects area growth over time.
-10. MoRTHDispatchAgent issues a SHA-256-sealed work order for confirmed
-    structural distress.
-"""
+"""Deep multimodal road distress inspection and geometry inference pipeline."""
 import sys
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -56,12 +26,6 @@ from models.automotive_rl_policy_agent import AutomotiveADASPolicyAgent
 from models.automotive_telematics_engine import AutomotiveTelematicsEngine
 from models.urban_traffic_net import UrbanTrafficNet, PCU_WEIGHTS, IRC_STANDARDS as TRAFFIC_IRC_STANDARDS
 
-# Classes that represent an actual surface footprint (crack, pothole,
-# waterlogging) get real IPM-derived area/depth/tonnage math. Classes 4-6
-# (missing zebra crossing, missing divider, damaged sign) are presence/
-# absence findings - there's no "how many square meters of missing paint"
-# to compute, so we report the detection and its IRC remediation reference
-# without inventing an asphalt-repair cost for them.
 AREA_CLASSES = {1, 2, 3}
 DISTRESS_CLASSES = {1, 2, 3, 4, 5, 6}
 
@@ -74,20 +38,11 @@ VEHICLE_CLASS_MAP = {
     "bicycle": "Two-Wheeler",
 }
 
-# There is no rut-bar or profilometer in this project, so rutting/IRI are
-# reported as a documented proxy correlated with detected cavity severity,
-# not a real physical measurement. This mirrors the honesty note already in
-# pci_regressor_net.py for the deduct-value curves themselves.
-ASSUMED_FRAME_PAVEMENT_AREA_M2 = 25.0  # rough visible-pavement extent in one dashcam frame, for density-% estimates
-
+ASSUMED_FRAME_PAVEMENT_AREA_M2 = 25.0
 
 
 def _markings_outside_defects(markings, detections, frame_cls=None):
-    # Same veto as the website engine (api/vercel_inference.py): when the whole frame is
-    # confidently a crack, pothole or waterlogging scene (>= 0.60), bright "bars" are taken
-    # to be glare or water, not paint. Measured through audit_image() with the box rule
-    # below: real crossings 4/19 -> 4/19, flooded streets 1/14 -> 0/14, and on 40 pothole
-    # photographs where the detector fires, false crossings 29/40 -> 1/40.
+
     if markings and markings.get("found") and isinstance(frame_cls, dict):
         name = str(frame_cls.get("class_name", ""))
         conf = float(frame_cls.get("confidence") or 0.0)
@@ -107,8 +62,6 @@ def _markings_outside_defects(markings, detections, frame_cls=None):
 class DeepInferencePipeline:
     """Wires the project's real models together into one road-photo/telemetry audit."""
 
-    # Typical values for the deterioration forecast when the caller supplies
-    # none. Reported back as assumptions, never as measurements.
     DEFAULT_TRAFFIC_ESAL = 7500
     DEFAULT_RAIN_MM = 650.0
     DEFAULT_PAVEMENT_AGE_YR = 3.5
@@ -118,20 +71,12 @@ class DeepInferencePipeline:
 
         self.cv_detector = CVCavityDetector(target_size=(640, 480))
 
-        # Prefer the fine-tuned CNN when its weights are on disk and a runtime
-        # (ONNX Runtime or PyTorch) is installed; otherwise fall back to the
-        # HOG/LBP + SVM baseline. Which one answered is reported downstream.
         from models.deep_vision_net import load_best_vision_model
         self.vision_model, self.vision_backend = load_best_vision_model(self.ckpt_dir, verbose=False)
 
-        # COCO-pretrained object detector (people, vehicles, signs). Optional:
-        # when its weights or onnxruntime are absent the stage is skipped and
-        # the pipeline says so, rather than guessing what is in frame.
         from models.onnx_object_detector import ONNXObjectDetector
         self.object_detector = ONNXObjectDetector(checkpoints_dir=self.ckpt_dir)
-        # Road-damage boxes from the YOLOv8 model trained on RDD2022 India, when
-        # it has been trained (training/train_rdd_detector.py). Independent
-        # evidence shown beside the mask; it does not change area or cost.
+
         try:
             from models.road_damage_detector import RoadDamageDetector
             self.damage_detector = RoadDamageDetector(checkpoints_dir=self.ckpt_dir)
@@ -147,26 +92,17 @@ class DeepInferencePipeline:
         from models.imu_shock_classifier import load_served_imu_model
         self.imu_model, self.imu_backend = load_served_imu_model(self.ckpt_dir)
         if self.imu_model is None:
-            self.imu_model = IMUShockClassifier()  # not ready; the IMU stage reports that plainly
+            self.imu_model = IMUShockClassifier()
             print("[WARN] IMU model not found - run training/train_imu.py first.")
 
-        # Geometry comes from a calibration profile rather than constants. With
-        # no profile on disk this resolves to the historical assumed mount and
-        # says so in every result, instead of presenting an assumption as a
-        # measurement. See models/camera_calibration.py.
         from models.camera_calibration import describe as describe_calibration, resolve as resolve_calibration
         self._resolve_calibration = resolve_calibration
         self._describe_calibration = describe_calibration
         self.calibration, self.calibration_provenance = resolve_calibration(None)
         self.ipm_engine = IPMHomographyEngine.from_calibration(self.calibration)
 
-        # Pixel-level segmentation, when a model has been trained. Without it
-        # the older bounding-box area is used and the result is labelled as
-        # such - a box around a diagonal crack overstates its area by an order
-        # of magnitude, so which method answered is not a detail.
         try:
-            # The U-Net when checkpoints/segmenter_selection.json chose it and it
-            # loads; otherwise the pixel classifier, exactly as before.
+
             from models.unet_segmenter import load_best_segmenter
             self.segmenter = load_best_segmenter()
             if self.segmenter.is_ready:
@@ -184,7 +120,7 @@ class DeepInferencePipeline:
         self.rl_agent = AutomotiveADASPolicyAgent()
         self.telematics = AutomotiveTelematicsEngine(checkpoints_dir=self.ckpt_dir)
         self.traffic_net = UrbanTrafficNet()
-        # Is the photograph one these models can be trusted on at all? (models/ood_guard.py)
+
         try:
             from models.ood_guard import OODGuard
             self.input_guard = OODGuard(checkpoints_dir=self.ckpt_dir)
@@ -193,8 +129,8 @@ class DeepInferencePipeline:
         except Exception as e:
             print(f"[WARN] input guard unavailable: {e}")
             self.input_guard = None
-        self.audit_hooks = []        # fn(img, result, source, projection, latency_ms): monitoring, active learning
-        self.model_versions = {}     # set by the server from the model registry
+        self.audit_hooks = []
+        self.model_versions = {}
         try:
             from models.dan_dag_network import DANDAGNetwork
             self.dan_dag_net = DANDAGNetwork(
@@ -205,9 +141,6 @@ class DeepInferencePipeline:
             print(f"[WARN] DAN-DAG network unavailable: {e}")
             self.dan_dag_net = None
 
-    # ------------------------------------------------------------------
-    # Single-image audit
-    # ------------------------------------------------------------------
     def audit_image(self, image_input, corridor_id="NH-44", latitude=None, longitude=None, **kwargs):
         """
         Runs the full pipeline on one image (see _audit_core), after the input guard (models/ood_guard.py)
@@ -224,8 +157,7 @@ class DeepInferencePipeline:
         guard = getattr(self, "input_guard", None)
         if guard is not None and guard.is_ready:
             try:
-                # the guard's limits and the monitoring reference were set on uploads as decoded here (640x480);
-                # bus and video frames arrive as arrays at camera resolution, so they are judged at the same size
+
                 gimg = img
                 if img.shape[0] != self.cv_detector.target_h or img.shape[1] != self.cv_detector.target_w:
                     from PIL import Image as _Image
@@ -298,15 +230,10 @@ class DeepInferencePipeline:
         stage below for what happens when it's omitted.
         """
         t0 = time.time()
-        # No location is ever invented. A photograph without GPS is reported
-        # with lat/lng = None and any work order is held, not placed at a
-        # default coordinate (this used to default to a point in Delhi).
+
         latitude = None if latitude is None else float(latitude)
         longitude = None if longitude is None else float(longitude)
-        # The deterioration forecast needs traffic, rainfall and age. When the
-        # caller does not know them, typical values are used and the response
-        # lists them under "modelling_assumptions", so a forecast built on
-        # assumed inputs cannot pass as one built on measured ones.
+
         self._assumed_inputs = {}
         if traffic_esal is None:
             traffic_esal = self.DEFAULT_TRAFFIC_ESAL
@@ -320,12 +247,10 @@ class DeepInferencePipeline:
         from models.dan_dag_network import DualAttentionModule, PipelineExecutionDAG
         dag_exec = PipelineExecutionDAG()
 
-        # STAGE 1: decode + standardize
         img_np = self.cv_detector.decode_image(image_input)
         H, W, _ = img_np.shape
         gray = 0.299 * img_np[:, :, 0] + 0.587 * img_np[:, :, 1] + 0.114 * img_np[:, :, 2]
 
-        # STAGE 2: texture gatekeeper (fast check before running heavy models)
         roi_start_y = int(H * 0.35)
         road_gray = gray[roi_start_y:, :]
         mean_intensity = float(np.mean(road_gray))
@@ -335,7 +260,6 @@ class DeepInferencePipeline:
             return self._reject_non_pavement(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
         dag_exec.mark("N0_scene_gate")
 
-        # DAN Spatial Self-Attention (PAM) over 8x8 road patch grid
         try:
             _, _, self._dan_frame_telemetry = DualAttentionModule.extract_spatial_attention(img_np)
         except Exception:
@@ -343,19 +267,11 @@ class DeepInferencePipeline:
         self._last_dag_trace = []
         dag_exec.mark("N2_dan_attention")
 
-        # Intrinsics are in pixels, so a profile calibrated at one resolution is
-        # simply wrong at another. Rescale per request.
         calib, provenance = self._resolve_calibration(device_id, width_px=W, height_px=H)
         ipm = IPMHomographyEngine.from_calibration(calib)
         self.ipm_engine = ipm
         self.calibration, self.calibration_provenance = calib, provenance
 
-        # Painted markings, found geometrically. Two uses: they are reported as
-        # objects in their own right, and their pixels are withheld from the
-        # defect proposals. Every false positive in the end-to-end measurement
-        # came from a zebra crossing or a divider - that is, from paint - and
-        # the segmenter cannot separate paint from a cavity on lightness and
-        # contrast alone, because on those features they are the same thing.
         try:
             from models import marking_detector
             self._markings = marking_detector.detect_zebra(
@@ -369,20 +285,13 @@ class DeepInferencePipeline:
         self._classifier_failures = 0
         self._classifier_last_error = None
 
-        # One segmentation pass for the whole frame; regions index into it.
         seg_out = None
         if getattr(self, "segmenter", None) is not None and self.segmenter.is_ready:
             try:
                 seg_out = self.segmenter.segment(img_np)
             except Exception as e:
                 print(f"[WARN] segmentation failed, falling back to box area: {e}")
-        # Semantic gate: keep segmenter pothole pixels only where the CNN
-        # classifier also sees a pothole (models/semantic_gate.py has the
-        # measurement). Runs with either CNN classifier - the frozen-embedding head
-        # or the fine-tuned network - since both expose predict_probabilities with
-        # the same class order. It used to check for the head by name only, so
-        # serving the fine-tuned CNN silently switched the gate off and zebra
-        # crossings came back as potholes. Skipped with the hand-crafted fallback.
+
         if (seg_out is not None
                 and getattr(self, "vision_backend", "") in ("cnn_embeddings", "deep_cnn")
                 and type(getattr(self, "segmenter", None)).__name__ != "UNetSegmenter"):
@@ -394,7 +303,6 @@ class DeepInferencePipeline:
         self._seg_out = seg_out
         dag_exec.mark("N3_pixel_segmenter", "COMPLETED" if seg_out else "SKIPPED")
 
-        # STAGE 3a: COCO object detection (people, vehicles, traffic control)
         scene_objects, scene_summary = [], {"available": False,
                                             "reason": "No detector weights - run scripts/fetch_detector.py"}
         if self.object_detector.is_ready:
@@ -405,7 +313,6 @@ class DeepInferencePipeline:
             except Exception as e:
                 scene_summary = {"available": False, "reason": f"detector error: {e}"}
 
-        # STAGE 3a': road-damage boxes (YOLOv8, RDD2022 India), when trained.
         damage_boxes, damage_summary = [], {"available": False,
                                             "reason": "not trained - training/train_rdd_detector.py"}
         dd = getattr(self, "damage_detector", None)
@@ -424,14 +331,8 @@ class DeepInferencePipeline:
                 damage_summary = {"available": False, "reason": f"damage detector error: {e}"}
         self._damage = (damage_boxes, damage_summary)
 
-        # STAGE 3a'': the classifier's opinion of the WHOLE frame. Reported beside
-        # the region result, never instead of it: area and cost come only from a
-        # measured region. Without it, a frame whose regions all fail the gates
-        # (or a machine whose segmenter will not load) reads as "Normal Road"
-        # even when the classifier is 90% sure it is looking at a pothole.
         frame_cls = self._frame_classification(img_np)
 
-        # STAGE 3b: region proposals (classical CV) + people + vehicles.
         person_boxes = [d for d in scene_objects if d["class_name"] == "person"]
         if person_boxes:
             pedestrians = [{
@@ -445,7 +346,6 @@ class DeepInferencePipeline:
         else:
             pedestrians = self.cv_detector.detect_pedestrians(img_np)
 
-        # Extract vehicles (Car, City Bus, Heavy Truck, Two-Wheeler) and compute IRC:106-1990 PCU congestion
         raw_vehicles = [d for d in scene_objects if d["class_name"] in VEHICLE_CLASS_MAP]
         vehicle_detections = [
             self._build_vehicle_entry(d, i + 1, H)
@@ -461,10 +361,6 @@ class DeepInferencePipeline:
         primary_vehicle = vehicle_detections[0] if vehicle_detections else None
         dag_exec.mark("N1_yolo_traffic")
 
-        # Withhold the upper 82% of detected vehicles and pedestrians from the
-        # road-defect segmentation mask so dark car tires, wheel arches, and
-        # windshields are not proposed as pavement cavities, while leaving the
-        # bottom 18% tire-to-road contact strip unmasked.
         obj_mask = np.zeros((H, W), dtype=bool)
         for obj in pedestrians:
             ox, oy, ow, oh = obj["bbox_pixels"]
@@ -475,18 +371,12 @@ class DeepInferencePipeline:
             obj_mask[max(0, oy):min(H, oy1), max(0, ox - 6):min(W, ox + ow + 6)] = True
         self._object_mask = obj_mask if obj_mask.any() else None
 
-        # Crack and pothole candidates come from the segmenter's mask; the
-        # brightness scan supplies everything the segmenter has no class for
-        # (waterlogging, signage, markings), water-filled / rim-fragmented
-        # cavities, and is the whole proposal stage when no segmenter is loaded.
         seg_boxes = self._segmentation_proposals(H, W)
         heuristic = self.cv_detector.extract_salient_regions(img_np, excluded_boxes=pedestrians)
         dag_exec.mark("N4_contour_proposer")
 
-        # STAGE 4: pedestrian entries
         detections = [self._build_pedestrian_entry(p) for p in pedestrians]
 
-        # STAGE 4/5: VisionDistressNet classification + IPM geometry per candidate region
         self._has_confirmed_seg_distress = False
         confirmed_seg_boxes = []
         for bbox in seg_boxes:
@@ -511,7 +401,6 @@ class DeepInferencePipeline:
                 if entry.get("is_distress"):
                     self._has_confirmed_seg_distress = True
 
-        # Deduplication, horizon glare rejection, and spatial proximity fusion for distress detections
         distress_dets = [d for d in detections if d.get("is_distress")]
         other_dets = [d for d in detections if not d.get("is_distress")]
 
@@ -620,8 +509,6 @@ class DeepInferencePipeline:
 
         detections = other_dets + filtered_distress
 
-        # Corridor-level hazard check (Waterlogging, Missing Zebra Crossing, Missing Road Divider, Damaged Sign)
-        # when no region-level distress was found.
         if not any(d.get("is_distress") for d in detections):
             scene_entry = self._classify_scene_fallback(img_np, gray, W, H, mean_intensity)
             if scene_entry is not None:
@@ -677,8 +564,6 @@ class DeepInferencePipeline:
         else:
             primary_distress = self._normal_road_entry()
 
-        # Prioritize road distress in primary_detection when a road defect is present so a bystander
-        # does not mask a pothole/crack, while keeping primary_pedestrian and all_pedestrians populated.
         primary = primary_distress if distress_detections else (
             primary_pedestrian if primary_pedestrian is not None else primary_distress
         )
@@ -690,18 +575,14 @@ class DeepInferencePipeline:
             primary_distress, primary_pedestrian, traffic_analysis,
         )
 
-        # STAGE 6: IMU shock correlation - only real telemetry, never fabricated
         imu_report, delta_z, p_imu, imu_available = self._run_imu_stage(imu_series)
 
-        # STAGE 7: Bayesian dual-sensor fusion
         p_vis = primary_distress.get("probabilities", {}).get("Pothole Cavity", 0.05)
         fusion_res = self.bayesian_gate.fuse(p_visual=p_vis, p_imu_shock=p_imu, delta_z_ms2=delta_z)
         fusion_res["imu_evidence_source"] = "real_sensor_window" if imu_available else "no_real_imu_data_neutral_prior"
 
-        # STAGE 8: real ASTM D6433-style PCI from this frame's actual detections
         pci_result, rutting_mm, iri_roughness = self._compute_pci(detections, pavement_age_yr)
 
-        # STAGE 9: deterioration forecast
         degrade_report = self.degrade_model.predict_lifecycle_roi(
             init_area_m2=max(0.5, primary_distress.get("surface_area_m2", 0.0)),
             depth_cm=max(3.0, primary_distress.get("depth_cm", 0.0)),
@@ -711,12 +592,10 @@ class DeepInferencePipeline:
         )
         dag_exec.mark("N7_astm_pci_hd4")
 
-        # MoRTH civil ledger (sum of real per-detection material costing)
         total_tonnage = round(float(sum(d.get("morth_tonnage_t", 0.0) for d in detections)), 3)
         total_repair_inr = round(float(sum(d.get("repair_cost_inr", 0.0) for d in detections)), 2)
         dag_exec.mark("N8_irc_compliance")
 
-        # STAGE 10/11: sealed work order for confirmed structural distress
         work_order = None
         if primary_distress.get("is_distress") and primary_distress.get("class_id") in AREA_CLASSES:
             work_order = self.dispatch_agent.generate_work_order(
@@ -814,19 +693,14 @@ class DeepInferencePipeline:
             "road_damage_boxes": damage_boxes,
             "road_damage_summary": damage_summary,
             "frame_classification": frame_cls,
-            # Paint cannot lie inside a pothole: bars inside a pothole / waterlogging box are
-            # sky reflections on water (models/marking_detector.discard_bars_in_defects).
+
             "markings": _markings_outside_defects(getattr(self, "_markings", {"found": False}), detections,
                                                   frame_cls),
-            # Non-zero means at least one region could not be classified, so the
-            # number of detections below is a floor, not a count.
+
             "classifier_failures": getattr(self, "_classifier_failures", 0),
             "classifier_last_error": getattr(self, "_classifier_last_error", None),
             "vision_backend": self.vision_backend,
-            # Provenance of the geometry. Any area or cost in this response was
-            # produced by this camera model; without a calibrated profile they
-            # are estimates from an assumed mount, and this block says so rather
-            # than letting the numbers imply otherwise.
+
             "camera_calibration": self._describe_calibration(self.calibration,
                                                              self.calibration_provenance),
             "segmentation": ({
@@ -843,9 +717,6 @@ class DeepInferencePipeline:
             "latency_ms": elapsed_ms,
         }
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
     def _build_pedestrian_entry(self, ped):
         """Wraps a real HOG+SVM pedestrian detection into the shared detection schema."""
         dist_m = ped["distance_meters"]
@@ -918,7 +789,7 @@ class DeepInferencePipeline:
         seg = getattr(self, "_seg_out", None)
         if seg is None:
             return None
-        seg_cls = {1: 1, 2: 2}.get(cls_id)      # crack -> 1, pothole -> 2
+        seg_cls = {1: 1, 2: 2}.get(cls_id)
         if seg_cls is None:
             return None
         mask = seg["mask"]
@@ -1015,11 +886,9 @@ class DeepInferencePipeline:
         if seg is None:
             return []
         mask = seg.get("mask_work")
-        if mask is None:                       # older cached segmenter output
+        if mask is None:
             mask = seg["mask"]
-        # Withhold painted pixels. Only the bars themselves are removed, never
-        # the asphalt between them - that is real road and can hold a real
-        # pothole.
+
         paint = getattr(self, "_paint_mask", None)
         if paint is not None:
             import cv2 as _cv2
@@ -1049,11 +918,11 @@ class DeepInferencePipeline:
         proba = {1: seg.get("proba_crack"), 2: seg.get("proba_pothole")}
 
         out = []
-        for seg_cls, kind in ((1, 1), (2, 2)):          # crack -> 1, pothole -> 2
+        for seg_cls, kind in ((1, 1), (2, 2)):
             binary = (mask == seg_cls).astype(_np.uint8)
             if not binary.any():
                 continue
-            # Connect adjacent mask gaps
+
             binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE,
                                       cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
             n, lab, st, _cen = cv2.connectedComponentsWithStats(binary, 8)
@@ -1148,26 +1017,8 @@ class DeepInferencePipeline:
             and comb_h <= int(H * 0.30)
         )
 
-    # A region must have at least this fraction of its pixels claimed by the
-    # segmenter before it is reported as that defect.
-    #
-    # 0.01 is measured, not chosen by feel. scripts/tune_detection_gate.py
-    # sweeps it against 36 clean photographs (zebra crossings, sound pavement,
-    # dividers) and 24 defect photographs, and prints BOTH error rates:
-    #
-    #   gate    false positives      defects still found
-    #   0.00    15/36  (41.7%)       24/24  (100.0%)   <- the bug
-    #   0.01    10/36  (27.8%)       23/24  ( 95.8%)   <- committed
-    #   0.06     6/36  (16.7%)       11/24  ( 45.8%)   halves detection
-    #   0.50     0/36  ( 0.0%)        0/24  (  0.0%)   silences everything
-    #
-    # Raising it further trades away far more detection than it buys in
-    # precision. 27.8% false positives is still high, and no threshold fixes
-    # that - the region proposals come from a brightness heuristic, and the
-    # real answer is a detector trained on the pothole bounding boxes already
-    # sitting in datasets/. That is a GPU job, and it is not done.
     SEGMENTER_GATE_FRACTION = 0.01
-    # Below this, the classifier is not confident enough to assert anything.
+
     MIN_REPORT_CONFIDENCE = 0.45
 
     def _region_defect_fraction(self, cls_id, bx, by, bw, bh, H, W):
@@ -1275,15 +1126,13 @@ class DeepInferencePipeline:
                         bx, by = ctx_x0, ctx_y0
                         bw, bh = ctx_x1 - ctx_x0, ctx_y1 - ctx_y0
         except Exception as e:
-            # One region's classification failed. The frame is still worth
-            # reporting, but the COUNT of detections in it is now unreliable,
-            # so the failure is recorded on the result rather than swallowed.
+
             self._classifier_failures = getattr(self, "_classifier_failures", 0) + 1
             self._classifier_last_error = str(e)
             return None
         cls_id = pred["class_id"]
         if cls_id == 0:
-            return None  # classifier says this region isn't actually a distress after all
+            return None
 
         if float(pred.get("confidence", 0.0)) < self.MIN_REPORT_CONFIDENCE:
             return None
@@ -1319,11 +1168,7 @@ class DeepInferencePipeline:
                     dan_res = self.dan_dag_net.predict_image(eval_crop)
                     self._last_dag_trace = dan_res.get("dag_trace", [])
                     consensus = (dan_res["class_id"] == cls_id) or (dan_res["dag_leaf_class_id"] == cls_id)
-                    # The reported confidence stays the classifier's own
-                    # probability. Agreement with DAN-DAG is recorded beside it
-                    # (consensus_agreement) but does not raise the number: the
-                    # old blend took max(p, 0.55p + 0.45q + 0.03), so it could
-                    # only ever go up and carried an unjustified +0.03.
+
                     dan_dag_info = {
                         "dan_dag_class_id": dan_res["class_id"],
                         "dan_dag_class_name": dan_res["class_name"],
@@ -1353,13 +1198,11 @@ class DeepInferencePipeline:
             _, ground_y = self.ipm_engine.pixel_to_ground(bx + bw / 2.0, by + bh / 2.0)
             dist_m = max(1.8, min(30.0, float(ground_y)))
 
-            # Area, by measurement where a mask exists and by estimate otherwise.
             box_m2 = float(self.ipm_engine.calculate_surface_area_sqm(bx, by, bw, bh))
             region_mask = self._region_mask(cls_id, bx, by, bw, bh, H, W)
             if region_mask is not None and region_mask.any():
                 raw_m2, area_diag = self.ipm_engine.mask_area_m2(region_mask)
-                # When water reflections or fragmented rim cause the mask to capture only a partial sliver (< 25% of box area),
-                # use the cavity geometric footprint so the entire cavity is costed under IRC:SP:83 / MoRTH Section 500
+
                 if cls_id == 2 and raw_m2 < 0.25 * box_m2:
                     area_m2 = round(float(max(raw_m2, box_m2 * 0.45)), 4)
                     area_diag["basin_floor_applied"] = True
@@ -1375,8 +1218,6 @@ class DeepInferencePipeline:
                                      "area - for a diagonal crack, by roughly an "
                                      "order of magnitude."}
 
-            # Depth: an estimate with an interval, never a function of the
-            # classifier's confidence. See models/depth_estimator.py.
             from models import depth_estimator
             if cls_id == 2:
                 depth_estimate = depth_estimator.pothole_depth(
@@ -1390,7 +1231,7 @@ class DeepInferencePipeline:
                 depth_estimate = depth_estimator.crack_depth(severity_ratio=extent)
             if depth_estimate is not None:
                 depth_cm = depth_estimate["depth_cm"]
-            # Waterlogging (3): area is meaningful (hazard extent), depth is not asphalt depth.
+
 
             oversized_box = len(bbox) > 9 and bool(bbox[9])
             box_fraction_here = (bw * bh) / float(max(1, W * H))
@@ -1408,14 +1249,12 @@ class DeepInferencePipeline:
                     "action": "Reported for manual survey.",
                 })
 
-            if cls_id in (1, 2) and area_plausible:  # only crack/pothole get an asphalt repair costing
+            if cls_id in (1, 2) and area_plausible:
                 materials = self.ipm_engine.estimate_repair_materials(area_m2, depth_cm=max(depth_cm, 1.0))
                 vol_m3 = materials["volume_m3"]
                 tonnage_t = materials["required_mass_tonnes"]
                 repair_cost_inr = round(materials["total_cost_inr"], 2)
-                # Cost is linear in both area and depth, so the depth interval
-                # maps straight onto a cost interval. Quoting a single rupee
-                # figure from an estimated depth is what loses an audit.
+
                 if depth_estimate is not None:
                     lo = self.ipm_engine.estimate_repair_materials(
                         area_m2, depth_cm=max(depth_estimate["depth_low_cm"], 1.0))
@@ -1441,8 +1280,7 @@ class DeepInferencePipeline:
             "surface_area_m2": round(area_m2, 3),
             "area_method": area_method,
             "area_diagnostics": area_diag,
-            # An explicit flag, not something a reader has to infer from a zero
-            # cost. A defect can be real and still not be priceable.
+
             "area_is_plausible_single_repair": bool(area_plausible) if cls_id in AREA_CLASSES else None,
             "needs_manual_survey": bool(cls_id in (1, 2) and not area_plausible),
             "depth_cm": depth_cm,
@@ -1533,8 +1371,7 @@ class DeepInferencePipeline:
         return {
             "class_id": 0,
             "class_name": "Normal Road / Sound Pavement",
-            # Not a model probability: no distress region survived the gates,
-            # so there is no classifier score to report. (Was a fixed 0.99.)
+
             "confidence": None,
             "decision_basis": "no distress region survived proposal, classifier and plausibility gates",
             "shannon_entropy_bits": 0.0,
@@ -1601,12 +1438,10 @@ class DeepInferencePipeline:
             return (
                 {"available": False, "reason": reason, "shock_classification": None, "peak_delta_z_ms2": 0.0, "pothole_shock_probability": 0.0},
                 0.0,
-                self.bayesian_gate.prior_p,  # neutral: fall back to the prior, not a fabricated confirmation
+                self.bayesian_gate.prior_p,
                 False,
             )
 
-        # Accept an (N, 3) array, the (window, label) pair returned by
-        # data.dataset_generator.sample_real_imu_window, or a dict wrapping one.
         series = imu_series
         if isinstance(series, dict):
             series = series.get("imu_series", series.get("window"))
@@ -1643,11 +1478,6 @@ class DeepInferencePipeline:
         crack_density_pct = min(100.0, (crack_area / ASSUMED_FRAME_PAVEMENT_AREA_M2) * 100.0)
         pothole_density_pct = min(100.0, (pothole_area / ASSUMED_FRAME_PAVEMENT_AREA_M2) * 100.0)
 
-        # Rut depth needs a straightedge or profilometer and IRI needs a longitudinal
-        # profile; one photograph measures neither. They used to be filled in from the
-        # pothole count (3.0 + 3.5 mm per pothole, 1.8 + 0.9 m/km per pothole), which made
-        # a single pothole deduct three times (pothole, rutting, roughness). An
-        # unmeasured distress now contributes no deduct and is reported as None.
         rutting_mm = None
         iri_roughness = None
 
@@ -1668,8 +1498,7 @@ class DeepInferencePipeline:
         placeholder = {
             "class_name": "Non-Pavement Surface (Rejected)",
             "is_distress": False,
-            # Rule-based rejection (texture std below threshold), not a model
-            # probability - so no confidence is claimed. (Was a fixed 0.99.)
+
             "confidence": None,
             "decision_basis": "luminance standard deviation below the texture-gate threshold",
             "surface_area_m2": 0.0,
@@ -1730,9 +1559,6 @@ class DeepInferencePipeline:
             "latency_ms": elapsed_ms,
         }
 
-    # ------------------------------------------------------------------
-    # Batch processing
-    # ------------------------------------------------------------------
     def process_batch(self, image_source, max_samples=None, corridor_id="NH-44", **kwargs):
         """Processes a directory of images or a list of image paths, aggregating civil-engineering statistics."""
         t0 = time.time()
@@ -1763,8 +1589,7 @@ class DeepInferencePipeline:
 
         for idx, img_path in enumerate(image_paths):
             try:
-                # chainage is whatever the caller supplies (default None) - it used
-                # to be invented as 100 km + 250 m per file, which no survey records
+
                 rec = self.audit_image(image_input=img_path, corridor_id=corridor_id, **kwargs)
                 rec["image_path"] = img_path
                 rec["image_name"] = os.path.basename(img_path)
@@ -1831,9 +1656,6 @@ class DeepInferencePipeline:
                 all_ok = False
         return {"all_models_verified": all_ok, "models": status}
 
-    # ------------------------------------------------------------------
-    # Automotive incident evaluation (ADAS policy + CAN + fusion)
-    # ------------------------------------------------------------------
     def evaluate_automotive_incident(
         self,
         hazard_class_id=0,
@@ -1872,17 +1694,11 @@ class DeepInferencePipeline:
             speed_kmh=vehicle_speed_kmh,
         )
 
-        # Build a real probability vector from the caller-supplied hazard
-        # class + confidence (not a random tensor standing in for imaginary
-        # LiDAR/CAN-bus sensors - see multimodal_transformer_fusion.py).
         n_classes = len(VisionDistressNet.CLASS_NAMES) + 1
         vision_probs = np.full(n_classes, (1.0 - confidence) / max(1, n_classes - 1), dtype=np.float64)
         vision_probs[min(hazard_class_id, n_classes - 1)] = confidence
         vision_probs = vision_probs / vision_probs.sum()
 
-        # A single peak-shock scalar (not a full 100-sample window) can only
-        # support a coarse heuristic, not the trained IMUShockClassifier -
-        # documented here rather than silently treated as equivalent to it.
         imu_pothole_prob = float(np.clip(imu_z_shock_ms2 / 8.0, 0.0, 1.0))
 
         mm_res = self.multimodal_net.fuse(vision_probs, imu_pothole_prob=imu_pothole_prob, imu_shock_ms2=imu_z_shock_ms2)

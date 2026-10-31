@@ -1,36 +1,4 @@
-"""
-End-to-end fine-tuning of ImageNet CNNs on the road corpus (GPU recommended).
-
-The served classifier used to be a FROZEN MobileNetV2 with a scikit-learn head
-on top - transfer learning that never updates a single convolution. This script
-trains the whole network, end to end, and compares it to that head on the
-IDENTICAL split (training.train_cnn_head.capped_grouped_split), so any change
-in the headline number is a like-for-like comparison and not a new test set.
-
-    python -m training.train_finetune_cnn --archs efficientnet_b0,efficientnet_b2,mobilenet_v3_large,resnet50 --epochs 40
-    python -m training.train_finetune_cnn --smoke            # 2-minute sanity run
-
-Protocol (what makes the numbers trustworthy)
----------------------------------------------
-* Split: grouped by source photograph (crops of one photo never straddle a
-  split), the same capped corpus and seed as the frozen head.
-* Train on `train`, early-stop and select on `val`, score `test` exactly once
-  per architecture at the end. Architecture choice uses validation macro-F1
-  only; test numbers are reported, never used to choose.
-* Imbalance: square-root inverse-frequency sampling plus label smoothing - the
-  rare municipal classes (7-8 test images each) would otherwise be ignored.
-* Every architecture is exported to ONNX and its ONNX outputs are checked
-  against PyTorch on real images (max |logit diff| reported), then timed on
-  CPU with ONNX Runtime, because the edge box has no GPU.
-* Indian roads: if datasets/_eval_rdd2022_india exists (written by
-  scripts/ingest_rdd2022_india.py from RDD2022 India photographs no training
-  run reads) each model is also scored there.
-
-Outputs (checkpoints/):
-    deep_vision_<arch>.onnx + .json    weights + preprocessing sidecar (selected arch only)
-    finetune_<arch>_report.json        per-architecture curves, val/test/Indian metrics
-    finetune_summary.json              all architectures side by side + the selection
-"""
+"""Fine-tune MobileNetV3 convolutional network on road distress dataset."""
 import argparse
 import glob
 import json
@@ -55,7 +23,7 @@ MEAN = [0.485, 0.456, 0.406]
 STD = [0.229, 0.224, 0.225]
 
 ARCHS = {
-    # name: (torchvision builder, weights enum, train/eval size)
+
     "efficientnet_b0": ("efficientnet_b0", "EfficientNet_B0_Weights", 224),
     "efficientnet_b2": ("efficientnet_b2", "EfficientNet_B2_Weights", 260),
     "resnet50": ("resnet50", "ResNet50_Weights", 224),
@@ -64,7 +32,6 @@ ARCHS = {
 }
 
 
-# ----------------------------------------------------------------------------
 def macro_report(y, p, n_classes):
     from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_recall_fscore_support
     labels = list(range(n_classes))
@@ -73,7 +40,7 @@ def macro_report(y, p, n_classes):
     return {
         "images": int(len(y)),
         "accuracy": round(float(accuracy_score(y, p)), 4),
-        # macro over the classes that actually occur in this split
+
         "macro_f1": round(float(f1_score(y, p, labels=present, average="macro", zero_division=0)), 4),
         "per_class": {CLASS_NAMES[i]: {"precision": round(float(prec[i]), 4), "recall": round(float(rec[i]), 4),
                                        "f1": round(float(f1[i]), 4), "support": int(sup[i])}
@@ -109,9 +76,7 @@ class CachedImages:
     every epoch would starve the GPU."""
 
     def __init__(self, paths, short):
-        # Kept as re-encoded JPEG bytes (~40 KB each), not decoded arrays: raw
-        # arrays for the RDD-enlarged corpus, copied into each DataLoader worker,
-        # would not fit a 12 GB Colab runtime. Decoding a 300-px JPEG is cheap.
+
         import io
         from PIL import Image
         self.arrays = []
@@ -237,7 +202,7 @@ def export_onnx(model, size, path, sample_batch, device):
               dynamic_axes={"image": {0: "batch"}, "logits": {0: "batch"}}, opset_version=17)
     try:
         torch.onnx.export(model, dummy, path, dynamo=False, **kw)
-    except TypeError:  # torch < 2.5 has no dynamo switch
+    except TypeError:
         torch.onnx.export(model, dummy, path, **kw)
     import onnxruntime as ort
     sess = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
@@ -246,7 +211,7 @@ def export_onnx(model, size, path, sample_batch, device):
     got = sess.run(None, {"image": sample_batch.cpu().numpy().astype(np.float32)})[0]
     max_diff = float(np.max(np.abs(ref - got)))
     agree = float(np.mean(ref.argmax(1) == got.argmax(1)))
-    # CPU latency, one image at a time, as the edge box would run it
+
     x1 = sample_batch[:1].cpu().numpy().astype(np.float32)
     for _ in range(3):
         sess.run(None, {"image": x1})
@@ -315,7 +280,7 @@ def train_arch(arch, splits, epochs, batch, lr, seed, workers, patience, out_dir
             continue
         yv, pv, _ = predict(model, vl, device)
         rv = macro_report(yv, pv, len(CLASS_NAMES))
-        score = 0.5 * (rv["accuracy"] + rv["macro_f1"])  # same selection score as the frozen head
+        score = 0.5 * (rv["accuracy"] + rv["macro_f1"])
         history.append({"epoch": ep, "train_loss": round(run / max(1, seen), 4), "val_accuracy": rv["accuracy"],
                         "val_macro_f1": rv["macro_f1"], "seconds": round(time.time() - te, 1)})
         print(f"  [{arch}] epoch {ep:2d}/{epochs} loss {history[-1]['train_loss']:.3f} | val acc "
@@ -335,7 +300,7 @@ def train_arch(arch, splits, epochs, batch, lr, seed, workers, patience, out_dir
     if best["state"] is not None:
         model.load_state_dict(best["state"])
     yv, pv, _ = predict(model, vl, device)
-    yt, pt_, _ = predict(model, testl, device)  # the single test-set scoring for this arch
+    yt, pt_, _ = predict(model, testl, device)
     val_rep = macro_report(yv, pv, len(CLASS_NAMES))
     test_rep = macro_report(yt, pt_, len(CLASS_NAMES))
     india = india_eval(model, eval_tf, device)
@@ -407,8 +372,7 @@ def main(argv=None):
     for arch in [s.strip() for s in a.archs.split(",") if s.strip()]:
         done = os.path.join(a.out, f"finetune_{arch}_report.json")
         if a.resume and os.path.exists(done):
-            # A Colab runtime can disconnect mid-run; an architecture that already
-            # finished (report written, test scored once) is not trained again.
+
             reports[arch] = json.load(open(done))
             print(f"  [{arch}] already trained - reusing {os.path.basename(done)}", flush=True)
             continue
@@ -418,16 +382,12 @@ def main(argv=None):
     if a.train_only:
         return {"trained": list(reports)}
 
-    # Select by validation only, among networks small enough to commit (GitHub
-    # refuses files over 100 MB) - a deployment constraint fixed before training.
     eligible = [k for k in reports if reports[k]["onnx"]["onnx_size_mb"] <= 95.0] or list(reports)
     chosen = max(eligible, key=lambda k: reports[k]["selection_score_val"])
     served_tag = chosen
     refit_rep = None
     if not a.no_refit:
-        # Pre-declared: the served network is the chosen architecture refit on
-        # train+val for its best validation epoch count - the same data the
-        # frozen head is fitted on. Its test score is reported as the served one.
+
         refit_done = os.path.join(a.out, f"finetune_{chosen}_refit_report.json")
         refit_onnx = os.path.join(a.out, f"deep_vision_{chosen}_refit.onnx")
         if a.resume and os.path.exists(refit_done) and os.path.exists(refit_onnx):
@@ -462,7 +422,7 @@ def main(argv=None):
     }
     with open(os.path.join(a.out, "finetune_summary.json"), "w") as fh:
         json.dump(summary, fh, indent=1)
-    # keep only the served network's weights; the sidecar tells the loader how to preprocess
+
     for p in glob.glob(os.path.join(a.out, "deep_vision_*.onnx")):
         if os.path.basename(p) != f"deep_vision_{served_tag}.onnx":
             os.remove(p)

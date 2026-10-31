@@ -1,39 +1,4 @@
-"""
-Repair lifecycle: from a defect in the ledger to a repair the fleet has confirmed.
-
-    ISSUED ──> ASSIGNED ──> IN_PROGRESS ──> REPAIRED ──> VERIFIED
-       │           │                           │            │
-       └───────────┴──> CANCELLED              └─> REOPENED <┘   (the defect is seen again)
-                                                      │
-                                                      └──> ASSIGNED / IN_PROGRESS / CANCELLED
-
-Orders are issued from a ledger defect, so every quantity on them (class, area, depth, PCI, location) is
-the measured one; the order itself is sealed by models/morth_dispatch_agent.py.
-
-History is append-only and hash-chained: each event stores the SHA-256 of the previous event plus its own
-fields, so deleting or editing a step (say, backdating "REPAIRED" to meet an SLA) breaks every hash after
-it, and get() reports the chain as broken.
-
-Verification by the fleet, which is what makes a contractor's "repaired" claim checkable without sending an
-inspector:
-
-  * After REPAIRED, every bus whose track passes within PASS_RADIUS_M of the defect is recorded (once per
-    bus per 10 minutes, and only for positions recorded after the repair: a bus that was offline uploads
-    its backlog late, and its old positions are not evidence). The track is the straight line between two consecutive positions of the bus (at
-    most 2 minutes and 600 m apart), because positions arrive every few seconds, tens of metres apart. When VERIFY_PASSES different buses have passed and at least VERIFY_MIN_HOURS have gone
-    by with no new sighting of that defect, the order becomes VERIFIED by "fleet", with the passes as
-    evidence.
-  * A new sighting of the same defect (same class, within the deduplication radius) after REPAIRED or
-    VERIFIED reopens the order automatically, with the sighting as evidence.
-
-Limit, stated rather than hidden: a pass is a GPS position near the defect, not proof that the camera
-looked at that patch of road (the bus may have been in the far lane). Several passes by different buses
-over a day make a miss by all of them unlikely. A pass also only counts once SETTLE_S (60 s) have gone by
-without a sighting, so a bus that drives over a pothole that is still there reopens the order instead of
-verifying it. Both numbers are configurable, which is why both numbers are configurable
-(ROAD_SHIELD_VERIFY_PASSES, ROAD_SHIELD_VERIFY_MIN_HOURS) and why an inspector can still verify or reopen
-by hand.
-"""
+"""Public works repair order lifecycle and MoRTH costing tracker."""
 import contextlib
 import hashlib
 import json
@@ -131,8 +96,8 @@ def _segment_distance_m(lat, lon, a, b):
     return math.hypot(ax + t * dx, ay + t * dy)
 
 
-SETTLE_S = 60                  # a pass only counts as clean once its bus's own report for that spot could have arrived
-MAX_TRACK_GAP_S = 120          # fixes further apart than this are not joined into a track
+SETTLE_S = 60
+MAX_TRACK_GAP_S = 120
 MAX_TRACK_LEN_M = 600
 
 
@@ -155,7 +120,7 @@ class WorkOrders:
         self.pass_radius_m = float(pass_radius_m)
         self.clock = clock
         self._lock = threading.RLock()
-        self._last_fix = {}            # bus_id -> (lat, lon, at): the previous position, to form a track
+        self._last_fix = {}
         self._db = sqlite3.connect(db_path, check_same_thread=False, isolation_level=None, timeout=10)
         self._db.row_factory = sqlite3.Row
         if db_path != ":memory:":
@@ -166,7 +131,6 @@ class WorkOrders:
         with self._lock:
             self._db.close()
 
-    # ------------------------------------------------------------------ helpers
     @contextlib.contextmanager
     def _tx(self):
         """One SQLite transaction for a multi-statement change, so a crash cannot leave half an order."""
@@ -229,7 +193,6 @@ class WorkOrders:
                              (defect_id, *sorted(ACTIVE | {"VERIFIED"}))).fetchone()
         return r["order_id"] if r else None
 
-    # ------------------------------------------------------------------ actions
     def issue(self, defect_id, actor="operator", depth_cm=None, corridor=None, note=None):
         with self._lock:
             d = self._defect(defect_id)
@@ -296,7 +259,6 @@ class WorkOrders:
     def _contractor(self, order_id):
         return self._facts(order_id)["contractor"]
 
-    # --------------------------------------------------------- fleet evidence
     def on_sighting(self, defect_id, bus_id, at=None):
         """A bus (or a photo) reported this defect. After a repair, that reopens the order."""
         at = self.clock() if at is None else min(at, self.clock())
@@ -306,7 +268,7 @@ class WorkOrders:
             if oid and self._status(oid) in ("REPAIRED", "VERIFIED"):
                 repaired_at = self._facts(oid)["repaired_at"]
                 if repaired_at is not None and at < repaired_at:
-                    return None                 # recorded before the repair, uploaded late: not evidence
+                    return None
                 with self._tx():
                     self._append(oid, "REOPENED", "fleet", f"seen again by {bus_id} after the repair",
                                  {"bus_id": bus_id, "seen_at": at})
@@ -337,7 +299,7 @@ class WorkOrders:
                     continue
                 repaired_at = self._facts(r["order_id"])["repaired_at"]
                 if repaired_at is None or at < repaired_at:
-                    continue                    # a position from before the repair, uploaded late
+                    continue
                 last = self._db.execute("SELECT MAX(at) m FROM repair_passes WHERE order_id=? AND bus_id=?",
                                         (r["order_id"], bus_id)).fetchone()["m"]
                 if last is not None and at - last < PASS_COOLDOWN_S:
@@ -381,7 +343,6 @@ class WorkOrders:
             self._publish("work_order", {"work_order_id": oid, "status": "VERIFIED", "actor": "fleet"})
         return done
 
-    # ---------------------------------------------------------------- reading
     def history(self, order_id):
         rows = self._db.execute("SELECT * FROM order_events WHERE order_id=? ORDER BY event_id", (order_id,)).fetchall()
         return [{"at": r["at"], "status": r["status"], "actor": r["actor"], "note": r["note"],

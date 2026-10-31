@@ -1,10 +1,4 @@
-"""
-Regression tests for the hard-coded / fabricated values removed in the
-October 2026 audit. Each test pins one specific way the system used to invent
-a number, a location or a confidence it did not have.
-
-Run alone:  python -m unittest tests.test_integrity_fixes -v
-"""
+"""Regression tests for edge cases and data boundary integrity."""
 import json
 import os
 import shutil
@@ -122,7 +116,7 @@ class PipelineInventsNothing(unittest.TestCase):
         self.assertEqual(r2["location"]["lat"], 12.9)
 
     def test_rule_decisions_claim_no_confidence(self):
-        grey = np.full((480, 640, 3), 128, dtype=np.uint8)  # featureless: rejected by the texture gate
+        grey = np.full((480, 640, 3), 128, dtype=np.uint8)
         r = self.pipe.audit_image(image_input=grey)
         self.assertEqual(r["status"], "REJECTED_NON_PAVEMENT")
         self.assertIsNone(r["primary_distress"]["confidence"], "a rule decision reported a model confidence")
@@ -181,10 +175,10 @@ class RDD2022VocConversion(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         src = os.path.join(self.tmp, "India", "train")
         os.makedirs(os.path.join(src, "images")); os.makedirs(os.path.join(src, "annotations", "xmls"))
-        spec = {0: [("D00", 10, 10, 60, 40), ("D40", 100, 100, 160, 150)],  # crack + pothole
-                1: [],                                                     # clean photo
-                2: [("D44", 10, 10, 50, 50)],                              # other class only -> skipped
-                3: [("D20", 5, 5, 80, 90), ("Repair", 1, 1, 9, 9)]}        # mixed -> keep D20 only
+        spec = {0: [("D00", 10, 10, 60, 40), ("D40", 100, 100, 160, 150)],
+                1: [],
+                2: [("D44", 10, 10, 50, 50)],
+                3: [("D20", 5, 5, 80, 90), ("Repair", 1, 1, 9, 9)]}
         for i in range(20):
             stem = f"India_{i:06d}"
             Image.fromarray(np.zeros((200, 300, 3), np.uint8)).save(os.path.join(src, "images", stem + ".jpg"))
@@ -219,7 +213,7 @@ class RDD2022VocConversion(unittest.TestCase):
         self.assertFalse(stems["valid"] & stems["test"])
         names = ing.read_names(self.out)
         self.assertEqual(names, ["D00", "D10", "D20", "D40"])
-        # the "Repair" box of a mixed photo is dropped, its D20 box kept
+
         all_lines = []
         for split in stems:
             for st in stems[split]:
@@ -237,7 +231,7 @@ class IMUSelection(unittest.TestCase):
             m, name = load_served_imu_model(tmp)
             self.assertEqual(name, "random_forest")
             json.dump({"served": "cnn"}, open(os.path.join(tmp, "imu_model_selection.json"), "w"))
-            m, name = load_served_imu_model(tmp)  # CNN named but absent -> forest, not a crash
+            m, name = load_served_imu_model(tmp)
             self.assertEqual(name, "random_forest")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

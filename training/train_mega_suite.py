@@ -1,12 +1,4 @@
-"""
-CLI entrypoint that runs this project's real training suite end-to-end:
-training/train_vision.py (StandardScaler -> PCA -> SVC on the labeled photo
-dataset) and training/train_imu.py (StandardScaler -> RandomForestClassifier
-on the 100Hz IMU windows), via training.mega_pipeline.run_training_suite.
-
-Usage:
-    python3 -m training.train_mega_suite
-"""
+"""Mega training pipeline coordinator across all models."""
 import os
 import sys
 import json

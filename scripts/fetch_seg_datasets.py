@@ -72,9 +72,6 @@ EVAL_FOLDERS = ["02_kaggle_pothole_600", "03_crack500_fatigue", "05_morth_civil_
                 "10_missing_zebra_crossing", "11_missing_road_divider"]
 
 
-# ---------------------------------------------------------------------------
-# leakage guard: 64-bit difference hash, vectorised Hamming distance
-# ---------------------------------------------------------------------------
 def dhash(img_rgb):
     import cv2
     g = cv2.cvtColor(np.asarray(img_rgb, dtype=np.uint8), cv2.COLOR_RGB2GRAY)
@@ -104,9 +101,6 @@ class LeakGuard:
         return bool(d.min() <= self.threshold)
 
 
-# ---------------------------------------------------------------------------
-# writing
-# ---------------------------------------------------------------------------
 def split_of(source, ident, seed=42):
     h = int(hashlib.sha1(f"{seed}:{source}:{ident}".encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
     return "train" if h < 0.75 else ("cal" if h < 0.85 else "test")
@@ -137,11 +131,11 @@ class Writer:
         img = cv2.resize(img_rgb, (IN_W, IN_H), interpolation=cv2.INTER_AREA)
         lab = cv2.resize(label.astype(np.uint8), (IN_W, IN_H), interpolation=cv2.INTER_NEAREST)
         if not ((lab == 1) | (lab == 2)).any():
-            self.dropped_empty += 1          # a mask with no defect teaches nothing about outlines
+            self.dropped_empty += 1
             return
         safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(ident))[-120:]
         base, n = safe, 1
-        while os.path.exists(os.path.join(self.dir_lab, safe + ".png")):   # never overwrite another pair
+        while os.path.exists(os.path.join(self.dir_lab, safe + ".png")):
             safe, n = f"{base}_{n}", n + 1
         cv2.imwrite(os.path.join(self.dir_img, safe + ".jpg"), cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
                     [cv2.IMWRITE_JPEG_QUALITY, 92])
@@ -163,9 +157,6 @@ class Writer:
                 "dropped_no_defect_pixels": self.dropped_empty, "dropped_unreadable": self.dropped_bad}
 
 
-# ---------------------------------------------------------------------------
-# helpers to decode whatever a dataset stores
-# ---------------------------------------------------------------------------
 def to_array(v):
     """PIL image, {'bytes':...}, raw bytes or a base64 string -> numpy array, else None."""
     from PIL import Image
@@ -187,7 +178,7 @@ def colour_mask_to_label(m):
     """RGB or grey mask -> 0/1/2. Red-dominant pixels are pothole, other coloured pixels crack."""
     m = np.asarray(m)
     if m.ndim == 2:
-        return None                                   # binary: class unknown, caller decides
+        return None
     r, g, b = (m[..., i].astype(int) for i in range(3))
     on = (r + g + b) > 60
     lab = np.zeros(m.shape[:2], np.uint8)
@@ -196,9 +187,6 @@ def colour_mask_to_label(m):
     return lab
 
 
-# ---------------------------------------------------------------------------
-# sources
-# ---------------------------------------------------------------------------
 def fetch_crackseg9k(guard, limit=None):
     try:
         from datasets import load_dataset
@@ -218,7 +206,7 @@ def fetch_crackseg9k(guard, limit=None):
             if len(arrays) < 2:
                 w.dropped_bad += 1
                 continue
-            # the mask is the array with the fewest distinct values
+
             mask_col = min(arrays, key=lambda c: len(np.unique(arrays[c][::4, ::4])))
             img_col = next(c for c in arrays if c != mask_col)
             img, m = arrays[img_col], arrays[mask_col]
@@ -227,7 +215,7 @@ def fetch_crackseg9k(guard, limit=None):
             img = img[..., :3]
             if m.ndim == 3:
                 m = m[..., 0]
-            w.add(f"{split}_{i}", img, (m > 127).astype(np.uint8))          # crack = 1
+            w.add(f"{split}_{i}", img, (m > 127).astype(np.uint8))
             if i % 1000 == 0:
                 print(f"  {i} rows, {len(w.items)} kept", flush=True)
     return w.summary()
@@ -261,7 +249,7 @@ def fetch_kaggle_pothole(guard):
             if len(v) < 7:
                 continue
             pts = (np.array(v[1:], float).reshape(-1, 2) * [wd, h]).astype(np.int32)
-            cv2.fillPoly(lab, [pts], 2)                                     # pothole = 2
+            cv2.fillPoly(lab, [pts], 2)
         w.add(os.path.splitext(os.path.basename(img_path))[0], cv2.cvtColor(im, cv2.COLOR_BGR2RGB), lab)
     return w.summary()
 
@@ -289,7 +277,7 @@ def fetch_pothole_mix(guard, zip_path):
         return any(any(wd in c for wd in mask_words) for c in parts_of(p))
 
     def key_of(p):
-        # the folder path with the images/masks level removed, plus the file stem: unique per pair
+
         keep = [c for c in parts_of(p) if not any(wd in c for wd in mask_words + image_words)]
         return tuple(keep), os.path.splitext(os.path.basename(p))[0]
 
@@ -300,7 +288,7 @@ def fetch_pothole_mix(guard, zip_path):
     out_dir = os.path.join(OUT, "pothole_mix")
     if os.path.isdir(out_dir):
         import shutil
-        shutil.rmtree(out_dir)                       # rebuilt from scratch: no stale or overwritten pairs
+        shutil.rmtree(out_dir)
     w = Writer("pothole_mix", guard)
     colours, unpaired = {}, 0
     for p in files:
@@ -329,9 +317,6 @@ def fetch_pothole_mix(guard, zip_path):
     return s
 
 
-# ---------------------------------------------------------------------------
-# own photographs (Roboflow / CVAT COCO export, LabelMe, or mask folders)
-# ---------------------------------------------------------------------------
 IMG_EXT = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
 
@@ -396,7 +381,7 @@ def own_from_coco(json_path, w, root=None):
     for im in coco.get("images", []):
         path = os.path.join(base, im["file_name"])
         if not os.path.exists(path):
-            # CVAT puts annotations/ and images/ side by side: look anywhere in the export
+
             name = os.path.basename(im["file_name"])
             path = None
             for top in (base, root or base):
@@ -423,7 +408,7 @@ def own_from_coco(json_path, w, root=None):
                 m = _coco_rle_to_mask(seg, h, wd)
                 if m is not None:
                     rle_masks.append((cls, m))
-            elif a.get("bbox"):          # a box with no outline: it cannot teach an edge, so it is skipped
+            elif a.get("bbox"):
                 continue
         lab = draw_shapes((h, wd), shapes)
         for want in (1, 2):
@@ -462,16 +447,16 @@ def mask_to_label(m):
     """Mask image -> 0/1/2 labels, or None if its classes cannot be told apart."""
     m = np.asarray(m)
     if m.ndim == 3:
-        if np.ptp(m.astype(int), axis=2).max() < 10:      # grey stored as RGB
+        if np.ptp(m.astype(int), axis=2).max() < 10:
             m = m[..., 0]
         else:
             return colour_mask_to_label(m)
     vals = set(np.unique(m).tolist())
     if vals <= {0, 1, 2, 255}:
         lab = m.astype(np.uint8).copy()
-        lab[lab == 255] = 255 if vals & {1, 2} else 0        # 255 with 1/2 present = ignore; alone = unknown
+        lab[lab == 255] = 255 if vals & {1, 2} else 0
         return lab if ((lab == 1) | (lab == 2)).any() else None
-    return None                                              # binary 0/255: crack or pothole is unknown
+    return None
 
 
 def own_from_mask_folders(root, w):
@@ -533,7 +518,7 @@ def merge_near_duplicate_spots(w, threshold=6):
             x = parent[x]
         return x
 
-    leaders, merges = [], 0           # [(hash, id)]
+    leaders, merges = [], 0
     for i in ids:
         im = cv2.imread(os.path.join(w.dir_img, i + ".jpg"))
         if im is None:
@@ -567,7 +552,7 @@ def fetch_own_photos(guard, path):
         with zipfile.ZipFile(path) as z:
             z.extractall(root)
     out_dir = os.path.join(OUT, "own_india")
-    shutil.rmtree(out_dir, ignore_errors=True)        # rebuilt from scratch each time you add photographs
+    shutil.rmtree(out_dir, ignore_errors=True)
     w = Writer("own_india", guard)
     jsons = glob.glob(os.path.join(root, "**", "*.json"), recursive=True)
     coco, labelme = [], []
@@ -635,7 +620,6 @@ def main(argv=None):
     if "own_india" in want:
         report["sources"]["own_india"] = fetch_own_photos(guard, a.own_photos)
 
-    # Merge with an earlier run, so fetching one more source never forgets the ones already on disk.
     man_path = os.path.join(OUT, "manifest.json")
     if os.path.exists(man_path):
         try:
@@ -644,7 +628,7 @@ def main(argv=None):
             for src, summ in earlier.items():
                 now = report["sources"].get(src)
                 if now is None or ("skipped" in now and "skipped" not in summ):
-                    report["sources"][src] = summ     # not refetched this time: keep what is on disk
+                    report["sources"][src] = summ
         except Exception:
             pass
     items = {}

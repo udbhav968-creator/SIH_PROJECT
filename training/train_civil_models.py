@@ -1,13 +1,4 @@
-"""
-ROAD-SHIELD Civil Engineering Models Training Entrypoint
-========================================================
-
-Delegates directly to `training.train_civil_real` so that all civil models
-(ASTM D6433-20 PCI, IRC:37-2018 Deterioration, and IRC:SP:83 / IRC:82 Depth)
-are always trained on real highway photographs and human-drawn COCO polygon
-annotations (`datasets/incoming/cracks_potholes_dnit/coco.json`), never on
-synthetic random grids.
-"""
+"""Train ASTM D6433 and HDM-4 regression models."""
 
 from training.train_civil_real import (
     ASTM_CURVES,

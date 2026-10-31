@@ -1,18 +1,4 @@
-"""
-Lightweight ONNX Runtime inference engine for Vercel Serverless Functions.
-
-Uses only `numpy`, `Pillow` (`PIL`), `onnxruntime`, and Python's standard library
-(zero `scipy`, `scikit-learn`, `scikit-image`, or `opencv-python` dependencies),
-keeping the unzipped function bundle well under Vercel's 250 MB serverless limit
-while executing all 5 genuine trained models:
-  - `checkpoints/ood_guard.npz` + `checkpoints/cnn_backbone_mobilenetv2.onnx` (OOD Input Guard, AUROC 0.9945)
-  - `checkpoints/road_shield_detector.onnx` (YOLOv8 COCO Object Detector: people, vehicles, signs)
-  - `checkpoints/deep_vision_mobilenet_v3_large_refit.onnx` (MobileNetV3-Large, 94.92% test accuracy, 0.9207 Macro-F1)
-  - `checkpoints/defect_segmenter_pixel.onnx` (served pixel segmenter, ONNX export; see
-    scripts/export_pixel_segmenter_onnx.py) or `checkpoints/defect_segmenter_unet.onnx`
-    (U-Net, ResNet-18 encoder), whichever checkpoints/segmenter_selection.json serves
-  - `checkpoints/imu_shock_cnn.onnx` (1-D CNN IMU shock classifier)
-"""
+"""ONNX Runtime inference engine for serverless execution."""
 
 import base64
 from collections import deque
@@ -57,7 +43,7 @@ VEHICLE_CLASS_MAP = {
 }
 
 WORK_W, WORK_H = 320, 200
-# Same floor as DeepInferencePipeline.MIN_REPORT_CONFIDENCE.
+
 MIN_REPORT_CONFIDENCE = 0.45
 UNET_W, UNET_H = 512, 320
 
@@ -78,8 +64,8 @@ def _load_sessions():
         return _SESSIONS
     _SESSIONS["initialized"] = True
     try:
-        import numpy as np  # noqa: F401
-        from PIL import Image  # noqa: F401
+        import numpy as np
+        from PIL import Image
         import onnxruntime as ort
     except Exception as e:
         _SESSIONS["error"] = str(e)
@@ -87,7 +73,6 @@ def _load_sessions():
 
     opts = _ort_opts(ort)
 
-    # 1. Vision Classifier ONNX (MobileNetV3-Large)
     vis_onnx = os.path.join(CKPT_DIR, "deep_vision_mobilenet_v3_large_refit.onnx")
     vis_json = os.path.join(CKPT_DIR, "deep_vision_mobilenet_v3_large_refit.json")
     if os.path.exists(vis_onnx):
@@ -106,7 +91,6 @@ def _load_sessions():
         except Exception as e:
             _SESSIONS["vision_error"] = str(e)
 
-    # 2. U-Net Defect Segmenter ONNX (ResNet-34 U-Net)
     seg_onnx = os.path.join(CKPT_DIR, "defect_segmenter_unet.onnx")
     seg_json = os.path.join(CKPT_DIR, "defect_segmenter_unet.json")
     if os.path.exists(seg_onnx):
@@ -125,7 +109,6 @@ def _load_sessions():
         except Exception as e:
             _SESSIONS["segmenter_error"] = str(e)
 
-    # 3. 1-D CNN IMU Classifier ONNX
     imu_onnx = os.path.join(CKPT_DIR, "imu_shock_cnn.onnx")
     if os.path.exists(imu_onnx):
         try:
@@ -137,7 +120,6 @@ def _load_sessions():
         except Exception as e:
             _SESSIONS["imu_error"] = str(e)
 
-    # 4. OOD Input Guard (ood_guard.npz + cnn_backbone_mobilenetv2.onnx)
     try:
         from models.ood_guard import OODGuard
         guard = OODGuard(checkpoints_dir=CKPT_DIR)
@@ -146,7 +128,6 @@ def _load_sessions():
     except Exception as e:
         _SESSIONS["ood_guard_error"] = str(e)
 
-    # 5. YOLOv8 COCO Object Detector (road_shield_detector.onnx)
     try:
         from models.onnx_object_detector import ONNXObjectDetector
         det = ONNXObjectDetector(checkpoints_dir=CKPT_DIR)
@@ -302,13 +283,11 @@ def _mask_to_data_url(mask_work):
     from PIL import Image
     h, w = mask_work.shape
     rgba = np.zeros((h, w, 4), dtype=np.uint8)
-    rgba[mask_work == 1] = [45, 212, 212, 135]   # cyan for cracks
-    rgba[mask_work == 2] = [244, 63, 94, 145]    # rose-red for potholes
+    rgba[mask_work == 1] = [45, 212, 212, 135]
+    rgba[mask_work == 2] = [244, 63, 94, 145]
     buf = io.BytesIO()
     Image.fromarray(rgba, mode="RGBA").save(buf, format="PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-
-
 
 
 class _ServerlessClassifier:
@@ -339,11 +318,9 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
     labels = flat.reshape(WORK_H, WORK_W)
     conf_map = np.where(flat == 1, crack_p, np.where(flat == 2, pothole_p, p0)).reshape(WORK_H, WORK_W)
 
-    # 0a. Suppress non-road horizon / sky in the upper 25% of the frame
     labels[:int(WORK_H * 0.25), :] = 0
-    # 0b. Bottom region preserved to lowermost row for foreground road defects
 
-    # 1. Withhold detected pedestrians and vehicles from the segmentation mask
+
     if object_mask_full is not None and object_mask_full.any():
         om_work = np.asarray(
             Image.fromarray(object_mask_full.astype(np.uint8) * 255, mode="L").resize(
@@ -353,7 +330,6 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
         ) > 0
         labels[om_work] = 0
 
-    # 2. Suppress solid letterbox footer banner (Alamy / stock watermarks / camera bars) and bright white paint markings
     if gray_full is not None:
         g_work = np.asarray(
             Image.fromarray(np.clip(gray_full, 0, 255).astype(np.uint8), mode="L").resize(
@@ -361,7 +337,7 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
             ),
             dtype=np.float32,
         )
-        # Check bottom 18% for solid letterbox bar
+
         for y in range(int(WORK_H * 0.82), WORK_H):
             row_med = float(np.median(g_work[y, :]))
             if row_med < 28.0 or row_med > 225.0:
@@ -373,12 +349,10 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
                 labels[:y + 1, :] = 0
                 break
         road_med = float(np.median(g_work[int(WORK_H * 0.35):, :]))
-        # Withhold pure white high-intensity road paint markings (>215 and bright above road)
+
         paint_work = g_work > max(215.0, road_med + 55.0)
         labels[paint_work] = 0
 
-    # Semantic gate per pixel, as models/semantic_gate.apply does in the main engine: pothole
-    # pixels the classifier's heat map does not support are dropped before blobs are formed.
     if pothole_heat is not None:
         from models import semantic_gate
         heat_work = np.asarray(Image.fromarray(np.asarray(pothole_heat, dtype=np.float32), mode="F").resize(
@@ -400,11 +374,10 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
         sorted_boxes = sorted(boxes, key=lambda b: b["area_work_px"], reverse=True)[:5]
         for b in sorted_boxes:
             wx, wy, ww, wh = b["bbox_work"]
-            # Require detection centroid to lie in the lower 65% road ROI (below horizon)
+
             if (wy + wh * 0.5) < WORK_H * 0.35:
                 continue
 
-            # Roadway perspective envelope: road narrows toward horizon, reject off-road shoulder foliage/dirt
             norm_y = (wy + wh * 0.5) / float(WORK_H)
             norm_x = (wx + ww * 0.5) / float(WORK_W)
             if norm_y < 0.45 and (norm_x < 0.18 or norm_x > 0.70):
@@ -461,10 +434,7 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None, pothole_heat=N
     import numpy as np
     from PIL import Image
     orig_h, orig_w = img_rgb.shape[:2]
-    # The segmenter the deployment check chose. The pixel classifier runs here through its
-    # ONNX export and a numpy port of its features (models/pixel_segmenter_lite.py; pixel
-    # labels agree with the scikit-learn/OpenCV original on 99.7% of pixels). Before this,
-    # the website always ran the U-Net, which lost that check.
+
     if _served_segmenter() == "pixel_classifier":
         from models import pixel_segmenter_lite as lite
         proba = lite.predict_proba(img_rgb) if lite.available() else None
@@ -473,7 +443,7 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None, pothole_heat=N
             p0, crack_p, pothole_p = proba[:, 0], proba[:, 1], proba[:, 2]
             is_crack = crack_p >= float(thresholds.get("crack", 0.5))
             is_pothole = pothole_p >= float(thresholds.get("pothole", 0.5))
-            # Same rule as models/defect_segmenter.mask_from_proba (the main engine).
+
             flat = np.zeros(proba.shape[0], dtype=np.uint8)
             flat[is_crack] = 1
             flat[is_pothole & (pothole_p >= crack_p)] = 2
@@ -517,7 +487,7 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None, pothole_heat=N
     t_pothole = float(thresholds.get("pothole", 0.38))
 
     flat = np.zeros(proba.shape[0], dtype=np.uint8)
-    # A pixel is crack/pothole ONLY if it exceeds threshold and is competitive with background sound road
+
     is_crack = (crack_p >= t_crack) & (crack_p >= p0 * 0.92) & (crack_p >= pothole_p)
     is_pothole = (pothole_p >= t_pothole) & (pothole_p >= p0 * 0.92) & (pothole_p > crack_p)
     flat[is_crack] = 1
@@ -585,13 +555,10 @@ def _compute_pci(detections):
     if pot_dens > 0:
         p_sev = "HIGH" if (pot_area > 0.35 or any(float(d.get("depth_cm", 0.0)) >= 4.0 for d in potholes)) else "MEDIUM"
         deducts["potholes"] = round(eng._deduct_value("potholes", p_sev, pot_dens), 1)
-    # Markings, dividers, signs and waterlogging are not ASTM D6433 pavement distresses,
-    # so they add no deduct (an invented 14.5 "safety_corridor" deduct used to).
+
     cdv = eng._corrected_deduct_value(list(deducts.values())) if deducts else 0.0
     pci = round(float(np.clip(100.0 - cdv, 0.0, 100.0)), 1)
-    # Operational dispatch rule, NOT part of ASTM D6433: a large or deep cavity is
-    # flagged for priority repair. It used to be forced into the PCI itself (a corrected
-    # deduct of at least 65, so PCI <= 35) under a mis-cited "ASTM D6433" comment.
+
     priority_cavity = any(d.get("class_id") == 2 and (float(d.get("surface_area_m2", 0.0)) >= 0.5
                                                       or float(d.get("depth_cm", 0.0)) >= 4.5)
                           for d in detections)
@@ -663,7 +630,7 @@ def _detect_scene_objects(img_np, H, W):
                 "irc_standard_specification": IRC_STANDARDS[7],
                 "detector": o.get("detector", "onnx_coco_detector"),
             })
-            # Mask 100% of person bounding box + 8px margin so clothing/hair/shadow is never segmented as a crack
+
             object_mask[max(0, by - 8):min(H, by + bh + 8), max(0, bx - 8):min(W, bx + bw + 8)] = True
         elif cname in VEHICLE_CLASS_MAP:
             vtype, pcu = VEHICLE_CLASS_MAP[cname]
@@ -684,7 +651,7 @@ def _detect_scene_objects(img_np, H, W):
                 "is_pedestrian": False,
                 "detector": o.get("detector", "onnx_coco_detector"),
             })
-            # Mask upper 85% of vehicle box + 6px horizontal margin
+
             oy1 = max(by, by + int(bh * 0.85))
             object_mask[max(0, by):min(H, oy1), max(0, bx - 6):min(W, bx + bw + 6)] = True
 
@@ -698,7 +665,6 @@ def _detect_scene_objects(img_np, H, W):
         "total_vehicles_detected": len(vehicle_detections),
     }
 
-    # Geometric Road Markings & Zebra Crossing Analysis
     markings_res = {"found": False, "bars": []}
     try:
         from models.marking_detector import detect_zebra
@@ -731,8 +697,6 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
         sx0, sx1 = max(0, bx - 20), min(W, bx + bw + 20)
         excl_mask[sy0:sy1, sx0:sx1] = True
 
-    # Detect and suppress genuine flat/synthetic letterbox banner or watermark footer
-    # Only trigger if the row is uniform (std < 3.0), never suppressing real road texture or foreground defects
     for y in range(H - 1, int(H * 0.90), -1):
         row = gray[y, :].astype(np.float32)
         if float(np.std(row)) < 3.0 and (float(np.median(row)) < 20.0 or float(np.median(row)) > 235.0):
@@ -771,11 +735,10 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
                 continue
             sub_gray = road_gray[y0 : y0 + cell_h, x0 : x0 + cell_w]
             sub_mag = grad_mag[y0 : y0 + cell_h, x0 : x0 + cell_w]
-            # Use road median to avoid bright water reflections from skewing threshold
+
             dark_diff = max(0.0, road_median - float(sub_gray.mean()))
             edge_peak = float(np.percentile(sub_mag, 90)) if sub_mag.size else 0.0
 
-            # Strongly focus on the central driving lane; suppress peripheral road verges
             col_weight = 0.15 if (c < 3 or c > 20) else (1.30 if 4 <= c <= 17 else 0.70)
             pothole_score = dark_diff * 2.8 * col_weight if dark_diff > 16.0 else 0.0
             crack_score = edge_peak * 2.2 * col_weight if edge_peak > 22.0 else 0.0
@@ -785,7 +748,6 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
             elif crack_score > 0:
                 cell_score[r, c], cell_kind[r, c] = crack_score, 1
 
-    # Pavement cell score matrix preserved to lowermost row for foreground defect recovery
 
     peaks = []
     for r in range(grid_rows):
@@ -800,7 +762,6 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
 
     peaks.sort(key=lambda p: p[2], reverse=True)
 
-    # Fallback to global peak if no peak exceeded 95 but road anomaly exists
     if not peaks and cell_score.max() >= 45.0:
         max_idx = np.unravel_index(np.argmax(cell_score), cell_score.shape)
         peaks.append((int(max_idx[0]), int(max_idx[1]), float(cell_score[max_idx])))
@@ -954,13 +915,11 @@ def _segment_defect_regions(img_np, boxes, orig_h, orig_w, is_waterlogging=False
     sat[nz] = (cmax[nz] - cmin[nz]) / cmax[nz]
     gray_road = 0.299 * r + 0.587 * g + 0.114 * b
 
-    # A scene is an unpaved waterlogged mud road ONLY if the road background has high color saturation
-    # (brown/yellow mud: sat > 0.18) AND whole-frame classification indicates waterlogging / flood hazard
     road_is_mud = float((sat > 0.18).mean()) > 0.20
     is_water_puddle = road_is_mud and is_waterlogging
 
     if is_water_puddle:
-        # Specular water pools on mud road
+
         is_water = (gray_road > 132.0) & (sat < 0.15)
         m_img = Image.fromarray(is_water.astype(np.uint8) * 255, mode="L")
         m_opened = m_img.filter(ImageFilter.MinFilter(size=5)).filter(ImageFilter.MaxFilter(size=5))
@@ -977,7 +936,7 @@ def _segment_defect_regions(img_np, boxes, orig_h, orig_w, is_waterlogging=False
                 "mean_conf": 0.94,
             })
     else:
-        # Standard asphalt road: segment strictly inside proposal boxes for dark depression/cavity
+
         road_median = float(np.median(gray_road))
         for b in boxes:
             bx, by, bw, bh = b["bbox_pixels"]
@@ -999,7 +958,6 @@ def _segment_defect_regions(img_np, boxes, orig_h, orig_w, is_waterlogging=False
             variance = w0 * w1 * ((u0 - u1) ** 2)
             otsu_thresh = float(np.argmax(variance))
 
-            # Depression cavity: darker than Otsu threshold AND darker than road median
             cavity_thresh = min(otsu_thresh, road_median - 6.0)
             raw_mask = (blurred < max(cavity_thresh, otsu_thresh * 0.90)).astype(np.uint8) * 255
             m_img = Image.fromarray(raw_mask, mode="L")
@@ -1023,8 +981,8 @@ def _segment_defect_regions(img_np, boxes, orig_h, orig_w, is_waterlogging=False
     mask_url = None
     if total_px > 0:
         rgba = np.zeros((orig_h, orig_w, 4), dtype=np.uint8)
-        rgba[mask_full == 1] = [45, 212, 212, 135]   # cyan for cracks
-        rgba[mask_full == 2] = [244, 63, 94, 145]    # rose-red for potholes
+        rgba[mask_full == 1] = [45, 212, 212, 135]
+        rgba[mask_full == 2] = [244, 63, 94, 145]
         buf = io.BytesIO()
         Image.fromarray(rgba, mode="RGBA").save(buf, format="PNG")
         mask_url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
@@ -1088,7 +1046,6 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     ipm = IPMHomographyEngine.from_calibration(calib)
     calib_desc = cam_cal.describe(calib, prov)
 
-    # STAGE 1: OOD Input Guard (rejects desktop screenshots, selfies, indoor scenes, non-road photos)
     input_check = {"available": False, "reason": "OOD guard not loaded"}
     guard = s.get("ood_guard")
     if guard is not None and guard.is_ready:
@@ -1161,10 +1118,8 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "total_latency_ms": elapsed_ms,
         }
 
-    # STAGE 2: YOLOv8 COCO Object Detection + Geometric Marking Analyzer (Zebra Crossing)
     scene_objects, scene_summary, pedestrians, vehicle_detections, traffic_analysis, object_mask, markings_res = _detect_scene_objects(img_np, H, W)
 
-    # STAGE 3: Whole-frame MobileNetV3-Large classification with Road Surface ROI prior
     frame_cls_raw = classify_crop(img_np)
     roi_crop = img_np[int(H * 0.35):, :]
     road_cls_raw = classify_crop(roi_crop) if roi_crop.size > 0 else frame_cls_raw
@@ -1175,10 +1130,6 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     f_cls = frame_cls_raw.get("class_id")
     f_conf = frame_cls_raw.get("confidence", 0.0)
 
-    # Semantic cross-verification: on severe distress roads (pothole cavity, waterlogging, or crack >= 0.60 conf),
-    # suppress zebra crossing detection completely (water reflections / specular puddle glare are not crosswalks).
-    # A second rule (mean bar solidity < 0.62) was removed: it discarded real crossings (1/19 kept; 4/19
-    # without it) and suppressed no extra false ones (flooded streets 0/14, pothole photographs 1/40).
     if markings_res.get("found"):
         bars = markings_res.get("bars", [])
         mean_solidity = float(np.mean([b.get("solidity", 0.0) for b in bars])) if bars else 0.0
@@ -1222,7 +1173,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             except Exception:
                 pass
             if f_cls == 4:
-                # Intact zebra crossing is verified by geometry; override spurious missing crossing defect
+
                 frame_cls_raw["class_id"] = 0
                 frame_cls_raw["class_name"] = "Normal Road / Sound Pavement"
 
@@ -1234,12 +1185,10 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         "role": "whole-frame opinion of the classifier; does not set area, depth or cost",
     }
 
-    # STAGE 4: Fusion of U-Net Segmentation & Salient Cavity Proposals
     pothole_heat = _pothole_heat(img_np)
     seg_out = segment_image(img_np, object_mask_full=object_mask, gray_full=gray, pothole_heat=pothole_heat)
     detections = []
 
-    # Gather proposals from U-Net components and salient anomaly detector
     proposals = []
     if seg_out and seg_out["components"]:
         for comp in seg_out["components"]:
@@ -1249,11 +1198,10 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 "source": (seg_out or {}).get("backend", "segmenter") + "_segmenter",
             })
 
-    # Add salient optical anomaly proposals (crucial for water-filled / sky-reflecting potholes)
     salient_boxes = _extract_salient_regions_numpy(img_np, excluded_boxes=pedestrians)
     for sb in salient_boxes:
         sbox = sb[:4]
-        # Only add if not overlapping with an existing U-Net proposal
+
         if not any(_box_iou(sbox, p["bbox_pixels"]) > 0.40 for p in proposals):
             proposals.append({
                 "bbox_pixels": sbox,
@@ -1267,15 +1215,14 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         bx, by, bw, bh = prop["bbox_pixels"]
         if bw < 14 or bh < 10:
             continue
-        # Reject sidewalk kerb / frame border artifacts (e.g. raised pavement margins in upper road zone)
+
         if (bx < 20 or bx + bw > W - 20) and by < int(H * 0.50) and (bw * bh) < int(0.04 * W * H):
             continue
-        # Reject distant horizon noise
+
         if (by + bh * 0.5) < int(H * 0.22) and bw > int(W * 0.40):
             continue
         comp = prop["seg_comp"]
 
-        # Expand crop with 20% context margin (minimum 96x96 px) for MobileNetV3-Large verification
         cx, cy = bx + bw // 2, by + bh // 2
         cw = max(96, int(round(bw * 1.35)))
         ch = max(96, int(round(bh * 1.35)))
@@ -1284,7 +1231,6 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         crop = img_np[y0:min(H, y0 + ch), x0:min(W, x0 + cw)]
         cls_info = classify_crop(crop) if crop.size > 0 else dict(frame_cls_raw)
 
-        # Classifier agreement gate: drop false-positive proposals where crop is sound pavement
         p_probs = cls_info.get("probabilities") or {}
         p_defect_crop = float(p_probs.get(CLASS_NAMES[1], 0.0)) + float(p_probs.get(CLASS_NAMES[2], 0.0)) + float(p_probs.get(CLASS_NAMES[3], 0.0))
         f_probs = frame_cls_raw.get("probabilities") or {}
@@ -1295,13 +1241,11 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         if frame_cls_raw["class_id"] == 0 and frame_cls_raw["confidence"] >= 0.85 and cls_info["class_id"] not in (1, 2, 3):
             continue
 
-        # Reject roadside shoulder margin noise in upper road zone
         if (by + bh * 0.5) < int(H * 0.45):
             centroid_x = (bx + bw * 0.5) / float(W)
             if centroid_x < 0.18 or centroid_x > 0.70:
                 continue
 
-        # Heuristic salient proposal verification (matches pipeline/deep_inference_pipeline.py line 1252):
         if prop["source"] == "salient_cavity_detector":
             crop_is_distress = cls_info["class_id"] in (1, 2, 3) and cls_info["confidence"] >= 0.65
             frame_is_distress = frame_cls_raw["class_id"] in (1, 2, 3) and frame_cls_raw["confidence"] >= 0.40
@@ -1310,25 +1254,18 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             box_area_share = (bw * bh) / float(W * H)
             if box_area_share < 0.012 and cls_info["confidence"] < 0.72:
                 continue
-            # Cracks cannot be proposed by optical saliency without segmentation agreement
+
             if cls_info["class_id"] == 1:
                 crack_mask_px = int((mask_full[by:by + bh, bx:bx + bw] == 1).sum()) if mask_full is not None else 0
                 if crack_mask_px < 15:
                     continue
-            # Salient potholes require either active cavity mask pixels or whole-frame confirmation
+
             elif cls_info["class_id"] == 2:
                 pothole_mask_px = int((mask_full[by:by + bh, bx:bx + bw] == 2).sum()) if mask_full is not None else 0
                 frame_confirms_pothole = (frame_cls_raw["class_id"] == 2 and frame_cls_raw["confidence"] >= 0.60)
                 if pothole_mask_px < 20 and not frame_confirms_pothole:
                     continue
 
-        # Class determination - the main engine's rules (pipeline/deep_inference_pipeline.py,
-        # region verification): the crop classifier's verdict stands. "Sound pavement" drops
-        # the region, and a zebra / divider / sign verdict drops a segmenter region. This path
-        # used to override both - keeping "sound" regions that had a small mask, relabelling
-        # zebra/divider/sign crops as pothole or crack at p >= 0.20, and calling a crop a
-        # pothole when p(normal) < 0.15 ("sky reflection") - which reported damage on about a
-        # third of clean-road check photographs.
         cls_id = cls_info["class_id"]
         if cls_id == 0 or cls_id in (4, 5, 6):
             continue
@@ -1337,11 +1274,9 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
 
         de = _photometric_depth(gray, [bx, by, bw, bh], cls_id)
         cls_name = CLASS_NAMES[cls_id]
-        # The crop classifier's own probability for the reported class (no floor: a 0.65
-        # minimum used to be imposed here whatever the model said).
+
         conf = float(cls_info["confidence"])
 
-        # Surface area calculation: use pixel mask if >= 45 matching mask pixels exist, else perspective homography
         has_dense_mask = False
         area_m2 = 0.0
         mask_px_count = 0
@@ -1356,8 +1291,6 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         box_m2 = float(ipm.calculate_surface_area_sqm(bx, by, bw, bh))
         box_m2 = float(max(0.04, min(box_m2, 3.0)))
 
-        # When water reflections or glare cause the U-Net mask to capture only a partial rim sliver (< 25% of box area),
-        # use the full geometric homography area so the entire cavity is costed under MoRTH Section 500
         if has_dense_mask:
             if area_m2 < 0.25 * box_m2 and cls_id == 2:
                 area_m2 = box_m2
@@ -1408,7 +1341,6 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "source": prop["source"],
         })
 
-    # Spatial Proximity Fusion & Deduplication (Merges rim fragments, puddle center & adjoining defects)
     if len(detections) > 1:
         def _can_merge_defects(b1, b2, W, H):
             xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
@@ -1484,7 +1416,6 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 new_dets.append(d1_merged)
             detections = new_dets
 
-        # Second-pass containment suppression: suppress smaller nested sub-boxes (containment >= 70%)
         clean_dets = []
         for d in detections:
             b1 = d["bbox_pixels"]
@@ -1504,15 +1435,9 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 clean_dets.append(d)
         detections = clean_dets
 
-        # Filter distant low-conf / small background noise when large foreground defect exists
         if any(d.get("surface_area_m2", 0.0) > 1.0 for d in detections):
             detections = [d for d in detections if not (d["bbox_pixels"][1] < int(H * 0.40) and d.get("surface_area_m2", 0.0) < 0.35)]
 
-    # Semantic gate (models/semantic_gate.py, threshold measured in
-    # checkpoints/semantic_gate_report.json): a pothole box is kept only where the CNN's
-    # sliding-window heat map also sees a pothole. The main engine applies it to every
-    # pixel-classifier mask; this path had none and reported potholes on 16 of the 36
-    # clean-road check photographs.
     if pothole_heat is not None and any(d.get("class_id") == 2 for d in detections):
         from models import semantic_gate
         kept = []
@@ -1527,17 +1452,9 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             kept.append(d)
         detections = kept
 
-    # Sort detections by significance (potholes first, then largest surface area) and keep top 4
     detections.sort(key=lambda d: (1 if d["class_id"] == 2 else 0, d["surface_area_m2"]), reverse=True)
     detections = detections[:4]
 
-    # Corridor-level hazards (waterlogging, zebra, divider, sign) come from the classifier's
-    # whole-frame opinion. They used to be turned into a detection with a fixed box
-    # (18-82% x 42-86% of the frame) and a distance - and for waterlogging an area - computed
-    # from that invented box. On the 36 clean-road check photographs this path then reported
-    # a missing zebra crossing or divider on 14. Same rule as the main engine
-    # (pipeline/deep_inference_pipeline._frame_classification): a whole-frame opinion is
-    # reported as such and never sets a box, area, depth or cost.
     frame_level_hazard = None
     if (
         not detections
@@ -1553,7 +1470,6 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "role": "whole-frame opinion of the classifier; not localised, sets no area, depth or cost",
         }
 
-    # STAGE 5: Refine surface area and repair metrics using genuine U-Net segmentation mask
     if detections and seg_out and mask_full is not None:
         mask_full = np.array(mask_full, copy=True)
         for d in detections:
@@ -1564,8 +1480,6 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 region_bool[by:by + bh, bx:bx + bw] = (mask_full[by:by + bh, bx:bx + bw] == cls_id)
                 px_c = int(region_bool.sum())
 
-                # If the segmenter mask is sparse/empty for this confirmed defect (e.g. water-filled pothole or specular puddle),
-                # perform adaptive photometric cavity and puddle segmentation inside the confirmed defect bounding box
                 if px_c < 25:
                     from PIL import Image, ImageFilter
                     crop_gray = gray[by:by + bh, bx:bx + bw]
@@ -1574,11 +1488,11 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                     blurred_cg = np.asarray(pil_cg.filter(ImageFilter.BoxBlur(3)), dtype=np.float32)
                     diff_cg = np.abs(crop_gray - blurred_cg)
 
-                    if cls_id == 2:  # Pothole cavity: dark depression or specular standing water
+                    if cls_id == 2:
                         is_dark_cavity = crop_gray < min(114.0, road_med - 6.0)
                         is_water_puddle = (diff_cg < 6.5) & (crop_gray > 115.0)
                         local_mask = is_dark_cavity | is_water_puddle
-                    else:  # Crack: high gradient edges darker than road median
+                    else:
                         gy_c, gx_c = np.gradient(crop_gray)
                         gmag_c = np.hypot(gx_c, gy_c)
                         local_mask = (gmag_c > 22.0) & (crop_gray < road_med)
@@ -1622,7 +1536,6 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             mask_work = np.asarray(Image.fromarray(mask_full, mode="L").resize((WORK_W, WORK_H), Image.Resampling.NEAREST), dtype=np.uint8)
             seg_out["mask_data_url"] = _mask_to_data_url(mask_work)
 
-    # If no road defect was confirmed, zero out the segmentation mask so rejected noise blobs are not counted
     if not detections and seg_out:
         seg_out["crack_px_full"] = 0
         seg_out["pothole_px_full"] = 0
@@ -1673,10 +1586,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "repair_cost_inr": total_cost,
             "pci_score": pci_res["pci_score"],
         }
-        # Same rule as models/morth_dispatch_agent: a keyed HMAC only when the deployment
-        # holds ROAD_SHIELD_SEAL_KEY (a secret set in the host's environment, never in the
-        # repository); otherwise a plain SHA-256 that proves integrity, not authorship.
-        # A key written in this file would let anyone who reads the repository forge seals.
+
         seal_key = os.environ.get("ROAD_SHIELD_SEAL_KEY", "").encode("utf-8")
         canonical = json.dumps(order_payload, sort_keys=True).encode("utf-8")
         if seal_key:
@@ -1770,7 +1680,7 @@ def redact_image_base64(image_b64):
                     out_img.paste(crop, (x0, y0))
                     people_blurred += 1
                 elif o["class_name"] in VEHICLE_CLASS_MAP:
-                    # Blur lower 45% of vehicle bounding box (license plate band)
+
                     py0 = max(y0, y0 + int((y1 - y0) * 0.55))
                     crop = out_img.crop((x0, py0, x1, y1)).filter(ImageFilter.GaussianBlur(radius=14))
                     out_img.paste(crop, (x0, py0))

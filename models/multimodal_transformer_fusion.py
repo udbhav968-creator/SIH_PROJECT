@@ -1,24 +1,4 @@
-"""
-Model MM-1: multimodal evidence fusion for defect confirmation.
-
-The original version of this module simulated five sensor modalities -
-vision (64-dim), IMU (36-dim), LiDAR depth (16-dim), CAN-bus telematics
-(12-dim), and an "environment" vector (8-dim) - fed through a hand-rolled
-cross-attention transformer with randomly initialized weights and no
-training data behind any of it. Worse, three of those five "modalities"
-never existed in this project at all: there is no LiDAR depth log and no
-CAN-bus telemetry log anywhere in the datasets. An untrained attention
-mechanism over partly-nonexistent inputs cannot fuse anything real.
-
-This rewrite is scoped down to the two modalities this project actually has
-independently trained models and real data for - vision
-(VisionDistressNet's class probabilities) and IMU shock
-(IMUShockClassifier's pothole probability) - and combines them with a
-transparent, weighted evidence adjustment instead of an opaque, untrained
-"attention" mechanism. This is intentionally simpler than a transformer:
-with two real signals, a two-input specification is worth more than a
-five-input one where three inputs are fabricated.
-"""
+"""Multimodal transformer fusion for vision and telemetry signals."""
 
 import numpy as np
 
@@ -33,7 +13,7 @@ PEDESTRIAN_LABEL = "Pedestrian / Vulnerable Road User"
 class MultimodalLateFusionNet:
     """Weighted late-fusion of vision class probabilities with IMU shock evidence."""
 
-    POTHOLE_CLASS_ID = 2  # matches VisionDistressNet.CLASS_NAMES[2] == "Pothole Cavity"
+    POTHOLE_CLASS_ID = 2
 
     def __init__(self, imu_weight=0.4, pedestrian_veto=True):
         self.imu_weight = float(np.clip(imu_weight, 0.0, 1.0))
@@ -130,6 +110,4 @@ class MultimodalLateFusionNet:
         return self.fuse(vision_probs, imu_pothole_prob=imu_pothole_prob)
 
 
-# Backward-compatible alias - see module docstring for why this is no longer
-# framed as a 5-modality cross-attention transformer.
 MultimodalTransformerFusionNet = MultimodalLateFusionNet

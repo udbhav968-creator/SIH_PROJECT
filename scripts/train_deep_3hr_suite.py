@@ -75,7 +75,6 @@ def main():
     print("  Device: Laptop CPU | Optimization: PyTorch + scikit-learn + ONNX", flush=True)
     print("=" * 78, flush=True)
 
-    # 1. Expand rare classes (download & verify real road hazard photographs)
     ok, dt = run_stage(
         "Rare-Class Dataset Expansion & 64-bit pHash Audit",
         ["-m", "scripts.expand_rare_classes", "--target", str(args.target_rare)],
@@ -83,7 +82,6 @@ def main():
     )
     timings["Rare Class Expansion"] = dt
 
-    # 2. Civil Engineering Models (ASTM D6433 PCI, HDM-4 Deterioration, IRC Depth)
     ok, dt = run_stage(
         "Civil Engineering Models (Real Image Distresses)",
         ["-m", "training.train_civil_real"],
@@ -91,7 +89,6 @@ def main():
     )
     timings["Civil Models"] = dt
 
-    # 3. 100 Hz IMU Shock Vibration Classifier
     ok, dt = run_stage(
         "100 Hz IMU Chassis Vibration Classifier (36 features)",
         ["-m", "training.train_imu"],
@@ -99,7 +96,6 @@ def main():
     )
     timings["IMU Shock Model"] = dt
 
-    # 4. Pixel Defect Segmenter on 2,000 photographs
     ok, dt = run_stage(
         "11-Feature Pixel Defect Segmenter (4.5M pixels)",
         ["-m", "training.train_segmenter", "--images", str(args.seg_images)],
@@ -107,7 +103,6 @@ def main():
     )
     timings["Pixel Defect Segmenter"] = dt
 
-    # 5. Deep CNN Feature Embedding Head
     ok, dt = run_stage(
         f"Deep CNN Embeddings ({args.backbone}) & Mirror-Averaged Grouped CV",
         ["-m", "training.train_cnn_head", "--backbone", args.backbone, "--compare"],
@@ -115,7 +110,6 @@ def main():
     )
     timings["CNN Head"] = dt
 
-    # 6. Flagship Dual Attention Network (DAN) + 21-Node Decision DAG
     ok, dt = run_stage(
         f"Flagship DAN-DAG Deep Network (PAM/CAM + 21-Node DAG, {args.dan_epochs} epochs)",
         ["-m", "training.train_dan_dag", "--backbone", args.backbone, "--epochs", str(args.dan_epochs), "--max-per-class", "2000"],
@@ -123,7 +117,6 @@ def main():
     )
     timings["DAN-DAG Deep Network"] = dt
 
-    # 7. Verification Test Suite & Claims Validation
     ok, dt = run_stage(
         "Automated System Regression & Claims Verification Suite",
         ["-m", "unittest", "tests.test_road_shield"],

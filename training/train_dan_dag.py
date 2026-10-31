@@ -63,7 +63,7 @@ def _compute_fisher_weights(X_norm, y, n_classes):
         between += n_c * (mu_c - global_mean) ** 2
         within += np.sum((Xc - mu_c) ** 2, axis=0)
     ratio = between / np.maximum(within, 1e-4)
-    # Normalize to [0.2, 2.0] with mean ~ 1.0
+
     ratio = ratio / np.maximum(np.mean(ratio), 1e-6)
     return np.clip(ratio, 0.2, 2.5).astype(np.float32)
 
@@ -204,7 +204,6 @@ def _train_21_node_decision_dag(X_fused, y, X_test_fused, y_test, n_classes, see
             w = clf.coef_[0].astype(np.float32)
             b = float(clf.intercept_[0])
 
-            # Evaluate pairwise node on held-out test set
             t_mask = (y_test == i) | (y_test == j)
             if np.any(t_mask):
                 t_pred = (X_test_fused[t_mask] @ w + b >= 0.0).astype(int)
@@ -312,7 +311,6 @@ def run_training(backbone="mobilenetv2", max_per_class=1500, epochs=65, seed=42)
         X_fit_norm_aug, P_fit_norm_aug, fisher_w, y_fit_mlp_aug, n_classes, epochs=epochs, seed=seed
     )
 
-    # Compute attended & fused representations for the 21-node Decision DAG
     dan_state = {
         "z_mean": z_mean,
         "z_std": z_std,
@@ -343,7 +341,6 @@ def run_training(backbone="mobilenetv2", max_per_class=1500, epochs=65, seed=42)
     )
     temp_net.state["dag_pairs"] = dag_pairs
 
-    # Evaluate MLP-only, DAG-only, and DAN-DAG Fused Ensemble on held-out test set
     probs_mlp_all, probs_dag_all = [], []
     for i in range(len(y_test)):
         fv = X_test_fused[i]

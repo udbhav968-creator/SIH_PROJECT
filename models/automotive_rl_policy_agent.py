@@ -1,18 +1,4 @@
-"""
-Automotive ADAS / active-chassis decision policy.
-
-This used to be wrapped in "Dueling Deep Q-Network" framing, but the network
-was randomly initialized and never trained (there's no driving simulator or
-labeled trajectory data in this project to train an RL policy against), and
-its Q-value output was overwritten by a deterministic rule table before it
-ever reached a decision anyway. So this is a rule-based safety policy - which
-is also the more defensible design for an ASIL-D-relevant decision in
-practice: functional-safety reviews want a decision path they can trace and
-prove is bounded, not a black box.
-
-The kinematics (time-to-collision, braking-distance) are real physics
-formulas and are unchanged.
-"""
+"""Automotive ADAS policy and risk assessment agent."""
 
 import math
 
@@ -60,8 +46,6 @@ class AutomotiveADASPolicyAgent:
         },
     }
 
-    # Hazard class ids from the pipeline's combined detection scheme
-    # (VisionDistressNet classes 0-6, plus PEDESTRIAN_CLASS_ID = 7).
     PEDESTRIAN_CLASS_ID = 7
     POTHOLE_CLASS_ID = 2
     WATERLOGGING_CLASS_ID = 3
@@ -116,8 +100,6 @@ class AutomotiveADASPolicyAgent:
             asil_rating = "ASIL-QM_NOMINAL"
             alert = "Nominal cruise: ADAS monitoring active."
 
-        # A closing gap with little time to react always escalates toward braking,
-        # regardless of what triggered the evaluation.
         if ttc < 1.5 and action_idx != 3:
             action_idx = 3
             base_scores = [0.0] * len(self.ACTION_NAMES)
@@ -161,6 +143,4 @@ class AutomotiveADASPolicyAgent:
         }
 
 
-# Backward-compatible alias - see module docstring for why this is no longer
-# framed as a trained reinforcement-learning agent.
 AutomotiveRLPolicyAgent = AutomotiveADASPolicyAgent

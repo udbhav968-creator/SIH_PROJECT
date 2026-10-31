@@ -1,18 +1,4 @@
-"""
-Automotive telematics / CAN-bus protocol helper.
-
-Encodes ADAS decisions into CAN frames following the SAE J1939 / ISO 11898-1
-(CAN 2.0B) byte layout, and exports a matching Vector DBC file plus a
-single-header C++ reference implementation for a real-time ECU. The frame
-layout and the C++ arbitration logic follow ISO 26262 ASIL severity-level
-conventions, but neither has gone through an actual MISRA static-analysis
-pass or a certification body - describe it as "styled after" those
-standards, not "certified", until it has.
-
-get_simulated_telemetry_snapshot() at the bottom generates canned demo
-scenarios for the cockpit dashboard UI - it is a fixture for exercising the
-UI, not a reading from a real vehicle.
-"""
+"""Automotive CAN telemetry and kinematics ingestion engine."""
 
 import os
 import sys
@@ -27,11 +13,10 @@ class AutomotiveTelematicsEngine:
     Encodes real-time ADAS and active chassis commands into standard CAN-Bus frames.
     """
 
-    # CAN Message Identifiers (Extended 29-bit CAN IDs)
-    CAN_ID_SUSPENSION_CTRL = 0x18F00503  # Active Suspension Pre-Damping Controller
-    CAN_ID_ADAS_SAFETY     = 0x18FD0102  # ADAS Road Hazard & AEB Safety Broadcast
-    CAN_ID_POWERTRAIN_CTRL = 0x0CF00400  # Powertrain Decel / Torque Modulation
-    CAN_ID_MUNICIPAL_V2X   = 0x18FEF999  # NHAI/MoRTH Municipal V2X Telemetry Uplink
+    CAN_ID_SUSPENSION_CTRL = 0x18F00503
+    CAN_ID_ADAS_SAFETY     = 0x18FD0102
+    CAN_ID_POWERTRAIN_CTRL = 0x0CF00400
+    CAN_ID_MUNICIPAL_V2X   = 0x18FEF999
 
     def __init__(self, checkpoints_dir=None):
         self.ckpt_dir = checkpoints_dir or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints"))
@@ -77,11 +62,9 @@ class AutomotiveTelematicsEngine:
         steer_deg = setpoints.get("steer_offset_deg", 0.0)
         b5 = int(min(127, max(-128, int(steer_deg * 10)))) & 0xFF
 
-        # hazard_class_id 7 = pedestrian/VRU, 2 = pothole (see VisionDistressNet.CLASS_NAMES)
         asil_byte = 0x04 if hazard_class_id == 7 else (0x02 if hazard_class_id == 2 else 0x00)
         b6 = asil_byte
 
-        # Rolling counter + simple parity nibble
         counter = int(time.time() * 10) % 16
         b7 = (counter << 4) | ((b0 ^ b1 ^ b2 ^ b3 ^ b4 ^ b5 ^ b6) & 0x0F)
 
@@ -94,7 +77,7 @@ class AutomotiveTelematicsEngine:
         """
         dbc_content = """VERSION ""
 
-NS_ : 
+NS_ :
     NS_DESC_
     CM_
     BA_DEF_

@@ -1,20 +1,4 @@
-"""
-Road-damage boxes from the YOLOv8 model trained on RDD2022 India
-(training/train_rdd_detector.py), served through ONNX Runtime on the CPU.
-
-It reuses the COCO detector's letterbox / decode / NMS code
-(models/onnx_object_detector.py) with this model's four classes:
-
-    D00 longitudinal crack   D10 transverse crack   D20 alligator crack   D40 pothole
-
-Boxes say WHERE damage is in a road frame. Area and cost still come from the
-segmentation mask: a box around a diagonal crack is mostly sound road.
-
-The confidence threshold is the one chosen on the validation split during
-training (max mean F1), read from checkpoints/damage_rdd2022_india.json.
-Without the model file this module reports not-ready and the pipeline simply
-omits the boxes.
-"""
+"""Road damage bounding-box detection interface."""
 
 import json
 import os

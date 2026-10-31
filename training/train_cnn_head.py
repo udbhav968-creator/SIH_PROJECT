@@ -1,30 +1,4 @@
-"""
-Train the road-distress classifier on deep CNN embeddings.
-
-    python -m training.train_cnn_head                     # ResNet-50 embeddings
-    python -m training.train_cnn_head --backbone mobilenetv2
-    python -m training.train_cnn_head --compare           # also score the hand-crafted baseline
-
-This is transfer learning without PyTorch. An ImageNet-trained convolutional
-network (1.28 million images) runs through ONNX Runtime as a frozen feature
-extractor; a small scikit-learn classifier learns the mapping from its
-embeddings to the seven road-condition classes. The network's weights are not
-updated - with a few hundred images per class, training only the head is both
-faster and less prone to overfitting than fine-tuning the whole network.
-
-Protocol matches training/train_vision.py so the numbers are comparable:
-split by source photograph (augmented copies never cross the split), report
-held-out accuracy, macro-F1, the confusion matrix and per-class scores.
-
-Outputs:
-    checkpoints/cnn_head_<backbone>.joblib         backbone name + trained head
-    checkpoints/cnn_head_<backbone>_report.json    measured results
-
-One head per backbone: ResNet-50 and MobileNetV2 embeddings are different
-vector spaces, so a head trained on one is meaningless applied to the other.
-The loader in models/deep_vision_net.py pairs them and skips any head whose
-backbone file is absent.
-"""
+"""Train CNN classification head on frozen backbone embeddings."""
 
 import argparse
 import json
@@ -127,15 +101,11 @@ def embed_items(embedder, items, label):
     t0 = time.time()
 
     def flush():
-        # Embed in chunks and drop the pixels. Holding every decoded photograph
-        # (plus a mirrored copy of each) took most of a 12 GB Colab runtime on the
-        # RDD-enlarged corpus and the runtime died; the vectors are identical.
+
         if not imgs:
             return
         X_parts.append(embedder.embed_batch(imgs, progress_every=0))
-        # Mirror-image embeddings, for flip test-time augmentation. A road photo
-        # and its mirror show the same defect; averaging the two vectors removes
-        # some of the backbone's left/right bias.
+
         Xf_parts.append(embedder.embed_batch([np.ascontiguousarray(im[:, ::-1]) for im in imgs],
                                              progress_every=0))
         imgs.clear()
@@ -152,11 +122,7 @@ def embed_items(embedder, items, label):
             pam_vec, _, pam_tel = DualAttentionModule.extract_spatial_attention(img)
             pams.append(pam_vec)
             domains.append(pam_tel["domain_regime"])
-            # Region proposals at inference time are tight road-surface crops,
-            # whereas full photographs on disk are wide-angle frames. Extract
-            # multi-scale sub-crops from the training split ONLY (never the
-            # held-out test split) with their true class label so every class is
-            # represented at both full-frame and region-proposal scales.
+
             if label == "training":
                 from data.augmentation_pipeline import CivilDataAugmentor
                 if not hasattr(embed_items, "_augmentor"):
@@ -178,8 +144,7 @@ def embed_items(embedder, items, label):
                                 cpam, _, ctel = DualAttentionModule.extract_spatial_attention(c_contig)
                                 pams.append(cpam)
                                 domains.append(ctel["domain_regime"])
-                        # For rare classes (3..6), also generate 3 full-frame photometric/geometric
-                        # augmented views strictly inside the training split (kept in the same group _grp).
+
                         if cls in (3, 4, 5, 6):
                             for _ in range(3):
                                 aug_im = np.ascontiguousarray(embed_items._augmentor.augment(img))
@@ -197,8 +162,7 @@ def embed_items(embedder, items, label):
                             cpam, _, ctel = DualAttentionModule.extract_spatial_attention(c_contig)
                             pams.append(cpam)
                             domains.append(ctel["domain_regime"])
-            # every row - the photograph and any sub-crop of it - carries the
-            # photograph's group, so cross-validation can never split them
+
             groups.extend([_grp] * (len(imgs) - n_before))
         except Exception:
             del imgs[n_before:], ys[n_rows:], pams[n_rows:], domains[n_rows:]
@@ -213,10 +177,7 @@ def embed_items(embedder, items, label):
 
 
 CANDIDATES = {
-    # name: (family, params)
-    # NOTE: RBF SVC removed -- O(n^2-n^3) fitting hangs for hours on
-    # 4000+ samples x 1000-dim CNN embeddings. Logistic, SGD and MLP
-    # finish in seconds while retaining strong accuracy.
+
     "logistic_C0.3": ("logistic", {"C": 0.3}),
     "logistic_C1": ("logistic", {"C": 1.0}),
     "logistic_C3": ("logistic", {"C": 3.0}),
@@ -256,7 +217,7 @@ def build_candidate(name, seed=42, final=False, lsvc_C=10.0, logistic_C=1.0):
         return sgd()
     if family == "mlp":
         return mlp()
-    # soft vote of the three families at their CV-best settings
+
     return VotingClassifier([("sgd", sgd()), ("lr", logistic(logistic_C)), ("mlp", mlp())],
                             voting="soft")
 
@@ -271,7 +232,7 @@ def smote_mixup_minority(X, y, target_min=450, k=5, seed=42):
             continue
         need = int(target_min - cnt)
         Xc = X[y == cls]
-        # Pairwise squared Euclidean distances within minority class
+
         norms = np.sum(Xc * Xc, axis=1, keepdims=True)
         dists = np.maximum(0.0, norms + norms.T - 2.0 * (Xc @ Xc.T))
         np.fill_diagonal(dists, np.inf)
@@ -323,7 +284,6 @@ def cross_validate_candidates(features, y, groups, seed=42, folds=5):
                   f"\u00b1{r['cv_accuracy_std'] * 100:4.1f}  macro-F1 {r['cv_macro_f1']:.3f} "
                   f"\u00b1{r['cv_macro_f1_std']:.3f}  ({r['seconds']:.0f}s)", flush=True)
 
-    # ensemble on the better feature set, members at their CV-best settings
     top_feat = max(ranked)[2]
     svc_C = best_params.get(("lsvc", top_feat), best_params.get(("sgd", top_feat), (0, {"C": 10.0})))[1].get("C", 10.0)
     lr_C = best_params[("logistic", top_feat)][1]["C"]
@@ -352,7 +312,7 @@ def cross_validate_candidates(features, y, groups, seed=42, folds=5):
     if name == "ensemble_soft":
         CANDIDATES["ensemble_soft"] = ("ensemble", {})
         best["members"] = r["members"]
-        # bind the member settings for the final refit
+
         global _ENSEMBLE_MEMBERS
         _ENSEMBLE_MEMBERS = (svc_C, lr_C)
     return results, best
@@ -372,7 +332,6 @@ def capped_grouped_split(seed=42, max_per_class=1500):
     if not items:
         sys.exit("No training images. Run scripts/fetch_cracks_potholes_dataset.py first.")
 
-    # cap per class, sampling across the folder rather than alphabetically
     rng = np.random.default_rng(seed)
     by_class = {}
     for it in items:
@@ -392,7 +351,7 @@ def run_training(backbone="resnet50", seed=42, max_per_class=1500, compare=False
         sys.exit("No CNN backbone found. Run:  python -m scripts.fetch_cnn_backbone")
 
     capped, (train_items, val_items, test_items) = capped_grouped_split(seed, max_per_class)
-    # the head trains on train+val; test stays untouched until the end
+
     fit_items = train_items + val_items
     print(f"[CNN head] backbone {embedder.name} | {len(capped)} images "
           f"({len({i[2] for i in capped})} distinct photographs)", flush=True)
@@ -420,12 +379,6 @@ def run_training(backbone="resnet50", seed=42, max_per_class=1500, compare=False
         "flip_tta": (0.5 * (X_fit + Xf_fit), 0.5 * (X_test + Xf_test)),
     }
 
-    # ---- model selection: grouped CV on the FIT split only -------------------
-    # The previous version fitted three heads and kept whichever scored best on
-    # the test set, which makes the reported test score an optimistic one. Here
-    # every candidate is scored by 5-fold cross-validation grouped by source
-    # photograph inside the fit split; the test set is touched exactly once, by
-    # the single model that selection chose.
     cv_results, best = cross_validate_candidates(features, y_fit, G_fit, seed)
     chosen = best["name"]
     feat_name = best["features"]
@@ -475,11 +428,7 @@ def run_training(backbone="resnet50", seed=42, max_per_class=1500, compare=False
         from data.feature_extraction import extract_batch
         from models.vision_distress_net import VisionDistressNet
         print("\n  scoring the hand-crafted baseline on the identical split ...")
-        # embed_items() augments the TRAINING split with region-scale sub-crops,
-        # so y_fit is longer than fit_items. The baseline sees full photographs
-        # only, so its labels must come from the items themselves - reusing
-        # y_fit here misaligned features and labels and crashed every --compare
-        # run before the model was saved.
+
         Xb_fit, yb_fit = _features_aligned(fit_items)
         Xb_test, yb_test = _features_aligned(test_items)
         base = VisionDistressNet(random_state=seed)

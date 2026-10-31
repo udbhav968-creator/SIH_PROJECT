@@ -102,7 +102,7 @@ def artefact_check(n_images=100):
     pt_map50 = float((report.get("test") or {}).get("map50") or 0.0)
 
     det = RoadDamageDetector(CKPT)
-    det.verifying = True                     # the check has to run the model it is checking
+    det.verifying = True
     ref_model = YOLO(BEST_PT)
     paths = sorted(glob.glob(os.path.join(DATA, "images", "test", "*.jpg")))[:n_images]
     n_ref = n_ours = m_ref = m_ours = 0

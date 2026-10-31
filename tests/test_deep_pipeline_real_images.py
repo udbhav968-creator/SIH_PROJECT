@@ -1,21 +1,4 @@
-"""
-Deep inference pipeline benchmark on distinct real-world road defect images.
-
-Validates the full multimodal AI engine against authentic photographs harvested
-across Indian and global pavement defect datasets:
-- Kaggle Pothole 600 (Potholes)
-- CRACK500 (Fatigue cracks)
-- RDD2022 India (Mixed Indian road distress)
-- MoRTH Civil Hard Negatives (Clean road / sound pavement)
-- Waterlogging Hazard (Puddles and standing water)
-- Missing Zebra Crossing & Divider (Marking defects)
-- Damaged Traffic Signs
-- ASTM D6433 PCI Benchmark
-- Non-Pavement Control (Texture gatekeeper validation)
-
-Uses cryptographic SHA-256 hashing to guarantee 100% distinct images with zero duplicates.
-Outputs a structured summary table and writes results to checkpoints/real_distinct_images_deep_audit_report.json.
-"""
+"""Evaluation tests on real-world road inspection imagery."""
 
 import os
 import sys
@@ -110,7 +93,6 @@ def run_benchmark(target_count=30):
 
     images = harvest_distinct_real_images(target_count=target_count)
 
-    # Add a synthetic non-pavement control to verify the texture gatekeeper
     control_path = os.path.join(ENGINE_ROOT, "checkpoints", "_temp_flat_control.png")
     flat_arr = np.full((480, 640, 3), 128, dtype=np.uint8)
     Image.fromarray(flat_arr).save(control_path)
@@ -140,9 +122,7 @@ def run_benchmark(target_count=30):
 
         try:
             t0 = time.time()
-            # No GPS or chainage: these photographs have none, and inventing
-            # them (this used to pass a fixed point in Delhi) would seal work
-            # orders at a made-up location.
+
             audit = pipeline.audit_image(path, corridor_id="BENCHMARK")
             lat_ms = audit.get("latency_ms", (time.time() - t0) * 1000.0)
             total_pipeline_time += lat_ms
@@ -159,7 +139,7 @@ def run_benchmark(target_count=30):
 
             if not gatekeeper_passed:
                 cls_name = "REJECTED (Non-Pavement)"
-                conf = 0.0  # rule decision - no model confidence exists
+                conf = 0.0
                 area = 0.0
                 depth = 0.0
                 cost = 0.0
@@ -205,13 +185,11 @@ def run_benchmark(target_count=30):
                 "error": str(ex),
             })
 
-    # Clean up temp control image
     if os.path.exists(control_path):
         os.remove(control_path)
 
     print("-" * 118)
 
-    # Compute summary metrics
     real_images_res = [r for r in results if not r.get("is_control") and r.get("status") != "ERROR"]
     avg_lat = sum(r["latency_ms"] for r in real_images_res) / len(real_images_res) if real_images_res else 0.0
     throughput_fps = (1000.0 / avg_lat) if avg_lat > 0 else 0.0
@@ -269,4 +247,4 @@ def run_benchmark(target_count=30):
 
 if __name__ == "__main__":
     count = int(sys.argv[1]) if len(sys.argv) > 1 else 30
-    run_benchmark(count)
+    run_benchmark(count)

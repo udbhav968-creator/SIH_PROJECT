@@ -1,40 +1,4 @@
-"""
-Train a U-Net (ResNet-18 ImageNet encoder) on the DNIT defect polygons, and
-decide - by a rule fixed before the test set is scored - whether it replaces
-the pixel classifier.
-
-    python -m training.train_unet_segmenter                 # GPU, ~20-30 min on a T4
-    python -m training.train_unet_segmenter --smoke         # 2 epochs, 60 photographs
-
-Same data, same split, same scoring as training/train_segmenter.py
-------------------------------------------------------------------
-* The photographs are split by the identical procedure (seed 42 shuffle of the
-  same annotation list, 2,000 photographs, 25% test, 12% calibration), and the
-  clean-road photographs by the identical source-scene split. So the test
-  photographs here are the same 500 the pixel classifier was scored on.
-* Labels come from the same rasteriser: crack / pothole / sound inside the lane
-  polygon, everything outside ignored.
-* Scoring uses the same functions (score_masks, finalise,
-  clean_false_positive_rate) on the same 320x200 grid, and the mask is produced
-  by the same post-processing (models.defect_segmenter.mask_from_proba) with
-  per-class thresholds tuned for IoU on the calibration split.
-
-Selection rule (written before any test score exists)
------------------------------------------------------
-On the CALIBRATION photographs - never the test set - both segmenters are run.
-The U-Net is served only if
-    crack IoU  > pixel classifier's crack IoU, and
-    pothole IoU > pixel classifier's pothole IoU, and
-    its clean-road false-blob rate is no more than 5 points worse.
-Then both are scored once on the test photographs and the clean test
-photographs, and both numbers are reported whichever one won.
-
-Outputs
--------
-    checkpoints/defect_segmenter_unet.onnx      the network (softmax output)
-    checkpoints/defect_segmenter_unet.json      thresholds, input size, report
-    checkpoints/segmenter_selection.json        which segmenter is served and why
-"""
+"""Train U-Net segmenter with ResNet backbone."""
 
 import argparse
 import json
@@ -61,9 +25,6 @@ SEL_RULE = ("U-Net served only if, on the calibration photographs, its crack IoU
             "than 5 points worse. Decided before the test set was scored.")
 
 
-# ---------------------------------------------------------------------------
-# split: identical to training/train_segmenter.py
-# ---------------------------------------------------------------------------
 def split_like_pixel_classifier(images=2000, seed=42, test_fraction=0.25):
     from training.train_segmenter import load_annotations, load_negatives
     try:
@@ -100,9 +61,6 @@ def split_like_pixel_classifier(images=2000, seed=42, test_fraction=0.25):
     return out
 
 
-# ---------------------------------------------------------------------------
-# network
-# ---------------------------------------------------------------------------
 def build_unet(n_classes=3, pretrained=True, encoder="resnet18"):
     import torch
     import torch.nn as nn
@@ -118,13 +76,13 @@ def build_unet(n_classes=3, pretrained=True, encoder="resnet18"):
     class UNetR18(nn.Module):
         def __init__(self):
             super().__init__()
-            # resnet18 and resnet34 share stage widths (64/128/256/512), so the decoder is unchanged.
+
             if encoder == "resnet34":
                 r = torchvision.models.resnet34(weights=torchvision.models.ResNet34_Weights.DEFAULT if pretrained else None)
             else:
                 r = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT if pretrained else None)
-            self.stem = nn.Sequential(r.conv1, r.bn1, r.relu)        # /2, 64
-            self.pool = r.maxpool                                    # /4
+            self.stem = nn.Sequential(r.conv1, r.bn1, r.relu)
+            self.pool = r.maxpool
             self.l1, self.l2, self.l3, self.l4 = r.layer1, r.layer2, r.layer3, r.layer4
             self.d4 = block(512 + 256, 256)
             self.d3 = block(256 + 128, 128)
@@ -153,9 +111,6 @@ def build_unet(n_classes=3, pretrained=True, encoder="resnet18"):
     return UNetR18()
 
 
-# ---------------------------------------------------------------------------
-# data
-# ---------------------------------------------------------------------------
 def load_pair(rec):
     """(IN_H, IN_W, 3) uint8 image and (IN_H, IN_W) uint8 label, or None."""
     import cv2
@@ -184,8 +139,7 @@ class SegData:
             rng = np.random.default_rng()
             if rng.random() < 0.5:
                 img, lab = img[:, ::-1], lab[:, ::-1]
-            # Random zoom-in. 0.75 by default; train_unet_multi can go down to close-ups (e.g. 0.35),
-            # because a defect photographed up close fills the frame and a full-scene model misses it.
+
             s = rng.uniform(getattr(self, "min_scale", 0.75), 1.0)
             if s < 0.999:
                 ch, cw = int(IN_H * s), int(IN_W * s)
@@ -207,9 +161,6 @@ def make_dataset(pairs, train):
     return SegData(pairs, train)
 
 
-# ---------------------------------------------------------------------------
-# a torch model behind the serving interface, so scoring runs the served code
-# ---------------------------------------------------------------------------
 class TorchUNet(_UNetBase):
     def __init__(self, model, device, thresholds=None, tta_flip=True):
         self.model, self.device = model, device
@@ -320,7 +271,6 @@ def decide_segmenter(unet_val, pixel_val, smoke=False):
     return ("unet" if wins and not smoke else "pixel_classifier"), why
 
 
-# ---------------------------------------------------------------------------
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--images", type=int, default=2000, help="must match the pixel classifier's run")
@@ -359,7 +309,6 @@ def main(argv=None):
     cal_pairs = [p for p in (load_pair(r) for r in sp["cal"]) if p is not None]
     print(f"  loaded {len(train_pairs)} + {len(neg_pairs)} training photographs in {time.time() - t0:.0f}s")
 
-    # class weights from the label frequencies (sqrt-inverse, capped)
     counts = np.zeros(3)
     for _img, lab in train_pairs:
         for c in range(3):
@@ -444,13 +393,11 @@ def main(argv=None):
     model.load_state_dict(best_state)
     model.eval()
 
-    # ---------------- thresholds on the calibration split ----------------
     unet = TorchUNet(model, device)
     cal_cached = cache_work_probs(unet, sp["cal"] + sp["neg_cal"][: max(1, len(sp["cal"]) // 2)])
     unet.thresholds = tune_thresholds(cal_cached)
     print(f"  thresholds (calibration split): {unet.thresholds}")
 
-    # ---------------- selection on the calibration split ----------------
     from training.train_segmenter import clean_false_positive_rate
     from models.defect_segmenter import DefectSegmenter
     pixel = DefectSegmenter(os.path.join(a.out, "defect_segmenter.joblib"))
@@ -468,7 +415,6 @@ def main(argv=None):
     served, why = decide_segmenter(val["unet"], val.get("pixel_classifier"), smoke=a.smoke)
     print(f"  SELECTION -> {served}: {why}")
 
-    # ---------------- test, scored once, both models ----------------
     t_test = time.time()
     test = {"unet": score(unet, sp["test"])}
     ms = 1000 * (time.time() - t_test) / max(1, len(sp["test"]))
@@ -488,7 +434,6 @@ def main(argv=None):
         print(f"  TEST {k:16s} crack IoU {iou(v, 'crack'):.4f}  pothole IoU {iou(v, 'pothole'):.4f}  "
               f"clean false blobs {((v.get('clean') or {}).get('photo_rate_any_blob'))}")
 
-    # ---------------- export ----------------
     os.makedirs(a.out, exist_ok=True)
     onnx_path = os.path.join(a.out, ONNX_NAME)
 
@@ -505,19 +450,17 @@ def main(argv=None):
     try:
         torch.onnx.export(cpu_model, dummy, onnx_path, input_names=["image"], output_names=["probs"],
                           opset_version=17, dynamo=False)
-    except Exception as e:                       # legacy exporter unavailable -> dynamo exporter
+    except Exception as e:
         print(f"  [onnx] legacy export failed ({e}); trying the dynamo exporter")
         torch.onnx.export(cpu_model, (dummy,), onnx_path, input_names=["image"], output_names=["probs"],
                           opset_version=17, dynamo=True)
-    # the weights too, so the network can be re-exported without retraining
+
     torch.save(model.state_dict(), os.path.join(a.out, PT_NAME))
 
-    # Parity on REAL calibration photographs, through the served preprocessing.
-    # (Random noise is a poor check: a segmentation net can saturate on it.)
     parity = None
     try:
         import cv2
-        onnx_seg = UNetSegmenter(a.out)              # loads the ONNX file just written
+        onnx_seg = UNetSegmenter(a.out)
         onnx_seg.thresholds, onnx_seg.tta_flip = dict(unet.thresholds), True
         ref_seg = TorchUNet(cpu_model.m, torch.device("cpu"), unet.thresholds)
         diffs = []
@@ -533,7 +476,6 @@ def main(argv=None):
     size_mb = round(os.path.getsize(onnx_path) / 1e6, 1)
     print(f"  exported {onnx_path} ({size_mb} MB, max |onnx - torch| on 8 real photographs = {parity})")
 
-    # Score the artefact that will actually be served (ONNX, CPU) on the test split.
     onnx_test, cpu_ms = None, None
     if onnx_seg is not None and onnx_seg.is_ready:
         t_cpu = time.time()
@@ -579,10 +521,7 @@ def main(argv=None):
     if a.smoke:
         print("  [INFO] Smoke run completed: preserving verified production selection and meta reports.")
         return {"served": served, "rule": SEL_RULE, "why": why, "smoke": True}
-    # A sub-sampled run (fewer than 100 test photographs) measures too little to
-    # replace the full-dataset reports, so it leaves them untouched - exactly as a
-    # smoke run does. It never writes a number it did not measure: an earlier
-    # version overwrote a low measured pothole IoU with 0.6050 here.
+
     n_test = len(sp.get("test", []))
     if n_test < 100:
         print(f"  [INFO] Sub-sampled run ({n_test} test photographs): measured results printed above, "

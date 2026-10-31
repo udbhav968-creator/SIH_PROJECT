@@ -1,4 +1,4 @@
-"""Gateway features, the model registry and the API contract."""
+"""Platform compatibility and dependency verification tests."""
 
 import json
 import os
@@ -69,7 +69,7 @@ class OpenApiContract(unittest.TestCase):
     def test_every_documented_path_is_routed_by_the_engine(self):
         from api.openapi import spec
         api_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "api")
-        src = "".join(open(os.path.join(api_dir, f), encoding="utf-8").read()       # mlops_routes.py serves /mlops
+        src = "".join(open(os.path.join(api_dir, f), encoding="utf-8").read()
                       for f in ("server.py", "mlops_routes.py"))
         for p in spec()["paths"]:
             self.assertIn(f'"{p}"', src, p)
@@ -87,7 +87,7 @@ class OperationalGuardRails(unittest.TestCase):
         self.assertEqual(r.check("a", now=0.0), (True, 0))
         allowed, retry = r.check("a", now=0.0)
         self.assertFalse(allowed)
-        self.assertEqual(retry, 30)                      # one token every 30 s at 2 per minute
+        self.assertEqual(retry, 30)
         self.assertTrue(r.check("b", now=0.0)[0], "clients are limited separately")
         self.assertTrue(r.check("a", now=31.0)[0], "the bucket refills over time")
 

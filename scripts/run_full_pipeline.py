@@ -51,7 +51,6 @@ if ENGINE_ROOT not in sys.path:
 CKPT_DIR = os.path.join(ENGINE_ROOT, "checkpoints")
 REPORT_PATH = os.path.join(CKPT_DIR, "pipeline_run_report.json")
 
-# name, argv, required-by-later-stages, one-line purpose
 STAGES = [
     ("audit", ["-m", "scripts.fix_label_conflicts"], False,
      "quarantine photographs filed under more than one class"),

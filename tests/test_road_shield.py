@@ -1,17 +1,4 @@
-"""
-Regression suite for the real system. Standard library only:
-
-    python -m unittest tests.test_road_shield -v
-
-Each test checks something that would actually break the product, and every
-expected value is derived rather than hard-coded to whatever the code
-currently returns. Tests that need a trained model skip cleanly when one
-isn't on disk, so a fresh clone reports honestly instead of failing.
-
-The earlier suite in tests/_legacy/ exercised behaviour that has been removed
-on purpose - fabricated datasets, a classifier that could be told what to
-answer, random licence plates. Those tests failing was the point.
-"""
+"""Integration tests for the core Road-Shield inspection pipeline."""
 
 import os
 import sys
@@ -111,7 +98,7 @@ class CNNEmbeddingHead(unittest.TestCase):
             self.skipTest("no backbone on disk")
         self.assertEqual(clf.embedder.name, clf.report["backbone"],
                          "loaded a head against a backbone it was not trained on")
-        # and the head it chose must be one that exists on disk
+
         trained_on = {joblib.load(p).get("backbone") for p in heads}
         self.assertIn(clf.embedder.name, trained_on)
         self.assertIn(clf.embedder.name, BACKBONES)
@@ -173,7 +160,7 @@ class KaggleIngest(unittest.TestCase):
 
     def test_overrides_beat_the_generic_rules(self):
         from scripts.fetch_kaggle_datasets import POTHOLE, classify_path
-        # "images" means nothing generically, but a dataset can declare it
+
         self.assertIsNone(classify_path("images/a.jpg", {}))
         self.assertEqual(classify_path("images/a.jpg", {"images": POTHOLE}), POTHOLE)
 
@@ -241,8 +228,7 @@ class KaggleIngest(unittest.TestCase):
                 if index.contains(digest):
                     collisions += 1
                 index.add(digest)
-        # augmented copies of one source photograph legitimately collide, so a
-        # few are expected; most of 12 draws must still be distinct.
+
         self.assertLess(collisions, 6, f"{collisions}/12 distinct photographs collided")
 
 
@@ -250,12 +236,7 @@ class Pipeline(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         from pipeline.deep_inference_pipeline import DeepInferencePipeline
-        # Share the suite's single engine; see tests/test_geometry_and_storage.py
-        # for why three of them exhausted a machine with 4.7 GB free.
-        # unittest discover imports this as `test_road_shield`, not
-        # `tests.test_road_shield`, so the sibling import has to be tried both
-        # ways or the fallback silently builds a second engine - which is the
-        # thing being avoided.
+
         shared = None
         for mod in ("tests.test_geometry_and_storage", "test_geometry_and_storage"):
             try:
@@ -377,7 +358,7 @@ class WorkOrderSealing(unittest.TestCase):
     def test_seal_is_a_sha256_digest(self):
         seal = self.order["sha256_cryptographic_seal"]
         self.assertEqual(len(seal), 64)
-        int(seal, 16)  # raises if not hexadecimal
+        int(seal, 16)
 
 
 class FleetDeduplication(unittest.TestCase):
@@ -402,7 +383,7 @@ class FleetDeduplication(unittest.TestCase):
 
     def test_haversine_matches_a_known_distance(self):
         from pipeline.fleet_deduplication_engine import FleetDeduplicationEngine as F
-        # one degree of latitude is about 111.2 km anywhere on Earth
+
         d = F.haversine_distance(0.0, 0.0, 1.0, 0.0)
         self.assertAlmostEqual(d / 1000.0, 111.2, delta=0.5)
 
@@ -494,7 +475,7 @@ class MapsService(unittest.TestCase):
             raise OSError("network disabled for this test")
 
         svc._get_json = fail
-        far_from_india = svc.reverse_geocode(64.5, -21.9)  # Reykjavik
+        far_from_india = svc.reverse_geocode(64.5, -21.9)
         self.assertIn(far_from_india["status"], ("UNAVAILABLE", "APPROXIMATE"))
         if far_from_india["status"] == "UNAVAILABLE":
             self.assertIsNone(far_from_india["formatted_address"])
@@ -522,10 +503,10 @@ class TestDANDAGDeepNetwork(unittest.TestCase):
     def test_dan_spatial_attention_and_domain_detection(self):
         from models.dan_dag_network import DualAttentionModule
         rng = np.random.default_rng(7)
-        # Simulated road frame with dark cavity basin and bright reflective rim
+
         img = rng.integers(95, 145, size=(240, 320, 3), dtype=np.uint8)
-        img[130:185, 110:210] = 22  # dark cavity
-        img[125:132, 108:212] = 235  # bright reflective rim
+        img[130:185, 110:210] = 22
+        img[125:132, 108:212] = 235
 
         pam_vec, spatial_map, telemetry = DualAttentionModule.extract_spatial_attention(img)
         self.assertEqual(pam_vec.shape, (16,))
@@ -565,11 +546,10 @@ class TestDANDAGDeepNetwork(unittest.TestCase):
         pred = net.predict_from_embedding(dummy_img, dummy_cnn)
         self.assertEqual(len(pred["probabilities"]), 7)
         self.assertAlmostEqual(float(np.sum(pred["probabilities"])), 1.0, places=5)
-        # 7 classes -> rooted Decision DAG eliminates 1 class per hop across 6 hops
+
         self.assertEqual(len(pred["dag_trace"]), 6)
         self.assertEqual(len(pred["dan_channel"]["top_attended_channels"]), 6)
 
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
-

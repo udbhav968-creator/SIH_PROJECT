@@ -1,25 +1,4 @@
-"""
-Model M10: municipal work-order generator with a cryptographic tamper seal.
-
-Builds a MoRTH Section 500 / IRC:SP:72 -styled digital work order (SLA tier,
-asphalt mix, material tonnage and budget), then seals its canonical JSON so any
-later edit to the order is detectable.
-
-Two kinds of seal
------------------
-    SHA-256        a plain digest. Detects an edit, but anyone who edits the
-                   order can also recompute the digest, so it proves nothing
-                   about who issued it.
-    HMAC-SHA256    a keyed digest (RFC 2104). Only someone holding the issuing
-                   key can produce a valid seal, so a contractor cannot alter
-                   the tonnage and re-seal. Used whenever ROAD_SHIELD_SEAL_KEY
-                   is set (the SIH submission claimed HMAC; this is it).
-
-The algorithm is written into the sealed fields, so it cannot be switched after
-issue without breaking the seal. A verifier that holds a key refuses plain
-SHA-256 seals: otherwise anyone could strip an HMAC order down to an unkeyed
-one and re-seal it.
-"""
+"""MoRTH Section 500 repair specification and automated work order dispatch agent."""
 import hashlib
 import hmac
 import json
@@ -95,7 +74,6 @@ class MoRTHDispatchAgent:
         if area_sqm is None or depth_cm is None or pci_score is None or not distress_class:
             raise ValueError("distress_class, area_sqm, depth_cm and pci_score are all required")
 
-        # Cast inputs to native Python types
         area_sqm = float(area_sqm)
         depth_cm = float(depth_cm)
         if not math.isfinite(float(pci_score)):
@@ -111,7 +89,6 @@ class MoRTHDispatchAgent:
         if area_sqm < 0 or depth_cm < 0 or not (0 <= pci_score <= 100):
             raise ValueError("area and depth must be >= 0 and PCI must be 0-100")
 
-        # Determine SLA based on severity & PCI
         if distress_class in ("Pothole Cavity", "D40 Pothole", "D40") or pci_score < 40:
             sla_hours = 24
             priority = "CRITICAL_TIER_1"
@@ -126,15 +103,10 @@ class MoRTHDispatchAgent:
             mix = "IRC_SP_79_COLD_EMULSION"
 
         timestamp_utc = int(time.time())
-        # The time prefix keeps IDs human-sortable; the random suffix makes them
-        # unique. Time alone collided for every order issued on one corridor in
-        # the same second - routine when several buses report one pothole.
+
         order_uuid = (f"MORTH-WO-{timestamp_utc % 1000000:06d}-{str(corridor_id)[:4]}"
                       f"-{uuid.uuid4().hex[:8].upper()}")
 
-        # Materials come from the one table the inference pipeline also uses,
-        # so a work order can never price a repair differently from the audit
-        # that produced it (they used to carry separate copies of the numbers).
         props = IPMHomographyEngine.MATERIAL_PROPERTIES[mix]
         density = props["density_t_per_m3"]
         rate = props["cost_per_tonne_inr"]
@@ -142,7 +114,6 @@ class MoRTHDispatchAgent:
         tonnage = float(volume_m3 * density * IPMHomographyEngine.COMPACTION_FACTOR)
         allocated_budget_inr = float(tonnage * rate)
 
-        # Canonical dictionary for cryptographic hashing
         canonical_data = {
             "work_order_id": str(order_uuid),
             "issuing_authority": str(self.authority),
