@@ -331,7 +331,7 @@ class DeepInferencePipeline:
         mean_intensity = float(np.mean(road_gray))
         std_intensity = float(np.std(road_gray))
 
-        if std_intensity < 6.5:
+        if std_intensity < 4.0:
             return self._reject_non_pavement(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
         dag_exec.mark("N0_scene_gate")
 
@@ -1854,8 +1854,8 @@ class DeepInferencePipeline:
         return {
             "status": "REJECTED_NON_PAVEMENT",
             "gatekeeper_passed": False,
-            "texture_metrics": {"road_roi_mean_lum": round(mean_intensity, 2), "road_roi_std_lum": round(std_intensity, 2), "threshold_std": 6.5},
-            "reason": f"Optical texture standard deviation ({std_intensity:.2f}) < 6.5 threshold. Rejected non-pavement surface.",
+            "texture_metrics": {"road_roi_mean_lum": round(mean_intensity, 2), "road_roi_std_lum": round(std_intensity, 2), "threshold_std": 4.0},
+            "reason": f"Optical texture standard deviation ({std_intensity:.2f}) < 4.0 threshold. Rejected non-pavement surface.",
             "is_distress": False,
             "detections_count": 0,
             "primary_distress": placeholder,
@@ -1864,6 +1864,24 @@ class DeepInferencePipeline:
             "corridor_id": corridor_id,
             "location": {"lat": latitude, "lng": longitude, "chainage_km": chainage_km},
             "latency_ms": elapsed_ms,
+            "imu_shock_telemetry": {"available": False, "reason": "Frame rejected as non-pavement.", "shock_classification": None},
+            "bayesian_sensor_fusion": {"prior_pothole_prob": 0.05, "fused_pothole_prob": 0.05},
+            "vulnerable_safety_alert": False,
+            "pedestrians_count": 0,
+            "all_pedestrians": [],
+            "vehicles_count": 0,
+            "all_vehicles": [],
+            "scene_objects": [],
+            "scene_summary": {"available": False, "reason": "Frame rejected as non-pavement."},
+            "urban_traffic_analysis": {"pcu_equivalent": 0.0, "congestion_index": 0.0, "status": "OPTIMAL_FREE_FLOW"},
+            "astm_d6433_pci": {"pci_rating": 100, "category": "GOOD", "deduct_values": []},
+            "morth_civil_ledger": {"total_bitumen_tonnage_t": 0.0, "total_estimated_repair_inr": 0.0},
+            "cryptographic_work_order": None,
+            "frame_classification": {"class_id": 0, "class_name": "Non-Pavement Surface (Rejected)", "confidence": 0.0},
+            "has_dual_targets": False,
+            "has_multi_modal_targets": False,
+            "dual_target_summary": "Non-pavement surface rejected by optical texture gate.",
+            "multi_target_summary": "Non-pavement surface rejected by optical texture gate.",
         }
 
     def _normal_road(self, mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0):
