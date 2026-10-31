@@ -1,0 +1,210 @@
+{
+  "timestamp_utc": "2026-10-31T05:25:05.009085+00:00",
+  "overall_status": "CERTIFIED",
+  "level_1_checkpoints": [
+    {
+      "name": "Vision CNN MobileNetV3 (Refit)",
+      "file": "deep_vision_mobilenet_v3_large_refit.onnx",
+      "status": "VERIFIED",
+      "size_mb": 16.83
+    },
+    {
+      "name": "Dense Pixel Segmenter (Pixel ONNX)",
+      "file": "defect_segmenter_pixel.onnx",
+      "status": "VERIFIED",
+      "size_mb": 1.5
+    },
+    {
+      "name": "Flagship DAN-DAG Weights",
+      "file": "dan_dag_model.joblib",
+      "status": "VERIFIED",
+      "size_mb": 4.69
+    },
+    {
+      "name": "ASTM D6433 PCI Regressor",
+      "file": "pci_model.joblib",
+      "status": "VERIFIED",
+      "size_mb": 0.54
+    },
+    {
+      "name": "HDM-4 Deterioration Forecaster",
+      "file": "deterioration_model.joblib",
+      "status": "VERIFIED",
+      "size_mb": 1.12
+    },
+    {
+      "name": "Photometric Depth Regressor",
+      "file": "depth_estimator_model.joblib",
+      "status": "VERIFIED",
+      "size_mb": 0.91
+    },
+    {
+      "name": "100 Hz IMU Shock Vibration CNN",
+      "file": "imu_shock_model.joblib",
+      "status": "VERIFIED",
+      "size_mb": 11.37
+    },
+    {
+      "name": "Out-of-Distribution Input Guard",
+      "file": "ood_guard.npz",
+      "status": "VERIFIED",
+      "size_mb": 0.56
+    },
+    {
+      "name": "Claims & Certified Metrics",
+      "file": "claims.json",
+      "status": "VERIFIED",
+      "size_mb": 0.03
+    }
+  ],
+  "level_2_quality_gates": [
+    {
+      "model": "Vision CNN (MobileNetV3 Refit)",
+      "file": "finetune_summary.json",
+      "metric_key": "served_test.accuracy",
+      "metric_name": "Test Accuracy",
+      "floor": 0.85,
+      "actual": 0.9435,
+      "status": "PASSED"
+    },
+    {
+      "model": "Vision CNN (MobileNetV3 Refit)",
+      "file": "finetune_summary.json",
+      "metric_key": "served_test.macro_f1",
+      "metric_name": "Test Macro-F1",
+      "floor": 0.75,
+      "actual": 0.8786,
+      "status": "PASSED"
+    },
+    {
+      "model": "Vision CNN (Indian Roads Bench)",
+      "file": "finetune_summary.json",
+      "metric_key": "served_indian_roads.accuracy",
+      "metric_name": "Indian Roads Accuracy",
+      "floor": 0.85,
+      "actual": 0.9225,
+      "status": "PASSED"
+    },
+    {
+      "model": "DAN-DAG Dual Attention Network",
+      "file": "dan_dag_report.json",
+      "metric_key": "mean_21_node_pairwise_dag_accuracy",
+      "metric_name": "Mean 21-Node DAG Accuracy",
+      "floor": 0.9,
+      "actual": 0.9352,
+      "status": "PASSED"
+    },
+    {
+      "model": "DAN-DAG Dual Attention Network",
+      "file": "dan_dag_report.json",
+      "metric_key": "held_out_test_accuracy",
+      "metric_name": "Held-Out Test Accuracy",
+      "floor": 0.8,
+      "actual": 0.8663,
+      "status": "PASSED"
+    },
+    {
+      "model": "ASTM D6433 PCI Regressor",
+      "file": "pci_model_report.json",
+      "metric_key": "held_out_r2",
+      "metric_name": "Held-Out R\u00b2",
+      "floor": 0.85,
+      "actual": 0.8839,
+      "status": "PASSED"
+    },
+    {
+      "model": "HDM-4 Deterioration Forecaster",
+      "file": "deterioration_model_report.json",
+      "metric_key": "held_out_area_r2",
+      "metric_name": "Area Expansion R\u00b2",
+      "floor": 0.8,
+      "actual": 0.9879,
+      "status": "PASSED"
+    },
+    {
+      "model": "Photometric Depth Regressor",
+      "file": "depth_estimator_report.json",
+      "metric_key": "held_out_pothole_r2",
+      "metric_name": "Pothole Depth R\u00b2",
+      "floor": 0.5,
+      "actual": 0.6211,
+      "status": "PASSED"
+    },
+    {
+      "model": "100 Hz IMU Shock 1-D CNN",
+      "file": "imu_shock_report.json",
+      "metric_key": "held_out_validation_accuracy",
+      "metric_name": "Validation Accuracy",
+      "floor": 0.7,
+      "actual": 0.8659,
+      "status": "PASSED"
+    },
+    {
+      "model": "Out-of-Distribution Input Guard",
+      "file": "ood_guard_report.json",
+      "metric_key": "test.combined.auroc",
+      "metric_name": "AUROC Combined",
+      "floor": 0.9,
+      "actual": 0.9945,
+      "status": "PASSED"
+    }
+  ],
+  "level_3_stress_tests": [
+    {
+      "name": "Scene C: Foreground Crater with Reflection",
+      "passed": true,
+      "latency_ms": 9363.9,
+      "class_name": "Pothole Cavity",
+      "confidence": 0.9298,
+      "bbox": [
+        10,
+        186,
+        490,
+        252
+      ],
+      "surface_area_m2": 1.8121,
+      "repair_cost_inr": 2175.75,
+      "errors": []
+    },
+    {
+      "name": "Rural Dirt Road with Puddles",
+      "passed": true,
+      "latency_ms": 5580.0,
+      "class_name": "Pothole Cavity",
+      "confidence": 0.8907,
+      "bbox": [
+        181,
+        336,
+        114,
+        108
+      ],
+      "surface_area_m2": 0.105,
+      "repair_cost_inr": 105.75,
+      "errors": []
+    }
+  ],
+  "level_4_civil_standards": [
+    {
+      "standard": "MoRTH Section 500",
+      "test": "Mass & Cost Calculation",
+      "status": "PASSED"
+    },
+    {
+      "standard": "IRC:SP:83",
+      "test": "Depth Interval Monotonicity",
+      "status": "PASSED"
+    },
+    {
+      "standard": "ASTM D6433",
+      "test": "PCI Deduction Monotonicity",
+      "status": "PASSED"
+    }
+  ],
+  "level_5_benchmark": {
+    "onnx_vision_latency_ms": 11.6,
+    "onnx_effective_fps": 86.2,
+    "full_pipeline_latency_ms": 5125.4,
+    "onnx_edge_budget_ms": 35.0,
+    "passed": true
+  }
+}
