@@ -1440,11 +1440,11 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 and comb_h <= int(H * 0.30)
             )
             is_crater_complex = (
-                (horiz_overlap >= 0.12 or gap_x <= int(W * 0.06))
-                and gap_y <= int(H * 0.16)
-                and comb_w <= int(W * 0.98)
-                and comb_h <= int(H * 0.60)
-                and (comb_w * comb_h) <= int(W * H * 0.50)
+                (horiz_overlap >= 0.12 or gap_x <= int(W * 0.04))
+                and gap_y <= int(H * 0.08)
+                and comb_w <= int(W * 0.55)
+                and comb_h <= int(H * 0.45)
+                and (comb_w * comb_h) <= int(W * H * 0.35)
             )
             return (iou > 0.15 or containment > 0.40 or is_proximate or is_crater_complex)
 
@@ -1471,14 +1471,10 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                         ny = min(mb[1], d2["bbox_pixels"][1])
                         nw = max(mb[0] + mb[2], d2["bbox_pixels"][0] + d2["bbox_pixels"][2]) - nx
                         nh = max(mb[1] + mb[3], d2["bbox_pixels"][1] + d2["bbox_pixels"][3]) - ny
-                        if (nw * nh) > int(W * H * 0.33):
-                            scale = (int(W * H * 0.33) / float(nw * nh)) ** 0.5
-                            cx = nx + nw // 2
-                            cy = ny + nh // 2
-                            nw = max(35, int(nw * scale))
-                            nh = max(20, int(nh * scale))
-                            nx = max(0, min(W - nw, cx - nw // 2))
-                            ny = max(0, min(H - nh, cy - nh // 2))
+                        nx = max(0, min(W - 20, nx))
+                        ny = max(0, min(H - 20, ny))
+                        nw = max(20, min(W - nx, nw))
+                        nh = max(15, min(H - ny, nh))
                         mb = [nx, ny, nw, nh]
                         max_conf = max(max_conf, d2["confidence"])
                         max_area = max(max_area, d2.get("surface_area_m2", 0.0))

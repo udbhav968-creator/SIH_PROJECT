@@ -191,29 +191,51 @@ class CVCavityDetector:
                 elif crack_score > 0:
                     cell_score[r, c], cell_kind[r, c] = crack_score, 1
 
-        active = (cell_score >= 30.0).astype(np.uint8)
-        if active.sum() < 2:
-            return []
+        # Suppress letterbox footer banner in lower 2 rows
+        cell_score[max(0, grid_rows - 2):, :] = 0.0
 
-        num_labels, labels = cv2.connectedComponents(active, connectivity=4)
+        peaks = []
+        for r in range(grid_rows):
+            for c in range(grid_cols):
+                sc = float(cell_score[r, c])
+                if sc < 60.0:
+                    continue
+                r_min, r_max = max(0, r - 1), min(grid_rows, r + 2)
+                c_min, c_max = max(0, c - 1), min(grid_cols, c + 2)
+                if sc == float(cell_score[r_min:r_max, c_min:c_max].max()):
+                    peaks.append((r, c, sc))
+
+        peaks.sort(key=lambda p: p[2], reverse=True)
+
+        # Fallback to highest road anomaly if no peak exceeded 60
+        if not peaks and float(cell_score.max()) >= 35.0:
+            max_idx = np.unravel_index(np.argmax(cell_score), cell_score.shape)
+            peaks.append((int(max_idx[0]), int(max_idx[1]), float(cell_score[max_idx])))
+
         boxes = []
-        for label in range(1, num_labels):
-            cells = np.argwhere(labels == label)
-            if len(cells) < 2:
-                continue
-            min_r, max_r = cells[:, 0].min(), cells[:, 0].max()
-            min_c, max_c = cells[:, 1].min(), cells[:, 1].max()
-
-            bx = max(10, min_c * cell_w - int(cell_w * 0.2))
-            by = max(roi_y0, roi_y0 + min_r * cell_h - int(cell_h * 0.15))
-            bw = min(W - bx - 10, (max_c - min_c + 1) * cell_w + int(cell_w * 0.4))
-            bh = min(H - by - 10, (max_r - min_r + 1) * cell_h + int(cell_h * 0.3))
+        for pr, pc, psc in peaks:
+            visited = set([(pr, pc)])
+            q = [(pr, pc)]
+            while q:
+                cr, cc = q.pop(0)
+                for nr, nc in ((cr - 1, cc), (cr + 1, cc), (cr, cc - 1), (cr, cc + 1)):
+                    if 0 <= nr < grid_rows - 1 and 0 <= nc < grid_cols and (nr, nc) not in visited:
+                        if cell_score[nr, nc] >= max(35.0, psc * 0.40):
+                            if abs(nr - pr) <= 2 and abs(nc - pc) <= 3:
+                                visited.add((nr, nc))
+                                q.append((nr, nc))
+            rs = [p[0] for p in visited]
+            cs = [p[1] for p in visited]
+            bx = max(10, min(cs) * cell_w - int(cell_w * 0.15))
+            by = max(roi_y0, roi_y0 + min(rs) * cell_h - int(cell_h * 0.10))
+            bw = min(int(W * 0.38), min(W - bx - 10, (max(cs) - min(cs) + 1) * cell_w + int(cell_w * 0.35)))
+            bh = min(int(H * 0.32), min(H - by - 10, (max(rs) - min(rs) + 1) * cell_h + int(cell_h * 0.30)))
             if bw <= 0 or bh <= 0:
                 continue
 
-            kinds = [int(cell_kind[cr, cc]) for cr, cc in cells]
+            kinds = [int(cell_kind[cr, cc]) for cr, cc in visited]
             is_pothole_like = kinds.count(2) >= kinds.count(1)
-            mean_score = float(np.mean([cell_score[cr, cc] for cr, cc in cells]))
+            mean_score = float(np.mean([cell_score[cr, cc] for cr, cc in visited]))
             boxes.append([int(bx), int(by), int(bw), int(bh), mean_score, 2 if is_pothole_like else 1])
 
         return self._non_max_suppress(boxes)

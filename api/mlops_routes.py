@@ -250,6 +250,9 @@ def handle_get(h, m, path, full_path, key_ok):
         h._send_cors_headers()
         h.end_headers()
         h.wfile.write(data)
+    elif path == "/api/v1/mlops/continuous":
+        from mlops.continuous_learning_daemon import CONTINUOUS_ENGINE
+        h._send_json(200, CONTINUOUS_ENGINE.get_status())
     elif path == "/api/v1/traffic/cells":
         h._send_json(200, {"cells": m.traffic.cells(), **m.traffic.stats()})
     elif path == "/api/v1/traffic/estimate":
@@ -301,6 +304,18 @@ def handle_post(h, m, path, body, actor):
                 hours = max(24.0, min(24 * 90.0, float(body.get("hours") or 168)))
                 ref = m.monitor.rebaseline(hours=hours, actor=actor)
                 h._send_json(200, {"reference": "production", "built_from": ref["built_from"]})
+        elif path == "/api/v1/mlops/continuous/start":
+            from mlops.continuous_learning_daemon import CONTINUOUS_ENGINE
+            started = CONTINUOUS_ENGINE.start()
+            h._send_json(200, {"success": started, **CONTINUOUS_ENGINE.get_status()})
+        elif path == "/api/v1/mlops/continuous/stop":
+            from mlops.continuous_learning_daemon import CONTINUOUS_ENGINE
+            CONTINUOUS_ENGINE.stop()
+            h._send_json(200, {"success": True, **CONTINUOUS_ENGINE.get_status()})
+        elif path == "/api/v1/mlops/continuous/trigger":
+            from mlops.continuous_learning_daemon import CONTINUOUS_ENGINE
+            res = CONTINUOUS_ENGINE.run_single_cycle()
+            h._send_json(200, {"success": True, "cycle": res, **CONTINUOUS_ENGINE.get_status()})
         elif path == "/api/v1/mlops/reload":
             m._reload("requested")
             h._send_json(202, m.reload_state)

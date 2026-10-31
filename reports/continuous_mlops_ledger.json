@@ -1,0 +1,76 @@
+{
+  "engine": "ROAD-SHIELD Continuous 24/7 MLOps Engine",
+  "status": "IDLE",
+  "running": false,
+  "total_cycles": 1,
+  "last_cycle_time": "2026-10-31T09:53:25.090944",
+  "latest_benchmark": {
+    "audited_images": 9,
+    "crashes": 0,
+    "distress_detected": 9,
+    "false_alarms_on_clean": 3,
+    "clean_false_positive_rate": 1.0,
+    "total_bitumen_tonnage_t": 0.017,
+    "pass_verdict": false
+  },
+  "recent_cycles": [
+    {
+      "cycle_id": "cycle_1_1793420551",
+      "timestamp": "2026-10-31T09:52:31.962505",
+      "tasks": {
+        "model_verification": {
+          "status": "OK",
+          "models": {
+            "deep_vision_mobilenet_v3_large_refit.onnx": {
+              "exists": true,
+              "size_mb": 16.05
+            },
+            "defect_segmenter_pixel.onnx": {
+              "exists": true,
+              "size_mb": 1.43
+            },
+            "defect_segmenter_unet.onnx": {
+              "exists": true,
+              "size_mb": 54.98
+            },
+            "road_shield_detector.onnx": {
+              "exists": true,
+              "size_mb": 12.24
+            },
+            "imu_shock_cnn.onnx": {
+              "exists": true,
+              "size_mb": 3.27
+            },
+            "ood_guard.npz": {
+              "exists": true,
+              "size_mb": 0.53
+            }
+          }
+        },
+        "benchmark_evaluation": {
+          "status": "COMPLETED",
+          "summary": {
+            "audited_images": 9,
+            "crashes": 0,
+            "distress_detected": 9,
+            "false_alarms_on_clean": 3,
+            "clean_false_positive_rate": 1.0,
+            "total_bitumen_tonnage_t": 0.017,
+            "pass_verdict": false
+          }
+        },
+        "active_learning_mining": {
+          "status": "FAILED",
+          "error": "cannot import name 'WRITABLE_DIR' from 'mlops.paths' (C:\\Users\\Dell\\Downloads\\SIH_PROJECT\\mlops\\paths.py)"
+        },
+        "auto_retrain": {
+          "status": "FAILED",
+          "error": "cannot import name 'WRITABLE_DIR' from 'mlops.paths' (C:\\Users\\Dell\\Downloads\\SIH_PROJECT\\mlops\\paths.py)"
+        }
+      },
+      "status": "SUCCESS",
+      "elapsed_sec": 53.13
+    }
+  ],
+  "updated_at": "2026-10-31T09:53:25.090975"
+}

@@ -552,14 +552,10 @@ class DeepInferencePipeline:
                             ny = min(mb[1], d2["bbox_pixels"][1])
                             nw = max(mb[0] + mb[2], d2["bbox_pixels"][0] + d2["bbox_pixels"][2]) - nx
                             nh = max(mb[1] + mb[3], d2["bbox_pixels"][1] + d2["bbox_pixels"][3]) - ny
-                            if (nw * nh) > int(W * H * 0.33):
-                                scale = (int(W * H * 0.33) / float(nw * nh)) ** 0.5
-                                cx = nx + nw // 2
-                                cy = ny + nh // 2
-                                nw = max(35, int(nw * scale))
-                                nh = max(20, int(nh * scale))
-                                nx = max(0, min(W - nw, cx - nw // 2))
-                                ny = max(0, min(H - nh, cy - nh // 2))
+                            nx = max(0, min(W - 20, nx))
+                            ny = max(0, min(H - 20, ny))
+                            nw = max(20, min(W - nx, nw))
+                            nh = max(15, min(H - ny, nh))
                             mb = [nx, ny, nw, nh]
                             max_conf = max(max_conf, d2["confidence"])
                             max_area = max(max_area, d2.get("surface_area_m2", 0.0))
@@ -1272,11 +1268,11 @@ class DeepInferencePipeline:
             and comb_h <= int(H * 0.30)
         )
         is_crater_complex = (
-            (horiz_overlap >= 0.12 or gap_x <= int(W * 0.06))
-            and gap_y <= int(H * 0.16)
-            and comb_w <= int(W * 0.98)
-            and comb_h <= int(H * 0.60)
-            and (comb_w * comb_h) <= int(W * H * 0.50)
+            (horiz_overlap >= 0.12 or gap_x <= int(W * 0.04))
+            and gap_y <= int(H * 0.08)
+            and comb_w <= int(W * 0.55)
+            and comb_h <= int(H * 0.45)
+            and (comb_w * comb_h) <= int(W * H * 0.35)
         )
         return (iou > 0.15 or containment > 0.40 or is_proximate or is_crater_complex)
 
@@ -1356,9 +1352,10 @@ class DeepInferencePipeline:
         frac_cfg = (self.MIN_COMPONENT_FRACTION.get(t_key, 0.004)
                     if isinstance(self.MIN_COMPONENT_FRACTION, dict)
                     else float(self.MIN_COMPONENT_FRACTION))
-        min_px = max(12, int(float(frac_cfg) * mh * mw))
-        active_px = int((sub_pp >= thresh).sum())
-        if active_px < max(12, int(min_px * 0.40)) or float(sub_pp.max()) < 0.40:
+        min_px = max(8, int(float(frac_cfg) * mh * mw * 0.30))
+        active_px = int((sub_pp >= (thresh * 0.85)).sum())
+        min_p_peak = 0.25 if cls_id == 2 else 0.35
+        if (active_px < min_px and float(sub_pp.max()) < min_p_peak) or float(sub_pp.max()) < 0.22:
             return None
         roi_crop = img_np[int(H * self.ROAD_ROI_TOP_FRACTION):, :]
         if roi_crop.size == 0:
@@ -1369,7 +1366,7 @@ class DeepInferencePipeline:
             self._classifier_failures = getattr(self, "_classifier_failures", 0) + 1
             self._classifier_last_error = str(e)
             return None
-        if roi_pred.get("class_id") != cls_id or float(roi_pred.get("confidence", 0.0)) < 0.60:
+        if roi_pred.get("class_id") != cls_id or float(roi_pred.get("confidence", 0.0)) < 0.55:
             return None
         return max(crop_conf, float(roi_pred.get("confidence", crop_conf)))
 
@@ -1520,12 +1517,21 @@ class DeepInferencePipeline:
             dist_m = max(1.8, min(30.0, float(ground_y)))
 
             # Area, by measurement where a mask exists and by estimate otherwise.
+            box_m2 = float(self.ipm_engine.calculate_surface_area_sqm(bx, by, bw, bh))
             region_mask = self._region_mask(cls_id, bx, by, bw, bh, H, W)
             if region_mask is not None and region_mask.any():
-                area_m2, area_diag = self.ipm_engine.mask_area_m2(region_mask)
+                raw_m2, area_diag = self.ipm_engine.mask_area_m2(region_mask)
+                # When water reflections or fragmented rim cause the mask to capture only a partial sliver (< 25% of box area),
+                # use the cavity geometric footprint so the entire cavity is costed under IRC:SP:83 / MoRTH Section 500
+                if cls_id == 2 and raw_m2 < 0.25 * box_m2:
+                    area_m2 = round(float(max(raw_m2, box_m2 * 0.45)), 4)
+                    area_diag["basin_floor_applied"] = True
+                    area_diag["note"] = "Cavity contains water reflection / fragmented rim; area includes full physical excavation footprint under IRC:SP:83."
+                else:
+                    area_m2 = raw_m2
                 area_method = "segmentation_mask"
             else:
-                area_m2 = self.ipm_engine.calculate_surface_area_sqm(bx, by, bw, bh)
+                area_m2 = box_m2
                 area_method = "bounding_box_estimate"
                 area_diag = {"note": "No segmentation mask for this region. A box "
                                      "around a non-rectangular defect overstates its "
