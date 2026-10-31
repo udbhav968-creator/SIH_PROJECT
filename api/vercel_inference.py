@@ -341,8 +341,7 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
 
     # 0a. Suppress non-road horizon / sky in the upper 25% of the frame
     labels[:int(WORK_H * 0.25), :] = 0
-    # 0b. Suppress vehicle hood / dashboard / letterbox footer in bottom 6% of the frame
-    labels[int(WORK_H * 0.94):, :] = 0
+    # 0b. Bottom region preserved to lowermost row for foreground road defects
 
     # 1. Withhold detected pedestrians and vehicles from the segmentation mask
     if object_mask_full is not None and object_mask_full.any():
@@ -732,19 +731,16 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
         sx0, sx1 = max(0, bx - 20), min(W, bx + bw + 20)
         excl_mask[sy0:sy1, sx0:sx1] = True
 
-    # Suppress non-road vehicle hood / dashboard in bottom 6%
-    excl_mask[int(H * 0.94):, :] = True
-
-    # Detect and suppress solid letterbox banner / watermark footer in bottom 18% of frame
-    for y in range(int(H * 0.82), H):
-        row_med = float(np.median(gray[y, :]))
-        if row_med < 28.0 or row_med > 225.0:
+    # Detect and suppress genuine flat/synthetic letterbox banner or watermark footer
+    # Only trigger if the row is uniform (std < 3.0), never suppressing real road texture or foreground defects
+    for y in range(H - 1, int(H * 0.90), -1):
+        row = gray[y, :].astype(np.float32)
+        if float(np.std(row)) < 3.0 and (float(np.median(row)) < 20.0 or float(np.median(row)) > 235.0):
             excl_mask[y:, :] = True
             break
-    # Detect and suppress solid letterbox banner in top 18% of frame
-    for y in range(int(H * 0.18), -1, -1):
-        row_med = float(np.median(gray[y, :]))
-        if row_med < 28.0 or row_med > 225.0:
+    for y in range(0, int(H * 0.12)):
+        row = gray[y, :].astype(np.float32)
+        if float(np.std(row)) < 3.0 and (float(np.median(row)) < 20.0 or float(np.median(row)) > 235.0):
             excl_mask[:y + 1, :] = True
             break
 
@@ -789,8 +785,7 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
             elif crack_score > 0:
                 cell_score[r, c], cell_kind[r, c] = crack_score, 1
 
-    # Suppress letterbox footer banner in lower 2 rows
-    cell_score[max(0, grid_rows - 2):, :] = 0.0
+    # Pavement cell score matrix preserved to lowermost row for foreground defect recovery
 
     peaks = []
     for r in range(grid_rows):
@@ -817,17 +812,17 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
         while q:
             cr, cc = q.pop(0)
             for nr, nc in ((cr - 1, cc), (cr + 1, cc), (cr, cc - 1), (cr, cc + 1)):
-                if 0 <= nr < grid_rows - 1 and 0 <= nc < grid_cols and (nr, nc) not in visited:
+                if 0 <= nr < grid_rows and 0 <= nc < grid_cols and (nr, nc) not in visited:
                     if cell_score[nr, nc] >= max(50.0, psc * 0.40):
-                        if abs(nr - pr) <= 2 and abs(nc - pc) <= 3:
+                        if abs(nr - pr) <= 4 and abs(nc - pc) <= 5:
                             visited.add((nr, nc))
                             q.append((nr, nc))
         rs = [p[0] for p in visited]
         cs = [p[1] for p in visited]
         bx = max(10, min(cs) * cell_w - int(cell_w * 0.15))
         by = max(roi_y0, roi_y0 + min(rs) * cell_h - int(cell_h * 0.10))
-        bw = min(int(W * 0.35), min(W - bx - 10, (max(cs) - min(cs) + 1) * cell_w + int(cell_w * 0.35)))
-        bh = min(int(H * 0.28), min(H - by - 10, (max(rs) - min(rs) + 1) * cell_h + int(cell_h * 0.30)))
+        bw = min(int(W * 0.65), min(W - bx - 5, (max(cs) - min(cs) + 1) * cell_w + int(cell_w * 0.35)))
+        bh = min(int(H * 0.58), min(H - by - 5, (max(rs) - min(rs) + 1) * cell_h + int(cell_h * 0.30)))
 
         overlap = False
         for cb in raw_boxes:

@@ -73,7 +73,7 @@ class IPMHomographyEngine:
         xs = [c[0] for c in corners]
         ys = [c[1] for c in corners]
         area = 0.5 * abs(np.dot(xs, np.roll(ys, 1)) - np.dot(ys, np.roll(xs, 1)))
-        return float(np.clip(area, 0.05, 25.0))
+        return float(np.clip(area, 0.005, 25.0))
 
     # ------------------------------------------------------------------
     def row_pixel_area_m2(self, image_height, image_width, row_stride=1):

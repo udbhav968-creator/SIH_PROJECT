@@ -104,8 +104,17 @@ def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
     if g.ndim == 3:
         g = g.mean(axis=2)
 
-    if mask is not None and np.asarray(mask, dtype=bool).any():
-        sel = np.asarray(mask, dtype=bool)
+    sel = np.asarray(mask, dtype=bool) if mask is not None else None
+    use_mask = sel is not None and sel.any()
+    if use_mask and bbox is not None:
+        bx, by, bw, bh = (int(v) for v in bbox)
+        box_area = max(1, bw * bh)
+        if float(sel.sum()) < 0.20 * box_area:
+            # Fragmented rim or reflective water puddle: mask is only a sparse sliver.
+            # Use bbox to sample the true defect basin vs outside surrounding pavement.
+            use_mask = False
+
+    if use_mask:
         inside = g[sel]
         import cv2
         ring = cv2.dilate(sel.astype(np.uint8), np.ones((25, 25), np.uint8), 1).astype(bool) & ~sel

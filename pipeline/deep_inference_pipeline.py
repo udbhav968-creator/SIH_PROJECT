@@ -576,11 +576,26 @@ class DeepInferencePipeline:
                         d1_merged["surface_area_m2"] = float(max(0.04, min(box_m2, 3.0)))
                         d1_merged["area_method"] = "segmentation_mask" if d1_merged.get("area_method") == "segmentation_mask" else "bounding_box_estimate"
                     de = d1_merged.get("depth_estimate") or {}
+                    from models import depth_estimator
+                    if d1_merged["class_id"] == 2:
+                        de = depth_estimator.pothole_depth(gray, mask=region_mask, bbox=mb)
+                    elif d1_merged["class_id"] == 1:
+                        extent = float(region_mask.sum()) / float(region_mask.size) if region_mask is not None and region_mask.size else None
+                        de = depth_estimator.crack_depth(severity_ratio=extent)
                     depth_cm = de.get("depth_cm", 4.5)
                     d1_merged["depth_cm"] = depth_cm
                     tonnage_t = round(d1_merged["surface_area_m2"] * (depth_cm / 100.0) * 2.40 * 1.15, 4)
                     d1_merged["morth_tonnage_t"] = tonnage_t
                     d1_merged["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
+                    de["repair_cost_low_inr"] = round(d1_merged["surface_area_m2"] * (de.get("depth_low_cm", depth_cm) / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                    de["repair_cost_high_inr"] = round(d1_merged["surface_area_m2"] * (de.get("depth_high_cm", depth_cm) / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                    d1_merged["depth_estimate"] = de
+                    if "physical_dimensions" in d1_merged:
+                        d1_merged["physical_dimensions"]["surface_area_m2"] = d1_merged["surface_area_m2"]
+                        d1_merged["physical_dimensions"]["depth_cm"] = depth_cm
+                        d1_merged["physical_dimensions"]["bitumen_volume_m3"] = round(d1_merged["surface_area_m2"] * (depth_cm / 100.0), 4)
+                        d1_merged["physical_dimensions"]["morth_compacted_tonnage_t"] = tonnage_t
+                        d1_merged["physical_dimensions"]["estimated_repair_cost_inr"] = d1_merged["repair_cost_inr"]
                     new_dets.append(d1_merged)
                 filtered_distress = new_dets
 
@@ -1183,14 +1198,6 @@ class DeepInferencePipeline:
                 # worse than useless, and reporting nothing loses the defect.
                 oversized = (((x1 - x0) * (y1 - y0)) / float(W * H)
                              > self.MAX_COMPONENT_BOX_FRACTION)
-                if (x1 - x0) * (y1 - y0) > 0.55 * W * H:
-                    scale = (0.50 * W * H / float((x1 - x0) * (y1 - y0))) ** 0.5
-                    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
-                    nw = max(8, int((x1 - x0) * scale))
-                    nh = max(8, int((y1 - y0) * scale))
-                    x0 = max(0, min(W - nw, int(round(cx - nw / 2.0))))
-                    y0 = max(0, min(H - nh, int(round(cy - nh / 2.0))))
-                    x1, y1 = x0 + nw, y0 + nh
                 out.append([x0, y0, x1 - x0, y1 - y0, mean_p * area, kind,
                             "segmentation", round(mean_p, 4),
                             round(area / frame_px, 5), oversized])
@@ -1423,13 +1430,6 @@ class DeepInferencePipeline:
                         pred = ctx_pred
                         bx, by = ctx_x0, ctx_y0
                         bw, bh = ctx_x1 - ctx_x0, ctx_y1 - ctx_y0
-                        if bw * bh > 0.50 * W * H:
-                            scale = (0.48 * W * H / float(bw * bh)) ** 0.5
-                            cx, cy = bx + bw / 2.0, by + bh / 2.0
-                            nw, nh = max(8, int(bw * scale)), max(8, int(bh * scale))
-                            bx = max(0, min(W - nw, int(round(cx - nw / 2.0))))
-                            by = max(0, min(H - nh, int(round(cy - nh / 2.0))))
-                            bw, bh = nw, nh
         except Exception as e:
             # One region's classification failed. The frame is still worth
             # reporting, but the COUNT of detections in it is now unreliable,
@@ -1462,13 +1462,6 @@ class DeepInferencePipeline:
                 if rescued_conf is None:
                     return None
                 pred["confidence"] = round(rescued_conf, 4)
-                if bw * bh > 0.50 * W * H:
-                    scale = (0.48 * W * H / float(bw * bh)) ** 0.5
-                    cx, cy = bx + bw / 2.0, by + bh / 2.0
-                    nw, nh = max(8, int(bw * scale)), max(8, int(bh * scale))
-                    bx = max(0, min(W - nw, int(round(cx - nw / 2.0))))
-                    by = max(0, min(H - nh, int(round(cy - nh / 2.0))))
-                    bw, bh = nw, nh
             else:
                 box_fraction = (bw * bh) / float(max(1, W * H))
                 if box_fraction > self.MAX_HEURISTIC_BOX_FRACTION:
