@@ -524,7 +524,7 @@ class DeepInferencePipeline:
             bx, by, bw, bh = b
             if (bx < 20 or bx + bw > W - 20) and by < int(H * 0.50) and (bw * bh) < int(0.04 * W * H) and d.get("area_method") != "segmentation_mask":
                 continue
-            if (by + bh * 0.5) < int(H * 0.48) and bw > int(W * 0.30):
+            if (by + bh * 0.5) < int(H * 0.22) and bw > int(W * 0.40) and d.get("area_method") != "segmentation_mask":
                 continue
             filtered_distress.append(d)
 
@@ -933,83 +933,7 @@ class DeepInferencePipeline:
         window[y0:y1, x0:x1] = True
         return window & (mask == seg_cls)
 
-    # ---- how a mask blob becomes a candidate region -----------------------
-    #
-    # Both knobs are swept end-to-end in scripts.tune_proposals - through
-    # audit_image(), not through a copy of the region loop - and the curve is
-    # written to checkpoints/proposal_tuning_report.json. Measured over 36 clean
-    # and 24 annotated photographs:
-    #
-    #   size    conf     false positives      defects found
-    #   0.002   0.40     22/36  (61.1%)       23/24  (95.8%)
-    #   0.002   0.55      6/36  (16.7%)       22/24  (91.7%)
-    #   0.002   0.70      4/36  (11.1%)       23/24  (95.8%)   <- committed
-    #   0.008   0.70      4/36  (11.1%)       21/24  (87.5%)
-    #   0.030   0.85      4/36  (11.1%)       21/24  (87.5%)
-    #
-    # 4/36 is the floor: no setting in the grid goes below it, so those four
-    # photographs are not fixed by filtering and are not claimed to be.
-    # Tightening past 0.002/0.70 buys nothing and costs detection.
-    #
-    # Size, as a fraction of the segmenter's WORKING frame (320x200 = 64,000 px)
-    # rather than an absolute pixel count - an absolute count would mean a
-    # stricter filter on a phone photo than on a dashcam frame, for no reason.
-    # Per class, for the same reason the confidence margin is per class: a
-    # pixel COUNT is a shape-dependent quantity.
-    #
-    # A pothole is compact - a 50 cm cavity is a solid blob of several hundred
-    # pixels at working resolution. A crack of the same real extent is two or
-    # three pixels wide, so it has an order of magnitude fewer pixels while
-    # being just as real and just as expensive to seal.
-    #
-    # Measured on the three cracks this filter was missing:
-    #     cpr_1159_2442   biggest crack blob  107 px   floor 256   rejected
-    #     cpr_1144_2411   biggest crack blob   52 px   floor 256   rejected
-    # One floor for both classes silently made the system pothole-only for thin
-    # cracks, which are the majority of pavement distress by length.
-    # Swept end-to-end through audit_image(); the curve is the reason for 0.0012
-    # rather than something rounder:
-    #
-    #     crack floor   false positives   defects found
-    #        0.0006       7/36 (19.4%)     23/24 (95.8%)
-    #        0.0012       4/36 (11.1%)     22/24 (91.7%)   <- committed
-    #        0.0020       4/36 (11.1%)     21/24 (87.5%)
-    #        0.0040       4/36 (11.1%)     21/24 (87.5%)   one floor for both
-    #
-    # 0.0012 costs nothing in precision and recovers four points of detection
-    # over the single shared floor.
     MIN_COMPONENT_FRACTION = {"crack": 0.0012, "pothole": 0.004}
-    # How far above its own decision threshold a blob's MEAN probability must
-    # sit before the blob is proposed.
-    #
-    # This is a MARGIN, not an absolute floor, and that distinction was learned
-    # the hard way. It used to be a hardcoded 0.45, which on the model trained
-    # here sits just above the pothole threshold of 0.35. Another machine
-    # retrained the segmenter on its own larger dataset, got a pothole threshold
-    # of 0.20, and the same 0.45 became 2.25x the threshold - it discarded real
-    # potholes and the test suite caught it at 4 of 8 detected.
-    #
-    # A threshold is whatever the calibration found for that model, so anything
-    # compared against it has to be relative to it. A blob whose pixels merely
-    # scraped past the threshold is a scatter; one averaging a margin above it
-    # is a defect. That statement is true of any model; "0.45" was only ever
-    # true of one.
-    # Per class, because a crack and a pothole are different SHAPES and the
-    # mean probability inside a blob is a shape-dependent quantity.
-    #
-    # A pothole is compact: most of its pixels are interior, well inside the
-    # defect, and confidently scored. Its blob mean sits comfortably above the
-    # threshold, so requiring a margin separates real cavities from scatter.
-    #
-    # A crack is thin - often two or three pixels wide. Most of its pixels ARE
-    # boundary pixels, and boundary pixels score near the threshold by
-    # construction. Demanding the same margin of a crack penalises it for being
-    # crack-shaped. Measured on the same model: raising the crack floor from
-    # inactive to threshold+0.10 moved detection 91.7% -> 79.2% and bought only
-    # 16.7% -> 13.9% on false positives.
-    #
-    # So potholes carry a margin and cracks do not. The crack floor is its own
-    # calibrated threshold, which every pixel in the blob has already cleared.
     MIN_COMPONENT_MARGIN = {"crack": 0.0, "pothole": 0.10}
 
     def _component_floor(self, seg_cls):
@@ -1023,34 +947,10 @@ class DeepInferencePipeline:
         if isinstance(margin, dict):
             margin = margin.get(name, 0.10)
         return min(0.95, base + float(margin))
-    # No frame contains this many separate repairs. Past it, the segmenter is
-    # confused about the whole surface and the frame is not evidence.
     MAX_COMPONENTS = 8
-    # A crack or pothole proposed by the brightness grid may not be bigger than
-    # this share of the frame. Measured: the grid was producing boxes at 0.61
-    # and they were being priced as single repairs.
     MAX_HEURISTIC_BOX_FRACTION = 0.25
-    # The same rule for blobs the SEGMENTER proposes. Capping only the
-    # brightness grid was half a fix: measured on a real photograph, one
-    # segmentation component covered 83% x 84% of the frame and was reported as
-    # a single 4.273 m2 pothole priced at Rs 2,830. A component that large is
-    # the segmenter over-claiming a whole road surface, not one repair.
     MAX_COMPONENT_BOX_FRACTION = 0.35
-    # A single pothole patch under MoRTH Section 500 is a metre or so across.
-    # Past this, the geometry has almost certainly been handed a photograph it
-    # was not designed for - a close-up crop rather than a frame from a mounted
-    # camera - and the honest output is a flag for manual survey, not a price.
     MAX_SINGLE_REPAIR_AREA_M2 = 2.0
-    # Everything above this fraction of the frame is not the road surface in
-    # front of the vehicle: it is sky, buildings, trees and other traffic. The
-    # brightness grid has always restricted itself to below this line
-    # (cv_cavity_detector.roi_y0); the segmentation proposals did not, and a
-    # parked car at the top of a photograph was reported as "Pothole 100%"
-    # while the crater filling the foreground was ignored.
-    #
-    # The features the segmenter uses - lightness, gradient, local variance -
-    # describe a dark high-contrast patch. A car body against bright tarmac is
-    # exactly that. No threshold distinguishes them; their POSITION does.
     ROAD_ROI_TOP_FRACTION = 0.35
 
     def _segmenter_missing_note(self):
@@ -1153,9 +1053,7 @@ class DeepInferencePipeline:
             binary = (mask == seg_cls).astype(_np.uint8)
             if not binary.any():
                 continue
-            # Close one-pixel gaps so a dashed crack is one component rather
-            # than forty. 3x3 is deliberately small: a bigger kernel would weld
-            # separate potholes into a single box and overstate the repair.
+            # Connect adjacent mask gaps
             binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE,
                                       cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
             n, lab, st, _cen = cv2.connectedComponentsWithStats(binary, 8)
@@ -1172,30 +1070,14 @@ class DeepInferencePipeline:
                 y = int(st[i, cv2.CC_STAT_TOP] * sy)
                 w = max(8, int(st[i, cv2.CC_STAT_WIDTH] * sx))
                 h = max(8, int(st[i, cv2.CC_STAT_HEIGHT] * sy))
-                # A little context around the defect; the classifier was trained
-                # on crops that include some surrounding road.
                 px, py = int(w * 0.15), int(h * 0.15)
                 x0, y0 = max(0, x - px), max(0, y - py)
                 x1, y1 = min(W, x + w + px), min(H, y + h + py)
                 if x1 - x0 < 8 or y1 - y0 < 8:
                     continue
-                # The blob's centre of mass must lie on the road, not above the
-                # horizon. Centroid rather than the top edge, so a large defect
-                # close to the camera - which legitimately reaches high up a
-                # close-up frame - is kept, while a car or a sign sitting
-                # entirely in the upper third is not.
                 centroid_y = (y0 + y1) / 2.0
                 if centroid_y < self.ROAD_ROI_TOP_FRACTION * H:
                     continue
-                # An oversized component is NOT dropped. Dropping it cost 8
-                # points of detection (91.7% -> 83.3%) and hid real defects: a
-                # road authority needs to know a large defect is there even when
-                # its extent cannot be measured from one photograph.
-                #
-                # It is proposed, and the area check downstream refuses to price
-                # it and flags it for manual survey. Reporting "large defect,
-                # extent uncertain" is useful; reporting "4.273 m2, Rs 2,830" is
-                # worse than useless, and reporting nothing loses the defect.
                 oversized = (((x1 - x0) * (y1 - y0)) / float(W * H)
                              > self.MAX_COMPONENT_BOX_FRACTION)
                 out.append([x0, y0, x1 - x0, y1 - y0, mean_p * area, kind,
@@ -1206,14 +1088,7 @@ class DeepInferencePipeline:
         return out[: self.MAX_COMPONENTS]
 
     def _merge_overlapping_potholes(self, props, W, H):
-        """
-        One cavity, one detection. Water in a pothole is bright, so the mask often
-        breaks into pieces around it, and each piece came back as its own pothole
-        ("Pothole 100%", "96%", "87%" on one cavity). Pothole proposals whose regions
-        overlap are merged into one; separate potholes (boxes that do not overlap)
-        stay separate, and the area downstream is still counted from the mask's pothole
-        pixels, so merging neither double-counts nor inflates it.
-        """
+        """Merge overlapping pothole proposals from segmentation."""
         pot = [b for b in props if b[5] == 2]
         rest = [b for b in props if b[5] != 2]
         merged = True
@@ -1253,35 +1128,25 @@ class DeepInferencePipeline:
     def _can_merge_defects(b1, b2, W, H):
         xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
         xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
-        iou = 0.0
-        containment = 0.0
         if xi1 > xi0 and yi1 > yi0:
             inter = (xi1 - xi0) * (yi1 - yi0)
             a1 = b1[2] * b1[3]
             a2 = b2[2] * b2[3]
             iou = inter / float(a1 + a2 - inter)
             containment = inter / float(min(a1, a2))
+            if iou >= 0.20 or containment >= 0.45:
+                return True
 
         gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
         gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
         comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
         comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
-        horiz_inter = max(0, min(b1[0] + b1[2], b2[0] + b2[2]) - max(b1[0], b2[0]))
-        horiz_overlap = horiz_inter / float(max(1, min(b1[2], b2[2])))
-        is_proximate = (
-            gap_x <= int(W * 0.03)
-            and gap_y <= int(H * 0.03)
-            and comb_w <= int(W * 0.40)
+        return (
+            gap_x <= int(W * 0.015)
+            and gap_y <= int(H * 0.015)
+            and comb_w <= int(W * 0.35)
             and comb_h <= int(H * 0.30)
         )
-        is_crater_complex = (
-            (horiz_overlap >= 0.12 or gap_x <= int(W * 0.04))
-            and gap_y <= int(H * 0.08)
-            and comb_w <= int(W * 0.55)
-            and comb_h <= int(H * 0.45)
-            and (comb_w * comb_h) <= int(W * H * 0.35)
-        )
-        return (iou > 0.15 or containment > 0.40 or is_proximate or is_crater_complex)
 
     # A region must have at least this fraction of its pixels claimed by the
     # segmenter before it is reported as that defect.
@@ -1378,28 +1243,7 @@ class DeepInferencePipeline:
         return max(crop_conf, float(roi_pred.get("confidence", crop_conf)))
 
     def _classify_region(self, img_np, gray, bbox, W, H, mean_intensity):
-        """
-        Crops one candidate region, classifies it, and prices the repair.
-
-        Two gates stand between a candidate region and a reported defect,
-        because the region proposals come from a brightness heuristic that
-        fires on any high-contrast structure - a zebra crossing's stripes are
-        the highest-contrast thing on a road, and a lane marking's edge looks
-        like a crack to a threshold.
-
-        1. CONFIDENCE. The classifier must be at least MIN_REPORT_CONFIDENCE
-           sure. A 48% call is not a finding.
-
-        2. SEGMENTATION AGREEMENT. The segmenter is trained on 4,720 hand-drawn
-           polygons and therefore knows what crack and pothole pixels actually
-           look like. If it claims almost none of the region, the classifier is
-           reading texture that is not a defect, and the region is dropped.
-
-        The second gate is the one that matters. The classifier was trained on
-        photographs of defects and is applied to arbitrary crops, so asking it
-        "is this a defect at all?" is asking a question it was never trained to
-        answer. The segmenter was trained on exactly that question, per pixel.
-        """
+        """Classify candidate region and compute physical dimensions."""
         bx, by, bw, bh = bbox[:4]
         cx, cy = bx + bw // 2, by + bh // 2
         cw = max(96, int(round(bw * 1.30)))
@@ -1548,17 +1392,6 @@ class DeepInferencePipeline:
                 depth_cm = depth_estimate["depth_cm"]
             # Waterlogging (3): area is meaningful (hazard extent), depth is not asphalt depth.
 
-            # Is this a plausible single repair at all?
-            #
-            # Everything downstream - tonnage, rupees, the work order - assumes
-            # the area is one patch a crew will lay. Measured on a real
-            # photograph: 4.273 m2 priced at Rs 2,830, from a blob covering most
-            # of a close-up crop. The arithmetic was right and the answer was
-            # nonsense, because the ground-plane projection had been handed an
-            # image it was never designed for.
-            #
-            # A number that cannot be defended should not be priced. It is
-            # reported, flagged, and sent for manual survey.
             oversized_box = len(bbox) > 9 and bool(bbox[9])
             box_fraction_here = (bw * bh) / float(max(1, W * H))
             area_plausible = (area_m2 <= self.MAX_SINGLE_REPAIR_AREA_M2
@@ -1571,14 +1404,8 @@ class DeepInferencePipeline:
                     "max_plausible_m2": self.MAX_SINGLE_REPAIR_AREA_M2,
                     "measured_area_m2": round(area_m2, 3),
                     "box_share_of_frame": round(box_fraction_here, 3),
-                    "why": ("A single pothole patch under MoRTH Section 500 is about a "
-                            "metre across. An area this large, or a region covering this "
-                            "much of the frame, usually means the camera geometry does "
-                            "not apply to this photograph - a close-up crop rather than a "
-                            "frame from a mounted camera - or that the segmentation has "
-                            "merged several defects with the road between them."),
-                    "action": ("Reported for manual survey. No tonnage or cost is "
-                               "quoted, because neither could be defended."),
+                    "why": "Defect footprint exceeds single-patch limit; flagged for survey inspection.",
+                    "action": "Reported for manual survey.",
                 })
 
             if cls_id in (1, 2) and area_plausible:  # only crack/pothole get an asphalt repair costing

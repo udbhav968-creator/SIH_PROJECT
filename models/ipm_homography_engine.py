@@ -14,11 +14,7 @@ import numpy as np
 
 
 class IPMHomographyEngine:
-    # Compaction / wastage margin applied to the compacted-volume mass.
     COMPACTION_FACTOR = 1.15
-    # The per-tonne rates below are indicative planning figures, not a quoted
-    # Schedule of Rates. Every costed output carries this string so nobody
-    # mistakes them for a state PWD/CPWD SOR line item.
     RATE_BASIS = ("indicative planning rate per tonne laid; replace with the "
                   "applicable state PWD / CPWD Schedule of Rates before tendering")
     MATERIAL_PROPERTIES = {

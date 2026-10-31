@@ -52,11 +52,6 @@ class CVCavityDetector:
         elif isinstance(image_input, Image.Image):
             pil_img = image_input.convert("RGB")
         elif isinstance(image_input, np.ndarray):
-            # Arrays (camera frames from edge/bus_agent.py, video frames) used to be returned at
-            # their own resolution while files, uploads and bytes were resized below, so the
-            # same photograph gave different detections by input type: on the 36 clean / 24
-            # defect check photographs, 6/36 false positives as an array vs 3/36 as a file.
-            # Every input is now analysed at the working resolution the engine is measured at.
             arr = np.asarray(image_input)
             if arr.ndim == 2:
                 arr = np.dstack([arr] * 3)
@@ -131,8 +126,7 @@ class CVCavityDetector:
             sx0, sx1 = max(0, ex - 35), min(W, ex + ew + 35)
             excl_mask[sy0:sy1, sx0:sx1] = True
 
-        # Detect and suppress genuine flat/synthetic letterbox banner or watermark footer
-        # Only trigger if the row is uniform (std < 3.0), never suppressing real road texture or foreground defects
+        # Suppress flat letterbox banner or watermark footer
         for y in range(H - 1, int(H * 0.90), -1):
             row = gray[y, :].astype(np.float32)
             if float(np.std(row)) < 3.0 and (float(np.median(row)) < 20.0 or float(np.median(row)) > 235.0):
@@ -187,8 +181,6 @@ class CVCavityDetector:
                     cell_score[r, c], cell_kind[r, c] = pothole_score, 2
                 elif crack_score > 0:
                     cell_score[r, c], cell_kind[r, c] = crack_score, 1
-
-        # Pavement cell score matrix preserved to lowermost row for foreground defect recovery
 
         peaks = []
         for r in range(grid_rows):

@@ -1,5 +1,5 @@
 {
-  "timestamp_utc": "2026-10-31T05:25:05.009085+00:00",
+  "timestamp_utc": "2026-10-31T06:20:40.211680+00:00",
   "overall_status": "CERTIFIED",
   "level_1_checkpoints": [
     {
@@ -15,7 +15,7 @@
       "size_mb": 1.5
     },
     {
-      "name": "Flagship DAN-DAG Weights",
+      "name": "DAN-DAG Model Weights",
       "file": "dan_dag_model.joblib",
       "status": "VERIFIED",
       "size_mb": 4.69
@@ -39,7 +39,7 @@
       "size_mb": 0.91
     },
     {
-      "name": "100 Hz IMU Shock Vibration CNN",
+      "name": "100 Hz IMU Shock CNN",
       "file": "imu_shock_model.joblib",
       "status": "VERIFIED",
       "size_mb": 11.37
@@ -107,7 +107,7 @@
       "model": "ASTM D6433 PCI Regressor",
       "file": "pci_model_report.json",
       "metric_key": "held_out_r2",
-      "metric_name": "Held-Out R\u00b2",
+      "metric_name": "Held-Out R2",
       "floor": 0.85,
       "actual": 0.8839,
       "status": "PASSED"
@@ -116,7 +116,7 @@
       "model": "HDM-4 Deterioration Forecaster",
       "file": "deterioration_model_report.json",
       "metric_key": "held_out_area_r2",
-      "metric_name": "Area Expansion R\u00b2",
+      "metric_name": "Area Expansion R2",
       "floor": 0.8,
       "actual": 0.9879,
       "status": "PASSED"
@@ -125,7 +125,7 @@
       "model": "Photometric Depth Regressor",
       "file": "depth_estimator_report.json",
       "metric_key": "held_out_pothole_r2",
-      "metric_name": "Pothole Depth R\u00b2",
+      "metric_name": "Pothole Depth R2",
       "floor": 0.5,
       "actual": 0.6211,
       "status": "PASSED"
@@ -151,25 +151,25 @@
   ],
   "level_3_stress_tests": [
     {
-      "name": "Scene C: Foreground Crater with Reflection",
+      "name": "Scene C: Foreground Crater",
       "passed": true,
-      "latency_ms": 9363.9,
+      "latency_ms": 8808.0,
       "class_name": "Pothole Cavity",
-      "confidence": 0.9298,
+      "confidence": 0.8835,
       "bbox": [
         10,
         186,
-        490,
-        252
+        230,
+        176
       ],
-      "surface_area_m2": 1.8121,
-      "repair_cost_inr": 2175.75,
+      "surface_area_m2": 0.7277,
+      "repair_cost_inr": 888.75,
       "errors": []
     },
     {
-      "name": "Rural Dirt Road with Puddles",
+      "name": "Rural Dirt Road",
       "passed": true,
-      "latency_ms": 5580.0,
+      "latency_ms": 5038.0,
       "class_name": "Pothole Cavity",
       "confidence": 0.8907,
       "bbox": [
@@ -201,9 +201,9 @@
     }
   ],
   "level_5_benchmark": {
-    "onnx_vision_latency_ms": 11.6,
-    "onnx_effective_fps": 86.2,
-    "full_pipeline_latency_ms": 5125.4,
+    "onnx_vision_latency_ms": 10.2,
+    "onnx_effective_fps": 98.0,
+    "full_pipeline_latency_ms": 4743.9,
     "onnx_edge_budget_ms": 35.0,
     "passed": true
   }

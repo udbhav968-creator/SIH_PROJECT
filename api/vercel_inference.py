@@ -1270,8 +1270,8 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         # Reject sidewalk kerb / frame border artifacts (e.g. raised pavement margins in upper road zone)
         if (bx < 20 or bx + bw > W - 20) and by < int(H * 0.50) and (bw * bh) < int(0.04 * W * H):
             continue
-        # Reject distant horizon noise (large width proposal with centroid in top 40% of frame)
-        if (by + bh * 0.5) < int(H * 0.40) and bw > int(W * 0.25):
+        # Reject distant horizon noise
+        if (by + bh * 0.5) < int(H * 0.22) and bw > int(W * 0.40):
             continue
         comp = prop["seg_comp"]
 
@@ -1413,35 +1413,25 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         def _can_merge_defects(b1, b2, W, H):
             xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
             xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
-            iou = 0.0
-            containment = 0.0
             if xi1 > xi0 and yi1 > yi0:
                 inter = (xi1 - xi0) * (yi1 - yi0)
                 a1 = b1[2] * b1[3]
                 a2 = b2[2] * b2[3]
                 iou = inter / float(a1 + a2 - inter)
                 containment = inter / float(min(a1, a2))
+                if iou >= 0.20 or containment >= 0.45:
+                    return True
 
             gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
             gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
             comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
             comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
-            horiz_inter = max(0, min(b1[0] + b1[2], b2[0] + b2[2]) - max(b1[0], b2[0]))
-            horiz_overlap = horiz_inter / float(max(1, min(b1[2], b2[2])))
-            is_proximate = (
-                gap_x <= int(W * 0.03)
-                and gap_y <= int(H * 0.03)
-                and comb_w <= int(W * 0.40)
+            return (
+                gap_x <= int(W * 0.015)
+                and gap_y <= int(H * 0.015)
+                and comb_w <= int(W * 0.35)
                 and comb_h <= int(H * 0.30)
             )
-            is_crater_complex = (
-                (horiz_overlap >= 0.12 or gap_x <= int(W * 0.04))
-                and gap_y <= int(H * 0.08)
-                and comb_w <= int(W * 0.55)
-                and comb_h <= int(H * 0.45)
-                and (comb_w * comb_h) <= int(W * H * 0.35)
-            )
-            return (iou > 0.15 or containment > 0.40 or is_proximate or is_crater_complex)
 
         changed = True
         while changed and len(detections) > 1:
