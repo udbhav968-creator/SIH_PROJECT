@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from models.marking_detector import detect_all_zebras, detect_zebra, paint_mask
+from models.marking_detector import detect_all_zebras, detect_zebra, paint_mask, discard_bars_on_mask
 from api.vercel_inference import _connected_components_8, _photometric_depth, _compute_pci
 from models.ipm_homography_engine import IPMHomographyEngine
 from models import camera_calibration as cam_cal
@@ -134,6 +134,36 @@ class TestMultiDefectAndMultiZebra(unittest.TestCase):
         self.assertEqual(len(measured), 100)
         self.assertGreater(total_remediation_cost, 1000.0)
 
+
+    def _seven_bar_crossing(self):
+        H, W = 480, 640
+        img = np.full((H, W, 3), 60, dtype=np.uint8)
+        for x in range(120, 400, 40):
+            img[300:360, x:x+25] = 235
+        z = detect_zebra(img)
+        self.assertTrue(z["found"])
+        return z, (H, W)
+
+    def test_crossing_on_clean_asphalt_survives_mask_check(self):
+        z, shape = self._seven_bar_crossing()
+        empty = np.zeros((200, 320), dtype=bool)
+        far = empty.copy()
+        far[20:40, 10:40] = True
+        self.assertIs(discard_bars_on_mask(z, empty, shape), z)
+        out = discard_bars_on_mask(z, far, shape)
+        self.assertTrue(out["found"])
+        self.assertEqual(out["stripe_count"], z["stripe_count"])
+
+    def test_reflections_inside_a_pothole_field_are_withdrawn(self):
+        z, shape = self._seven_bar_crossing()
+        H, W = shape
+        mask = np.zeros((200, 320), dtype=bool)
+        sy, sx = 200 / H, 320 / W
+        mask[int(285 * sy):int(375 * sy), int(100 * sx):int(420 * sx)] = True
+        mask[int(300 * sy):int(360 * sy), int(120 * sx):int(400 * sx)] = False
+        out = discard_bars_on_mask(z, mask, shape)
+        self.assertFalse(out["found"])
+        self.assertIn("reflections", out["reason"])
 
 if __name__ == "__main__":
     unittest.main()

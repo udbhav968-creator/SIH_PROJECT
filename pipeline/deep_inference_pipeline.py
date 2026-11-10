@@ -301,6 +301,19 @@ class DeepInferencePipeline:
             except Exception as e:
                 print(f"[WARN] semantic gate skipped: {e}")
         self._seg_out = seg_out
+        if seg_out is not None and self._markings.get("found"):
+            try:
+                from models import marking_detector
+                pot = seg_out.get("mask_work")
+                if pot is None:
+                    pot = seg_out.get("mask")
+                checked = marking_detector.discard_bars_on_mask(self._markings, pot == 2, (H, W))
+                if checked is not self._markings:
+                    self._markings = checked
+                    self._paint_mask = (marking_detector.paint_mask(img_np, checked)
+                                        if checked.get("found") else None)
+            except Exception as e:
+                print(f"[WARN] marking check against mask failed: {e}")
         dag_exec.mark("N3_pixel_segmenter", "COMPLETED" if seg_out else "SKIPPED")
 
         scene_objects, scene_summary = [], {"available": False,
@@ -475,15 +488,34 @@ class DeepInferencePipeline:
                     d1_merged["depth_cm"] = depth_cm
                     tonnage_t = round(d1_merged["surface_area_m2"] * (depth_cm / 100.0) * 2.40 * 1.15, 4)
                     d1_merged["morth_tonnage_t"] = tonnage_t
-                    d1_merged["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
-                    de["repair_cost_low_inr"] = round(d1_merged["surface_area_m2"] * (de.get("depth_low_cm", depth_cm) / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-                    de["repair_cost_high_inr"] = round(d1_merged["surface_area_m2"] * (de.get("depth_high_cm", depth_cm) / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                    mb_frac = (mb[2] * mb[3]) / float(max(1, W * H))
+                    area_plausible = (d1_merged["surface_area_m2"] <= self.MAX_SINGLE_REPAIR_AREA_M2
+                                      and mb_frac <= self.MAX_COMPONENT_BOX_FRACTION)
+                    if area_plausible:
+                        d1_merged["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
+                        de["repair_cost_low_inr"] = round(d1_merged["surface_area_m2"] * (de.get("depth_low_cm", depth_cm) / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                        de["repair_cost_high_inr"] = round(d1_merged["surface_area_m2"] * (de.get("depth_high_cm", depth_cm) / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                    else:
+                        d1_merged["repair_cost_inr"] = 0.0
+                        d1_merged["morth_tonnage_t"] = 0.0
+                        de["repair_cost_low_inr"] = 0.0
+                        de["repair_cost_high_inr"] = 0.0
+                        d1_merged["needs_manual_survey"] = True
+                        d1_merged["area_diagnostics"] = dict(d1_merged.get("area_diagnostics") or {})
+                        d1_merged["area_diagnostics"].update({
+                            "implausible_for_a_single_repair": True,
+                            "max_plausible_m2": self.MAX_SINGLE_REPAIR_AREA_M2,
+                            "measured_area_m2": round(d1_merged["surface_area_m2"], 3),
+                            "box_share_of_frame": round(mb_frac, 3),
+                            "why": "Defect footprint exceeds single-patch limit; flagged for survey inspection.",
+                            "action": "Reported for manual survey."
+                        })
                     d1_merged["depth_estimate"] = de
                     if "physical_dimensions" in d1_merged:
                         d1_merged["physical_dimensions"]["surface_area_m2"] = d1_merged["surface_area_m2"]
                         d1_merged["physical_dimensions"]["depth_cm"] = depth_cm
                         d1_merged["physical_dimensions"]["bitumen_volume_m3"] = round(d1_merged["surface_area_m2"] * (depth_cm / 100.0), 4)
-                        d1_merged["physical_dimensions"]["morth_compacted_tonnage_t"] = tonnage_t
+                        d1_merged["physical_dimensions"]["morth_compacted_tonnage_t"] = d1_merged.get("morth_tonnage_t", 0.0)
                         d1_merged["physical_dimensions"]["estimated_repair_cost_inr"] = d1_merged["repair_cost_inr"]
                     new_dets.append(d1_merged)
                 filtered_distress = new_dets
@@ -517,7 +549,8 @@ class DeepInferencePipeline:
         dag_exec.mark("N6_pinhole_ipm")
 
         if not detections and not bboxes and not pedestrians:
-            normal = self._normal_road(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0)
+            normal = self._normal_road(mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0,
+                                       pavement_age_yr=pavement_age_yr)
             normal["scene_objects"] = scene_objects
             normal["scene_summary"] = scene_summary
             normal["road_damage_boxes"] = damage_boxes
@@ -1529,7 +1562,8 @@ class DeepInferencePipeline:
             "scene_objects": [],
             "scene_summary": {"available": False, "reason": "Frame rejected as non-pavement."},
             "urban_traffic_analysis": {"pcu_equivalent": 0.0, "congestion_index": 0.0, "status": "OPTIMAL_FREE_FLOW"},
-            "astm_d6433_pci": {"pci_rating": 100, "category": "GOOD", "deduct_values": []},
+            "astm_d6433_pci": {"pci_score": None, "rating_category": "N/A (not pavement)",
+                               "description": "No PCI for a frame rejected as non-pavement.", "deduct_values": {}},
             "morth_civil_ledger": {"total_bitumen_tonnage_t": 0.0, "total_estimated_repair_inr": 0.0},
             "cryptographic_work_order": None,
             "frame_classification": {"class_id": 0, "class_name": "Non-Pavement Surface (Rejected)", "confidence": 0.0},
@@ -1539,9 +1573,13 @@ class DeepInferencePipeline:
             "multi_target_summary": "Non-pavement surface rejected by optical texture gate.",
         }
 
-    def _normal_road(self, mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0):
-        elapsed_ms = round((time.time() - t0) * 1000.0, 2)
+    def _normal_road(self, mean_intensity, std_intensity, corridor_id, latitude, longitude, chainage_km, t0,
+                     pavement_age_yr=None):
         entry = self._normal_road_entry()
+        if pavement_age_yr is None:
+            pavement_age_yr = self.DEFAULT_PAVEMENT_AGE_YR
+        pci, rutting_mm, iri_roughness = self._compute_pci([], pavement_age_yr)
+        elapsed_ms = round((time.time() - t0) * 1000.0, 2)
         return {
             "status": "ROAD_INSPECTION_NORMAL",
             "gatekeeper_passed": True,
@@ -1552,8 +1590,20 @@ class DeepInferencePipeline:
             "primary_distress": entry,
             "primary_detection": entry,
             "all_detections": [entry],
-            "pavement_pci": 96.0,
-            "pci_category": "EXCELLENT",
+            "astm_d6433_pci": {
+                "pci_score": pci["pci_score"],
+                "rating_category": pci["rating_category"],
+                "description": pci["description"],
+                "deduct_values": pci["deduct_values"],
+                "rutting_mm": rutting_mm,
+                "iri_roughness": iri_roughness,
+                "not_measured": "rut depth and IRI need a straightedge or profile, not a photograph",
+                "note": "Per-frame proxy PCI (single dashcam frame), not a full-segment ASTM D6433 survey.",
+            },
+            "pavement_pci": pci["pci_score"],
+            "pci_category": pci["rating_category"],
+            "morth_civil_ledger": {"total_bitumen_tonnage_t": 0.0, "total_estimated_repair_inr": 0.0},
+            "cryptographic_work_order": None,
             "corridor_id": corridor_id,
             "location": {"lat": latitude, "lng": longitude, "chainage_km": chainage_km},
             "latency_ms": elapsed_ms,

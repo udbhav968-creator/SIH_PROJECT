@@ -358,6 +358,80 @@ def paint_mask(image_rgb, zebra):
     return mask
 
 
+def bar_defect_overlap(bar, defect_mask, frame_shape, ring=0.5):
+    """
+    Share of defect pixels inside a bar's box and in a ring around it.
+    defect_mask may be at a lower resolution than the frame.
+    """
+    H, W = frame_shape
+    mh, mw = defect_mask.shape[:2]
+    sy, sx = mh / float(H), mw / float(W)
+
+    def window(x, y, w, h):
+        y0, y1 = max(0, int(y * sy)), min(mh, int(np.ceil((y + h) * sy)))
+        x0, x1 = max(0, int(x * sx)), min(mw, int(np.ceil((x + w) * sx)))
+        return defect_mask[y0:y1, x0:x1]
+
+    inner = window(bar["x"], bar["y"], bar["w"], bar["h"])
+    px, py = max(4, int(bar["w"] * ring)), max(4, int(bar["h"] * ring))
+    outer = window(bar["x"] - px, bar["y"] - py, bar["w"] + 2 * px, bar["h"] + 2 * py)
+    inside = float(inner.mean()) if inner.size else 0.0
+    n = outer.size - inner.size
+    around = float(outer.sum() - inner.sum()) / n if n > 0 else 0.0
+    return inside, around
+
+
+def discard_bars_on_mask(zebra, defect_mask, frame_shape, touch=0.10, group_share=1.0 / 3.0):
+    """
+    Check bars against the segmented pothole mask before the paint mask is used
+    to erase anything from it. Water in a pothole field reflects the sky as
+    bright elongated patches that pass the geometric tests for paint, and the
+    broken asphalt around them is labelled pothole. Painted bars on real
+    crossings sit on sound asphalt with no pothole pixels in or around them.
+    If a third or more of a crossing's bars touch pothole pixels the whole
+    crossing is withdrawn; otherwise only the touching bars are dropped.
+    """
+    if not zebra or not zebra.get("found") or defect_mask is None or not defect_mask.any():
+        return zebra
+
+    def touches(b):
+        inside, around = bar_defect_overlap(b, defect_mask, frame_shape)
+        return inside >= touch or around >= touch
+
+    survivors, removed, withdrawn = [], 0, 0
+    for c in (zebra.get("all_crossings") or [zebra]):
+        bars = c.get("bars", [])
+        hit = [b for b in bars if touches(b)]
+        if not hit:
+            c2 = dict(c)
+            c2.pop("all_crossings", None)
+            survivors.append(c2)
+            continue
+        removed += len(hit)
+        if len(hit) >= max(1.0, group_share * len(bars)):
+            withdrawn += 1
+            continue
+        kept = [b for b in bars if b not in hit]
+        if len(kept) >= MIN_BARS:
+            c2 = dict(c, bars=kept, bar_count=len(kept))
+            c2.pop("all_crossings", None)
+            survivors.append(c2)
+        else:
+            withdrawn += 1
+    if removed == 0:
+        return zebra
+    if not survivors:
+        return {"found": False, "bars": [], "bar_count": 0, "all_crossings": [], "crossings_count": 0,
+                "reason": f"{removed} candidate bar(s) lay in or beside segmented pothole pixels "
+                          "(reflections in standing water, not paint)"}
+    primary = dict(max(survivors, key=lambda c: (c.get("stripe_count", 0), c.get("confidence", 0.0))))
+    primary["all_crossings"] = survivors
+    primary["crossings_count"] = len(survivors)
+    primary["bars_discarded_on_mask"] = removed
+    primary["crossings_withdrawn_on_mask"] = withdrawn
+    return primary
+
+
 def discard_bars_in_defects(zebra, defect_boxes):
     """
     Drop zebra bars whose centre lies inside a detected pothole or water region.

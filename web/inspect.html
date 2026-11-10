@@ -26,8 +26,7 @@
   <div id="engineBanner"></div>
 
   <div class="split">
-    <!-- ------------------------------------------------ input + canvas -- -->
-    <div>
+        <div>
       <div class="card">
         <div id="dz" class="dropzone" role="button" tabindex="0" aria-label="Choose a road photograph">
           <div class="dz-ico" data-icon="upload" data-size="22"></div>
@@ -82,8 +81,7 @@
       </div>
     </div>
 
-    <!-- ------------------------------------------------------- results -- -->
-    <div>
+        <div>
       <div id="out">
         <div class="card">
           <div class="label">waiting</div>
@@ -110,7 +108,6 @@ let photoGps = null;       // { lat, lon } from the photograph's EXIF, when the 
 
 const cv = el("cv"), ctx = cv.getContext("2d");
 
-/* ---------------------------------------------------------------- input -- */
 const dz = el("dz"), fileInput = el("file");
 dz.addEventListener("click", () => fileInput.click());
 dz.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
@@ -372,7 +369,7 @@ function draw() {
       ctx.fillText(label, tagX + 5, tagY + 14);
     });
   }
-  // Road-damage boxes from the YOLOv8 model trained on RDD2022 India. Solid
+  // Bounding boxes from object detector
   // thin outline and a "▣" tag, so they read differently from the mask boxes.
   const dmg = lastResult.road_damage_boxes || [];
   el("dmgToggle").style.display = (lastResult.road_damage_summary || {}).available ? "flex" : "none";
@@ -415,8 +412,7 @@ function draw() {
       ctx.font = "600 11.5px ui-monospace, monospace";
       const tw = ctx.measureText(label).width + 8;
       ctx.fillStyle = color;
-      // Scene labels are drawn after the defect labels; they used to cover them (a crack
-      // box showed only "99%" under "car 82%"). A scene label that would overlap an
+            // box showed only "99%" under "car 82%"). A scene label that would overlap an
       // existing label moves below its box, and is skipped if it would still overlap.
       let ly = y >= 18 ? y - 17 : Math.min(cv.height - 17, y + h + 1);
       const hits = (yy) => drawnLabels.some(dl => x < dl.x + dl.w && dl.x < x + tw && yy < dl.y + dl.h && dl.y < yy + 17);
@@ -429,7 +425,7 @@ function draw() {
     });
   }
 
-  // Painted markings - a third layer, drawn in a colour of its own. These are
+  // Road markings layer
   // neither a defect nor a COCO object: they are geometry, found by measuring
   // parallel evenly-spaced bars rather than by a model.
   const mk = lastResult.markings;

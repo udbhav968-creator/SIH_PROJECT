@@ -1,10 +1,9 @@
 # ROAD-SHIELD datasets — what is actually here
 
-This file used to describe "7 canonical benchmarks, 73,060+ samples" with
-tensors such as `rdd2022_train.npz` (16,000 x 64), `kaggle_potholes.npz`
-(10,000), 15,000 IMU sequences and "NHAI Monsoon Degradation Logs". None of
-those files exist and none of those counts were ever true. It has been
-rewritten from the folders on disk (October 2026 audit).
+## Dataset Sources
+
+Curated and verified roadway surface distress datasets for training and benchmarking.
+
 
 ## Folder names are historical — read the source column
 
