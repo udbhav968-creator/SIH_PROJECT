@@ -97,6 +97,17 @@ def mask_from_proba(proba, work_shape, orig_shape, thresholds, min_blob_px=12):
         binary = (labels == cls).astype(np.uint8)
         if binary.sum() == 0:
             continue
+        if cls == CLASS_POTHOLE:
+            # Cavity basin closing and water puddle hole-filling for potholes
+            kernel_cavity = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35, 35))
+            closed_cavity = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_cavity)
+            h_c, w_c = closed_cavity.shape
+            flood_mask = closed_cavity.copy()
+            ff_fill = np.zeros((h_c + 2, w_c + 2), dtype=np.uint8)
+            cv2.floodFill(flood_mask, ff_fill, (0, 0), 255)
+            flood_inv = cv2.bitwise_not(flood_mask)
+            binary = closed_cavity | (flood_inv // 255)
+
         n, comp, stats, _cent = cv2.connectedComponentsWithStats(binary, connectivity=8)
         for i in range(1, n):
             if stats[i, cv2.CC_STAT_AREA] >= min_blob_px:

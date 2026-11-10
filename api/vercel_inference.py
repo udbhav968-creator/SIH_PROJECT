@@ -109,6 +109,26 @@ def _load_sessions():
         except Exception as e:
             _SESSIONS["segmenter_error"] = str(e)
 
+    if "segmenter" not in _SESSIONS:
+        pix_onnx = os.path.join(CKPT_DIR, "defect_segmenter_pixel.onnx")
+        pix_json = os.path.join(CKPT_DIR, "defect_segmenter_pixel.json")
+        if os.path.exists(pix_onnx):
+            try:
+                sess = ort.InferenceSession(pix_onnx, opts, providers=["CPUExecutionProvider"])
+                meta = {}
+                if os.path.exists(pix_json):
+                    with open(pix_json, "r", encoding="utf-8") as fh:
+                        meta = json.load(fh)
+                _SESSIONS["segmenter"] = {
+                    "session": sess,
+                    "input_name": sess.get_inputs()[0].name,
+                    "meta": meta,
+                    "thresholds": dict(meta.get("thresholds") or {"crack": 0.5, "pothole": 0.5}),
+                    "is_fallback_pixel": True,
+                }
+            except Exception as e:
+                _SESSIONS["pixel_segmenter_error"] = str(e)
+
     imu_onnx = os.path.join(CKPT_DIR, "imu_shock_cnn.onnx")
     if os.path.exists(imu_onnx):
         try:
@@ -437,10 +457,23 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
     for cls_val, cls_id in ((2, 2), (1, 1)):
         binary_raw = (labels == cls_val)
         if cls_val == 2 and binary_raw.any():
-            from PIL import ImageFilter
-            pil_p = Image.fromarray(binary_raw.astype(np.uint8) * 255, mode="L")
-            closed_p = pil_p.filter(ImageFilter.MaxFilter(size=5)).filter(ImageFilter.MinFilter(size=5))
-            c_mask, boxes = _connected_components_8(np.asarray(closed_p) > 0, min_blob_px=min_px_map[cls_val])
+            try:
+                import cv2
+                pothole_u8 = binary_raw.astype(np.uint8)
+                kernel_cavity = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35, 35))
+                closed_cavity = cv2.morphologyEx(pothole_u8, cv2.MORPH_CLOSE, kernel_cavity)
+                h_c, w_c = closed_cavity.shape
+                flood_mask = closed_cavity.copy()
+                ff_fill = np.zeros((h_c + 2, w_c + 2), dtype=np.uint8)
+                cv2.floodFill(flood_mask, ff_fill, (0, 0), 255)
+                flood_inv = cv2.bitwise_not(flood_mask)
+                filled_cavity = (closed_cavity | (flood_inv // 255)) > 0
+                c_mask, boxes = _connected_components_8(filled_cavity, min_blob_px=min_px_map[cls_val])
+            except Exception:
+                from PIL import ImageFilter
+                pil_p = Image.fromarray(binary_raw.astype(np.uint8) * 255, mode="L")
+                closed_p = pil_p.filter(ImageFilter.MaxFilter(size=11)).filter(ImageFilter.MinFilter(size=11))
+                c_mask, boxes = _connected_components_8(np.asarray(closed_p) > 0, min_blob_px=min_px_map[cls_val])
         else:
             c_mask, boxes = _connected_components_8(binary_raw, min_blob_px=min_px_map[cls_val])
         sorted_boxes = sorted(boxes, key=lambda b: b["area_work_px"], reverse=True)[:5]
@@ -528,6 +561,20 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None, pothole_heat=N
     s = _load_sessions()
     seg = s.get("segmenter")
     if not seg:
+        from models import pixel_segmenter_lite as lite
+        proba = lite.predict_proba(img_rgb) if lite.available() else None
+        if proba is not None:
+            thresholds = lite.load()[1]["thresholds"]
+            p0, crack_p, pothole_p = proba[:, 0], proba[:, 1], proba[:, 2]
+            is_crack = crack_p >= float(thresholds.get("crack", 0.5))
+            is_pothole = pothole_p >= float(thresholds.get("pothole", 0.5))
+            flat = np.zeros(proba.shape[0], dtype=np.uint8)
+            flat[is_crack] = 1
+            flat[is_pothole & (pothole_p >= crack_p)] = 2
+            flat[is_pothole & ~is_crack] = 2
+            return _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w,
+                                        object_mask_full, gray_full, backend="pixel_classifier_fallback",
+                                        pothole_heat=pothole_heat)
         return None
     pil_in = Image.fromarray(np.asarray(img_rgb, dtype=np.uint8)).resize(
         (UNET_W, UNET_H), Image.Resampling.BILINEAR
@@ -1362,14 +1409,46 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         if dan_net is not None and getattr(dan_net, "is_ready", False) and crop.size > 0:
             try:
                 dan_res = dan_net.predict_image(crop)
+                dan_spatial = dan_res.get("dan_spatial") or {}
+                dan_channel = dan_res.get("dan_channel") or {}
                 dan_dag_info = {
                     "dan_dag_class_id": dan_res["class_id"],
                     "dan_dag_class_name": dan_res["class_name"],
                     "dan_dag_confidence": dan_res["confidence"],
+                    "dag_leaf_class_id": dan_res.get("dag_leaf_class_id"),
+                    "dag_leaf_class_name": dan_res.get("dag_leaf_class_name"),
                     "dag_trace": dan_res.get("dag_trace", []),
                     "decision_dag_path": dan_res.get("dag_trace", []),
                     "consensus_agreement": bool(dan_res["class_id"] == cls_info["class_id"]),
+                    "spatial_attention_peak": dan_spatial.get("spatial_peak"),
+                    "cavity_basin_score": dan_spatial.get("cavity_basin_score"),
+                    "wet_reflection_score": dan_spatial.get("wet_reflection_score"),
+                    "domain_regime": dan_spatial.get("domain_regime"),
+                    "channel_gate_mean": dan_channel.get("channel_gate_mean"),
+                    "top_attended_channels": dan_channel.get("top_attended_channels", []),
+                    "fusion_weights": {"mobilenet_v3": 0.55, "dan_dag": 0.45},
                 }
+
+                # Multi-Model Probability Fusion: 55% MobileNet deep CNN feature backbone + 45% DAN-DAG dual attention tournament
+                if "probabilities" in dan_res:
+                    dan_p = np.asarray(dan_res["probabilities"], dtype=np.float32)
+                    mb_p = np.array([float(cls_info.get("probabilities", {}).get(n, 0.0)) for n in CLASS_NAMES], dtype=np.float32)
+                    if mb_p.sum() > 0:
+                        mb_p = mb_p / mb_p.sum()
+                    else:
+                        mb_p = np.zeros(len(CLASS_NAMES), dtype=np.float32)
+                        mb_p[cls_info.get("class_id", 0)] = 1.0
+
+                    fused_p = 0.55 * mb_p + 0.45 * dan_p
+                    fused_p = fused_p / np.maximum(fused_p.sum(), 1e-12)
+                    fused_cls = int(np.argmax(fused_p))
+                    fused_conf = float(fused_p[fused_cls])
+
+                    cls_info["class_id"] = fused_cls
+                    cls_info["confidence"] = round(fused_conf, 4)
+                    cls_info["class_name"] = CLASS_NAMES[fused_cls]
+                    cls_info["probabilities"] = {n: round(float(fused_p[i]), 4) for i, n in enumerate(CLASS_NAMES)}
+                    dan_dag_info["consensus_agreement"] = bool(dan_res["class_id"] == fused_cls)
             except Exception:
                 dan_dag_info = None
 
@@ -1500,7 +1579,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 a2 = b2[2] * b2[3]
                 iou = inter / float(a1 + a2 - inter)
                 containment = inter / float(min(a1, a2))
-                if iou >= 0.12 or containment >= 0.30:
+                if iou >= 0.10 or containment >= 0.25:
                     return True
 
             gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
@@ -1510,14 +1589,13 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
 
             min_w = max(1, min(b1[2], b2[2]))
             horiz_overlap_ratio = inter_w / float(min_w)
-            if horiz_overlap_ratio >= 0.30 and gap_y <= int(H * 0.15) and comb_w <= int(W * 0.95) and comb_h <= int(H * 0.70):
+            if horiz_overlap_ratio >= 0.30 and gap_y <= int(H * 0.18) and comb_h <= int(H * 0.75):
                 return True
 
             return (
-                gap_x <= int(W * 0.04)
-                and gap_y <= int(H * 0.04)
-                and comb_w <= int(W * 0.95)
-                and comb_h <= int(H * 0.70)
+                gap_x <= int(W * 0.05)
+                and gap_y <= int(H * 0.05)
+                and comb_h <= int(H * 0.75)
             )
 
         changed = True
@@ -1791,6 +1869,14 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         "available": bool(dan_net and getattr(dan_net, "is_ready", False)),
         "primary_region_consensus": primary_dan.get("consensus_agreement", True),
         "decision_dag_trace": primary_dan.get("decision_dag_path") or (["N0_input", "N1_preprocess", "N2_ood_gate", "N3_pixel_segmenter", "N4_feature_fusion", "N5_dag_classifier", "N6_pinhole_ipm", "N7_astm_pci_hd4", "N8_irc_compliance"] if detections else []),
+        "spatial_attention_peak": primary_dan.get("spatial_attention_peak"),
+        "cavity_basin_score": primary_dan.get("cavity_basin_score"),
+        "wet_reflection_score": primary_dan.get("wet_reflection_score"),
+        "domain_regime": primary_dan.get("domain_regime"),
+        "channel_gate_mean": primary_dan.get("channel_gate_mean"),
+        "top_attended_channels": primary_dan.get("top_attended_channels", []),
+        "dag_leaf_class_name": primary_dan.get("dag_leaf_class_name"),
+        "ensemble_fusion_weights": primary_dan.get("fusion_weights", {"mobilenet_v3": 0.55, "dan_dag": 0.45}),
         "backend": "DualAttentionNetwork+DAGPathSolver(21-nodes)",
     }
 

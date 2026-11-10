@@ -1038,7 +1038,7 @@ class DeepInferencePipeline:
             a2 = b2[2] * b2[3]
             iou = inter / float(a1 + a2 - inter)
             containment = inter / float(min(a1, a2))
-            if iou >= 0.12 or containment >= 0.30:
+            if iou >= 0.10 or containment >= 0.25:
                 return True
 
         gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
@@ -1048,14 +1048,13 @@ class DeepInferencePipeline:
 
         min_w = max(1, min(b1[2], b2[2]))
         horiz_overlap_ratio = inter_w / float(min_w)
-        if horiz_overlap_ratio >= 0.30 and gap_y <= int(H * 0.15) and comb_w <= int(W * 0.95) and comb_h <= int(H * 0.70):
+        if horiz_overlap_ratio >= 0.30 and gap_y <= int(H * 0.18) and comb_h <= int(H * 0.75):
             return True
 
         return (
-            gap_x <= int(W * 0.04)
-            and gap_y <= int(H * 0.04)
-            and comb_w <= int(W * 0.95)
-            and comb_h <= int(H * 0.70)
+            gap_x <= int(W * 0.05)
+            and gap_y <= int(H * 0.05)
+            and comb_h <= int(H * 0.75)
         )
 
     SEGMENTER_GATE_FRACTION = 0.01
@@ -1210,22 +1209,54 @@ class DeepInferencePipeline:
                     self._last_dag_trace = dan_res.get("dag_trace", [])
                     consensus = (dan_res["class_id"] == cls_id) or (dan_res["dag_leaf_class_id"] == cls_id)
 
+                    dan_spatial = dan_res.get("dan_spatial") or {}
+                    dan_channel = dan_res.get("dan_channel") or {}
                     dan_dag_info = {
                         "dan_dag_class_id": dan_res["class_id"],
                         "dan_dag_class_name": dan_res["class_name"],
                         "dan_dag_confidence": dan_res["confidence"],
-                        "dag_leaf_class_id": dan_res["dag_leaf_class_id"],
-                        "dag_leaf_class_name": dan_res["dag_leaf_class_name"],
+                        "dag_leaf_class_id": dan_res.get("dag_leaf_class_id"),
+                        "dag_leaf_class_name": dan_res.get("dag_leaf_class_name"),
                         "consensus_agreement": bool(consensus),
-                        "spatial_attention_peak": dan_res["dan_spatial"]["spatial_peak"],
-                        "cavity_basin_score": dan_res["dan_spatial"]["cavity_basin_score"],
-                        "domain_regime": dan_res["dan_spatial"]["domain_regime"],
-                        "channel_gate_mean": dan_res["dan_channel"]["channel_gate_mean"],
-                        "top_attended_channels": dan_res["dan_channel"]["top_attended_channels"],
-                        "decision_dag_path": dan_res["dag_trace"],
+                        "spatial_attention_peak": dan_spatial.get("spatial_peak"),
+                        "cavity_basin_score": dan_spatial.get("cavity_basin_score"),
+                        "wet_reflection_score": dan_spatial.get("wet_reflection_score"),
+                        "domain_regime": dan_spatial.get("domain_regime"),
+                        "channel_gate_mean": dan_channel.get("channel_gate_mean"),
+                        "top_attended_channels": dan_channel.get("top_attended_channels", []),
+                        "decision_dag_path": dan_res.get("dag_trace", []),
+                        "fusion_weights": {"mobilenet_v3": 0.55, "dan_dag": 0.45},
                     }
+
+                    # Multi-Model Probability Fusion:
+                    if "probabilities" in dan_res:
+                        dan_p = np.asarray(dan_res["probabilities"], dtype=np.float32)
+                        names = VisionDistressNet.CLASS_NAMES
+                        mb_p = np.array([float(pred.get("probabilities", {}).get(n, 0.0)) for n in names], dtype=np.float32)
+                        if mb_p.sum() > 0:
+                            mb_p = mb_p / mb_p.sum()
+                        else:
+                            mb_p = np.zeros(len(names), dtype=np.float32)
+                            mb_p[cls_id] = 1.0
+
+                        fused_p = 0.55 * mb_p + 0.45 * dan_p
+                        fused_p = fused_p / np.maximum(fused_p.sum(), 1e-12)
+                        fused_cls = int(np.argmax(fused_p))
+                        fused_conf = float(fused_p[fused_cls])
+
+                        cls_id = fused_cls
+                        pred["class_id"] = fused_cls
+                        pred["confidence"] = round(fused_conf, 4)
+                        pred["class_name"] = names[fused_cls]
+                        pred["probabilities"] = {n: round(float(fused_p[i]), 4) for i, n in enumerate(names)}
+                        dan_dag_info["consensus_agreement"] = bool(dan_res["class_id"] == fused_cls)
             except Exception:
                 dan_dag_info = None
+
+        if cls_id == 0 or cls_id in (4, 5, 6):
+            return None
+        if float(pred.get("confidence", 0.0)) < self.MIN_REPORT_CONFIDENCE:
+            return None
 
         bx_norm, by_norm = round(bx / float(W), 4), round(by / float(H), 4)
         bw_norm, bh_norm = round(bw / float(W), 4), round(bh / float(H), 4)
