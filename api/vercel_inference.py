@@ -277,6 +277,48 @@ def _connected_components_8(binary_mask, min_blob_px=24):
     return cleaned, boxes
 
 
+def _fill_interior_mask_holes(binary_mask_2d):
+    """
+    Pure NumPy flood-fill hole filling for a 2D boolean mask.
+    Marks all background pixels connected to the boundary as external;
+    any unreached background pixel is an enclosed interior hole (such as
+    a water puddle reflection inside a pothole cavity) and becomes True.
+    """
+    import numpy as np
+    from collections import deque
+    h, w = binary_mask_2d.shape
+    if h <= 2 or w <= 2:
+        return binary_mask_2d
+
+    external = np.zeros((h, w), dtype=bool)
+    q = deque()
+
+    for r in range(h):
+        if not binary_mask_2d[r, 0]:
+            external[r, 0] = True
+            q.append((r, 0))
+        if not binary_mask_2d[r, w - 1]:
+            external[r, w - 1] = True
+            q.append((r, w - 1))
+    for c in range(1, w - 1):
+        if not binary_mask_2d[0, c]:
+            external[0, c] = True
+            q.append((0, c))
+        if not binary_mask_2d[h - 1, c]:
+            external[h - 1, c] = True
+            q.append((h - 1, c))
+
+    while q:
+        cr, cc = q.popleft()
+        for nr, nc in ((cr - 1, cc), (cr + 1, cc), (cr, cc - 1), (cr, cc + 1)):
+            if 0 <= nr < h and 0 <= nc < w:
+                if not external[nr, nc] and not binary_mask_2d[nr, nc]:
+                    external[nr, nc] = True
+                    q.append((nr, nc))
+
+    return ~external
+
+
 def _mask_to_data_url(mask_work):
     """Encode the 200x320 mask (1=crack cyan, 2=pothole amber-red) as a tiny transparent PNG data URL."""
     import numpy as np
@@ -370,7 +412,14 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
     sx = orig_w / float(WORK_W)
     sy = orig_h / float(WORK_H)
     for cls_val, cls_id in ((2, 2), (1, 1)):
-        c_mask, boxes = _connected_components_8(labels == cls_val, min_blob_px=min_px_map[cls_val])
+        binary_raw = (labels == cls_val)
+        if cls_val == 2 and binary_raw.any():
+            from PIL import ImageFilter
+            pil_p = Image.fromarray(binary_raw.astype(np.uint8) * 255, mode="L")
+            closed_p = pil_p.filter(ImageFilter.MaxFilter(size=5)).filter(ImageFilter.MinFilter(size=5))
+            c_mask, boxes = _connected_components_8(np.asarray(closed_p) > 0, min_blob_px=min_px_map[cls_val])
+        else:
+            c_mask, boxes = _connected_components_8(binary_raw, min_blob_px=min_px_map[cls_val])
         sorted_boxes = sorted(boxes, key=lambda b: b["area_work_px"], reverse=True)[:5]
         for b in sorted_boxes:
             wx, wy, ww, wh = b["bbox_work"]
@@ -389,6 +438,8 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
             sub_conf = float(conf_map[wy:wy + wh, wx:wx + ww][sub_mask].mean())
             if sub_conf < min_conf_map[cls_val]:
                 continue
+            if cls_val == 2:
+                sub_mask = _fill_interior_mask_holes(sub_mask)
             cleaned[wy:wy + wh, wx:wx + ww][sub_mask] = cls_val
             bx = max(0, int(round(wx * sx)))
             by = max(0, int(round(wy * sy)))
@@ -599,7 +650,7 @@ def _detect_scene_objects(img_np, H, W):
     if det is not None and det.is_ready:
         try:
             from models.onnx_object_detector import ROAD_RELEVANT
-            scene_objects = det.detect(img_np, conf_threshold=0.32, keep_classes=set(ROAD_RELEVANT))
+            scene_objects = det.detect(img_np, conf_threshold=0.45, keep_classes=set(ROAD_RELEVANT))
             scene_summary = det.summarise(scene_objects)
             scene_summary["available"] = True
         except Exception as e:
@@ -633,6 +684,8 @@ def _detect_scene_objects(img_np, H, W):
 
             object_mask[max(0, by - 8):min(H, by + bh + 8), max(0, bx - 8):min(W, bx + bw + 8)] = True
         elif cname in VEHICLE_CLASS_MAP:
+            if float(o.get("confidence", 0.0)) < 0.45:
+                continue
             vtype, pcu = VEHICLE_CLASS_MAP[cname]
             vid = len(vehicle_detections) + 1
             dist_m = round(max(2.0, 26.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
@@ -842,16 +895,21 @@ def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=3):
             gap_x = max(0, max(x1, cx1) - min(x2, cx2))
             gap_y = max(0, max(y1, cy1) - min(y2, cy2))
             horiz_overlap = inter_w / float(max(1, min(bw, cbw)))
-            is_proximate = (gap_x <= int(W * 0.04) and gap_y <= int(H * 0.03) and comb_w <= int(W * 0.40) and comb_h <= int(H * 0.30))
+            is_proximate = (
+                gap_x <= int(W * 0.04)
+                and gap_y <= int(H * 0.04)
+                and comb_w <= int(W * 0.95)
+                and comb_h <= int(H * 0.70)
+            )
             is_crater_complex = (
-                horiz_overlap >= 0.35
-                and gap_y <= int(H * 0.14)
-                and comb_w <= int(W * 0.55)
-                and comb_h <= int(H * 0.55)
-                and (comb_w * comb_h) <= int(W * H * 0.33)
+                horiz_overlap >= 0.30
+                and gap_y <= int(H * 0.15)
+                and comb_w <= int(W * 0.95)
+                and comb_h <= int(H * 0.70)
+                and (comb_w * comb_h) <= int(W * H * 0.60)
             )
 
-            if iou >= 0.18 or containment >= 0.40 or is_proximate or is_crater_complex:
+            if iou >= 0.12 or containment >= 0.30 or is_proximate or is_crater_complex:
                 matched.append(ci)
         if not matched:
             clusters.append([b])
@@ -1345,24 +1403,32 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         def _can_merge_defects(b1, b2, W, H):
             xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
             xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
-            if xi1 > xi0 and yi1 > yi0:
-                inter = (xi1 - xi0) * (yi1 - yi0)
+            inter_w = max(0, xi1 - xi0)
+            inter_h = max(0, yi1 - yi0)
+            if inter_w > 0 and inter_h > 0:
+                inter = inter_w * inter_h
                 a1 = b1[2] * b1[3]
                 a2 = b2[2] * b2[3]
                 iou = inter / float(a1 + a2 - inter)
                 containment = inter / float(min(a1, a2))
-                if iou >= 0.20 or containment >= 0.45:
+                if iou >= 0.12 or containment >= 0.30:
                     return True
 
             gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
             gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
             comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
             comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
+
+            min_w = max(1, min(b1[2], b2[2]))
+            horiz_overlap_ratio = inter_w / float(min_w)
+            if horiz_overlap_ratio >= 0.30 and gap_y <= int(H * 0.15) and comb_w <= int(W * 0.95) and comb_h <= int(H * 0.70):
+                return True
+
             return (
-                gap_x <= int(W * 0.015)
-                and gap_y <= int(H * 0.015)
-                and comb_w <= int(W * 0.35)
-                and comb_h <= int(H * 0.30)
+                gap_x <= int(W * 0.04)
+                and gap_y <= int(H * 0.04)
+                and comb_w <= int(W * 0.95)
+                and comb_h <= int(H * 0.70)
             )
 
         changed = True
@@ -1498,6 +1564,17 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 region_bool[by:by + bh, bx:bx + bw] = (mask_full[by:by + bh, bx:bx + bw] == cls_id)
                 px_c = int(region_bool.sum())
 
+                if cls_id == 2 and px_c >= 25:
+                    from PIL import Image, ImageFilter
+                    sub_m = region_bool[by:by + bh, bx:bx + bw]
+                    pil_m = Image.fromarray(sub_m.astype(np.uint8) * 255, mode="L")
+                    closed_m = pil_m.filter(ImageFilter.MaxFilter(size=5)).filter(ImageFilter.MinFilter(size=5))
+                    arr_closed = np.asarray(closed_m) > 0
+                    filled_m = _fill_interior_mask_holes(arr_closed)
+                    mask_full[by:by + bh, bx:bx + bw][filled_m] = 2
+                    region_bool[by:by + bh, bx:bx + bw] = filled_m
+                    px_c = int(filled_m.sum())
+
                 if px_c < 25:
                     from PIL import Image, ImageFilter
                     crop_gray = gray[by:by + bh, bx:bx + bw]
@@ -1510,6 +1587,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                         is_dark_cavity = crop_gray < min(114.0, road_med - 6.0)
                         is_water_puddle = (diff_cg < 6.5) & (crop_gray > 115.0)
                         local_mask = is_dark_cavity | is_water_puddle
+                        local_mask = _fill_interior_mask_holes(local_mask)
                     else:
                         gy_c, gx_c = np.gradient(crop_gray)
                         gmag_c = np.hypot(gx_c, gy_c)

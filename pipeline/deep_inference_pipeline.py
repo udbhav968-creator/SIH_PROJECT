@@ -1030,24 +1030,32 @@ class DeepInferencePipeline:
     def _can_merge_defects(b1, b2, W, H):
         xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
         xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
-        if xi1 > xi0 and yi1 > yi0:
-            inter = (xi1 - xi0) * (yi1 - yi0)
+        inter_w = max(0, xi1 - xi0)
+        inter_h = max(0, yi1 - yi0)
+        if inter_w > 0 and inter_h > 0:
+            inter = inter_w * inter_h
             a1 = b1[2] * b1[3]
             a2 = b2[2] * b2[3]
             iou = inter / float(a1 + a2 - inter)
             containment = inter / float(min(a1, a2))
-            if iou >= 0.20 or containment >= 0.45:
+            if iou >= 0.12 or containment >= 0.30:
                 return True
 
         gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
         gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
         comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
         comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
+
+        min_w = max(1, min(b1[2], b2[2]))
+        horiz_overlap_ratio = inter_w / float(min_w)
+        if horiz_overlap_ratio >= 0.30 and gap_y <= int(H * 0.15) and comb_w <= int(W * 0.95) and comb_h <= int(H * 0.70):
+            return True
+
         return (
-            gap_x <= int(W * 0.015)
-            and gap_y <= int(H * 0.015)
-            and comb_w <= int(W * 0.35)
-            and comb_h <= int(H * 0.30)
+            gap_x <= int(W * 0.04)
+            and gap_y <= int(H * 0.04)
+            and comb_w <= int(W * 0.95)
+            and comb_h <= int(H * 0.70)
         )
 
     SEGMENTER_GATE_FRACTION = 0.01
