@@ -102,9 +102,12 @@ def pothole_depth(image_gray, mask=None, bbox=None, distance_m=None):
 
     if use_mask:
         inside = g[sel]
-        import cv2
-        ring = cv2.dilate(sel.astype(np.uint8), np.ones((25, 25), np.uint8), 1).astype(bool) & ~sel
-        outside = g[ring] if ring.any() else g[~sel]
+        try:
+            import cv2
+            ring = cv2.dilate(sel.astype(np.uint8), np.ones((25, 25), np.uint8), 1).astype(bool) & ~sel
+            outside = g[ring] if ring.any() else g[~sel]
+        except Exception:
+            outside = g[~sel] if (~sel).any() else g.ravel()
         source = "segmentation mask"
     elif bbox is not None:
         x, y, w, h = (int(v) for v in bbox)

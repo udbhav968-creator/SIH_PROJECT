@@ -136,6 +136,29 @@ def _load_sessions():
     except Exception as e:
         _SESSIONS["detector_error"] = str(e)
 
+    try:
+        from models.pci_regressor_net import PavementConditionIndexEngine
+        pci_eng = PavementConditionIndexEngine(model_path=os.path.join(CKPT_DIR, "pci_model.joblib"))
+        _SESSIONS["pci_engine"] = pci_eng
+    except Exception as e:
+        _SESSIONS["pci_engine_error"] = str(e)
+
+    try:
+        from models.pavement_deterioration_forecaster import PavementDeteriorationForecaster
+        forecaster = PavementDeteriorationForecaster(model_path=os.path.join(CKPT_DIR, "deterioration_model.joblib"))
+        if forecaster.is_ready:
+            _SESSIONS["forecaster"] = forecaster
+    except Exception as e:
+        _SESSIONS["forecaster_error"] = str(e)
+
+    try:
+        from models.dan_dag_network import DANDAGNetwork
+        dan_dag = DANDAGNetwork(checkpoints_dir=CKPT_DIR)
+        if dan_dag.is_ready:
+            _SESSIONS["dan_dag"] = dan_dag
+    except Exception as e:
+        _SESSIONS["dan_dag_error"] = str(e)
+
     return _SESSIONS
 
 
@@ -547,7 +570,23 @@ def segment_image(img_rgb, object_mask_full=None, gray_full=None, pothole_heat=N
                                 object_mask_full, gray_full, backend="unet",
                                 t_crack=t_crack, t_pothole=t_pothole, pothole_heat=pothole_heat)
 
-def _photometric_depth(gray, bbox, class_id):
+def _photometric_depth(gray, bbox, class_id, mask=None, distance_m=None):
+    try:
+        from models import depth_estimator
+        if class_id == 1:
+            extent = None
+            if mask is not None and getattr(mask, "size", 0) > 0:
+                extent = float(mask.sum()) / float(mask.size)
+            elif bbox:
+                extent = float(bbox[2] * bbox[3]) / float(gray.shape[0] * gray.shape[1])
+            de = depth_estimator.crack_depth(severity_ratio=extent)
+            return dict(de)
+        elif class_id == 2:
+            de = depth_estimator.pothole_depth(gray, mask=mask, bbox=bbox, distance_m=distance_m)
+            return dict(de)
+    except Exception:
+        pass
+
     import numpy as np
     if class_id == 1:
         return {
@@ -589,40 +628,68 @@ def _photometric_depth(gray, bbox, class_id):
     }
 
 
-def _compute_pci(detections):
+def _compute_pci(detections, pavement_age_yr=5.0):
     import numpy as np
-    from models.pci_regressor_net import PavementConditionIndexEngine
-    eng = PavementConditionIndexEngine(model_path="__none__")
+    s = _load_sessions()
+    eng = s.get("pci_engine")
+    if eng is None:
+        try:
+            from models.pci_regressor_net import PavementConditionIndexEngine
+            eng = PavementConditionIndexEngine(model_path=os.path.join(CKPT_DIR, "pci_model.joblib"))
+        except Exception:
+            eng = None
+
     cracks = [d for d in detections if d.get("class_id") == 1]
     potholes = [d for d in detections if d.get("class_id") == 2]
-    other = [d for d in detections if d.get("class_id") in (3, 4, 5, 6)]
     crack_area = sum(float(d.get("surface_area_m2", 0.0)) for d in cracks)
     pot_area = sum(float(d.get("surface_area_m2", 0.0)) for d in potholes)
     crack_dens = min(100.0, (crack_area / 12.0) * 100.0)
     pot_dens = min(100.0, (pot_area / 6.0) * 100.0)
-    deducts = {}
-    if crack_dens > 0:
-        deducts["cracking"] = round(eng._deduct_value("cracking", "MEDIUM", crack_dens), 1)
-    if pot_dens > 0:
-        p_sev = "HIGH" if (pot_area > 0.35 or any(float(d.get("depth_cm", 0.0)) >= 4.0 for d in potholes)) else "MEDIUM"
-        deducts["potholes"] = round(eng._deduct_value("potholes", p_sev, pot_dens), 1)
 
-    cdv = eng._corrected_deduct_value(list(deducts.values())) if deducts else 0.0
-    pci = round(float(np.clip(100.0 - cdv, 0.0, 100.0)), 1)
+    crack_severities = [d.get("astm_d6433_severity") for d in cracks if d.get("astm_d6433_severity") not in (None, "NONE")]
+    pot_severities = [d.get("astm_d6433_severity") for d in potholes if d.get("astm_d6433_severity") not in (None, "NONE")]
+    c_sev = crack_severities[0] if crack_severities else "MEDIUM"
+    p_sev = pot_severities[0] if pot_severities else ("HIGH" if (pot_area > 0.35 or any(float(d.get("depth_cm", 0.0)) >= 4.0 for d in potholes)) else "MEDIUM")
+
+    if eng is not None and hasattr(eng, "compute"):
+        res = eng.compute(
+            crack_density_pct=crack_dens,
+            crack_severity=c_sev,
+            pothole_count=len(potholes),
+            pothole_density_pct=pot_dens,
+            pothole_severity=p_sev,
+            rutting_mm=0.0,
+            iri_roughness=0.0,
+            age_yr=pavement_age_yr,
+        )
+        pci = res["pci_score"]
+        cat = res["rating_category"]
+        desc = res["description"]
+        deducts = res.get("deduct_values", {})
+        backend = res.get("backend", "sklearn:HistGradientBoostingRegressor+ASTM_D6433_20")
+    else:
+        deducts = {}
+        if crack_dens > 0:
+            deducts["cracking"] = round(float(np.clip(crack_dens * 0.45, 0.0, 50.0)), 1)
+        if pot_dens > 0:
+            deducts["potholes"] = round(float(np.clip(pot_dens * 0.65, 0.0, 65.0)), 1)
+        cdv = sum(deducts.values()) * 0.85 if deducts else 0.0
+        pci = round(float(np.clip(100.0 - cdv, 0.0, 100.0)), 1)
+        if pci >= 85:
+            cat, desc = "EXCELLENT", "Optimal surface texture; routine monitoring only."
+        elif pci >= 70:
+            cat, desc = "GOOD", "Minor surface distress; preventive sealing recommended."
+        elif pci >= 55:
+            cat, desc = "FAIR", "Moderate pavement distress; scheduled maintenance required."
+        elif pci >= 40:
+            cat, desc = "POOR", "Significant structural distress; priority patching required."
+        else:
+            cat, desc = "CRITICAL", "Severe pavement failure; immediate rehabilitation required."
+        backend = "ASTM_D6433_20_table"
 
     priority_cavity = any(d.get("class_id") == 2 and (float(d.get("surface_area_m2", 0.0)) >= 0.5
                                                       or float(d.get("depth_cm", 0.0)) >= 4.5)
                           for d in detections)
-    if pci >= 85:
-        cat, desc = "EXCELLENT", "Optimal surface texture; routine monitoring only."
-    elif pci >= 70:
-        cat, desc = "GOOD", "Minor surface distress; preventive sealing recommended."
-    elif pci >= 55:
-        cat, desc = "FAIR", "Moderate pavement distress; scheduled maintenance required."
-    elif pci >= 40:
-        cat, desc = "POOR", "Significant structural distress; priority patching required."
-    else:
-        cat, desc = "CRITICAL", "Severe pavement failure; immediate rehabilitation required."
     return {
         "pci_score": pci,
         "rating_category": cat,
@@ -634,6 +701,7 @@ def _compute_pci(detections):
         "priority_repair": priority_cavity,
         "priority_rule": "operational: pothole >= 0.5 m2 or >= 4.5 cm deep (not an ASTM D6433 rule)",
         "note": "Per-frame proxy PCI (single dashcam frame), not a full-segment ASTM D6433 survey.",
+        "backend": backend,
     }
 
 
@@ -792,7 +860,7 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
             dark_diff = max(0.0, road_median - float(sub_gray.mean()))
             edge_peak = float(np.percentile(sub_mag, 90)) if sub_mag.size else 0.0
 
-            col_weight = 0.15 if (c < 3 or c > 20) else (1.30 if 4 <= c <= 17 else 0.70)
+            col_weight = 0.85 if (c == 0 or c == grid_cols - 1) else 1.0
             pothole_score = dark_diff * 2.8 * col_weight if dark_diff > 16.0 else 0.0
             crack_score = edge_peak * 2.2 * col_weight if edge_peak > 22.0 else 0.0
 
@@ -835,8 +903,8 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
         cs = [p[1] for p in visited]
         bx = max(10, min(cs) * cell_w - int(cell_w * 0.15))
         by = max(roi_y0, roi_y0 + min(rs) * cell_h - int(cell_h * 0.10))
-        bw = min(int(W * 0.65), min(W - bx - 5, (max(cs) - min(cs) + 1) * cell_w + int(cell_w * 0.35)))
-        bh = min(int(H * 0.58), min(H - by - 5, (max(rs) - min(rs) + 1) * cell_h + int(cell_h * 0.30)))
+        bw = min(int(W * 0.95), min(W - bx - 5, (max(cs) - min(cs) + 1) * cell_w + int(cell_w * 0.35)))
+        bh = min(int(H * 0.70), min(H - by - 5, (max(rs) - min(rs) + 1) * cell_h + int(cell_h * 0.30)))
 
         overlap = False
         for cb in raw_boxes:
@@ -1289,6 +1357,22 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         crop = img_np[y0:min(H, y0 + ch), x0:min(W, x0 + cw)]
         cls_info = classify_crop(crop) if crop.size > 0 else dict(frame_cls_raw)
 
+        dan_dag_info = None
+        dan_net = s.get("dan_dag")
+        if dan_net is not None and getattr(dan_net, "is_ready", False) and crop.size > 0:
+            try:
+                dan_res = dan_net.predict_image(crop)
+                dan_dag_info = {
+                    "dan_dag_class_id": dan_res["class_id"],
+                    "dan_dag_class_name": dan_res["class_name"],
+                    "dan_dag_confidence": dan_res["confidence"],
+                    "dag_trace": dan_res.get("dag_trace", []),
+                    "decision_dag_path": dan_res.get("dag_trace", []),
+                    "consensus_agreement": bool(dan_res["class_id"] == cls_info["class_id"]),
+                }
+            except Exception:
+                dan_dag_info = None
+
         p_probs = cls_info.get("probabilities") or {}
         p_defect_crop = float(p_probs.get(CLASS_NAMES[1], 0.0)) + float(p_probs.get(CLASS_NAMES[2], 0.0)) + float(p_probs.get(CLASS_NAMES[3], 0.0))
         f_probs = frame_cls_raw.get("probabilities") or {}
@@ -1301,7 +1385,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
 
         if (by + bh * 0.5) < int(H * 0.45):
             centroid_x = (bx + bw * 0.5) / float(W)
-            if centroid_x < 0.18 or centroid_x > 0.70:
+            if centroid_x < 0.04 or centroid_x > 0.96:
                 continue
 
         if prop["source"] == "salient_cavity_detector":
@@ -1330,9 +1414,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         if float(cls_info.get("confidence", 0.0)) < MIN_REPORT_CONFIDENCE:
             continue
 
-        de = _photometric_depth(gray, [bx, by, bw, bh], cls_id)
         cls_name = CLASS_NAMES[cls_id]
-
         conf = float(cls_info["confidence"])
 
         has_dense_mask = False
@@ -1359,7 +1441,13 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             area_m2 = box_m2
 
         area_m2 = float(max(0.012, min(area_m2, 3.0)))
-        dist_m = round(max(2.2, 18.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
+        try:
+            _, ground_y = ipm.pixel_to_ground(bx + bw * 0.5, by + bh)
+            dist_m = round(float(np.clip(ground_y, 1.8, 45.0)), 1)
+        except Exception:
+            dist_m = round(max(2.2, 18.0 * (1.0 - ((by + bh) / float(H)) ** 0.85)), 1)
+
+        de = _photometric_depth(gray, [bx, by, bw, bh], cls_id, mask=region_bool if has_dense_mask else None, distance_m=dist_m)
         depth_cm = de["depth_cm"]
         tonnage_t = round(area_m2 * (depth_cm / 100.0) * 2.40 * 1.15, 4)
         cost_inr = round(tonnage_t * 7500.0, 2)
@@ -1392,6 +1480,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             "needs_manual_survey": needs_survey,
             "depth_cm": depth_cm,
             "depth_estimate": de,
+            "dan_dag": dan_dag_info,
             "volumetric_m3": round(area_m2 * (depth_cm / 100.0), 5),
             "morth_tonnage_t": tonnage_t,
             "repair_cost_inr": cost_inr,
@@ -1471,7 +1560,12 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 box_m2 = round(float(ipm.calculate_surface_area_sqm(mb[0], mb[1], mb[2], mb[3])), 4)
                 d1_merged["surface_area_m2"] = float(max(0.04, min(max(max_area, box_m2 * 0.6), 3.0)))
                 d1_merged["area_diagnostics"]["box_share_of_frame"] = round((mb[2] * mb[3]) / float(W * H), 3)
-                de = _photometric_depth(gray, mb, d1_merged["class_id"])
+                try:
+                    _, ground_y = ipm.pixel_to_ground(mb[0] + mb[2] * 0.5, mb[1] + mb[3])
+                    d1_merged["distance_meters"] = round(float(np.clip(ground_y, 1.8, 45.0)), 1)
+                except Exception:
+                    d1_merged["distance_meters"] = round(max(2.2, 18.0 * (1.0 - ((mb[1] + mb[3]) / float(H)) ** 0.85)), 1)
+                de = _photometric_depth(gray, mb, d1_merged["class_id"], distance_m=d1_merged["distance_meters"])
                 d1_merged["depth_cm"] = de["depth_cm"]
                 d1_merged["depth_estimate"] = de
                 tonnage_t = round(d1_merged["surface_area_m2"] * (de["depth_cm"] / 100.0) * 2.40 * 1.15, 4)
@@ -1691,6 +1785,31 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             seal_algorithm, seal = "SHA-256", hashlib.sha256(canonical).hexdigest()
         work_order = {**order_payload, "seal_algorithm": seal_algorithm, "sha256_seal": seal}
 
+    dan_net = s.get("dan_dag")
+    primary_dan = (primary.get("dan_dag") or {}) if primary else {}
+    dan_dag_block = {
+        "available": bool(dan_net and getattr(dan_net, "is_ready", False)),
+        "primary_region_consensus": primary_dan.get("consensus_agreement", True),
+        "decision_dag_trace": primary_dan.get("decision_dag_path") or (["N0_input", "N1_preprocess", "N2_ood_gate", "N3_pixel_segmenter", "N4_feature_fusion", "N5_dag_classifier", "N6_pinhole_ipm", "N7_astm_pci_hd4", "N8_irc_compliance"] if detections else []),
+        "backend": "DualAttentionNetwork+DAGPathSolver(21-nodes)",
+    }
+
+    forecaster = s.get("forecaster")
+    degrade_report = None
+    if forecaster is not None and hasattr(forecaster, "predict_lifecycle_roi"):
+        try:
+            init_area = max(0.2, float(primary.get("surface_area_m2", 0.0))) if primary else 0.5
+            init_depth = max(2.0, float(primary.get("depth_cm", 0.0))) if primary else 3.0
+            degrade_report = forecaster.predict_lifecycle_roi(
+                init_area_m2=init_area,
+                depth_cm=init_depth,
+                esal_trucks=250000.0,
+                rain_mm=1200.0,
+                age_yr=5.0,
+            )
+        except Exception as e:
+            degrade_report = {"available": False, "reason": str(e)}
+
     elapsed_ms = round((time.time() - t0) * 1000.0, 2)
     return {
         "status": "ANALYSIS_COMPLETE",
@@ -1713,7 +1832,9 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         "primary_pedestrian": primary_pedestrian,
         "primary_detection": primary,
         "all_detections": all_dets,
+        "dan_dag_analysis": dan_dag_block,
         "astm_d6433_pci": pci_res,
+        "monsoon_deterioration_forecast": degrade_report,
         "morth_civil_ledger": {
             "asphalt_density_t_m3": 2.40,
             "compaction_factor": 1.15,

@@ -155,7 +155,7 @@ class CVCavityDetector:
                 dark_diff = max(0.0, mean_intensity - float(sub_gray.mean()))
                 edge_peak = float(np.percentile(sub_mag, 90)) if sub_mag.size else 0.0
 
-                col_weight = 0.40 if (c < 2 or c > 21) else (1.30 if 5 <= c <= 18 else 1.0)
+                col_weight = 0.85 if (c == 0 or c == grid_cols - 1) else 1.0
                 pothole_score = dark_diff * 2.5 * col_weight if dark_diff > 14.0 else 0.0
                 crack_score = edge_peak * 2.2 * col_weight if edge_peak > 18.0 else 0.0
 

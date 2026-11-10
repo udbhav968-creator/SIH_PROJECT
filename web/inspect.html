@@ -527,6 +527,7 @@ function render(d, ms) {
           : ""}</span></div>
       <div class="kv"><span>Distance from camera</span><span>${fmt.num(top.distance_meters, 1)} m</span></div>
       <div class="kv"><span>PCI (this frame)</span><span>${pci.pci_score ?? "—"} · ${pci.rating_category || ""}</span></div>
+      ${pci.backend ? `<div class="kv"><span>PCI regressor</span><span style="font-size:11px">${pci.backend}</span></div>` : ""}
       ${costRange}
     </div>
 
@@ -569,6 +570,30 @@ function render(d, ms) {
       <div class="kv"><span>Method confidence</span><span>${de.method_confidence}</span></div>
       ${de.relative_darkness != null ? `<div class="kv"><span>Measured cavity contrast</span><span>${de.relative_darkness}</span></div>` : ""}
       <div class="kv"><span>Is a measurement?</span><span>${de.is_measurement ? "yes" : "no"}</span></div>
+    </div>` : ""}
+
+    ${(d.dan_dag_analysis && d.dan_dag_analysis.available) ? `<div class="card" style="margin-top:14px;border-color:rgba(52,211,153,.35)">
+      <div class="label" style="color:#34d399">dan-dag dual attention consensus</div>
+      <div class="kv"><span>Architecture</span><span>${d.dan_dag_analysis.backend || "Dual Attention + 21-Node DAG"}</span></div>
+      <div class="kv"><span>Decision consensus</span><span>${d.dan_dag_analysis.primary_region_consensus ? '<span class="badge ok">100% agreement</span>' : '<span class="badge warn">partial consensus</span>'}</span></div>
+      ${(d.dan_dag_analysis.decision_dag_trace && d.dan_dag_analysis.decision_dag_trace.length) ? `
+        <div class="kv" style="flex-direction:column;align-items:flex-start;gap:4px">
+          <span style="font-size:11px;color:var(--muted)">Tournament DAG path:</span>
+          <span style="font-family:monospace;font-size:10.5px;color:#a7f3d0;word-break:break-all">${
+            typeof d.dan_dag_analysis.decision_dag_trace[0] === 'object'
+              ? d.dan_dag_analysis.decision_dag_trace.map(x => x.winner_name || x.node).join(" → ")
+              : d.dan_dag_analysis.decision_dag_trace.join(" → ")
+          }</span>
+        </div>` : ""}
+    </div>` : ""}
+
+    ${(d.monsoon_deterioration_forecast && d.monsoon_deterioration_forecast.initial_area_m2 != null) ? `<div class="card" style="margin-top:14px;border-color:rgba(96,165,250,.35)">
+      <div class="label" style="color:#60a5fa">monsoon deterioration forecast · hdm-4 / ltpp</div>
+      <div class="kv"><span>Current defect footprint</span><span>${fmt.num(d.monsoon_deterioration_forecast.initial_area_m2, 2)} m²</span></div>
+      <div class="kv"><span>30-day monsoon spread</span><span>${fmt.num(d.monsoon_deterioration_forecast.forecast_30_days_area_m2, 2)} m²</span></div>
+      <div class="kv"><span>180-day unmaintained spread</span><span>${fmt.num(d.monsoon_deterioration_forecast.forecast_180_days_area_m2, 2)} m²</span></div>
+      <div class="kv"><span>Delayed repair liability</span><span>${fmt.inr(d.monsoon_deterioration_forecast.delayed_repair_cost_180d_inr)}</span></div>
+      <div class="kv"><span>Municipal savings (preventive)</span><span style="color:#34d399;font-weight:600">${fmt.inr(d.monsoon_deterioration_forecast.municipal_savings_preventive_inr)}</span></div>
     </div>` : ""}
 
     ${dets.length > 1 ? `<div class="card" style="margin-top:14px">
