@@ -515,19 +515,32 @@ class DeepInferencePipeline:
                     new_dets.append(d1_merged)
                 filtered_distress = new_dets
 
+            # Sort with primary defects (potholes first, then larger area * conf) so dominant defects take precedence
+            filtered_distress.sort(key=lambda d: (1 if d.get("class_id") == 2 else 0, d.get("surface_area_m2", 0.0) * d.get("confidence", 1.0)), reverse=True)
+
             clean_dets = []
             for d in filtered_distress:
                 b1 = d["bbox_pixels"]
                 is_nested = False
                 for other in clean_dets:
                     b2 = other["bbox_pixels"]
-                    if d["class_id"] != other["class_id"]:
-                        continue
                     xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
                     xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
                     if xi1 > xi0 and yi1 > yi0:
                         inter = (xi1 - xi0) * (yi1 - yi0)
-                        if inter / float(b1[2] * b1[3]) >= 0.70:
+                        a1 = b1[2] * b1[3]
+                        a2 = b2[2] * b2[3]
+                        containment = inter / float(max(1, a1))
+                        # Cross-class suppression: ASTM D6433 & IRC:82 - cavity excavation subsumes internal fracture/crack
+                        if other.get("class_id") == 2 and d.get("class_id") == 1 and containment >= 0.35:
+                            is_nested = True
+                            break
+                        # Same class containment / heavy overlap suppression
+                        if d.get("class_id") == other.get("class_id") and (containment >= 0.60 or (inter / float(max(1, a1 + a2 - inter))) >= 0.40):
+                            is_nested = True
+                            break
+                        # General high containment: candidate d is almost completely inside existing defect
+                        if containment >= 0.75:
                             is_nested = True
                             break
                 if not is_nested:

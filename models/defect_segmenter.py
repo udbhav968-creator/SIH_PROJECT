@@ -98,8 +98,8 @@ def mask_from_proba(proba, work_shape, orig_shape, thresholds, min_blob_px=12):
         if binary.sum() == 0:
             continue
         if cls == CLASS_POTHOLE:
-            # Cavity basin closing and water puddle hole-filling for potholes
-            kernel_cavity = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35, 35))
+            # Cavity basin closing and water puddle hole-filling for potholes (calibrated to preserve distinct defect boundaries)
+            kernel_cavity = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
             closed_cavity = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_cavity)
             h_c, w_c = closed_cavity.shape
             flood_mask = closed_cavity.copy()
