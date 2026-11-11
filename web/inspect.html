@@ -531,6 +531,15 @@ function render(d, ms) {
       ${costRange}
     </div>
 
+    ${d.surface_material ? `<div class="card" style="margin-top:14px;border-color:rgba(245,158,11,.45)">
+      <div class="label" style="color:#f59e0b">pavement material &amp; domain regime · surfacetypenet</div>
+      <div class="kv"><span>Material classification</span><span style="font-weight:600">${esc(d.surface_material.name)}</span></div>
+      <div class="kv"><span>Civil design standard</span><span class="mono">${esc(d.surface_material.civil_standard)}</span></div>
+      <div class="kv"><span>Domain confidence</span><span>${(d.surface_material.confidence * 100).toFixed(1)}%</span></div>
+      <div class="kv"><span>Bitumen patching</span><span>${d.surface_material.bitumen_patching_applicable ? '<span class="badge ok">applicable (MoRTH Cl. 500)</span>' : '<span class="badge warn">inapplicable (camber grading per IRC:SP:72)</span>'}</span></div>
+      <p class="small muted" style="margin:8px 0 0">${esc(d.surface_material.notes || "")}</p>
+    </div>` : ""}
+
     ${top.needs_manual_survey ? `<div class="card" style="margin-top:14px;border-color:rgba(251,191,36,.45)">
       <div class="label" style="color:var(--warn)">geotechnical survey recommended</div>
       <p class="small" style="margin:0 0 8px">
@@ -587,13 +596,64 @@ function render(d, ms) {
         </div>` : ""}
     </div>` : ""}
 
-    ${(d.monsoon_deterioration_forecast && d.monsoon_deterioration_forecast.initial_area_m2 != null) ? `<div class="card" style="margin-top:14px;border-color:rgba(96,165,250,.35)">
-      <div class="label" style="color:#60a5fa">monsoon deterioration forecast · hdm-4 / ltpp</div>
-      <div class="kv"><span>Current defect footprint</span><span>${fmt.num(d.monsoon_deterioration_forecast.initial_area_m2, 2)} m²</span></div>
-      <div class="kv"><span>30-day monsoon spread</span><span>${fmt.num(d.monsoon_deterioration_forecast.forecast_30_days_area_m2, 2)} m²</span></div>
-      <div class="kv"><span>180-day unmaintained spread</span><span>${fmt.num(d.monsoon_deterioration_forecast.forecast_180_days_area_m2, 2)} m²</span></div>
-      <div class="kv"><span>Delayed repair liability</span><span>${fmt.inr(d.monsoon_deterioration_forecast.delayed_repair_cost_180d_inr)}</span></div>
-      <div class="kv"><span>Municipal savings (preventive)</span><span style="color:#34d399;font-weight:600">${fmt.inr(d.monsoon_deterioration_forecast.municipal_savings_preventive_inr)}</span></div>
+    ${(d.metric_3d_depth && d.metric_3d_depth.point_cloud_3d) ? `<div class="card" style="margin-top:14px;border-color:rgba(14,165,233,.45)">
+      <div class="label" style="color:#0ea5e9">monocular metric 3d depth &amp; point cloud · metric3d</div>
+      <div class="kv"><span>Cavity excavation volume</span><span style="font-weight:600;color:#38bdf8">${fmt.num(d.metric_3d_depth.volume_m3, 5)} m³ (${(d.metric_3d_depth.volume_m3 * 1000).toFixed(1)} L)</span></div>
+      <div class="kv"><span>Max structural depth</span><span>${fmt.num(d.metric_3d_depth.max_metric_depth_cm, 1)} cm</span></div>
+      <div class="kv"><span>Automotive strike hazard</span><span><span class="badge ${d.metric_3d_depth.automotive_hazard?.risk_level === 'CRITICAL_UNDERCARRIAGE_STRIKE_RISK' ? 'warn' : 'ok'}">${esc(d.metric_3d_depth.automotive_hazard?.risk_level || 'LOW')}</span> (${d.metric_3d_depth.automotive_hazard?.hazard_score || 0}/100)</span></div>
+      <div class="kv"><span>Clearance deficit</span><span>${d.metric_3d_depth.automotive_hazard?.clearance_deficit_mm > 0 ? `<span style="color:#fb7185">-${d.metric_3d_depth.automotive_hazard.clearance_deficit_mm} mm undercarriage impact</span>` : '+clear'}</span></div>
+      <div class="kv"><span>Physical point cloud extent</span><span class="mono" style="font-size:11px">X:[${d.metric_3d_depth.point_cloud_3d.x_extent_m[0]}, ${d.metric_3d_depth.point_cloud_3d.x_extent_m[1]}]m Z:[${d.metric_3d_depth.point_cloud_3d.z_extent_m[0]}, ${d.metric_3d_depth.point_cloud_3d.z_extent_m[1]}]m</span></div>
+    </div>` : ""}
+
+    ${d.vimu_temporal_fusion ? `<div class="card" style="margin-top:14px;border-color:rgba(168,85,247,.45)">
+      <div class="label" style="color:#a855f7">vision-imu cross-modal temporal fusion · conformer</div>
+      <div class="kv"><span>Physical shock verification</span><span><span class="badge ${d.vimu_temporal_fusion.is_physically_verified ? 'ok' : 'warn'}">${esc(d.vimu_temporal_fusion.physical_verification_status)}</span></span></div>
+      <div class="kv"><span>Peak vertical shock</span><span>${d.vimu_temporal_fusion.imu_telemetry?.peak_vertical_g != null ? fmt.num(d.vimu_temporal_fusion.imu_telemetry.peak_vertical_g, 2) + " g" : "synthetic / stand-alone"}</span></div>
+      <div class="kv"><span>Cross-modal consensus</span><span>${(d.vimu_temporal_fusion.fusion_confidence * 100).toFixed(1)}%</span></div>
+      <p class="small muted" style="margin:8px 0 0">${esc(d.vimu_temporal_fusion.audit_verdict || "")}</p>
+    </div>` : ""}
+
+    ${(d.pinn_hdm4_forecast && d.pinn_hdm4_forecast.logistic_carrying_capacity_m2) ? `<div class="card" style="margin-top:14px;border-color:rgba(59,130,246,.45)">
+      <div class="label" style="color:#3b82f6">physics-informed neural deterioration (pinn) · hdm-4 / ltpp</div>
+      <div class="kv"><span>Monsoon pore-pressure factor</span><span class="mono">${d.pinn_hdm4_forecast.physics_loss_terms?.monsoon_hydraulic_pumping_factor}× acceleration</span></div>
+      <div class="kv"><span>Lane carrying capacity</span><span>${fmt.num(d.pinn_hdm4_forecast.logistic_carrying_capacity_m2, 1)} m² max</span></div>
+      <div class="table-wrap" style="margin-top:8px"><table>
+        <thead><tr><th>horizon</th><th class="num">predicted area</th><th class="num">tonnage</th><th class="num">repair cost</th></tr></thead>
+        <tbody>
+          <tr><td>Baseline</td><td class="num">${fmt.num(d.pinn_hdm4_forecast.trajectory_days['0']?.area_m2, 2)} m²</td><td class="num">${fmt.num(d.pinn_hdm4_forecast.trajectory_days['0']?.tonnage_t, 3)} t</td><td class="num">${fmt.inr(d.pinn_hdm4_forecast.trajectory_days['0']?.cost_inr)}</td></tr>
+          <tr><td>30 Days (Monsoon)</td><td class="num">${fmt.num(d.pinn_hdm4_forecast.trajectory_days['30']?.area_m2, 2)} m²</td><td class="num">${fmt.num(d.pinn_hdm4_forecast.trajectory_days['30']?.tonnage_t, 3)} t</td><td class="num">${fmt.inr(d.pinn_hdm4_forecast.trajectory_days['30']?.cost_inr)}</td></tr>
+          <tr><td>90 Days</td><td class="num">${fmt.num(d.pinn_hdm4_forecast.trajectory_days['90']?.area_m2, 2)} m²</td><td class="num">${fmt.num(d.pinn_hdm4_forecast.trajectory_days['90']?.tonnage_t, 3)} t</td><td class="num">${fmt.inr(d.pinn_hdm4_forecast.trajectory_days['90']?.cost_inr)}</td></tr>
+          <tr><td>180 Days</td><td class="num">${fmt.num(d.pinn_hdm4_forecast.trajectory_days['180']?.area_m2, 2)} m²</td><td class="num">${fmt.num(d.pinn_hdm4_forecast.trajectory_days['180']?.tonnage_t, 3)} t</td><td class="num">${fmt.inr(d.pinn_hdm4_forecast.trajectory_days['180']?.cost_inr)}</td></tr>
+          <tr><td>365 Days (1 Yr)</td><td class="num">${fmt.num(d.pinn_hdm4_forecast.trajectory_days['365']?.area_m2, 2)} m²</td><td class="num">${fmt.num(d.pinn_hdm4_forecast.trajectory_days['365']?.tonnage_t, 3)} t</td><td class="num">${fmt.inr(d.pinn_hdm4_forecast.trajectory_days['365']?.cost_inr)}</td></tr>
+        </tbody>
+      </table></div>
+    </div>` : ""}
+
+    ${d.forensic_vlm_audit ? `<div class="card" style="margin-top:14px;border-color:rgba(16,185,129,.45)">
+      <div class="label" style="color:#10b981">forensic vision-language auditor &amp; legal brief</div>
+      <div class="label" style="margin-top:8px;font-size:11px;color:#a7f3d0">executive engineering narrative</div>
+      <p class="small" style="margin:4px 0 10px;line-height:1.5">${esc(d.forensic_vlm_audit.executive_narrative)}</p>
+      
+      <div class="label" style="font-size:11px;color:#fcd34d">contractor dispute defense brief</div>
+      <p class="small" style="margin:4px 0 10px;line-height:1.5">${esc(d.forensic_vlm_audit.contractor_dispute_brief)}</p>
+
+      ${(d.forensic_vlm_audit.morth_schedule_of_rates?.line_items && d.forensic_vlm_audit.morth_schedule_of_rates.line_items.length) ? `
+        <div class="label" style="font-size:11px;color:#93c5fd">morth schedule of rates (sor) itemized boq</div>
+        <div class="table-wrap" style="margin-top:6px"><table>
+          <thead><tr><th>item code</th><th>description</th><th class="num">qty</th><th class="num">rate</th><th class="num">amount</th></tr></thead>
+          <tbody>${d.forensic_vlm_audit.morth_schedule_of_rates.line_items.map(it => `<tr>
+            <td class="mono" style="font-size:11px">${esc(it.item_code)}</td>
+            <td style="font-size:11.5px">${esc(it.description)}</td>
+            <td class="num">${fmt.num(it.quantity, 2)} ${esc(it.unit)}</td>
+            <td class="num">${fmt.inr(it.unit_rate_inr)}</td>
+            <td class="num" style="font-weight:600">${fmt.inr(it.amount_inr)}</td>
+          </tr>`).join("")}</tbody>
+          <tfoot><tr>
+            <th colspan="4" style="text-align:right">Total Estimated Work Order:</th>
+            <th class="num" style="color:#10b981">${fmt.inr(d.forensic_vlm_audit.morth_schedule_of_rates.total_estimated_work_order_inr)}</th>
+          </tr></tfoot>
+        </table></div>
+      ` : ""}
     </div>` : ""}
 
     ${dets.length > 1 ? `<div class="card" style="margin-top:14px">

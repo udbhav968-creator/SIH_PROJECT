@@ -1852,6 +1852,74 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     total_tonnage = round(sum(float(d.get("morth_tonnage_t", 0.0)) for d in detections if not d.get("needs_manual_survey")), 4)
     total_cost = round(sum(float(d.get("repair_cost_inr", 0.0)) for d in detections if not d.get("needs_manual_survey")), 2)
 
+    # Advanced Model Stage 1: Pavement Material & Domain Classifier (SurfaceTypeNet)
+    from models.surface_classifier import SurfaceTypeClassifier
+    surface_clf = SurfaceTypeClassifier()
+    surface_analysis = surface_clf.analyze_surface(img_np, roi_top_fraction=0.38)
+
+    # Advanced Model Stage 2: Monocular Metric 3D Depth & Point-Cloud Integration
+    from models.metric_3d_depth import Metric3DDepthEngine
+    metric_3d_eng = Metric3DDepthEngine()
+    metric_3d_res = None
+    if primary_distress.get("bbox_pixels"):
+        mb = primary_distress["bbox_pixels"]
+        cls_id_pd = primary_distress.get("class_id", 2)
+        metric_3d_res = metric_3d_eng.evaluate_cavity_3d(gray, mb, class_id=cls_id_pd)
+        primary_distress["metric_3d_point_cloud"] = metric_3d_res["point_cloud_3d"]
+        primary_distress["volumetric_m3"] = metric_3d_res["volume_m3"]
+        primary_distress["automotive_chassis_hazard"] = metric_3d_res["automotive_hazard"]
+        primary_distress["astm_d6433_severity"] = metric_3d_res["astm_d6433_severity"]
+
+    if surface_analysis.get("code") == "unpaved_rural_earthen_dirt":
+        for d in detections:
+            if d.get("is_distress"):
+                d["irc_standard_specification"] = "IRC:SP:72-2015 / IRC:SP:20: Motor-grader scarifying, subgrade camber reshaping, and drainage ditch restoration"
+                d["repair_cost_inr"] = round(float(d.get("surface_area_m2", 0.0)) * 45.0, 2)
+                d["morth_tonnage_t"] = 0.0
+                d["needs_manual_survey"] = False
+                if "area_diagnostics" in d and isinstance(d["area_diagnostics"], dict):
+                    d["area_diagnostics"]["implausible_for_a_single_repair"] = False
+                    d["area_diagnostics"]["why"] = "Rural unpaved earthen road: continuous camber reshaping scheduled per IRC:SP:72."
+                    d["area_diagnostics"]["action"] = "Scheduled for motor-grader rural maintenance."
+        total_tonnage = 0.0
+        total_cost = round(sum(float(d.get("repair_cost_inr", 0.0)) for d in detections), 2)
+
+    # Advanced Model Stage 3: Vision-IMU Cross-Modal Temporal Verification
+    from models.vimu_temporal_fusion import VIMUTemporalFusionEngine
+    vimu_eng = VIMUTemporalFusionEngine()
+    vimu_fusion_res = vimu_eng.fuse_detection(primary_distress, imu_series=None)
+
+    # Advanced Model Stage 4: Physics-Informed HDM-4 Lifecycle Trajectory
+    from models.pinn_deterioration import PhysicsInformedHDM4Forecaster
+    pinn_forecast = None
+    if primary_distress.get("is_distress"):
+        pinn_eng = PhysicsInformedHDM4Forecaster()
+        pinn_forecast = pinn_eng.forecast_trajectory(
+            init_area_m2=max(0.04, primary_distress.get("surface_area_m2", 0.0)),
+            depth_cm=max(2.0, primary_distress.get("depth_cm", 4.0)),
+            esal_trucks=250000.0,
+            rain_mm=1200.0,
+            pavement_age_yr=5.0,
+        )
+
+    # Advanced Model Stage 5: Forensic Vision-Language Report Generation
+    from models.forensic_vlm_auditor import ForensicVLMAuditor
+    vlm_auditor = ForensicVLMAuditor()
+    audit_state = {
+        "primary_distress": primary_distress,
+        "surface_material": surface_analysis,
+        "metric_3d": metric_3d_res or {},
+        "vimu_fusion": vimu_fusion_res,
+        "pinn_deterioration": pinn_forecast,
+        "morth_ledger": {
+            "total_bitumen_tonnage_t": total_tonnage,
+            "total_estimated_repair_inr": total_cost,
+        },
+    }
+    forensic_vlm_report = vlm_auditor.generate_audit_report(
+        audit_state, corridor_id=corridor_id, chainage_km=None
+    )
+
     work_order = None
     if detections and primary_distress["class_id"] in (1, 2, 3):
         order_payload = {
@@ -1926,6 +1994,11 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         "primary_pedestrian": primary_pedestrian,
         "primary_detection": primary,
         "all_detections": all_dets,
+        "surface_material": surface_analysis,
+        "metric_3d_depth": metric_3d_res,
+        "vimu_temporal_fusion": vimu_fusion_res,
+        "pinn_hdm4_forecast": pinn_forecast,
+        "forensic_vlm_audit": forensic_vlm_report,
         "dan_dag_analysis": dan_dag_block,
         "astm_d6433_pci": pci_res,
         "monsoon_deterioration_forecast": degrade_report,

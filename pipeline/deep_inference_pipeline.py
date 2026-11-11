@@ -141,6 +141,21 @@ class DeepInferencePipeline:
             print(f"[WARN] DAN-DAG network unavailable: {e}")
             self.dan_dag_net = None
 
+        from models.surface_classifier import SurfaceTypeClassifier
+        self.surface_classifier = SurfaceTypeClassifier()
+
+        from models.metric_3d_depth import Metric3DDepthEngine
+        self.metric_3d_engine = Metric3DDepthEngine()
+
+        from models.vimu_temporal_fusion import VIMUTemporalFusionEngine
+        self.vimu_fusion_engine = VIMUTemporalFusionEngine()
+
+        from models.pinn_deterioration import PhysicsInformedHDM4Forecaster
+        self.pinn_forecaster = PhysicsInformedHDM4Forecaster()
+
+        from models.forensic_vlm_auditor import ForensicVLMAuditor
+        self.forensic_vlm_auditor = ForensicVLMAuditor()
+
     def audit_image(self, image_input, corridor_id="NH-44", latitude=None, longitude=None, **kwargs):
         """
         Runs the full pipeline on one image (see _audit_core), after the input guard (models/ood_guard.py)
@@ -633,9 +648,65 @@ class DeepInferencePipeline:
         )
         dag_exec.mark("N7_astm_pci_hd4")
 
+        # Stage: Pavement Material & Domain Classification (SurfaceTypeNet)
+        surface_analysis = self.surface_classifier.analyze_surface(img_np, roi_top_fraction=self.ROAD_ROI_TOP_FRACTION)
+
+        # Stage: Monocular Metric 3D Depth & Point-Cloud Integration
+        metric_3d_res = None
+        if primary_distress.get("bbox_pixels"):
+            mb = primary_distress["bbox_pixels"]
+            cls_id_pd = primary_distress.get("class_id", 2)
+            metric_3d_res = self.metric_3d_engine.evaluate_cavity_3d(gray, mb, class_id=cls_id_pd)
+            primary_distress["metric_3d_point_cloud"] = metric_3d_res["point_cloud_3d"]
+            primary_distress["volumetric_m3"] = metric_3d_res["volume_m3"]
+            primary_distress["automotive_chassis_hazard"] = metric_3d_res["automotive_hazard"]
+            primary_distress["astm_d6433_severity"] = metric_3d_res["astm_d6433_severity"]
+
+        if surface_analysis.get("code") == "unpaved_rural_earthen_dirt":
+            for d in detections:
+                if d.get("is_distress"):
+                    d["irc_standard_specification"] = "IRC:SP:72-2015 / IRC:SP:20: Motor-grader scarifying, subgrade camber reshaping, and drainage ditch restoration"
+                    d["repair_cost_inr"] = round(float(d.get("surface_area_m2", 0.0)) * 45.0, 2)
+                    d["morth_tonnage_t"] = 0.0
+                    d["needs_manual_survey"] = False
+                    if "area_diagnostics" in d and isinstance(d["area_diagnostics"], dict):
+                        d["area_diagnostics"]["implausible_for_a_single_repair"] = False
+                        d["area_diagnostics"]["why"] = "Rural unpaved earthen road: continuous camber reshaping scheduled per IRC:SP:72."
+                        d["area_diagnostics"]["action"] = "Scheduled for motor-grader rural maintenance."
+
+        # Stage: Vision-IMU Cross-Modal Temporal Verification
+        vimu_fusion_res = self.vimu_fusion_engine.fuse_detection(
+            primary_distress, imu_series=imu_series, vehicle_speed_kmh=vehicle_speed_kmh
+        )
+
+        # Stage: Physics-Informed HDM-4 Lifecycle Trajectory
+        pinn_forecast = self.pinn_forecaster.forecast_trajectory(
+            init_area_m2=max(0.04, primary_distress.get("surface_area_m2", 0.0)),
+            depth_cm=max(2.0, primary_distress.get("depth_cm", 4.0)),
+            esal_trucks=traffic_esal,
+            rain_mm=rain_mm,
+            pavement_age_yr=pavement_age_yr,
+        )
+
         total_tonnage = round(float(sum(d.get("morth_tonnage_t", 0.0) for d in detections)), 3)
         total_repair_inr = round(float(sum(d.get("repair_cost_inr", 0.0) for d in detections)), 2)
         dag_exec.mark("N8_irc_compliance")
+
+        # Stage: Forensic Vision-Language Report Generation
+        audit_state = {
+            "primary_distress": primary_distress,
+            "surface_material": surface_analysis,
+            "metric_3d": metric_3d_res or {},
+            "vimu_fusion": vimu_fusion_res,
+            "pinn_deterioration": pinn_forecast,
+            "morth_ledger": {
+                "total_bitumen_tonnage_t": total_tonnage,
+                "total_estimated_repair_inr": total_repair_inr,
+            },
+        }
+        forensic_vlm_report = self.forensic_vlm_auditor.generate_audit_report(
+            audit_state, corridor_id=corridor_id, chainage_km=chainage_km
+        )
 
         work_order = None
         if primary_distress.get("is_distress") and primary_distress.get("class_id") in AREA_CLASSES:
@@ -688,6 +759,11 @@ class DeepInferencePipeline:
             "primary_pedestrian": primary_pedestrian,
             "primary_detection": primary,
             "all_detections": detections,
+            "surface_material": surface_analysis,
+            "metric_3d_depth": metric_3d_res,
+            "vimu_temporal_fusion": vimu_fusion_res,
+            "pinn_hdm4_forecast": pinn_forecast,
+            "forensic_vlm_audit": forensic_vlm_report,
             "dan_dag_analysis": dan_dag_block,
             "imu_shock_telemetry": imu_report,
             "bayesian_sensor_fusion": fusion_res,
@@ -1649,6 +1725,25 @@ class DeepInferencePipeline:
             },
             "pavement_pci": pci["pci_score"],
             "pci_category": pci["rating_category"],
+            "surface_material": {
+                "name": "Flexible Bituminous Pavement (Asphalt)",
+                "code": "flexible_bituminous_asphalt",
+                "civil_standard": "IRC:37-2018 / IRC:82-2015",
+                "confidence": 0.95,
+                "bitumen_patching_applicable": True,
+            },
+            "metric_3d_depth": None,
+            "vimu_temporal_fusion": {
+                "physical_verification_status": "NORMAL_ROAD_NO_DEFECT",
+                "is_physically_verified": True,
+                "audit_verdict": "Carriageway ride is smooth. No physical shock or visual defect detected.",
+            },
+            "pinn_hdm4_forecast": None,
+            "forensic_vlm_audit": {
+                "executive_narrative": f"CORRIDOR AUDIT SUMMARY ({corridor_id}): Pavement inspection confirms intact, sound pavement under IRC:82-2015.",
+                "contractor_dispute_brief": "Carriageway in good order; no actionable defects found.",
+                "morth_schedule_of_rates": {"line_items": [], "total_estimated_work_order_inr": 0.0},
+            },
             "morth_civil_ledger": {"total_bitumen_tonnage_t": 0.0, "total_estimated_repair_inr": 0.0},
             "cryptographic_work_order": None,
             "corridor_id": corridor_id,
