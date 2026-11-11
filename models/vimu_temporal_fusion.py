@@ -26,7 +26,17 @@ class VIMUTemporalFusionEngine:
         """
         Extracts temporal shock dynamics from a (N, 3) accelerometer array [ax, ay, az].
         """
-        arr = np.asarray(imu_series, dtype=np.float64)
+        series = imu_series
+        if isinstance(series, dict):
+            series = series.get("imu_series", series.get("window"))
+        if isinstance(series, (tuple, list)) and len(series) == 2 and np.ndim(series[1]) == 0:
+            series = series[0]
+
+        try:
+            arr = np.asarray(series, dtype=np.float64)
+        except Exception:
+            return None
+
         if arr.ndim != 2 or arr.shape[1] < 3:
             return None
 
@@ -69,10 +79,10 @@ class VIMUTemporalFusionEngine:
             self.speed_kmh = float(vehicle_speed_kmh)
             self.speed_mps = max(1.0, self.speed_kmh / 3.6)
 
-        dist_m = float(visual_defect.get("distance_meters", 5.0))
-        depth_cm = float(visual_defect.get("depth_cm", 4.0))
-        vis_conf = float(visual_defect.get("confidence", 0.85))
-        cls_id = int(visual_defect.get("class_id", 2))
+        dist_m = float(visual_defect.get("distance_meters") or 5.0)
+        depth_cm = float(visual_defect.get("depth_cm") or 4.0)
+        vis_conf = float(visual_defect.get("confidence") or 0.85)
+        cls_id = int(visual_defect.get("class_id") or 2)
 
         # Estimated Time-To-Impact (TTC) in seconds
         ttc_sec = round(dist_m / self.speed_mps, 2)
