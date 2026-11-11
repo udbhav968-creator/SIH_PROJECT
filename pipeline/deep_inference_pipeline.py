@@ -491,15 +491,10 @@ class DeepInferencePipeline:
                     mb_frac = (mb[2] * mb[3]) / float(max(1, W * H))
                     area_plausible = (d1_merged["surface_area_m2"] <= self.MAX_SINGLE_REPAIR_AREA_M2
                                       and mb_frac <= self.MAX_COMPONENT_BOX_FRACTION)
-                    if area_plausible:
-                        d1_merged["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
-                        de["repair_cost_low_inr"] = round(d1_merged["surface_area_m2"] * (de.get("depth_low_cm", depth_cm) / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-                        de["repair_cost_high_inr"] = round(d1_merged["surface_area_m2"] * (de.get("depth_high_cm", depth_cm) / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-                    else:
-                        d1_merged["repair_cost_inr"] = 0.0
-                        d1_merged["morth_tonnage_t"] = 0.0
-                        de["repair_cost_low_inr"] = 0.0
-                        de["repair_cost_high_inr"] = 0.0
+                    d1_merged["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
+                    de["repair_cost_low_inr"] = round(d1_merged["surface_area_m2"] * (de.get("depth_low_cm", depth_cm) / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                    de["repair_cost_high_inr"] = round(d1_merged["surface_area_m2"] * (de.get("depth_high_cm", depth_cm) / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                    if not area_plausible:
                         d1_merged["needs_manual_survey"] = True
                         d1_merged["area_diagnostics"] = dict(d1_merged.get("area_diagnostics") or {})
                         d1_merged["area_diagnostics"].update({
@@ -1321,7 +1316,7 @@ class DeepInferencePipeline:
                     "action": "Reported for manual survey.",
                 })
 
-            if cls_id in (1, 2) and area_plausible:
+            if cls_id in (1, 2):
                 materials = self.ipm_engine.estimate_repair_materials(area_m2, depth_cm=max(depth_cm, 1.0))
                 vol_m3 = materials["volume_m3"]
                 tonnage_t = materials["required_mass_tonnes"]

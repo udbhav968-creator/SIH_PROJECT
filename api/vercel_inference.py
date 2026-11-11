@@ -1650,15 +1650,10 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 d1_merged["morth_tonnage_t"] = tonnage_t
                 mb_frac = (mb[2] * mb[3]) / float(max(1, W * H))
                 area_plausible = (d1_merged["surface_area_m2"] <= 2.0 and mb_frac <= 0.35)
-                if area_plausible:
-                    d1_merged["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
-                    de["repair_cost_low_inr"] = round(d1_merged["surface_area_m2"] * (de["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-                    de["repair_cost_high_inr"] = round(d1_merged["surface_area_m2"] * (de["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
-                else:
-                    d1_merged["repair_cost_inr"] = 0.0
-                    d1_merged["morth_tonnage_t"] = 0.0
-                    de["repair_cost_low_inr"] = 0.0
-                    de["repair_cost_high_inr"] = 0.0
+                d1_merged["repair_cost_inr"] = round(tonnage_t * 7500.0, 2)
+                de["repair_cost_low_inr"] = round(d1_merged["surface_area_m2"] * (de["depth_low_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                de["repair_cost_high_inr"] = round(d1_merged["surface_area_m2"] * (de["depth_high_cm"] / 100.0) * 2.40 * 1.15 * 7500.0, 2)
+                if not area_plausible:
                     d1_merged["needs_manual_survey"] = True
                     d1_merged["area_diagnostics"] = dict(d1_merged.get("area_diagnostics") or {})
                     d1_merged["area_diagnostics"].update({

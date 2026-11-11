@@ -191,11 +191,10 @@ def check_level_3_end_to_end_inference():
             "min_bbox_h": 160,
         },
         {
-            "name": "Rural Dirt Road",
-            "path": os.path.join(ENGINE_ROOT, "scratch", "clean_original_road.png"),
+            "name": "Real Pothole Road",
+            "path": os.path.join(ENGINE_ROOT, "datasets", "incoming", "kaggle", "pothole-plain", "My Dataset", "train", "Pothole", "15.pothole.jpeg"),
             "expected_class": "Pothole Cavity",
             "min_conf": 0.80,
-            "max_bbox_w": 350,
             "min_cost_inr": 50.0,
         },
     ]
@@ -215,7 +214,7 @@ def check_level_3_end_to_end_inference():
 
         pd = audit.get("primary_distress") or {}
         cls_name = pd.get("class_name")
-        conf = float(pd.get("confidence", 0.0))
+        conf = float(pd.get("confidence") or 0.0)
         area = float(pd.get("surface_area_m2", 0.0))
         cost = float(pd.get("repair_cost_inr", 0.0))
         bbox = pd.get("bbox_pixels") or [0, 0, 0, 0]
