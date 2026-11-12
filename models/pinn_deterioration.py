@@ -78,16 +78,35 @@ class PhysicsInformedHDM4Forecaster:
             cost_curve[h] = round(float(mass_t * self.BITUMEN_MIX_RATE_INR_PER_TONNE), 2)
 
         # Cost today vs deferred repair at 180 days
-        cost_today = round((a0 * (d0 / 100.0) * 0.65) * self.ASPHALT_DENSITY_T_M3 * self.MORTH_COMPACTION_FACTOR * self.BITUMEN_MIX_RATE_INR_PER_TONNE, 2)
+        tonnage_today = round((a0 * (d0 / 100.0) * 0.65) * self.ASPHALT_DENSITY_T_M3 * self.MORTH_COMPACTION_FACTOR, 4)
+        cost_today = round(tonnage_today * self.BITUMEN_MIX_RATE_INR_PER_TONNE, 2)
         cost_180d = cost_curve[180]
         cost_saved_immediate = max(0.0, cost_180d - cost_today)
         roi_ratio = round((cost_180d / max(1.0, cost_today)), 2)
+        monsoon_mult = round(1.0 + (max(0.0, float(rain_mm) - 200.0) / 400.0) * 0.75, 2)
+
+        trajectory_days = {
+            "0": {"area_m2": round(a0, 2), "depth_cm": round(d0, 1), "tonnage_t": tonnage_today, "cost_inr": cost_today}
+        }
+        for h in self.HORIZONS:
+            trajectory_days[str(h)] = {
+                "area_m2": area_curve[h],
+                "depth_cm": depth_curve[h],
+                "tonnage_t": tonnage_curve[h],
+                "cost_inr": cost_curve[h],
+            }
 
         return {
             "model_architecture": "Physics-Informed Neural Network (PINN) HDM-4 Engine",
+            "logistic_carrying_capacity_m2": A_max,
             "daily_breakout_rate_k": round(k_daily, 5),
             "hydraulic_pumping_active": bool(float(rain_mm) >= 300.0),
+            "physics_loss_terms": {
+                "monsoon_hydraulic_pumping_factor": monsoon_mult,
+                "snc_damping": round(4.0 / self.snc, 2),
+            },
             "initial_state": {"area_m2": a0, "depth_cm": d0, "cost_inr": cost_today},
+            "trajectory_days": trajectory_days,
             "projected_area_m2": area_curve,
             "projected_depth_cm": depth_curve,
             "projected_repair_cost_inr": cost_curve,
