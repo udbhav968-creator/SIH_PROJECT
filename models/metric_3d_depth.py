@@ -40,13 +40,9 @@ class Metric3DDepthEngine:
         self.h_cam = float(camera_height_m or self.DEFAULT_CAMERA_HEIGHT_M)
         self.pitch_rad = math.radians(float(pitch_deg or self.DEFAULT_PITCH_DEG))
         self.fov_rad = math.radians(float(fov_deg or self.DEFAULT_FOV_DEG))
-        self._trained_regressor = None
-        if os.path.exists(_CKPT_PATH):
-            try:
-                bundle = joblib.load(_CKPT_PATH)
-                self._trained_regressor = (bundle.get("metric_3d_depth") or {}).get("regressor")
-            except Exception:
-                self._trained_regressor = None
+        from models.surface_classifier import load_advanced_5_bundle
+        bundle = load_advanced_5_bundle()
+        self._trained_regressor = (bundle.get("metric_3d_depth") or {}).get("regressor")
 
     def _resolve_intrinsics(self, H, W):
         fx = (W / 2.0) / math.tan(self.fov_rad / 2.0)

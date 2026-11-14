@@ -20,13 +20,9 @@ class ForensicVLMAuditor:
         return True
 
     def __init__(self):
-        self._sor_rates = None
-        if os.path.exists(_CKPT_PATH):
-            try:
-                bundle = joblib.load(_CKPT_PATH)
-                self._sor_rates = (bundle.get("forensic_vlm_auditor") or bundle.get("forensic_vlm") or {}).get("morth_sor_rates_2026")
-            except Exception:
-                self._sor_rates = None
+        from models.surface_classifier import load_advanced_5_bundle
+        bundle = load_advanced_5_bundle()
+        self._sor_rates = (bundle.get("forensic_vlm_auditor") or bundle.get("forensic_vlm") or {}).get("morth_sor_rates_2026")
 
     def generate_audit_report(self, audit_state, corridor_id="NH-44", chainage_km=None):
         """

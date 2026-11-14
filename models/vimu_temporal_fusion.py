@@ -29,13 +29,9 @@ class VIMUTemporalFusionEngine:
         self.speed_kmh = float(vehicle_speed_kmh)
         self.speed_mps = max(1.0, self.speed_kmh / 3.6)
         self.wheelbase_m = float(wheelbase_m)
-        self._trained_classifier = None
-        if os.path.exists(_CKPT_PATH):
-            try:
-                bundle = joblib.load(_CKPT_PATH)
-                self._trained_classifier = (bundle.get("vimu_temporal_fusion") or bundle.get("vimu_fusion") or {}).get("classifier")
-            except Exception:
-                self._trained_classifier = None
+        from models.surface_classifier import load_advanced_5_bundle
+        bundle = load_advanced_5_bundle()
+        self._trained_classifier = (bundle.get("vimu_temporal_fusion") or bundle.get("vimu_fusion") or {}).get("classifier")
 
     def extract_imu_features(self, imu_series):
         """

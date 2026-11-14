@@ -11,6 +11,7 @@ dynamically based on the physical surface material.
 """
 
 import os
+import warnings
 import joblib
 import numpy as np
 
@@ -20,6 +21,26 @@ except ImportError:
     cv2 = None
 
 _CKPT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints", "advanced_5_models.joblib"))
+_CACHED_BUNDLE = None
+_CACHED_MTIME = None
+
+
+def load_advanced_5_bundle():
+    """Loads and caches `checkpoints/advanced_5_models.joblib` once per mtime."""
+    global _CACHED_BUNDLE, _CACHED_MTIME
+    if not os.path.exists(_CKPT_PATH):
+        return {}
+    try:
+        mtime = os.path.getmtime(_CKPT_PATH)
+        if _CACHED_BUNDLE is not None and _CACHED_MTIME == mtime:
+            return _CACHED_BUNDLE
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _CACHED_BUNDLE = joblib.load(_CKPT_PATH) or {}
+            _CACHED_MTIME = mtime
+        return _CACHED_BUNDLE
+    except Exception:
+        return {}
 
 
 SURFACE_CLASSES = {
@@ -81,13 +102,8 @@ class SurfaceTypeClassifier:
 
     def __init__(self):
         self.classes = SURFACE_CLASSES
-        self._trained_model = None
-        if os.path.exists(_CKPT_PATH):
-            try:
-                bundle = joblib.load(_CKPT_PATH)
-                self._trained_model = (bundle.get("surface_classifier") or {}).get("classifier")
-            except Exception:
-                self._trained_model = None
+        bundle = load_advanced_5_bundle()
+        self._trained_model = (bundle.get("surface_classifier") or {}).get("classifier")
 
     def analyze_surface(self, img_rgb, roi_top_fraction=0.38):
         """

@@ -34,13 +34,9 @@ class PhysicsInformedHDM4Forecaster:
 
     def __init__(self, structural_number_snc=3.8):
         self.snc = float(np.clip(structural_number_snc, 1.8, 6.5))
-        self._trained_regressor = None
-        if os.path.exists(_CKPT_PATH):
-            try:
-                bundle = joblib.load(_CKPT_PATH)
-                self._trained_regressor = (bundle.get("pinn_hdm4_forecast") or bundle.get("pinn_hdm4") or {}).get("regressor")
-            except Exception:
-                self._trained_regressor = None
+        from models.surface_classifier import load_advanced_5_bundle
+        bundle = load_advanced_5_bundle()
+        self._trained_regressor = (bundle.get("pinn_hdm4_forecast") or bundle.get("pinn_hdm4") or {}).get("regressor")
 
     def compute_daily_breakout_velocity(self, esal_trucks, rain_mm, initial_area_m2, pavement_age_yr=3.5):
         """
