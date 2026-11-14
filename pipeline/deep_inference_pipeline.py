@@ -142,6 +142,7 @@ class DeepInferencePipeline:
         except Exception as e:
             print(f"[WARN] DAN-DAG network unavailable: {e}")
             self.dan_dag_net = None
+        self.dan_dag = self.dan_dag_net
 
         from models.surface_classifier import SurfaceTypeClassifier
         self.surface_classifier = SurfaceTypeClassifier()

@@ -555,7 +555,8 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                                         if getattr(getattr(deep_pipeline, "depth", None), "is_ready", False)
                                         else "READY_FORMULA_FALLBACK"),
                     "dan_dag_network": ("LOADED (DualAttention+21Node_DAG)"
-                                        if getattr(getattr(deep_pipeline, "dan_dag", None), "is_ready", False)
+                                        if (getattr(getattr(deep_pipeline, "dan_dag_net", None), "is_ready", False) or
+                                            getattr(getattr(deep_pipeline, "dan_dag", None), "is_ready", False))
                                         else "NOT_TRAINED"),
                     "defect_segmenter": ("LOADED"
                                          if getattr(getattr(deep_pipeline, "segmenter", None), "is_ready", False)
