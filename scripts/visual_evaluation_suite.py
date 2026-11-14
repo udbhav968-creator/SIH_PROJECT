@@ -70,7 +70,9 @@ def annotate_visual_frame(img_bgr, audit_result, title="Visual Test"):
     # Consolidated header banner on top
     if len(road_dets) > 1 and top_y < 1e8:
         avg_conf = int(round(np.mean([d.get("confidence", 0.0) for d in road_dets]) * 100))
-        banner = f"Potholes ({len(road_dets)} cavities) | Avg {avg_conf}%"
+        dominant_cls = (road_dets[0].get("class_name") or "Defect").split()[0]
+        unit = "cavities" if "Pothole" in dominant_cls else "defects"
+        banner = f"{dominant_cls}s ({len(road_dets)} {unit}) | Avg {avg_conf}%"
         (bw, bh), _ = cv2.getTextSize(banner, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
         by = max(10, top_y - bh - 8)
         bx = max(10, min(W - bw - 16, top_x))
@@ -106,7 +108,7 @@ def run_visual_verification():
         {
             "id": "02_kaggle_pothole_cavity",
             "name": "Kaggle Real Asphalt Pothole Cavity",
-            "path": os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "real_images", "1014639_RS_386_386RS124739_30121_RAW.jpg"),
+            "path": os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "real_images", "kaggle_real_pothole_01.jpg"),
         },
         {
             "id": "03_crack500_fatigue_crack",
