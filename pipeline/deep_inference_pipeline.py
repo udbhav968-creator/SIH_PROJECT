@@ -1081,10 +1081,19 @@ class DeepInferencePipeline:
             if not binary.any():
                 continue
 
-            binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE,
-                                      cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+            if seg_cls == 2:
+                # Morphological closure bridges broken crater rims and fills internal water reflections
+                close_k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (17, 17))
+                binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, close_k)
+                cnts, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                for c_cnt in cnts:
+                    if cv2.contourArea(c_cnt) >= 30:
+                        cv2.drawContours(binary, [c_cnt], -1, 1, -1)
+            else:
+                binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE,
+                                          cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
             n, lab, st, _cen = cv2.connectedComponentsWithStats(binary, 8)
-            min_px = _min_px_for("crack" if seg_cls == 1 else "pothole")
+            min_px = max(45, int(0.0012 * frame_px)) if seg_cls == 2 else _min_px_for("crack")
             for i in range(1, n):
                 area = int(st[i, cv2.CC_STAT_AREA])
                 if area < min_px:
@@ -1105,27 +1114,9 @@ class DeepInferencePipeline:
                 floor_adj = 0.06 if (f_cls_cur.get("class_id") == seg_cls and float(f_cls_cur.get("confidence", 0.0)) >= 0.80) else 0.0
                 if mean_p < (self._component_floor(seg_cls) - floor_adj):
                     continue
-                comp_mask = (lab == i).astype(_np.uint8)
-                sub_regions = []
-                if seg_cls == 2 and area >= 100:
-                    dist = cv2.distanceTransform(comp_mask, cv2.DIST_L2, 5)
-                    _, peaks = cv2.threshold(dist, 0.35 * dist.max(), 255, 0)
-                    np_peaks, p_lab = cv2.connectedComponents(_np.uint8(peaks))
-                    if np_peaks > 2:
-                        dist_to_peaks = []
-                        for pi in range(1, np_peaks):
-                            p_mask = (p_lab == pi).astype(_np.uint8)
-                            d_p = cv2.distanceTransform(1 - p_mask, cv2.DIST_L2, 3)
-                            dist_to_peaks.append(d_p)
-                        closest_peak = _np.argmin(_np.stack(dist_to_peaks, axis=0), axis=0) + 1
-                        for pi in range(1, np_peaks):
-                            sub_m = ((closest_peak == pi) & (comp_mask > 0)).astype(_np.uint8)
-                            if sub_m.sum() >= 10:
-                                rx0, ry0, rw, rh = cv2.boundingRect(sub_m)
-                                sub_regions.append((rx0, ry0, rw, rh, int(sub_m.sum())))
-                if not sub_regions:
-                    sub_regions = [(int(st[i, cv2.CC_STAT_LEFT]), int(st[i, cv2.CC_STAT_TOP]),
-                                    int(st[i, cv2.CC_STAT_WIDTH]), int(st[i, cv2.CC_STAT_HEIGHT]), area)]
+                # Keep whole coherent cavity intact - do not shatter into micro-confetti
+                sub_regions = [(int(st[i, cv2.CC_STAT_LEFT]), int(st[i, cv2.CC_STAT_TOP]),
+                                int(st[i, cv2.CC_STAT_WIDTH]), int(st[i, cv2.CC_STAT_HEIGHT]), area)]
 
                 for (rx, ry, rw, rh, r_area) in sub_regions:
                     x = int(rx * sx)

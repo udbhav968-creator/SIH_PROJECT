@@ -38,9 +38,10 @@ def annotate_visual_frame(img_bgr, audit_result, title="Visual Test"):
     all_dets = audit_result.get("all_detections", [])
     road_dets = [d for d in all_dets if d.get("is_distress") and (d.get("bbox_pixels") or d.get("bbox_normalized"))]
     
-    # Draw individual defect boxes with sleek #1, #2 tags
+    # Draw individual defect boxes with non-colliding #1, #2 tags
     top_y = 1e9
     top_x = 0
+    drawn_badges = []
     for idx, d in enumerate(road_dets):
         bn = d.get("bbox_normalized")
         bp = d.get("bbox_pixels")
@@ -61,11 +62,17 @@ def annotate_visual_frame(img_bgr, audit_result, title="Visual Test"):
         color = (212, 212, 45) if d.get("area_method") == "segmentation_mask" else (43, 169, 240)
         cv2.rectangle(canvas, (bx, by), (bx + bw, by + bh), color, 2)
         
-        # Clean index badge #1, #2...
+        # Clean non-colliding index badge #1, #2...
         badge = f"#{idx+1}"
         (tw, th), _ = cv2.getTextSize(badge, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
-        cv2.rectangle(canvas, (bx, by), (bx + tw + 6, by + th + 6), color, -1)
-        cv2.putText(canvas, badge, (bx + 3, by + th + 3), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (10, 15, 23), 1, cv2.LINE_AA)
+        bx_b, by_b = bx, by
+        for (ox, oy, ow, oh) in drawn_badges:
+            if abs(bx_b - ox) < (tw + 12) and abs(by_b - oy) < (th + 10):
+                by_b = min(H - th - 6, by + bh + 2)
+                break
+        drawn_badges.append((bx_b, by_b, tw + 6, th + 6))
+        cv2.rectangle(canvas, (bx_b, by_b), (bx_b + tw + 6, by_b + th + 6), color, -1)
+        cv2.putText(canvas, badge, (bx_b + 3, by_b + th + 3), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (10, 15, 23), 1, cv2.LINE_AA)
 
     # Consolidated header banner on top
     if len(road_dets) > 1 and top_y < 1e8:
