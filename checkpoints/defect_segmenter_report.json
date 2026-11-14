@@ -18,20 +18,20 @@
     200
   ],
   "thresholds": {
-    "crack": 0.55,
-    "pothole": 0.3
+    "crack": 0.6,
+    "pothole": 0.25
   },
   "decision_rule": "per-class probability threshold tuned for IoU on a calibration split, not argmax",
   "trained_on": {
-    "photographs_total": 2000,
-    "train_photographs": 1260,
-    "calibration_photographs": 240,
-    "test_photographs": 500,
-    "training_pixels": 3692729,
+    "photographs_total": 500,
+    "train_photographs": 315,
+    "calibration_photographs": 60,
+    "test_photographs": 125,
+    "training_pixels": 1340122,
     "max_pixels_cap": 4500000,
     "pixel_cap_applied": 4500000,
-    "per_class_pixels_used": 623,
-    "memory_note": "3,480 MB free - the requested cap fits",
+    "per_class_pixels_used": 900,
+    "memory_note": "1,946 MB free - the requested cap fits",
     "corpus_policy": {
       "enabled": true,
       "excluded_sources": {
@@ -44,13 +44,13 @@
       "not_deleted": "The files remain on disk; only this corpus excludes them."
     },
     "clean_pixel_share_requested": 0.35,
-    "clean_scene_count": 230,
-    "clean_scene_diversity": 0.697,
-    "clean_pixel_share_effective": 0.2439,
+    "clean_scene_count": 231,
+    "clean_scene_diversity": 0.698,
+    "clean_pixel_share_effective": 0.2443,
     "pixels_per_class": {
-      "0": 3007073,
-      "1": 568509,
-      "2": 117147
+      "0": 1115297,
+      "1": 189006,
+      "2": 35819
     },
     "source": "DNIT Cracks and Potholes in Road Images - hand-drawn polygons",
     "clean_photographs": {
@@ -60,16 +60,16 @@
         "11_missing_road_divider"
       ],
       "train": 422,
-      "calibration": 83,
-      "test": 146,
-      "pixels_contributed": 574342,
+      "calibration": 82,
+      "test": 149,
+      "pixels_contributed": 207624,
       "why": "Every DNIT photograph contains a defect, so the first version of this model had never seen fresh white paint on dark asphalt without a defect nearby. It called zebra crossings potholes."
     },
     "hard_negative_mining": {
       "images_mined": 220,
-      "false_pixels_found": 79606,
-      "false_pixels_per_image_mean": 361.8,
-      "pixels_added_to_training": 77791,
+      "false_pixels_found": 57720,
+      "false_pixels_per_image_mean": 262.4,
+      "pixels_added_to_training": 57173,
       "ran": true
     }
   },
@@ -77,39 +77,39 @@
   "scored_on": "pixels inside the lane polygon only; sky and verge excluded",
   "iou": {
     "crack": {
-      "iou": 0.2314,
-      "dice": 0.3758,
-      "pixel_precision": 0.3729,
-      "pixel_recall": 0.3787,
-      "true_pixels": 610039,
-      "predicted_pixels": 619523
+      "iou": 0.2079,
+      "dice": 0.3442,
+      "pixel_precision": 0.4405,
+      "pixel_recall": 0.2825,
+      "true_pixels": 170788,
+      "predicted_pixels": 109513
     },
     "pothole": {
-      "iou": 0.1437,
-      "dice": 0.2513,
-      "pixel_precision": 0.242,
-      "pixel_recall": 0.2615,
-      "true_pixels": 147007,
-      "predicted_pixels": 158857
+      "iou": 0.119,
+      "dice": 0.2127,
+      "pixel_precision": 0.1837,
+      "pixel_recall": 0.2526,
+      "true_pixels": 33507,
+      "predicted_pixels": 46073
     }
   },
   "false_positives_on_clean_roads": {
     "clean_photographs_scored": 120,
     "min_blob_px": 250,
-    "pixel_rate_crack": 0.00609,
-    "pixel_rate_pothole": 0.01641,
-    "photo_rate_any_blob": 0.2333,
+    "pixel_rate_crack": 0.00306,
+    "pixel_rate_pothole": 0.01168,
+    "photo_rate_any_blob": 0.1917,
     "per_folder": {
       "05_morth_civil_hard_negatives": {
         "photos": 120,
-        "flagged": 28,
-        "rate": 0.233
+        "flagged": 23,
+        "rate": 0.192
       }
     }
   },
   "why_two_metrics": "IoU is measured only on photographs that contain a defect, so it cannot detect a model that invents defects on clean roads. That failure is what users actually saw, so it is measured separately on photographs held out of training.",
-  "inference_ms_per_image": 1342.1,
-  "trained_at_unix": 1790944333,
+  "inference_ms_per_image": 2142.6,
+  "trained_at_unix": 1794673590,
   "sklearn_version": "1.8.0",
   "joblib_version": "1.5.3",
   "portability_note": "This file is a pickled scikit-learn estimator. It loads only under a compatible scikit-learn. If it fails, retrain in place: python -m training.train_segmenter --images 2000 (about 12 minutes on a laptop CPU). Nothing else is needed - the training data is in the repository."

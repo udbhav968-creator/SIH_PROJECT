@@ -1,5 +1,5 @@
 {
-  "timestamp_utc": "2026-11-14T15:26:45.528325+00:00",
+  "timestamp_utc": "2026-11-14T16:49:03.358087+00:00",
   "overall_status": "CERTIFIED",
   "level_1_checkpoints": [
     {
@@ -48,7 +48,7 @@
       "name": "5 Advanced Neural & Civil Modules",
       "file": "advanced_5_models.joblib",
       "status": "VERIFIED",
-      "size_mb": 0.89
+      "size_mb": 0.88
     },
     {
       "name": "Out-of-Distribution Input Guard",
@@ -97,7 +97,7 @@
       "metric_key": "mean_21_node_pairwise_dag_accuracy",
       "metric_name": "Mean 21-Node DAG Accuracy",
       "floor": 0.9,
-      "actual": 0.9352,
+      "actual": 0.9339,
       "status": "PASSED"
     },
     {
@@ -106,7 +106,7 @@
       "metric_key": "held_out_test_accuracy",
       "metric_name": "Held-Out Test Accuracy",
       "floor": 0.8,
-      "actual": 0.8663,
+      "actual": 0.8652,
       "status": "PASSED"
     },
     {
@@ -160,7 +160,7 @@
       "metric_key": "stages.stage1_surface_classifier.test_accuracy",
       "metric_name": "Held-Out Accuracy",
       "floor": 0.8,
-      "actual": 0.8936,
+      "actual": 0.9105,
       "status": "PASSED"
     },
     {
@@ -195,33 +195,33 @@
     {
       "name": "Scene C: Foreground Crater",
       "passed": true,
-      "latency_ms": 8546.1,
+      "latency_ms": 7904.0,
       "class_name": "Pothole Cavity",
-      "confidence": 0.9429,
+      "confidence": 0.9449,
       "bbox": [
-        398,
-        168,
-        230,
-        153
+        439,
+        205,
+        191,
+        100
       ],
-      "surface_area_m2": 0.7897,
-      "repair_cost_inr": 1046.25,
+      "surface_area_m2": 0.9328,
+      "repair_cost_inr": 1081.5,
       "errors": []
     },
     {
       "name": "Real Pothole Road",
       "passed": true,
-      "latency_ms": 9089.1,
+      "latency_ms": 11522.6,
       "class_name": "Pothole Cavity",
-      "confidence": 0.8768,
+      "confidence": 0.9074,
       "bbox": [
-        100,
-        163,
-        314,
-        68
+        416,
+        372,
+        20,
+        16
       ],
-      "surface_area_m2": 1.1854,
-      "repair_cost_inr": 1202.25,
+      "surface_area_m2": 0.04,
+      "repair_cost_inr": 40.5,
       "errors": []
     }
   ],
@@ -243,9 +243,9 @@
     }
   ],
   "level_5_benchmark": {
-    "onnx_vision_latency_ms": 10.0,
-    "onnx_effective_fps": 100.0,
-    "full_pipeline_latency_ms": 4693.8,
+    "onnx_vision_latency_ms": 10.8,
+    "onnx_effective_fps": 92.6,
+    "full_pipeline_latency_ms": 5037.7,
     "onnx_edge_budget_ms": 35.0,
     "passed": true
   }

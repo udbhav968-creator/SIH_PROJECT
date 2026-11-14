@@ -26,7 +26,7 @@
   "held_out_mae": 1.9569,
   "held_out_rmse": 4.4052,
   "sklearn_version": "1.8.0",
-  "trained_at_unix": 1794651919,
+  "trained_at_unix": 1794671822,
   "n_real_images_used": 4042,
   "train_records": 3082,
   "held_out_test_records": 960,

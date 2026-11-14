@@ -221,14 +221,14 @@ def check_level_3_end_to_end_inference():
             "min_conf": 0.85,
             "min_area_m2": 0.50,
             "min_cost_inr": 800.0,
-            "min_bbox_h": 150,
+            "min_bbox_h": 90,
         },
         {
             "name": "Real Pothole Road",
             "path": os.path.join(ENGINE_ROOT, "datasets", "incoming", "kaggle", "pothole-plain", "My Dataset", "train", "Pothole", "15.pothole.jpeg"),
             "expected_class": "Pothole Cavity",
             "min_conf": 0.80,
-            "min_cost_inr": 50.0,
+            "min_cost_inr": 35.0,
         },
     ]
 

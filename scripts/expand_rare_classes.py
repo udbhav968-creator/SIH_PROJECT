@@ -57,6 +57,8 @@ EXPANDED_QUERIES = {
             "mumbai flooded road rain",
             "bengaluru waterlogged street traffic",
             "urban road flooding drainage failure",
+            "puddle asphalt road reflection",
+            "flooded carriageway mud road",
         ],
     ),
     4: (
@@ -73,6 +75,8 @@ EXPANDED_QUERIES = {
             "zebra crossing urban intersection",
             "faded road markings pedestrian crossing",
             "zebra crossing highway lane",
+            "pedestrian crossing stripes road",
+            "white stripes crosswalk pavement",
         ],
     ),
     5: (
@@ -89,6 +93,7 @@ EXPANDED_QUERIES = {
             "crash barrier road highway median",
             "highway road divider concrete asphalt",
             "unprotected road median street",
+            "road central divider barrier India",
         ],
     ),
     6: (
@@ -105,6 +110,29 @@ EXPANDED_QUERIES = {
             "overgrown obscured traffic sign road",
             "damaged street name sign road",
             "bent speed limit sign road",
+            "traffic sign post bent damaged",
+        ],
+    ),
+    13: (
+        "13_urban_traffic_vehicles",
+        "WM_13_traffic",
+        [
+            "city bus road traffic India street",
+            "truck highway carriageway asphalt",
+            "autorickshaw scooter street road India",
+            "urban traffic congestion cars road",
+            "commercial vehicle highway traffic",
+        ],
+    ),
+    14: (
+        "14_pedestrian_safety",
+        "WM_14_pedestrian",
+        [
+            "pedestrian crossing road street view",
+            "people walking street road carriageway",
+            "pedestrians sidewalk crossing road safety",
+            "vulnerable road user cyclist street",
+            "pedestrian walking beside road traffic",
         ],
     ),
 }
@@ -136,7 +164,7 @@ def search_wikimedia(query, limit=40):
         "action": "query",
         "generator": "search",
         "gsrnamespace": "6",
-        "gsrsearch": f"filetype:bitmap {query}",
+        "gsrsearch": query,
         "gsrlimit": str(limit),
         "prop": "imageinfo",
         "iiprop": "url|dimensions",
@@ -149,7 +177,14 @@ def search_wikimedia(query, limit=40):
         data = json.loads(resp.read().decode("utf-8"))
     pages = (data.get("query") or {}).get("pages") or {}
     results = []
-    bad_keywords = (".svg", ".gif", ".tif", "icon", "diagram", "map", "logo", "chart", "cartoon", "drawing", "symbol")
+    bad_keywords = (
+        ".svg", ".gif", ".tif", "icon", "diagram", "map", "logo", "chart",
+        "cartoon", "drawing", "symbol", ".pdf", "(ia", "journal", "bulletin",
+        "book", "newspaper", "archive", "page", "text", "scan", "manuscript",
+        "document", "library", "report", "volume", "tract", "act", "ordinance",
+        "illustration", "treatise", "catalog", "manual", "history", "letters",
+        "author", "edition", "published", "transcription", "engraving"
+    )
     for page_id, page in pages.items():
         title = page.get("title", "")
         lower_t = title.lower()
@@ -178,8 +213,16 @@ def download_and_validate(url):
             rgb = rgb.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.BILINEAR)
         arr = np.asarray(rgb, dtype=np.uint8)
 
+        # Reject uniform images
         if float(arr.std()) < 22.0:
             return None
+
+        # Reject scanned document pages (predominantly near-white/sepia text pages)
+        gray = np.mean(arr, axis=2)
+        white_ratio = float((gray > 215).mean())
+        if white_ratio > 0.65:
+            return None
+
         return rgb, arr
 
 

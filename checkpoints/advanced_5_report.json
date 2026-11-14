@@ -1,22 +1,22 @@
 {
   "version": "2026.11-real-data-grounded",
-  "trained_at": "2026-11-14T12:12:47Z",
-  "elapsed_seconds": 96.53,
+  "trained_at": "2026-11-14T16:00:23Z",
+  "elapsed_seconds": 89.61,
   "checkpoint_path": "checkpoints/advanced_5_models.joblib",
   "stages": {
     "stage1_surface_classifier": {
-      "samples": 854,
-      "train_samples": 666,
-      "test_samples": 188,
+      "samples": 858,
+      "train_samples": 668,
+      "test_samples": 190,
       "class_counts": {
         "0": 298,
         "1": 109,
-        "2": 114,
+        "2": 118,
         "3": 333
       },
       "split_strategy": "GroupShuffleSplit by source photograph (zero leakage, zero synthetic rows)",
-      "test_accuracy": 0.8936,
-      "test_macro_f1": 0.9143
+      "test_accuracy": 0.9105,
+      "test_macro_f1": 0.9246
     },
     "stage2_metric_3d_depth": {
       "samples": 2485,

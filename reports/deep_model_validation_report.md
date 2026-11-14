@@ -1,5 +1,5 @@
 # ROAD-SHIELD Validation Report
-**Timestamp UTC**: 2026-11-14T15:26:45.528325+00:00  
+**Timestamp UTC**: 2026-11-14T16:49:03.358087+00:00  
 **Status**: **CERTIFIED**  
 
 ## 1. Checkpoint Integrity
@@ -12,7 +12,7 @@
 | HDM-4 Deterioration Forecaster | `deterioration_model.joblib` | 1.12 MB | **VERIFIED** |
 | Photometric Depth Regressor | `depth_estimator_model.joblib` | 0.91 MB | **VERIFIED** |
 | 100 Hz IMU Shock CNN | `imu_shock_model.joblib` | 11.37 MB | **VERIFIED** |
-| 5 Advanced Neural & Civil Modules | `advanced_5_models.joblib` | 0.89 MB | **VERIFIED** |
+| 5 Advanced Neural & Civil Modules | `advanced_5_models.joblib` | 0.88 MB | **VERIFIED** |
 | Out-of-Distribution Input Guard | `ood_guard.npz` | 0.56 MB | **VERIFIED** |
 | Claims & Certified Metrics | `claims.json` | 0.03 MB | **VERIFIED** |
 
@@ -22,14 +22,14 @@
 | Vision CNN (MobileNetV3 Refit) | Test Accuracy | >= 0.85 | **0.9435** | PASSED |
 | Vision CNN (MobileNetV3 Refit) | Test Macro-F1 | >= 0.75 | **0.8786** | PASSED |
 | Vision CNN (Indian Roads Bench) | Indian Roads Accuracy | >= 0.85 | **0.9225** | PASSED |
-| DAN-DAG Dual Attention Network | Mean 21-Node DAG Accuracy | >= 0.90 | **0.9352** | PASSED |
-| DAN-DAG Dual Attention Network | Held-Out Test Accuracy | >= 0.80 | **0.8663** | PASSED |
+| DAN-DAG Dual Attention Network | Mean 21-Node DAG Accuracy | >= 0.90 | **0.9339** | PASSED |
+| DAN-DAG Dual Attention Network | Held-Out Test Accuracy | >= 0.80 | **0.8652** | PASSED |
 | ASTM D6433 PCI Regressor | Held-Out R2 | >= 0.85 | **0.8839** | PASSED |
 | HDM-4 Deterioration Forecaster | Area Expansion R2 | >= 0.80 | **0.9879** | PASSED |
 | Photometric Depth Regressor | Pothole Depth R2 | >= 0.50 | **0.6211** | PASSED |
 | 100 Hz IMU Shock 1-D CNN | Validation Accuracy | >= 0.70 | **0.8659** | PASSED |
 | Out-of-Distribution Input Guard | AUROC Combined | >= 0.90 | **0.9945** | PASSED |
-| SurfaceTypeClassifier (Stage 1) | Held-Out Accuracy | >= 0.80 | **0.8936** | PASSED |
+| SurfaceTypeClassifier (Stage 1) | Held-Out Accuracy | >= 0.80 | **0.9105** | PASSED |
 | Metric3DDepthEngine (Stage 2) | Held-Out R2 | >= 0.65 | **0.7594** | PASSED |
 | VIMUTemporalFusion (Stage 3) | Held-Out Accuracy | >= 0.80 | **0.8720** | PASSED |
 | PINN-HDM4 Forecaster (Stage 4) | Held-Out R2 | >= 0.75 | **0.8184** | PASSED |
@@ -37,8 +37,8 @@
 ## 3. End-to-End Pavement Scene Tests
 | Test Scene | Class | Confidence | Area | Repair Cost | Status |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| Scene C: Foreground Crater | Pothole Cavity | 94.3% | 0.7897 m2 | Rs 1046.25 | **PASS** |
-| Real Pothole Road | Pothole Cavity | 87.7% | 1.1854 m2 | Rs 1202.25 | **PASS** |
+| Scene C: Foreground Crater | Pothole Cavity | 94.5% | 0.9328 m2 | Rs 1081.5 | **PASS** |
+| Real Pothole Road | Pothole Cavity | 90.7% | 0.04 m2 | Rs 40.5 | **PASS** |
 
 ## 4. Civil Engineering Standards
 | Standard | Clause / Scope | Status |
@@ -48,7 +48,7 @@
 | ASTM D6433 | PCI Deduction Monotonicity | **PASSED** |
 
 ## 5. Latency Profile
-- **Vision Classifier Latency**: 10.0 ms (100.0 FPS on 2 CPU threads)
-- **Pipeline Latency**: 4693.8 ms
+- **Vision Classifier Latency**: 10.8 ms (92.6 FPS on 2 CPU threads)
+- **Pipeline Latency**: 5037.7 ms
 - **Latency Budget**: <= 35.0 ms
 - **Status**: **PASSED**

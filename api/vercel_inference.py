@@ -444,10 +444,10 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
             (WORK_W, WORK_H), Image.Resampling.BILINEAR), dtype=np.float32)
         labels[(labels == 2) & (heat_work < semantic_gate.DEFAULT_THRESHOLD)] = 0
 
-    min_px_map = {1: 32, 2: 48}
+    min_px_map = {1: 20, 2: 12}
     min_conf_map = {
         1: t_crack,
-        2: t_pothole,
+        2: max(0.26, t_pothole * 0.85),
     }
 
     cleaned = np.zeros_like(labels)
@@ -460,23 +460,14 @@ def _finish_segmentation(flat, p0, crack_p, pothole_p, orig_h, orig_w, object_ma
             try:
                 import cv2
                 pothole_u8 = binary_raw.astype(np.uint8)
-                kernel_cavity = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35, 35))
+                kernel_cavity = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 closed_cavity = cv2.morphologyEx(pothole_u8, cv2.MORPH_CLOSE, kernel_cavity)
-                h_c, w_c = closed_cavity.shape
-                flood_mask = closed_cavity.copy()
-                ff_fill = np.zeros((h_c + 2, w_c + 2), dtype=np.uint8)
-                cv2.floodFill(flood_mask, ff_fill, (0, 0), 255)
-                flood_inv = cv2.bitwise_not(flood_mask)
-                filled_cavity = (closed_cavity | (flood_inv // 255)) > 0
-                c_mask, boxes = _connected_components_8(filled_cavity, min_blob_px=min_px_map[cls_val])
+                c_mask, boxes = _connected_components_8(closed_cavity > 0, min_blob_px=min_px_map[cls_val])
             except Exception:
-                from PIL import ImageFilter
-                pil_p = Image.fromarray(binary_raw.astype(np.uint8) * 255, mode="L")
-                closed_p = pil_p.filter(ImageFilter.MaxFilter(size=11)).filter(ImageFilter.MinFilter(size=11))
-                c_mask, boxes = _connected_components_8(np.asarray(closed_p) > 0, min_blob_px=min_px_map[cls_val])
+                c_mask, boxes = _connected_components_8(binary_raw, min_blob_px=min_px_map[cls_val])
         else:
             c_mask, boxes = _connected_components_8(binary_raw, min_blob_px=min_px_map[cls_val])
-        sorted_boxes = sorted(boxes, key=lambda b: b["area_work_px"], reverse=True)[:5]
+        sorted_boxes = sorted(boxes, key=lambda b: b["area_work_px"], reverse=True)[:32]
         for b in sorted_boxes:
             wx, wy, ww, wh = b["bbox_work"]
 
