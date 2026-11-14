@@ -324,7 +324,7 @@ def print_forensic_summary(timings, zip_mb):
         ("100 Hz IMU Shock CNN", "imu_shock_report.json", [("held_out_validation_accuracy", "Held-out Accuracy"), ("per_class_report.macro avg.f1-score", "Held-out Macro-F1"), ("per_class_report.Pothole Impact.recall", "Pothole Impact Recall")]),
         ("OOD Input Guard", "ood_guard_report.json", [("test.combined.auroc", "AUROC Combined"), ("test.combined.ood_caught_rate", "OOD Caught Rate"), ("test.refusals.road_photos_refused_rate", "Road Rejection Rate")]),
         ("Flagship DAN-DAG Network", "dan_dag_report.json", [("held_out_test_macro_f1", "Held-out Macro-F1"), ("held_out_test_accuracy", "Held-out Accuracy"), ("mean_21_node_pairwise_dag_accuracy", "21-Node DAG Accuracy")]),
-        ("Vision Fine-Tuned CNN", "finetune_summary.json", [("served_test.macro_f1", "Test Macro-F1"), ("served_test.accuracy", "Test Accuracy")]),
+        ("Vision Fine-Tuned CNN", "finetune_summary.json", [("served_test.macro_f1", "Test Macro-F1"), ("served_test.accuracy", "Test Accuracy")]), ("5 Advanced Neural Modules", "advanced_5_report.json", [("stages.stage1_surface_classifier.test_accuracy", "SurfaceTypeNet Accuracy"), ("stages.stage2_metric_3d_depth.held_out_r2", "Metric3DDepth Held-Out R2"), ("stages.stage3_vimu_temporal_fusion.test_accuracy", "VIMU Fusion Accuracy"), ("stages.stage4_pinn_hdm4_forecaster.held_out_r2", "PINN-HDM4 Held-Out R2")]),
     ]
 
     for title, fname, metrics in reports:

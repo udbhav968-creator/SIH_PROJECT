@@ -1,5 +1,5 @@
 {
-  "timestamp_utc": "2026-11-14T12:14:22.550855+00:00",
+  "timestamp_utc": "2026-11-14T13:02:34.465786+00:00",
   "overall_status": "CERTIFIED",
   "level_1_checkpoints": [
     {
@@ -43,6 +43,12 @@
       "file": "imu_shock_model.joblib",
       "status": "VERIFIED",
       "size_mb": 11.37
+    },
+    {
+      "name": "5 Advanced Neural & Civil Modules",
+      "file": "advanced_5_models.joblib",
+      "status": "VERIFIED",
+      "size_mb": 0.89
     },
     {
       "name": "Out-of-Distribution Input Guard",
@@ -147,13 +153,49 @@
       "floor": 0.9,
       "actual": 0.9945,
       "status": "PASSED"
+    },
+    {
+      "model": "SurfaceTypeClassifier (Stage 1)",
+      "file": "advanced_5_report.json",
+      "metric_key": "stages.stage1_surface_classifier.test_accuracy",
+      "metric_name": "Held-Out Accuracy",
+      "floor": 0.8,
+      "actual": 0.8936,
+      "status": "PASSED"
+    },
+    {
+      "model": "Metric3DDepthEngine (Stage 2)",
+      "file": "advanced_5_report.json",
+      "metric_key": "stages.stage2_metric_3d_depth.held_out_r2",
+      "metric_name": "Held-Out R2",
+      "floor": 0.65,
+      "actual": 0.7594,
+      "status": "PASSED"
+    },
+    {
+      "model": "VIMUTemporalFusion (Stage 3)",
+      "file": "advanced_5_report.json",
+      "metric_key": "stages.stage3_vimu_temporal_fusion.test_accuracy",
+      "metric_name": "Held-Out Accuracy",
+      "floor": 0.8,
+      "actual": 0.872,
+      "status": "PASSED"
+    },
+    {
+      "model": "PINN-HDM4 Forecaster (Stage 4)",
+      "file": "advanced_5_report.json",
+      "metric_key": "stages.stage4_pinn_hdm4_forecaster.held_out_r2",
+      "metric_name": "Held-Out R2",
+      "floor": 0.75,
+      "actual": 0.8184,
+      "status": "PASSED"
     }
   ],
   "level_3_stress_tests": [
     {
       "name": "Scene C: Foreground Crater",
       "passed": true,
-      "latency_ms": 8646.4,
+      "latency_ms": 9394.1,
       "class_name": "Pothole Cavity",
       "confidence": 0.9298,
       "bbox": [
@@ -169,7 +211,7 @@
     {
       "name": "Real Pothole Road",
       "passed": true,
-      "latency_ms": 6352.9,
+      "latency_ms": 6351.8,
       "class_name": "Pothole Cavity",
       "confidence": 0.9407,
       "bbox": [
@@ -201,9 +243,9 @@
     }
   ],
   "level_5_benchmark": {
-    "onnx_vision_latency_ms": 10.1,
-    "onnx_effective_fps": 99.0,
-    "full_pipeline_latency_ms": 4794.4,
+    "onnx_vision_latency_ms": 11.6,
+    "onnx_effective_fps": 86.2,
+    "full_pipeline_latency_ms": 4788.7,
     "onnx_edge_budget_ms": 35.0,
     "passed": true
   }

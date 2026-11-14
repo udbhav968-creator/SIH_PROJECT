@@ -1,5 +1,5 @@
 # ROAD-SHIELD Validation Report
-**Timestamp UTC**: 2026-11-14T12:14:22.550855+00:00  
+**Timestamp UTC**: 2026-11-14T13:02:34.465786+00:00  
 **Status**: **CERTIFIED**  
 
 ## 1. Checkpoint Integrity
@@ -12,6 +12,7 @@
 | HDM-4 Deterioration Forecaster | `deterioration_model.joblib` | 1.12 MB | **VERIFIED** |
 | Photometric Depth Regressor | `depth_estimator_model.joblib` | 0.91 MB | **VERIFIED** |
 | 100 Hz IMU Shock CNN | `imu_shock_model.joblib` | 11.37 MB | **VERIFIED** |
+| 5 Advanced Neural & Civil Modules | `advanced_5_models.joblib` | 0.89 MB | **VERIFIED** |
 | Out-of-Distribution Input Guard | `ood_guard.npz` | 0.56 MB | **VERIFIED** |
 | Claims & Certified Metrics | `claims.json` | 0.03 MB | **VERIFIED** |
 
@@ -28,6 +29,10 @@
 | Photometric Depth Regressor | Pothole Depth R2 | >= 0.50 | **0.6211** | PASSED |
 | 100 Hz IMU Shock 1-D CNN | Validation Accuracy | >= 0.70 | **0.8659** | PASSED |
 | Out-of-Distribution Input Guard | AUROC Combined | >= 0.90 | **0.9945** | PASSED |
+| SurfaceTypeClassifier (Stage 1) | Held-Out Accuracy | >= 0.80 | **0.8936** | PASSED |
+| Metric3DDepthEngine (Stage 2) | Held-Out R2 | >= 0.65 | **0.7594** | PASSED |
+| VIMUTemporalFusion (Stage 3) | Held-Out Accuracy | >= 0.80 | **0.8720** | PASSED |
+| PINN-HDM4 Forecaster (Stage 4) | Held-Out R2 | >= 0.75 | **0.8184** | PASSED |
 
 ## 3. End-to-End Pavement Scene Tests
 | Test Scene | Class | Confidence | Area | Repair Cost | Status |
@@ -43,7 +48,7 @@
 | ASTM D6433 | PCI Deduction Monotonicity | **PASSED** |
 
 ## 5. Latency Profile
-- **Vision Classifier Latency**: 10.1 ms (99.0 FPS on 2 CPU threads)
-- **Pipeline Latency**: 4794.4 ms
+- **Vision Classifier Latency**: 11.6 ms (86.2 FPS on 2 CPU threads)
+- **Pipeline Latency**: 4788.7 ms
 - **Latency Budget**: <= 35.0 ms
 - **Status**: **PASSED**

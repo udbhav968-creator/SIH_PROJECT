@@ -1974,14 +1974,22 @@ def audit_image_base64(
 
     # Advanced Model Stage 4: Physics-Informed HDM-4 Lifecycle Trajectory
     from models.pinn_deterioration import PhysicsInformedHDM4Forecaster
+    pcu_eq = float(traffic_analysis.get("pcu_equivalent", 0.0)) if isinstance(traffic_analysis, dict) else 0.0
+    has_water = any(d.get("class_id") == 3 for d in detections)
+    resolved_esal = float(traffic_esal) if traffic_esal is not None else round(140000.0 + pcu_eq * 35000.0, 1)
+    resolved_rain = float(rain_mm) if rain_mm is not None else (1650.0 if has_water else 850.0)
+    resolved_age = float(pavement_age_yr) if pavement_age_yr is not None else round(max(1.5, min(12.0, (100.0 - pci_res["pci_score"]) / 11.0)), 1)
+    assumed_inputs = {}
+    if traffic_esal is None:
+        assumed_inputs["traffic_esal"] = resolved_esal
+    if rain_mm is None:
+        assumed_inputs["seasonal_rain_mm"] = resolved_rain
+    if pavement_age_yr is None:
+        assumed_inputs["pavement_age_years"] = resolved_age
+
     pinn_forecast = None
     if primary_distress.get("is_distress"):
         pinn_eng = PhysicsInformedHDM4Forecaster()
-        pcu_eq = float(traffic_analysis.get("pcu_equivalent", 0.0)) if isinstance(traffic_analysis, dict) else 0.0
-        has_water = any(d.get("class_id") == 3 for d in detections)
-        resolved_esal = float(traffic_esal) if traffic_esal is not None else round(140000.0 + pcu_eq * 35000.0, 1)
-        resolved_rain = float(rain_mm) if rain_mm is not None else (1650.0 if has_water else 850.0)
-        resolved_age = float(pavement_age_yr) if pavement_age_yr is not None else round(max(1.5, min(12.0, (100.0 - pci_res["pci_score"]) / 11.0)), 1)
         pinn_forecast = pinn_eng.forecast_trajectory(
             init_area_m2=max(0.04, primary_distress.get("surface_area_m2", 0.0)),
             depth_cm=max(2.0, primary_distress.get("depth_cm", 4.0)),
@@ -1991,7 +1999,7 @@ def audit_image_base64(
         )
         pinn_forecast["environmental_parameters_source"] = (
             "caller_supplied"
-            if (traffic_esal is not None or rain_mm is not None or pavement_age_yr is not None)
+            if not assumed_inputs
             else "scene_derived_from_detected_traffic_pcu_and_moisture"
         )
 
@@ -2058,9 +2066,9 @@ def audit_image_base64(
             degrade_report = forecaster.predict_lifecycle_roi(
                 init_area_m2=init_area,
                 depth_cm=init_depth,
-                esal_trucks=250000.0,
-                rain_mm=1200.0,
-                age_yr=5.0,
+                esal_trucks=resolved_esal,
+                rain_mm=resolved_rain,
+                age_yr=resolved_age,
             )
         except Exception as e:
             degrade_report = {"available": False, "reason": str(e)}
@@ -2095,6 +2103,14 @@ def audit_image_base64(
         "dan_dag_analysis": dan_dag_block,
         "astm_d6433_pci": pci_res,
         "monsoon_deterioration_forecast": degrade_report,
+        "modelling_assumptions": {
+            "assumed_inputs": assumed_inputs,
+            "note": (
+                "Inputs listed here were not supplied by the caller; scene-derived values were used for the deterioration forecast."
+                if assumed_inputs
+                else "All forecast inputs were supplied by the caller."
+            ),
+        },
         "morth_civil_ledger": {
             "asphalt_density_t_m3": 2.40,
             "compaction_factor": 1.15,
