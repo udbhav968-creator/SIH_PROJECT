@@ -8,7 +8,11 @@ Enforces physical and civil engineering governing equations:
 """
 
 import math
+import os
+import joblib
 import numpy as np
+
+_CKPT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints", "advanced_5_models.joblib"))
 
 
 class PhysicsInformedHDM4Forecaster:
@@ -30,6 +34,13 @@ class PhysicsInformedHDM4Forecaster:
 
     def __init__(self, structural_number_snc=3.8):
         self.snc = float(np.clip(structural_number_snc, 1.8, 6.5))
+        self._trained_regressor = None
+        if os.path.exists(_CKPT_PATH):
+            try:
+                bundle = joblib.load(_CKPT_PATH)
+                self._trained_regressor = (bundle.get("pinn_hdm4_forecast") or bundle.get("pinn_hdm4") or {}).get("regressor")
+            except Exception:
+                self._trained_regressor = None
 
     def compute_daily_breakout_velocity(self, esal_trucks, rain_mm, initial_area_m2):
         """
@@ -42,6 +53,19 @@ class PhysicsInformedHDM4Forecaster:
         monsoon_multiplier = 1.0 + (max(0.0, float(rain_mm) - 200.0) / 400.0) * 0.75
 
         k_eff = (self.BASE_EXPANSION_RATE_DAY + (esal_term + rain_term) * snc_damping) * monsoon_multiplier
+        if self._trained_regressor is not None:
+            try:
+                feat_vec = np.array([[
+                    max(0.0, float(esal_trucks)) / 1000.0,
+                    max(0.0, float(rain_mm)) / 100.0,
+                    self.snc,
+                    float(initial_area_m2),
+                    3.5,
+                ]], dtype=np.float32)
+                ml_k = float(self._trained_regressor.predict(feat_vec)[0])
+                k_eff = 0.70 * k_eff + 0.30 * ml_k
+            except Exception:
+                pass
         return max(0.0010, min(0.0150, float(k_eff)))
 
     def forecast_trajectory(self, init_area_m2, depth_cm, esal_trucks, rain_mm, pavement_age_yr=3.5):
@@ -102,6 +126,7 @@ class PhysicsInformedHDM4Forecaster:
 
         return {
             "model_architecture": "Physics-Informed Neural Network (PINN) HDM-4 Engine",
+            "trained_checkpoint_loaded": bool(self._trained_regressor is not None),
             "logistic_carrying_capacity_m2": A_max,
             "daily_breakout_rate_k": round(k_daily, 5),
             "hydraulic_pumping_active": bool(float(rain_mm) >= 300.0),

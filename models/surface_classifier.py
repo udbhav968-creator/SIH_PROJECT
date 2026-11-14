@@ -10,12 +10,16 @@ Switches civil engineering repair standards, cost ledgers, and patch limits
 dynamically based on the physical surface material.
 """
 
+import os
+import joblib
 import numpy as np
 
 try:
     import cv2
 except ImportError:
     cv2 = None
+
+_CKPT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints", "advanced_5_models.joblib"))
 
 
 SURFACE_CLASSES = {
@@ -77,6 +81,13 @@ class SurfaceTypeClassifier:
 
     def __init__(self):
         self.classes = SURFACE_CLASSES
+        self._trained_model = None
+        if os.path.exists(_CKPT_PATH):
+            try:
+                bundle = joblib.load(_CKPT_PATH)
+                self._trained_model = (bundle.get("surface_classifier") or {}).get("classifier")
+            except Exception:
+                self._trained_model = None
 
     def analyze_surface(self, img_rgb, roi_top_fraction=0.38):
         """
@@ -179,11 +190,29 @@ class SurfaceTypeClassifier:
         total = sum(scores.values()) + 1e-8
         probs = {k: round(v / total, 4) for k, v in scores.items()}
 
+        if self._trained_model is not None:
+            try:
+                feat_vec = np.array([[
+                    mean_lum / 255.0,
+                    rb_ratio,
+                    rg_ratio,
+                    mean_sat,
+                    sat_p75,
+                    min(1.0, texture_energy / 800.0),
+                    high_freq_ratio,
+                    rural_foliage_evidence,
+                ]], dtype=np.float32)
+                ml_probs = self._trained_model.predict_proba(feat_vec)[0]
+                for k in range(min(4, len(ml_probs))):
+                    probs[k] = round(0.55 * probs.get(k, 0.0) + 0.45 * float(ml_probs[k]), 4)
+            except Exception:
+                pass
+
         best_cls_id = int(max(probs, key=probs.get))
         best_conf = float(probs[best_cls_id])
 
         # Hysteresis threshold: only declare unpaved or concrete if confidence exceeds baseline floor
-        if best_cls_id == 2 and best_conf < 0.42:
+        if best_cls_id == 2 and (best_conf < 0.42 or rural_foliage_evidence < 0.25):
             best_cls_id = 0
             best_conf = probs[0]
         elif best_cls_id in (1, 3) and best_conf < 0.45:
@@ -192,6 +221,7 @@ class SurfaceTypeClassifier:
 
         meta = dict(self.classes[best_cls_id])
         meta["confidence"] = round(best_conf, 4)
+        meta["trained_checkpoint_loaded"] = bool(self._trained_model is not None)
         meta["probabilities"] = {self.classes[k]["code"]: probs[k] for k in probs}
         meta["features"] = {
             "mean_luminance": round(mean_lum, 1),

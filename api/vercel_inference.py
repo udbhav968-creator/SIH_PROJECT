@@ -1230,7 +1230,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     if input_check.get("available") and input_check.get("verdict") == "not_road" and std_lum >= 6.5:
         try:
             probe_cls = classify_crop(img_np)
-            if probe_cls.get("class_id") in (5, 6) and float(probe_cls.get("confidence", 0.0)) >= 0.72:
+            if probe_cls.get("class_id") in (1, 2, 3, 4, 5, 6) and float(probe_cls.get("confidence", 0.0)) >= 0.72:
                 input_check["verdict"] = "ok"
                 input_check["in_distribution"] = True
         except Exception:
@@ -1358,7 +1358,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 object_mask = object_mask | p_mask
             except Exception:
                 pass
-            if f_cls == 4:
+            if f_cls == 4 and f_conf < 0.75:
 
                 frame_cls_raw["class_id"] = 0
                 frame_cls_raw["class_name"] = "Normal Road / Sound Pavement"
@@ -1394,6 +1394,15 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 "seg_comp": None,
                 "source": "salient_cavity_detector",
             })
+
+    if not proposals and frame_cls_raw.get("class_id") in (1, 2) and float(frame_cls_raw.get("confidence", 0.0)) >= 0.85:
+        bw_fb, bh_fb = int(W * 0.38), int(H * 0.34)
+        bx_fb, by_fb = int(W * 0.31), int(H * 0.50)
+        proposals.append({
+            "bbox_pixels": [bx_fb, by_fb, bw_fb, bh_fb],
+            "seg_comp": {"seg_cls": int(frame_cls_raw["class_id"]), "mean_p": float(frame_cls_raw["confidence"])},
+            "source": "deep_cnn_roi_proposal",
+        })
 
     mask_full = seg_out["mask"] if seg_out else None
 
@@ -1743,7 +1752,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     f_cid_v = frame_cls_raw.get("class_id")
     f_cnf_v = float(frame_cls_raw.get("confidence", 0.0))
     if f_cid_v in (3, 4, 5, 6) and f_cnf_v >= 0.55:
-        if f_cid_v != 4 or not markings_res.get("found"):
+        if f_cid_v != 4 or not markings_res.get("found") or f_cnf_v >= 0.75:
             detections = [d for d in detections if d.get("class_id") == f_cid_v or float(d.get("confidence", 0.0)) >= 0.85]
 
     pref_cid_v = f_cid_v if (f_cid_v in (1, 2) and f_cnf_v >= 0.70) else 2
@@ -1755,7 +1764,7 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         not detections
         and f_cid_v in (3, 4, 5, 6)
         and f_cnf_v >= MIN_REPORT_CONFIDENCE
-        and (f_cid_v != 4 or not markings_res.get("found"))
+        and (f_cid_v != 4 or not markings_res.get("found") or f_cnf_v >= 0.75)
         and input_check.get("verdict") != "not_road"
     ):
         frame_level_hazard = {

@@ -605,7 +605,8 @@ class TestPhotoPipelineSevenClassesAndParity(unittest.TestCase):
         import base64
         import glob
         from api import vercel_inference
-        photo = sample_photo()
+        pothole_files = sorted(glob.glob(os.path.join(ENGINE_ROOT, "datasets", "07_pothole_road_distress", "**", "*.jpg"), recursive=True))
+        photo = pothole_files[0] if pothole_files else sample_photo()
         if not photo:
             self.skipTest("no dataset photo available")
         loc_res = self.pipe.audit_image(photo)
@@ -618,6 +619,9 @@ class TestPhotoPipelineSevenClassesAndParity(unittest.TestCase):
         self.assertIn("forensic_vlm_audit", loc_res)
         self.assertIn("surface_material", ver_res)
         self.assertIn("forensic_vlm_audit", ver_res)
+        for key in ("surface_material", "metric_3d_depth", "vimu_temporal_fusion", "pinn_hdm4_forecast", "forensic_vlm_audit"):
+            self.assertTrue((loc_res.get(key) or {}).get("trained_checkpoint_loaded"), f"Local {key} must have trained_checkpoint_loaded=True")
+            self.assertTrue((ver_res.get(key) or {}).get("trained_checkpoint_loaded"), f"Vercel {key} must have trained_checkpoint_loaded=True")
 
         sign_files = sorted(glob.glob(os.path.join(ENGINE_ROOT, "datasets", "12_damaged_traffic_signs", "**", "real_02_*.jpg"), recursive=True))
         if sign_files:
@@ -628,6 +632,22 @@ class TestPhotoPipelineSevenClassesAndParity(unittest.TestCase):
             sv = vercel_inference.audit_image_base64(sb64)
             self.assertEqual(sl["primary_distress"]["class_id"], 6)
             self.assertEqual(sv["primary_distress"]["class_id"], 6)
+
+    def test_video_pipeline_pretrained_yolo_pci_and_ttc(self):
+        from models.yolo_video_engine import get_yolo_video_engine
+        photo = sample_photo()
+        if not photo:
+            self.skipTest("no dataset photo available")
+        eng = get_yolo_video_engine()
+        res = eng.detect_frame(photo, frame_index=1, timestamp_s=0.2, conf_threshold=0.20, reset_tracker=True)
+        self.assertEqual(res["status"], "SUCCESS")
+        self.assertEqual(res["pipeline_mode"], "PRETRAINED_YOLO_ONLY")
+        self.assertIn("video_pci_score", res)
+        self.assertIn("corridor_condition", res)
+        self.assertIn("safety_advisory", res)
+        for det in res.get("detections", []):
+            self.assertIn("distance_m", det)
+            self.assertIn("ttc_seconds", det)
 
 
 if __name__ == "__main__":

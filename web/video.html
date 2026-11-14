@@ -203,6 +203,7 @@
           <button class="btn" id="btnPlayPause" type="button" disabled>Pause</button>
           <button class="btn" id="btnStepFrame" type="button" disabled>Step +1 Frame</button>
           <button class="btn" id="btnResetTracker" type="button">Reset Tracker IDs</button>
+          <button class="btn" id="btnExportJson" type="button">⬇ Export JSON Report</button>
         </div>
         <div style="display:flex; align-items:center; gap:8px; font-size:12px;">
           <label for="confSlider" class="muted">YOLO Conf:</label>
@@ -266,6 +267,14 @@
           <div class="k-num" id="kpiLatency">0 ms</div>
           <div class="k-lbl" id="kpiFps">Pretrained YOLO Latency</div>
         </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:12px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div>
+          <span class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em;">Live Video PCI &amp; Corridor Advisory</span>
+          <div id="safetyAdvisoryText" class="mono" style="font-size:12.5px; color:#10b981; margin-top:2px;">CLEAR CORRIDOR: Ready for Pretrained YOLO stream</div>
+        </div>
+        <div class="mono" style="font-size:18px; font-weight:700;" id="kpiVideoPci">PCI 100.0</div>
       </div>
 
       <div class="panel" style="margin-bottom:16px;">
@@ -483,6 +492,16 @@ function updateTelemetryUI(res) {
   document.getElementById("kpiPedestrians").textContent = ts.unique_pedestrians || 0;
   document.getElementById("kpiLatency").textContent = `${Math.round(res.latency_ms || 0)} ms`;
   document.getElementById("kpiFps").textContent = `Pretrained YOLO (~${res.fps_estimate || 0} FPS)`;
+  if (res.video_pci_score !== undefined) {
+    const pciEl = document.getElementById("kpiVideoPci");
+    pciEl.textContent = `PCI ${Number(res.video_pci_score).toFixed(1)} (${res.corridor_condition || 'GOOD'})`;
+    pciEl.style.color = res.video_pci_score >= 75 ? "#10b981" : (res.video_pci_score >= 50 ? "#f59e0b" : "#ef4444");
+  }
+  if (res.safety_advisory) {
+    const advEl = document.getElementById("safetyAdvisoryText");
+    advEl.textContent = res.safety_advisory;
+    advEl.style.color = (res.frame_counts && res.frame_counts.potholes > 0) ? "#f87171" : "#10b981";
+  }
 
   const dets = res.detections || [];
   document.getElementById("frameBoxCount").textContent = `${dets.length} box${dets.length === 1 ? "" : "es"}`;
@@ -498,7 +517,7 @@ function updateTelemetryUI(res) {
           <span class="muted" style="font-size:11px; margin-left:6px;">[${RS.esc(d.source_model)}]</span>
         </div>
         <div class="mono" style="font-size:12px;">
-          ${Math.round((d.confidence || 0) * 100)}% · seen ${d.frames_seen || 1}f
+          ${Math.round((d.confidence || 0) * 100)}% · ${d.distance_m ? d.distance_m + 'm' : ''} · seen ${d.frames_seen || 1}f
         </div>
       </div>
     `).join("");
@@ -754,6 +773,22 @@ document.getElementById("btnResetTracker").addEventListener("click", () => {
   document.getElementById("kpiCrosswalks").textContent = "0";
   document.getElementById("kpiVehicles").textContent = "0";
   document.getElementById("kpiPedestrians").textContent = "0";
+});
+
+// Export JSON Report button
+document.getElementById("btnExportJson").addEventListener("click", () => {
+  const payload = {
+    pipeline_mode: "PRETRAINED_YOLO_ONLY",
+    session_id: sessionId,
+    exported_at: new Date().toISOString(),
+    latest_frame: lastResult,
+    timeline: timelineRows,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `road_shield_yolo_video_report_${Date.now()}.json`;
+  a.click();
 });
 
 // Seekbar listener

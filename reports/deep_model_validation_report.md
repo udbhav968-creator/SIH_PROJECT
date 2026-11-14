@@ -1,5 +1,5 @@
 # ROAD-SHIELD Validation Report
-**Timestamp UTC**: 2026-11-14T09:25:09.370217+00:00  
+**Timestamp UTC**: 2026-11-14T09:57:38.474404+00:00  
 **Status**: **CERTIFIED**  
 
 ## 1. Checkpoint Integrity
@@ -43,7 +43,7 @@
 | ASTM D6433 | PCI Deduction Monotonicity | **PASSED** |
 
 ## 5. Latency Profile
-- **Vision Classifier Latency**: 9.9 ms (101.0 FPS on 2 CPU threads)
-- **Pipeline Latency**: 4538.6 ms
+- **Vision Classifier Latency**: 15.6 ms (64.1 FPS on 2 CPU threads)
+- **Pipeline Latency**: 7285.5 ms
 - **Latency Budget**: <= 35.0 ms
 - **Status**: **PASSED**

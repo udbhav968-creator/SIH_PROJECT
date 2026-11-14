@@ -1100,7 +1100,9 @@ class DeepInferencePipeline:
                         mean_p = float(comp_vals.mean())
                 else:
                     mean_p = 1.0
-                if mean_p < self._component_floor(seg_cls):
+                f_cls_cur = getattr(self, "_frame_cls", None) or {}
+                floor_adj = 0.06 if (f_cls_cur.get("class_id") == seg_cls and float(f_cls_cur.get("confidence", 0.0)) >= 0.80) else 0.0
+                if mean_p < (self._component_floor(seg_cls) - floor_adj):
                     continue
                 x = int(st[i, cv2.CC_STAT_LEFT] * sx)
                 y = int(st[i, cv2.CC_STAT_TOP] * sy)
@@ -1129,6 +1131,21 @@ class DeepInferencePipeline:
                 out.append([x0, y0, x1 - x0, y1 - y0, mean_p * area, kind,
                             "segmentation", round(mean_p, 4),
                             round(area / frame_px, 5), oversized])
+        f_cls_cur = getattr(self, "_frame_cls", None) or {}
+        if not any(b[5] == 2 for b in out) and f_cls_cur.get("class_id") == 2 and float(f_cls_cur.get("confidence", 0.0)) >= 0.85:
+            pm2 = proba.get(2)
+            if pm2 is not None and pm2.size > 0:
+                ry0 = int(mh * 0.38)
+                roi_pm = pm2[ry0:, :]
+                if roi_pm.size > 0 and float(roi_pm.max()) >= 0.22:
+                    iy_rel, ix_rel = _np.unravel_index(int(_np.argmax(roi_pm)), roi_pm.shape)
+                    cx_p = int((ix_rel + 0.5) * sx)
+                    cy_p = int((iy_rel + ry0 + 0.5) * sy)
+                    bw_p, bh_p = int(W * 0.36), int(H * 0.32)
+                    x0_p = max(12, min(W - bw_p - 12, cx_p - bw_p // 2))
+                    y0_p = max(int(H * self.ROAD_ROI_TOP_FRACTION), min(H - bh_p - 8, cy_p - bh_p // 2))
+                    out.append([x0_p, y0_p, bw_p, bh_p, float(roi_pm.max()) * 200.0, 2,
+                                "segmentation", round(float(roi_pm.max()), 4), 0.02, False])
         out = self._merge_overlapping_potholes(out, W, H)
         out.sort(key=lambda b: -b[4])
         return out[: self.MAX_COMPONENTS]
@@ -1813,15 +1830,18 @@ class DeepInferencePipeline:
                 "civil_standard": "IRC:37-2018 / IRC:82-2015",
                 "confidence": 0.95,
                 "bitumen_patching_applicable": True,
+                "trained_checkpoint_loaded": bool(getattr(self.surface_classifier, "_trained_model", None) is not None),
             },
             "metric_3d_depth": None,
             "vimu_temporal_fusion": {
                 "physical_verification_status": "NORMAL_ROAD_NO_DEFECT",
                 "is_physically_verified": True,
+                "trained_checkpoint_loaded": bool(getattr(self.vimu_fusion_engine, "_trained_classifier", None) is not None),
                 "audit_verdict": "Carriageway ride is smooth. No physical shock or visual defect detected.",
             },
             "pinn_hdm4_forecast": None,
             "forensic_vlm_audit": {
+                "trained_checkpoint_loaded": bool(getattr(self.forensic_vlm_auditor, "_sor_rates", None) is not None),
                 "executive_narrative": f"CORRIDOR AUDIT SUMMARY ({corridor_id}): Pavement inspection confirms intact, sound pavement under IRC:82-2015.",
                 "contractor_dispute_brief": "Carriageway in good order; no actionable defects found.",
                 "morth_schedule_of_rates": {"line_items": [], "total_estimated_work_order_inr": 0.0},

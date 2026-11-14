@@ -5,7 +5,11 @@ telemetry to distinguish genuine physical pavement hazards from benign optical s
 shadows, and paint marks.
 """
 
+import os
+import joblib
 import numpy as np
+
+_CKPT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints", "advanced_5_models.joblib"))
 
 
 class VIMUTemporalFusionEngine:
@@ -25,6 +29,13 @@ class VIMUTemporalFusionEngine:
         self.speed_kmh = float(vehicle_speed_kmh)
         self.speed_mps = max(1.0, self.speed_kmh / 3.6)
         self.wheelbase_m = float(wheelbase_m)
+        self._trained_classifier = None
+        if os.path.exists(_CKPT_PATH):
+            try:
+                bundle = joblib.load(_CKPT_PATH)
+                self._trained_classifier = (bundle.get("vimu_temporal_fusion") or bundle.get("vimu_fusion") or {}).get("classifier")
+            except Exception:
+                self._trained_classifier = None
 
     def extract_imu_features(self, imu_series):
         """
@@ -102,6 +113,7 @@ class VIMUTemporalFusionEngine:
                 "time_to_impact_sec": ttc_sec,
                 "vehicle_speed_kmh": self.speed_kmh,
                 "imu_telemetry": None,
+                "trained_checkpoint_loaded": bool(self._trained_classifier is not None),
                 "audit_verdict": (
                     f"Defect located {dist_m:.1f} m ahead (TTC: {ttc_sec}s at {self.speed_kmh:.0f} km/h). "
                     "Physical wheel traversal shock pending."
@@ -109,6 +121,21 @@ class VIMUTemporalFusionEngine:
             }
 
         peak_shock = imu_feats["peak_vertical_shock_ms2"]
+        ml_prob = None
+        if self._trained_classifier is not None:
+            try:
+                feat_vec = np.array([[
+                    vis_conf,
+                    depth_cm / 10.0,
+                    peak_shock / 5.0,
+                    imu_feats["rms_vertical_shock_ms2"] / 2.5,
+                    imu_feats["shock_energy"] / 6.0,
+                    imu_feats["lateral_sway_ms2"],
+                    imu_feats["longitudinal_jerk_ms2"],
+                ]], dtype=np.float32)
+                ml_prob = float(self._trained_classifier.predict_proba(feat_vec)[0][1])
+            except Exception:
+                ml_prob = None
 
         # Cross-modal arbitration matrix
         if dist_m <= 3.5:
@@ -144,6 +171,9 @@ class VIMUTemporalFusionEngine:
             is_verified = True
             verdict = f"Target {dist_m:.1f} m ahead (TTC: {ttc_sec}s). Pavement vibration background: {peak_shock:.2f} m/s²."
 
+        if ml_prob is not None and status == "CONFIRMED_STRUCTURAL_DEFECT":
+            fused_conf = min(0.99, 0.70 * fused_conf + 0.30 * ml_prob)
+
         return {
             "physical_verification_status": status,
             "verification_confidence": round(float(fused_conf), 4),
@@ -151,5 +181,6 @@ class VIMUTemporalFusionEngine:
             "time_to_impact_sec": ttc_sec,
             "vehicle_speed_kmh": self.speed_kmh,
             "imu_telemetry": imu_feats,
+            "trained_checkpoint_loaded": bool(self._trained_classifier is not None),
             "audit_verdict": verdict,
         }

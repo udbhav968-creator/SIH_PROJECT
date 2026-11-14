@@ -401,6 +401,20 @@ class YOLOVideoEngine:
         tracker = self.get_tracker(session_id=session_id, reset=reset_tracker)
         tracked = tracker.update(raw_detections, frame_index=frame_index)
 
+        # Compute forward metric distance (m) & Time-To-Collision (TTC at 45 km/h = 12.5 m/s) per tracked box
+        speed_mps = 12.5
+        closest_hazard_m = None
+        for d in tracked:
+            bn = d.get("bbox_normalized") or [0.0, 0.5, 0.1, 0.1]
+            y_bottom = min(1.0, max(0.36, float(bn[1]) + float(bn[3])))
+            dist_m = round(float(np.clip(2.0 + (1.0 - y_bottom) * 32.0, 2.2, 38.0)), 1)
+            ttc_s = round(dist_m / speed_mps, 2)
+            d["distance_m"] = dist_m
+            d["ttc_seconds"] = ttc_s
+            if d.get("is_distress"):
+                if closest_hazard_m is None or dist_m < closest_hazard_m:
+                    closest_hazard_m = dist_m
+
         frame_counts = {
             "potholes": sum(1 for d in tracked if "pothole" in d["class_name"].lower()),
             "cracks": sum(1 for d in tracked if "crack" in d["class_name"].lower()),
@@ -410,6 +424,32 @@ class YOLOVideoEngine:
             "traffic_controls": sum(1 for d in tracked if d["category"] == "traffic_control"),
             "total": len(tracked),
         }
+
+        # Dynamic Video PCI (0..100) from Pretrained YOLOv11n-RDD2022 detections
+        deduct = (
+            frame_counts["potholes"] * 18.5
+            + frame_counts["cracks"] * 8.5
+            + sum(float((d.get("bbox_normalized") or [0, 0, 0, 0])[2]) * float((d.get("bbox_normalized") or [0, 0, 0, 0])[3]) * 120.0 for d in tracked if d.get("is_distress"))
+        )
+        video_pci_score = round(max(12.0, min(100.0, 100.0 - deduct)), 1)
+        if video_pci_score >= 85.0:
+            corridor_condition = "GOOD"
+        elif video_pci_score >= 65.0:
+            corridor_condition = "FAIR"
+        elif video_pci_score >= 45.0:
+            corridor_condition = "POOR"
+        else:
+            corridor_condition = "CRITICAL"
+
+        min_ttc_s = round(closest_hazard_m / speed_mps, 2) if closest_hazard_m is not None else None
+        if frame_counts["potholes"] > 0 and closest_hazard_m is not None and closest_hazard_m <= 12.0:
+            safety_advisory = f"CAUTION: Pothole {closest_hazard_m:.1f}m ahead (TTC {min_ttc_s:.2f}s) — Reduce speed"
+        elif frame_counts["potholes"] + frame_counts["cracks"] > 0:
+            safety_advisory = f"SURFACE DISTRESS: {frame_counts['potholes']} pothole(s), {frame_counts['cracks']} crack(s) in view (PCI {video_pci_score})"
+        elif frame_counts["pedestrians"] > 0:
+            safety_advisory = f"PEDESTRIAN ADVISORY: {frame_counts['pedestrians']} pedestrian(s) active in corridor"
+        else:
+            safety_advisory = f"CLEAR CORRIDOR: Pavement serviceable (PCI {video_pci_score})"
 
         latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         fps_est = round(1000.0 / max(latency_ms, 1.0), 1)
@@ -425,6 +465,11 @@ class YOLOVideoEngine:
             "image_height": int(h),
             "detections": tracked,
             "frame_counts": frame_counts,
+            "video_pci_score": video_pci_score,
+            "corridor_condition": corridor_condition,
+            "closest_hazard_m": closest_hazard_m,
+            "min_ttc_s": min_ttc_s,
+            "safety_advisory": safety_advisory,
             "tracker_summary": tracker.summary(),
             "latency_ms": latency_ms,
             "fps_estimate": fps_est,

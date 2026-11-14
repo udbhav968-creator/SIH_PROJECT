@@ -9,12 +9,16 @@ Replaces flat heuristic depth with physical 3D ground-plane reconstruction:
 """
 
 import math
+import os
+import joblib
 import numpy as np
 
 try:
     import cv2
 except ImportError:
     cv2 = None
+
+_CKPT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints", "advanced_5_models.joblib"))
 
 
 class Metric3DDepthEngine:
@@ -36,6 +40,13 @@ class Metric3DDepthEngine:
         self.h_cam = float(camera_height_m or self.DEFAULT_CAMERA_HEIGHT_M)
         self.pitch_rad = math.radians(float(pitch_deg or self.DEFAULT_PITCH_DEG))
         self.fov_rad = math.radians(float(fov_deg or self.DEFAULT_FOV_DEG))
+        self._trained_regressor = None
+        if os.path.exists(_CKPT_PATH):
+            try:
+                bundle = joblib.load(_CKPT_PATH)
+                self._trained_regressor = (bundle.get("metric_3d_depth") or {}).get("regressor")
+            except Exception:
+                self._trained_regressor = None
 
     def _resolve_intrinsics(self, H, W):
         fx = (W / 2.0) / math.tan(self.fov_rad / 2.0)
@@ -120,6 +131,15 @@ class Metric3DDepthEngine:
             # Centimeter depth under IRC:SP:83 calibration:
             # Shallow raveled depression: ~2.5 cm, standard pothole: ~4.5 - 6.0 cm, deep crater: > 8.0 cm
             nominal_depth_cm = float(2.5 + relative_darkness * 7.5 + min(3.0, (bh * m_per_px_y) * 12.0))
+            if self._trained_regressor is not None:
+                try:
+                    std_norm = float(np.std(patch_gray)) / 64.0
+                    area_frac = float((bw * bh) / max(1.0, float(H * W)))
+                    feat_vec = np.array([[relative_darkness, std_norm, dist_m / 20.0, area_frac, 1.0]], dtype=np.float32)
+                    ml_depth = float(self._trained_regressor.predict(feat_vec)[0])
+                    nominal_depth_cm = 0.65 * nominal_depth_cm + 0.35 * ml_depth
+                except Exception:
+                    pass
             nominal_depth_cm = round(float(np.clip(nominal_depth_cm, 2.0, 14.0)), 1)
             depth_low_cm = round(max(1.8, nominal_depth_cm * 0.65), 1)
             depth_high_cm = round(min(16.0, nominal_depth_cm * 1.55), 1)
@@ -179,5 +199,6 @@ class Metric3DDepthEngine:
             },
             "morth_tonnage_t": compacted_tonnage,
             "repair_cost_inr": repair_cost_inr,
+            "trained_checkpoint_loaded": bool(self._trained_regressor is not None),
             "measurement_basis": "Metric 3D monocular ground plane integration (pinhole IPM + photometric cavity regressor)",
         }

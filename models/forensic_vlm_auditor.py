@@ -6,6 +6,10 @@ contractor dispute defense briefs, and MoRTH Schedule of Rates (SOR) itemized le
 """
 
 import datetime
+import os
+import joblib
+
+_CKPT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints", "advanced_5_models.joblib"))
 
 
 class ForensicVLMAuditor:
@@ -16,7 +20,13 @@ class ForensicVLMAuditor:
         return True
 
     def __init__(self):
-        pass
+        self._sor_rates = None
+        if os.path.exists(_CKPT_PATH):
+            try:
+                bundle = joblib.load(_CKPT_PATH)
+                self._sor_rates = (bundle.get("forensic_vlm_auditor") or bundle.get("forensic_vlm") or {}).get("morth_sor_rates_2026")
+            except Exception:
+                self._sor_rates = None
 
     def generate_audit_report(self, audit_state, corridor_id="NH-44", chainage_km=None):
         """
@@ -155,6 +165,7 @@ class ForensicVLMAuditor:
 
         return {
             "forensic_report_id": f"AUDIT-{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d%H%M%S')}",
+            "trained_checkpoint_loaded": bool(self._sor_rates is not None),
             "corridor_id": corridor_id,
             "chainage": ch_str,
             "surface_classification": {
