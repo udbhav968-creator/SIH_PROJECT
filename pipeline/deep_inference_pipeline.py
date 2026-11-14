@@ -961,7 +961,7 @@ class DeepInferencePipeline:
         window[y0:y1, x0:x1] = True
         return window & (mask == seg_cls)
 
-    MIN_COMPONENT_FRACTION = {"crack": 0.0012, "pothole": 0.004}
+    MIN_COMPONENT_FRACTION = {"crack": 0.0010, "pothole": 0.0012}
     MIN_COMPONENT_MARGIN = {"crack": 0.0, "pothole": 0.10}
 
     def _component_floor(self, seg_cls):
@@ -975,7 +975,7 @@ class DeepInferencePipeline:
         if isinstance(margin, dict):
             margin = margin.get(name, 0.10)
         return min(0.95, base + float(margin))
-    MAX_COMPONENTS = 8
+    MAX_COMPONENTS = 48
     MAX_HEURISTIC_BOX_FRACTION = 0.25
     MAX_COMPONENT_BOX_FRACTION = 0.35
     MAX_SINGLE_REPAIR_AREA_M2 = 2.0
@@ -1104,33 +1104,49 @@ class DeepInferencePipeline:
                 floor_adj = 0.06 if (f_cls_cur.get("class_id") == seg_cls and float(f_cls_cur.get("confidence", 0.0)) >= 0.80) else 0.0
                 if mean_p < (self._component_floor(seg_cls) - floor_adj):
                     continue
-                x = int(st[i, cv2.CC_STAT_LEFT] * sx)
-                y = int(st[i, cv2.CC_STAT_TOP] * sy)
-                w = max(8, int(st[i, cv2.CC_STAT_WIDTH] * sx))
-                h = max(8, int(st[i, cv2.CC_STAT_HEIGHT] * sy))
-                px, py = min(14, int(w * 0.08)), min(14, int(h * 0.08))
-                x0, y0 = max(0, x - px), max(0, y - py)
-                x1, y1 = min(W, x + w + px), min(H, y + h + py)
-                if ((x1 - x0) * (y1 - y0)) > int(0.56 * W * H) and getattr(self, "_current_corridor_id", "") != "STRESS_TEST":
-                    cw_max = int(W * 0.80)
-                    ch_max = int(H * 0.65)
-                    cx_mid, cy_mid = (x0 + x1) // 2, (y0 + y1) // 2
-                    if (x1 - x0) > cw_max:
-                        x0 = max(0, cx_mid - cw_max // 2)
-                        x1 = min(W, x0 + cw_max)
-                    if (y1 - y0) > ch_max:
-                        y0 = max(int(H * self.ROAD_ROI_TOP_FRACTION), cy_mid - ch_max // 2)
-                        y1 = min(H, y0 + ch_max)
-                if x1 - x0 < 8 or y1 - y0 < 8:
-                    continue
-                centroid_y = (y0 + y1) / 2.0
-                if centroid_y < self.ROAD_ROI_TOP_FRACTION * H:
-                    continue
-                oversized = (((x1 - x0) * (y1 - y0)) / float(W * H)
-                             > self.MAX_COMPONENT_BOX_FRACTION)
-                out.append([x0, y0, x1 - x0, y1 - y0, mean_p * area, kind,
-                            "segmentation", round(mean_p, 4),
-                            round(area / frame_px, 5), oversized])
+                comp_mask = (lab == i).astype(_np.uint8)
+                sub_regions = []
+                if seg_cls == 2 and area >= 180:
+                    dist = cv2.distanceTransform(comp_mask, cv2.DIST_L2, 5)
+                    _, peaks = cv2.threshold(dist, 0.32 * dist.max(), 255, 0)
+                    np_peaks, p_lab = cv2.connectedComponents(_np.uint8(peaks))
+                    if np_peaks > 2:
+                        for pi in range(1, np_peaks):
+                            p_mask = (p_lab == pi).astype(_np.uint8)
+                            px0, py0, pw, ph = cv2.boundingRect(p_mask)
+                            sub_regions.append((px0, py0, pw, ph, int(p_mask.sum())))
+                if not sub_regions:
+                    sub_regions = [(int(st[i, cv2.CC_STAT_LEFT]), int(st[i, cv2.CC_STAT_TOP]),
+                                    int(st[i, cv2.CC_STAT_WIDTH]), int(st[i, cv2.CC_STAT_HEIGHT]), area)]
+
+                for (rx, ry, rw, rh, r_area) in sub_regions:
+                    x = int(rx * sx)
+                    y = int(ry * sy)
+                    w = max(8, int(rw * sx))
+                    h = max(8, int(rh * sy))
+                    px, py = min(4, int(w * 0.04)), min(4, int(h * 0.04))
+                    x0, y0 = max(0, x - px), max(0, y - py)
+                    x1, y1 = min(W, x + w + px), min(H, y + h + py)
+                    if ((x1 - x0) * (y1 - y0)) > int(0.56 * W * H) and getattr(self, "_current_corridor_id", "") != "STRESS_TEST":
+                        cw_max = int(W * 0.80)
+                        ch_max = int(H * 0.65)
+                        cx_mid, cy_mid = (x0 + x1) // 2, (y0 + y1) // 2
+                        if (x1 - x0) > cw_max:
+                            x0 = max(0, cx_mid - cw_max // 2)
+                            x1 = min(W, x0 + cw_max)
+                        if (y1 - y0) > ch_max:
+                            y0 = max(int(H * self.ROAD_ROI_TOP_FRACTION), cy_mid - ch_max // 2)
+                            y1 = min(H, y0 + ch_max)
+                    if x1 - x0 < 8 or y1 - y0 < 8:
+                        continue
+                    centroid_y = (y0 + y1) / 2.0
+                    if centroid_y < self.ROAD_ROI_TOP_FRACTION * H:
+                        continue
+                    oversized = (((x1 - x0) * (y1 - y0)) / float(W * H)
+                                 > self.MAX_COMPONENT_BOX_FRACTION)
+                    out.append([x0, y0, x1 - x0, y1 - y0, mean_p * r_area, kind,
+                                "segmentation", round(mean_p, 4),
+                                round(r_area / frame_px, 5), oversized])
         f_cls_cur = getattr(self, "_frame_cls", None) or {}
         if not any(b[5] == 2 for b in out) and f_cls_cur.get("class_id") == 2 and float(f_cls_cur.get("confidence", 0.0)) >= 0.85:
             pm2 = proba.get(2)
@@ -1151,7 +1167,7 @@ class DeepInferencePipeline:
         return out[: self.MAX_COMPONENTS]
 
     def _merge_overlapping_potholes(self, props, W, H):
-        """Merge overlapping pothole proposals from segmentation."""
+        """Merge truly overlapping duplicate pothole proposals (IoU >= 0.40 or containment >= 0.70)."""
         pot = [b for b in props if b[5] == 2]
         rest = [b for b in props if b[5] != 2]
         merged = True
@@ -1160,20 +1176,29 @@ class DeepInferencePipeline:
             for i in range(len(pot)):
                 for j in range(i + 1, len(pot)):
                     a, b = pot[i], pot[j]
-                    if (min(a[0] + a[2], b[0] + b[2]) > max(a[0], b[0])
-                            and min(a[1] + a[3], b[1] + b[3]) > max(a[1], b[1])):
-                        x0, y0 = min(a[0], b[0]), min(a[1], b[1])
-                        x1, y1 = max(a[0] + a[2], b[0] + b[2]), max(a[1] + a[3], b[1] + b[3])
-                        if ((x1 - x0) * (y1 - y0)) > int(0.55 * W * H):
-                            continue
-                        wa, wb = a[8] or 0.0, b[8] or 0.0
-                        mp = round((a[7] * wa + b[7] * wb) / (wa + wb), 4) if (wa + wb) > 0 else a[7]
-                        pot[i] = [x0, y0, x1 - x0, y1 - y0, a[4] + b[4], 2, "segmentation", mp,
-                                  round(wa + wb, 5),
-                                  ((x1 - x0) * (y1 - y0)) / float(W * H) > self.MAX_COMPONENT_BOX_FRACTION]
-                        del pot[j]
-                        merged = True
-                        break
+                    xi0, yi0 = max(a[0], b[0]), max(a[1], b[1])
+                    xi1, yi1 = min(a[0] + a[2], b[0] + b[2]), min(a[1] + a[3], b[1] + b[3])
+                    inter_w = max(0, xi1 - xi0)
+                    inter_h = max(0, yi1 - yi0)
+                    if inter_w > 0 and inter_h > 0:
+                        inter = inter_w * inter_h
+                        a1 = a[2] * a[3]
+                        a2 = b[2] * b[3]
+                        iou = inter / float(a1 + a2 - inter)
+                        containment = inter / float(min(a1, a2))
+                        if iou >= 0.40 or containment >= 0.70:
+                            x0, y0 = min(a[0], b[0]), min(a[1], b[1])
+                            x1, y1 = max(a[0] + a[2], b[0] + b[2]), max(a[1] + a[3], b[1] + b[3])
+                            if ((x1 - x0) * (y1 - y0)) > int(0.55 * W * H):
+                                continue
+                            wa, wb = a[8] or 0.0, b[8] or 0.0
+                            mp = round((a[7] * wa + b[7] * wb) / (wa + wb), 4) if (wa + wb) > 0 else a[7]
+                            pot[i] = [x0, y0, x1 - x0, y1 - y0, a[4] + b[4], 2, "segmentation", mp,
+                                      round(wa + wb, 5),
+                                      ((x1 - x0) * (y1 - y0)) / float(W * H) > self.MAX_COMPONENT_BOX_FRACTION]
+                            del pot[j]
+                            merged = True
+                            break
                 if merged:
                     break
         return rest + pot
@@ -1205,22 +1230,9 @@ class DeepInferencePipeline:
             a2 = b2[2] * b2[3]
             iou = inter / float(a1 + a2 - inter)
             containment = inter / float(min(a1, a2))
-            if iou >= 0.10 or containment >= 0.25:
+            if iou >= 0.40 or containment >= 0.70:
                 return True
-
-        gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
-        gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
-
-        min_w = max(1, min(b1[2], b2[2]))
-        horiz_overlap_ratio = inter_w / float(min_w)
-        if horiz_overlap_ratio >= 0.30 and gap_y <= int(H * 0.18) and comb_h <= int(H * 0.75):
-            return True
-
-        return (
-            gap_x <= int(W * 0.05)
-            and gap_y <= int(H * 0.05)
-            and comb_h <= int(H * 0.75)
-        )
+        return False
 
     SEGMENTER_GATE_FRACTION = 0.01
 

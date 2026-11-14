@@ -971,14 +971,14 @@ def _extract_salient_regions_numpy(img_np, excluded_boxes=None):
     if not raw_boxes:
         return []
 
-    return _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=3)
+    return _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=32)
 
 
-def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=3):
+def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=32):
     """
     Weighted Box Fusion and Spatial Clustering.
-    Merges overlapping (IoU >= 0.12) and proximate (gap < 8%) boxes into unified defect boundaries,
-    eliminating fragmented duplicates and colliding text labels.
+    Merges duplicate detections for the same defect (IoU >= 0.40 or containment >= 0.70)
+    while strictly preserving distinct adjacent potholes as separate individual cavities.
     """
     if not raw_boxes:
         return []
@@ -1005,26 +1005,7 @@ def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=3):
             iou = inter_area / max(1.0, union_area)
             containment = inter_area / max(1.0, min(b_area, c_area))
 
-            comb_w = max(x2, cx2) - min(x1, cx1)
-            comb_h = max(y2, cy2) - min(y1, cy1)
-            gap_x = max(0, max(x1, cx1) - min(x2, cx2))
-            gap_y = max(0, max(y1, cy1) - min(y2, cy2))
-            horiz_overlap = inter_w / float(max(1, min(bw, cbw)))
-            is_proximate = (
-                gap_x <= int(W * 0.04)
-                and gap_y <= int(H * 0.04)
-                and comb_w <= int(W * 0.95)
-                and comb_h <= int(H * 0.70)
-            )
-            is_crater_complex = (
-                horiz_overlap >= 0.30
-                and gap_y <= int(H * 0.15)
-                and comb_w <= int(W * 0.95)
-                and comb_h <= int(H * 0.70)
-                and (comb_w * comb_h) <= int(W * H * 0.60)
-            )
-
-            if iou >= 0.12 or containment >= 0.30 or is_proximate or is_crater_complex:
+            if iou >= 0.40 or containment >= 0.70:
                 matched.append(ci)
         if not matched:
             clusters.append([b])
@@ -1044,15 +1025,13 @@ def _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=3):
         max_y = min(H, max(b[1] + b[3] for b in c))
         fw = max_x - min_x
         fh = max_y - min_y
-        if (fw * fh) > int(W * H * 0.33):
-            scale = (int(W * H * 0.33) / float(fw * fh)) ** 0.5
+        if (fw * fh) > int(W * H * 0.50):
+            scale = (int(W * H * 0.50) / float(fw * fh)) ** 0.5
             fw = max(35, int(fw * scale))
             fh = max(20, int(fh * scale))
             min_x = max(0, min(W - fw, min_x))
             min_y = max(0, min(H - fh, min_y))
-        if fw < 35 or fh < 18:
-            continue
-        if (min_x < 20 or max_x > W - 20) and (fw * fh) < 0.015 * W * H:
+        if fw < 20 or fh < 14:
             continue
         max_sc = max(b[4] for b in c)
         kinds = [b[5] for b in c]
@@ -1612,6 +1591,10 @@ def audit_image_base64(
 
     if len(detections) > 1:
         def _can_merge_defects(b1, b2, W, H):
+            comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
+            comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
+            if (comb_w * comb_h) > int(0.55 * W * H):
+                return False
             xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
             xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
             inter_w = max(0, xi1 - xi0)
@@ -1622,24 +1605,9 @@ def audit_image_base64(
                 a2 = b2[2] * b2[3]
                 iou = inter / float(a1 + a2 - inter)
                 containment = inter / float(min(a1, a2))
-                if iou >= 0.10 or containment >= 0.25:
+                if iou >= 0.40 or containment >= 0.70:
                     return True
-
-            gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
-            gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
-            comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
-            comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
-
-            min_w = max(1, min(b1[2], b2[2]))
-            horiz_overlap_ratio = inter_w / float(min_w)
-            if horiz_overlap_ratio >= 0.30 and gap_y <= int(H * 0.18) and comb_h <= int(H * 0.75):
-                return True
-
-            return (
-                gap_x <= int(W * 0.05)
-                and gap_y <= int(H * 0.05)
-                and comb_h <= int(H * 0.75)
-            )
+            return False
 
         changed = True
         while changed and len(detections) > 1:

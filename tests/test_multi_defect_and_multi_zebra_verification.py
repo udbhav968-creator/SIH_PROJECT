@@ -165,5 +165,38 @@ class TestMultiDefectAndMultiZebra(unittest.TestCase):
         self.assertFalse(out["found"])
         self.assertIn("reflections", out["reason"])
 
+    def test_fuse_and_cluster_boxes_preserves_dense_adjacent_potholes(self):
+        """Ensure _fuse_and_cluster_boxes maintains separate tight boxes for adjacent distinct potholes."""
+        from api.vercel_inference import _fuse_and_cluster_boxes
+        W, H = 1280, 720
+        # 12 separate potholes placed across 3 rows and 4 columns with physical space between them
+        raw_boxes = []
+        for r in range(3):
+            by = 350 + r * 100
+            for c in range(4):
+                bx = 150 + c * 250
+                raw_boxes.append([bx, by, 80, 50, 0.88, 2])
+
+        fused = _fuse_and_cluster_boxes(raw_boxes, W, H, max_boxes=32)
+        self.assertEqual(len(fused), 12, f"Expected 12 distinct pothole boxes, got {len(fused)}")
+        for b in fused:
+            self.assertEqual(b[5], 2)
+            self.assertLessEqual(b[2] * b[3], int(0.20 * W * H))
+
+    def test_pipeline_can_merge_defects_strict_overlap_only(self):
+        """Ensure _can_merge_defects never collapses non-overlapping adjacent potholes."""
+        from pipeline.deep_inference_pipeline import DeepInferencePipeline
+        W, H = 1280, 720
+        b1 = [200, 400, 90, 60]
+        # b2 is adjacent with 25px gap (non-overlapping)
+        b2 = [315, 400, 90, 60]
+        self.assertFalse(DeepInferencePipeline._can_merge_defects(b1, b2, W, H),
+                         "Adjacent potholes with a gap must not merge")
+
+        # b3 has 60% IoU with b1 (duplicate detection of same cavity)
+        b3 = [210, 405, 90, 60]
+        self.assertTrue(DeepInferencePipeline._can_merge_defects(b1, b3, W, H),
+                        "High-IoU duplicate detections of the same cavity must merge")
+
 if __name__ == "__main__":
     unittest.main()

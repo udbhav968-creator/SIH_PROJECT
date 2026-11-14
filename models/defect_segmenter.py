@@ -98,14 +98,16 @@ def mask_from_proba(proba, work_shape, orig_shape, thresholds, min_blob_px=12):
         if binary.sum() == 0:
             continue
         if cls == CLASS_POTHOLE:
-            # Cavity basin closing and water puddle hole-filling for potholes (padded border prevents background inversion if (0,0) is foreground)
-            kernel_cavity = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+            # Tight 3x3 cavity basin closing: cleans specular noise within a pothole without bridging distinct cavities
+            kernel_cavity = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
             closed_cavity = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_cavity)
             padded = np.pad(closed_cavity, 1, mode="constant", constant_values=0)
             ff_fill = np.zeros((padded.shape[0] + 2, padded.shape[1] + 2), dtype=np.uint8)
             cv2.floodFill(padded, ff_fill, (0, 0), 255)
             interior_holes = (padded[1:-1, 1:-1] == 0).astype(np.uint8)
-            if int(interior_holes.sum()) <= int(0.15 * h * w):
+            # Only fill small enclosed interior holes (e.g. specular reflection within an individual cavity <= 120 px)
+            # Never fill large open spaces that bridge separate potholes
+            if int(interior_holes.sum()) <= 120:
                 binary = closed_cavity | interior_holes
             else:
                 binary = closed_cavity

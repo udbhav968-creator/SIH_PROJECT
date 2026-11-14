@@ -1,5 +1,5 @@
 # ROAD-SHIELD Validation Report
-**Timestamp UTC**: 2026-11-14T14:25:29.716927+00:00  
+**Timestamp UTC**: 2026-11-14T15:26:45.528325+00:00  
 **Status**: **CERTIFIED**  
 
 ## 1. Checkpoint Integrity
@@ -37,8 +37,8 @@
 ## 3. End-to-End Pavement Scene Tests
 | Test Scene | Class | Confidence | Area | Repair Cost | Status |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| Scene C: Foreground Crater | Pothole Cavity | 93.0% | 1.8638 m2 | Rs 2083.5 | **PASS** |
-| Real Pothole Road | Pothole Cavity | 94.1% | 3.0 m2 | Rs 3540.0 | **PASS** |
+| Scene C: Foreground Crater | Pothole Cavity | 94.3% | 0.7897 m2 | Rs 1046.25 | **PASS** |
+| Real Pothole Road | Pothole Cavity | 87.7% | 1.1854 m2 | Rs 1202.25 | **PASS** |
 
 ## 4. Civil Engineering Standards
 | Standard | Clause / Scope | Status |
@@ -48,7 +48,7 @@
 | ASTM D6433 | PCI Deduction Monotonicity | **PASSED** |
 
 ## 5. Latency Profile
-- **Vision Classifier Latency**: 9.9 ms (101.0 FPS on 2 CPU threads)
-- **Pipeline Latency**: 4543.7 ms
+- **Vision Classifier Latency**: 10.0 ms (100.0 FPS on 2 CPU threads)
+- **Pipeline Latency**: 4693.8 ms
 - **Latency Budget**: <= 35.0 ms
 - **Status**: **PASSED**

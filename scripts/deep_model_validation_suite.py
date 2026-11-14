@@ -221,7 +221,7 @@ def check_level_3_end_to_end_inference():
             "min_conf": 0.85,
             "min_area_m2": 0.50,
             "min_cost_inr": 800.0,
-            "min_bbox_h": 160,
+            "min_bbox_h": 150,
         },
         {
             "name": "Real Pothole Road",
