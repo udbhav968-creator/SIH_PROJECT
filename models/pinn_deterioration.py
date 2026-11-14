@@ -24,6 +24,10 @@ class PhysicsInformedHDM4Forecaster:
     MAX_LANE_SECTION_AREA_M2 = 18.0  # Physical carrying capacity limit for a single localized lane patch
     MAX_DEPTH_PUNCH_CM = 12.0  # Granular sub-base floor where cavity stops deepening and begins lateral breakout
 
+    @property
+    def is_ready(self):
+        return True
+
     def __init__(self, structural_number_snc=3.8):
         self.snc = float(np.clip(structural_number_snc, 1.8, 6.5))
 

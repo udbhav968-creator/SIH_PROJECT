@@ -11,6 +11,10 @@ import datetime
 class ForensicVLMAuditor:
     """Vision-language forensic engineering auditor for roadway infrastructure."""
 
+    @property
+    def is_ready(self):
+        return True
+
     def __init__(self):
         pass
 

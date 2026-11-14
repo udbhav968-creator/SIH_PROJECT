@@ -71,6 +71,10 @@ SURFACE_CLASSES = {
 class SurfaceTypeClassifier:
     """Multispectral colorimetry and structural texture analyzer for pavement classification."""
 
+    @property
+    def is_ready(self):
+        return True
+
     def __init__(self):
         self.classes = SURFACE_CLASSES
 

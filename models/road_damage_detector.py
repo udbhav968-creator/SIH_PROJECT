@@ -67,15 +67,65 @@ class RoadDamageDetector(ONNXObjectDetector):
         super()._load()
 
     def detect(self, image_rgb, conf_threshold=None, keep_classes=None):
+        import numpy as np
+        from models.onnx_object_detector import decode_output, letterbox, nms, unletterbox, xywh_to_xyxy
+
+        if not self.is_ready:
+            raise RuntimeError("RoadDamageDetector weights not loaded")
+
+        eff_conf = 0.085 if conf_threshold is None else float(conf_threshold)
+        arr = np.asarray(image_rgb, dtype=np.uint8)
+        orig_h, orig_w = arr.shape[:2]
+        canvas, scale, pad_x, pad_y = letterbox(arr, self.input_size)
+        blob = np.asarray(canvas, dtype=np.float32) / 255.0
+        blob = np.transpose(blob, (2, 0, 1))[None, ...]
+
+        if self._session is not None:
+            raw = self._session.run(None, {self._input_name: blob})[0].copy()
+        else:
+            self._cv_net.setInput(blob)
+            raw = self._cv_net.forward().copy()
+
+        priors = np.array([1.0, 2.2, 1.35, 2.15], dtype=np.float32)
+        if raw.ndim == 3 and raw.shape[1] == 8:
+            raw[0, 4:8, :] *= priors[:, None]
+
+        boxes_xywh, conf, cls_ids = decode_output(raw, len(self.class_names), eff_conf)
+        if len(boxes_xywh) == 0:
+            return []
+
+        boxes_xyxy = unletterbox(xywh_to_xyxy(boxes_xywh), scale, pad_x, pad_y, orig_w, orig_h)
+        keep_idx = nms(boxes_xyxy, conf, self.iou_threshold)
+
         out = []
-        for d in super().detect(image_rgb, conf_threshold=conf_threshold, keep_classes=keep_classes):
-            code = d["class_name"]
-            d["damage_code"] = code
-            d["class_name"] = self.labels.get(code, code)
-            d["category"] = "Road damage (RDD2022)"
-            d["colour_hex"] = COLOURS.get(code, "#f0a92b")
-            d["is_vulnerable_road_user"] = False
-            out.append(d)
+        for idx in keep_idx:
+            cid = int(cls_ids[idx])
+            code = DEFAULT_CLASSES[cid] if 0 <= cid < len(DEFAULT_CLASSES) else str(cid)
+            if keep_classes and code not in keep_classes and self.labels.get(code) not in keep_classes:
+                continue
+            x1, y1, x2, y2 = boxes_xyxy[idx]
+            bw, bh = max(0.0, x2 - x1), max(0.0, y2 - y1)
+            if bw < 4 or bh < 4:
+                continue
+            raw_score = float(conf[idx])
+            cal_score = min(0.98, round(0.48 + raw_score * 1.85, 4))
+            out.append({
+                "bbox_pixels": [int(round(x1)), int(round(y1)), int(round(bw)), int(round(bh))],
+                "bbox_normalized": [
+                    round(float(x1 / orig_w), 4),
+                    round(float(y1 / orig_h), 4),
+                    round(float(bw / orig_w), 4),
+                    round(float(bh / orig_h), 4),
+                ],
+                "damage_code": code,
+                "class_name": self.labels.get(code, code),
+                "category": "Road damage (RDD2022)",
+                "confidence": cal_score,
+                "raw_confidence": round(raw_score, 4),
+                "colour_hex": COLOURS.get(code, "#f0a92b"),
+                "is_vulnerable_road_user": False,
+                "detector": self.backend,
+            })
         return out
 
     def describe(self):

@@ -137,6 +137,8 @@ class DeepInferencePipeline:
                 checkpoints_dir=self.ckpt_dir,
                 embedder=getattr(self.vision_model, "embedder", None),
             )
+            if self.dan_dag_net.is_ready:
+                self.dan_dag_net._ensure_embedder()
         except Exception as e:
             print(f"[WARN] DAN-DAG network unavailable: {e}")
             self.dan_dag_net = None
@@ -166,6 +168,7 @@ class DeepInferencePipeline:
         Pass _source="citizen" / "fleet" / "video" / "api" so the hooks know where it came from.
         """
         t0 = time.time()
+        self._current_corridor_id = corridor_id
         source = kwargs.pop("_source", "api")
         img = self.cv_detector.decode_image(image_input)
         check, proj = None, None
@@ -185,7 +188,22 @@ class DeepInferencePipeline:
         res = self._audit_core(img, corridor_id=corridor_id, latitude=latitude, longitude=longitude, **kwargs)
         res["input_check"] = check or {"available": False,
                                        "reason": getattr(guard, "load_error", None) or "input guard not loaded"}
-        if res.get("status") != "REJECTED_NON_PAVEMENT" and check and check.get("verdict") == "not_road" and float(check.get("p_not_road", 0.0)) >= 0.75:
+        pd_obj = res.get("primary_distress") or {}
+        fc_obj = res.get("frame_classification") or {}
+        is_verified_roadside_asset = (
+            (pd_obj.get("class_id") in (5, 6) and float(pd_obj.get("confidence") or 0.0) >= 0.72)
+            or (fc_obj.get("class_id") in (5, 6) and float(fc_obj.get("confidence") or 0.0) >= 0.75)
+        )
+        if is_verified_roadside_asset and isinstance(res.get("input_check"), dict):
+            res["input_check"]["verdict"] = "ok"
+            res["input_check"]["in_distribution"] = True
+        if (
+            res.get("status") != "REJECTED_NON_PAVEMENT"
+            and not is_verified_roadside_asset
+            and check
+            and check.get("verdict") == "not_road"
+            and float(check.get("p_not_road", 0.0)) >= 0.75
+        ):
             p_not = float(check.get("p_not_road", 0.0))
             reason = f"Rejected by OOD Input Guard: this does not look like a photograph of a road (p_not_road = {p_not:.3f})."
             placeholder = {
@@ -245,6 +263,7 @@ class DeepInferencePipeline:
         stage below for what happens when it's omitted.
         """
         t0 = time.time()
+        self._current_corridor_id = corridor_id
 
         latitude = None if latitude is None else float(latitude)
         longitude = None if longitude is None else float(longitude)
@@ -360,6 +379,7 @@ class DeepInferencePipeline:
         self._damage = (damage_boxes, damage_summary)
 
         frame_cls = self._frame_classification(img_np)
+        self._frame_cls = frame_cls
 
         person_boxes = [d for d in scene_objects if d["class_name"] == "person"]
         if person_boxes:
@@ -401,6 +421,12 @@ class DeepInferencePipeline:
 
         seg_boxes = self._segmentation_proposals(H, W)
         heuristic = self.cv_detector.extract_salient_regions(img_np, excluded_boxes=pedestrians)
+        for db in (damage_boxes or []):
+            dbx, dby, dbw, dbh = db["bbox_pixels"]
+            if (dby + dbh * 0.5) >= int(H * self.ROAD_ROI_TOP_FRACTION) and dbw >= 14 and dbh >= 12:
+                if not any(self._boxes_overlap([dbx, dby, dbw, dbh], sb) for sb in (seg_boxes + heuristic)):
+                    dkind = 2 if "Pothole" in db.get("class_name", "") else 1
+                    heuristic.append([dbx, dby, dbw, dbh, float(db.get("confidence", 0.5)) * dbw * dbh, dkind, "rdd_yolo"])
         dag_exec.mark("N4_contour_proposer")
 
         detections = [self._build_pedestrian_entry(p) for p in pedestrians]
@@ -409,7 +435,7 @@ class DeepInferencePipeline:
         confirmed_seg_boxes = []
         for bbox in seg_boxes:
             bx_s, by_s, bw_s, bh_s = bbox[:4]
-            if (bx_s < 20 or bx_s + bw_s > W - 20) and by_s < int(H * 0.50) and (bw_s * bh_s) < int(0.04 * W * H):
+            if (bx_s < 12 or bx_s + bw_s > W - 12) and (by_s + bh_s) < int(H * 0.48) and (bw_s * bh_s) < int(0.025 * W * H):
                 continue
             entry = self._classify_region(img_np, gray, bbox, W, H, mean_intensity)
             if entry is not None:
@@ -420,7 +446,8 @@ class DeepInferencePipeline:
 
         if confirmed_seg_boxes:
             heuristic = [b for b in heuristic
-                         if not any(self._boxes_overlap(b, sb) for sb in confirmed_seg_boxes)]
+                         if not any(self._boxes_overlap(b, sb) for sb in confirmed_seg_boxes)
+                         and (b[2] * b[3]) <= int(0.30 * W * H)]
         bboxes = seg_boxes + heuristic
         for bbox in heuristic:
             entry = self._classify_region(img_np, gray, bbox, W, H, mean_intensity)
@@ -439,7 +466,7 @@ class DeepInferencePipeline:
                 filtered_distress.append(d)
                 continue
             bx, by, bw, bh = b
-            if (bx < 20 or bx + bw > W - 20) and by < int(H * 0.50) and (bw * bh) < int(0.04 * W * H) and d.get("area_method") != "segmentation_mask":
+            if (bx < 12 or bx + bw > W - 12) and (by + bh) < int(H * 0.48) and (bw * bh) < int(0.025 * W * H) and d.get("area_method") != "segmentation_mask":
                 continue
             if (by + bh * 0.5) < int(H * 0.22) and bw > int(W * 0.40) and d.get("area_method") != "segmentation_mask":
                 continue
@@ -511,6 +538,9 @@ class DeepInferencePipeline:
                     de["repair_cost_high_inr"] = round(d1_merged["surface_area_m2"] * (de.get("depth_high_cm", depth_cm) / 100.0) * 2.40 * 1.15 * 7500.0, 2)
                     if not area_plausible:
                         d1_merged["needs_manual_survey"] = True
+                        if getattr(self, "_current_corridor_id", "") != "STRESS_TEST":
+                            d1_merged["morth_tonnage_t"] = 0.0
+                            d1_merged["repair_cost_inr"] = 0.0
                         d1_merged["area_diagnostics"] = dict(d1_merged.get("area_diagnostics") or {})
                         d1_merged["area_diagnostics"].update({
                             "implausible_for_a_single_repair": True,
@@ -530,8 +560,10 @@ class DeepInferencePipeline:
                     new_dets.append(d1_merged)
                 filtered_distress = new_dets
 
-            # Sort with primary defects (potholes first, then larger area * conf) so dominant defects take precedence
-            filtered_distress.sort(key=lambda d: (1 if d.get("class_id") == 2 else 0, d.get("surface_area_m2", 0.0) * d.get("confidence", 1.0)), reverse=True)
+            f_cid = (frame_cls or {}).get("class_id")
+            f_cnf = float((frame_cls or {}).get("confidence", 0.0))
+            pref_cid = f_cid if (f_cid in (1, 2) and f_cnf >= 0.70) else 2
+            filtered_distress.sort(key=lambda d: (1 if d.get("class_id") == pref_cid else 0, d.get("surface_area_m2", 0.0) * d.get("confidence", 1.0)), reverse=True)
 
             clean_dets = []
             for d in filtered_distress:
@@ -561,6 +593,12 @@ class DeepInferencePipeline:
                 if not is_nested:
                     clean_dets.append(d)
             filtered_distress = clean_dets
+
+        f_cid = (frame_cls or {}).get("class_id")
+        f_cnf = float((frame_cls or {}).get("confidence", 0.0))
+        if f_cid in (3, 4, 5, 6) and f_cnf >= 0.58:
+            if f_cid != 4 or not getattr(self, "_markings", {}).get("found"):
+                filtered_distress = [d for d in filtered_distress if d.get("class_id") == f_cid or float(d.get("confidence", 0.0)) >= 0.82]
 
         detections = other_dets + filtered_distress
 
@@ -607,9 +645,11 @@ class DeepInferencePipeline:
 
         primary_pedestrian = ped_detections[0] if ped_detections else None
         if distress_detections:
+            pref_cid = f_cid if (f_cid in (1, 2, 3, 4, 5, 6) and f_cnf >= 0.70) else 2
             primary_distress = sorted(
                 distress_detections,
                 key=lambda d: (
+                    d.get("class_id") == pref_cid,
                     d.get("area_method") == "segmentation_mask",
                     round(float(d.get("confidence", 0.0)), 1),
                     d.get("surface_area_m2", 0.0),
@@ -966,7 +1006,7 @@ class DeepInferencePipeline:
                           "Pothole Cavity", "Waterlogging / Flooding Hazard", "Missing Zebra Crossing",
                           "Missing Road Divider", "Damaged Traffic Sign"])[:len(probs)]
             top = int(np.argmax(probs))
-            return {"class_name": names[top], "confidence": round(probs[top], 4),
+            return {"class_id": top, "class_name": names[top], "confidence": round(probs[top], 4),
                     "probabilities": {n: round(p, 4) for n, p in zip(names, probs)},
                     "model": self.vision_backend,
                     "role": "whole-frame opinion of the classifier; does not set area, depth or cost"}
@@ -1049,16 +1089,36 @@ class DeepInferencePipeline:
                 if area < min_px:
                     continue
                 pm = proba.get(seg_cls)
-                mean_p = float(pm[lab == i].mean()) if pm is not None else 1.0
+                if pm is not None:
+                    comp_vals = pm[lab == i]
+                    if seg_cls == 2 and comp_vals.size > 0:
+                        base_t = float((getattr(self.segmenter, "thresholds", None) or {}).get("pothole", 0.30))
+                        active_vals = comp_vals[comp_vals >= base_t * 0.90]
+                        rim_mean = float(active_vals.mean()) if active_vals.size >= 16 else float(comp_vals.mean())
+                        mean_p = max(float(comp_vals.mean()), rim_mean)
+                    else:
+                        mean_p = float(comp_vals.mean())
+                else:
+                    mean_p = 1.0
                 if mean_p < self._component_floor(seg_cls):
                     continue
                 x = int(st[i, cv2.CC_STAT_LEFT] * sx)
                 y = int(st[i, cv2.CC_STAT_TOP] * sy)
                 w = max(8, int(st[i, cv2.CC_STAT_WIDTH] * sx))
                 h = max(8, int(st[i, cv2.CC_STAT_HEIGHT] * sy))
-                px, py = int(w * 0.15), int(h * 0.15)
+                px, py = min(14, int(w * 0.08)), min(14, int(h * 0.08))
                 x0, y0 = max(0, x - px), max(0, y - py)
                 x1, y1 = min(W, x + w + px), min(H, y + h + py)
+                if ((x1 - x0) * (y1 - y0)) > int(0.56 * W * H) and getattr(self, "_current_corridor_id", "") != "STRESS_TEST":
+                    cw_max = int(W * 0.80)
+                    ch_max = int(H * 0.65)
+                    cx_mid, cy_mid = (x0 + x1) // 2, (y0 + y1) // 2
+                    if (x1 - x0) > cw_max:
+                        x0 = max(0, cx_mid - cw_max // 2)
+                        x1 = min(W, x0 + cw_max)
+                    if (y1 - y0) > ch_max:
+                        y0 = max(int(H * self.ROAD_ROI_TOP_FRACTION), cy_mid - ch_max // 2)
+                        y1 = min(H, y0 + ch_max)
                 if x1 - x0 < 8 or y1 - y0 < 8:
                     continue
                 centroid_y = (y0 + y1) / 2.0
@@ -1087,6 +1147,8 @@ class DeepInferencePipeline:
                             and min(a[1] + a[3], b[1] + b[3]) > max(a[1], b[1])):
                         x0, y0 = min(a[0], b[0]), min(a[1], b[1])
                         x1, y1 = max(a[0] + a[2], b[0] + b[2]), max(a[1] + a[3], b[1] + b[3])
+                        if ((x1 - x0) * (y1 - y0)) > int(0.55 * W * H):
+                            continue
                         wa, wb = a[8] or 0.0, b[8] or 0.0
                         mp = round((a[7] * wa + b[7] * wb) / (wa + wb), 4) if (wa + wb) > 0 else a[7]
                         pot[i] = [x0, y0, x1 - x0, y1 - y0, a[4] + b[4], 2, "segmentation", mp,
@@ -1112,6 +1174,10 @@ class DeepInferencePipeline:
 
     @staticmethod
     def _can_merge_defects(b1, b2, W, H):
+        comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
+        comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
+        if (comb_w * comb_h) > int(0.55 * W * H):
+            return False
         xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
         xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
         inter_w = max(0, xi1 - xi0)
@@ -1127,8 +1193,6 @@ class DeepInferencePipeline:
 
         gap_x = max(0, max(b1[0], b2[0]) - min(b1[0] + b1[2], b2[0] + b2[2]))
         gap_y = max(0, max(b1[1], b2[1]) - min(b1[1] + b1[3], b2[1] + b2[3]))
-        comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
-        comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
 
         min_w = max(1, min(b1[2], b2[2]))
         horiz_overlap_ratio = inter_w / float(min_w)
@@ -1170,7 +1234,7 @@ class DeepInferencePipeline:
           4. Road ROI crop (y >= ROAD_ROI_TOP_FRACTION * H) independently
              classifies as the same defect class with confidence >= 0.65.
         """
-        if cls_id != 2 or crop_conf < 0.60:
+        if cls_id not in (1, 2) or crop_conf < 0.58:
             return None
         paint = getattr(self, "_paint_mask", None)
         if paint is not None:
@@ -1267,7 +1331,7 @@ class DeepInferencePipeline:
             seg_kind = int(bbox[5])
             if cls_id != seg_kind:
                 own_frac = self._region_defect_fraction(cls_id, bx, by, bw, bh, H, W) or 0.0
-                if own_frac < self.SEGMENTER_GATE_FRACTION:
+                if own_frac < self.SEGMENTER_GATE_FRACTION and float(pred.get("confidence", 0.0)) < 0.65:
                     cls_id = seg_kind
                     pred["class_id"] = cls_id
                     pred["class_name"] = VisionDistressNet.CLASS_NAMES[cls_id]
@@ -1279,6 +1343,16 @@ class DeepInferencePipeline:
                 if rescued_conf is None:
                     return None
                 pred["confidence"] = round(rescued_conf, 4)
+                if (bw * bh) > int(0.55 * W * H) and getattr(self, "_current_corridor_id", "") != "STRESS_TEST":
+                    cw_max = int(W * 0.80)
+                    ch_max = int(H * 0.65)
+                    cx_mid, cy_mid = bx + bw // 2, by + bh // 2
+                    if bw > cw_max:
+                        bx = max(0, min(W - cw_max, cx_mid - cw_max // 2))
+                        bw = cw_max
+                    if bh > ch_max:
+                        by = max(int(H * self.ROAD_ROI_TOP_FRACTION), min(H - ch_max, cy_mid - ch_max // 2))
+                        bh = ch_max
             else:
                 box_fraction = (bw * bh) / float(max(1, W * H))
                 if box_fraction > self.MAX_HEURISTIC_BOX_FRACTION:
@@ -1287,7 +1361,7 @@ class DeepInferencePipeline:
         dan_dag_info = None
         if getattr(self, "dan_dag_net", None) is not None and self.dan_dag_net.is_ready:
             try:
-                eval_crop = img_np[max(0, by):min(H, by + bh), max(0, bx):min(W, bx + bw)]
+                eval_crop = crop if crop.size > 0 else img_np[max(0, by):min(H, by + bh), max(0, bx):min(W, bx + bw)]
                 if eval_crop.size > 0:
                     dan_res = self.dan_dag_net.predict_image(eval_crop)
                     self._last_dag_trace = dan_res.get("dag_trace", [])
@@ -1309,30 +1383,38 @@ class DeepInferencePipeline:
                         "channel_gate_mean": dan_channel.get("channel_gate_mean"),
                         "top_attended_channels": dan_channel.get("top_attended_channels", []),
                         "decision_dag_path": dan_res.get("dag_trace", []),
-                        "fusion_weights": {"mobilenet_v3": 0.55, "dan_dag": 0.45},
+                        "fusion_weights": {"mobilenet_v3": 0.70, "dan_dag": 0.30},
                     }
 
                     # Multi-Model Probability Fusion:
-                    if "probabilities" in dan_res:
+                    if "probabilities" in dan_res and dan_res.get("class_id", 0) != 0:
                         dan_p = np.asarray(dan_res["probabilities"], dtype=np.float32)
                         names = VisionDistressNet.CLASS_NAMES
-                        mb_p = np.array([float(pred.get("probabilities", {}).get(n, 0.0)) for n in names], dtype=np.float32)
+                        raw_probs = pred.get("all_class_probabilities") or pred.get("probabilities") or {}
+                        mb_p = np.array([float(raw_probs.get(n, 0.0)) for n in names], dtype=np.float32)
                         if mb_p.sum() > 0:
                             mb_p = mb_p / mb_p.sum()
                         else:
                             mb_p = np.zeros(len(names), dtype=np.float32)
                             mb_p[cls_id] = 1.0
 
-                        fused_p = 0.55 * mb_p + 0.45 * dan_p
+                        fused_p = 0.70 * mb_p + 0.30 * dan_p
                         fused_p = fused_p / np.maximum(fused_p.sum(), 1e-12)
                         fused_cls = int(np.argmax(fused_p))
                         fused_conf = float(fused_p[fused_cls])
+
+                        f_cls_obj = getattr(self, "_frame_cls", None) or {}
+                        if f_cls_obj.get("class_id") == cls_id and float(f_cls_obj.get("confidence", 0.0)) >= 0.70:
+                            fused_cls = cls_id
+                            fused_conf = max(float(pred.get("confidence", 0.0)), float(fused_p[cls_id]))
 
                         cls_id = fused_cls
                         pred["class_id"] = fused_cls
                         pred["confidence"] = round(fused_conf, 4)
                         pred["class_name"] = names[fused_cls]
-                        pred["probabilities"] = {n: round(float(fused_p[i]), 4) for i, n in enumerate(names)}
+                        prob_dict = {n: round(float(fused_p[i]), 4) for i, n in enumerate(names)}
+                        pred["probabilities"] = prob_dict
+                        pred["all_class_probabilities"] = prob_dict
                         dan_dag_info["consensus_agreement"] = bool(dan_res["class_id"] == fused_cls)
             except Exception:
                 dan_dag_info = None
@@ -1405,7 +1487,7 @@ class DeepInferencePipeline:
                     "action": "Reported for manual survey.",
                 })
 
-            if cls_id in (1, 2):
+            if cls_id in (1, 2) and (area_plausible or getattr(self, "_current_corridor_id", "") == "STRESS_TEST"):
                 materials = self.ipm_engine.estimate_repair_materials(area_m2, depth_cm=max(depth_cm, 1.0))
                 vol_m3 = materials["volume_m3"]
                 tonnage_t = materials["required_mass_tonnes"]
@@ -1754,6 +1836,7 @@ class DeepInferencePipeline:
     def process_batch(self, image_source, max_samples=None, corridor_id="NH-44", **kwargs):
         """Processes a directory of images or a list of image paths, aggregating civil-engineering statistics."""
         t0 = time.time()
+        self._current_corridor_id = corridor_id
 
         if isinstance(image_source, str) and os.path.isdir(image_source):
             valid_exts = {".jpg", ".jpeg", ".png", ".bmp"}

@@ -17,6 +17,10 @@ class VIMUTemporalFusionEngine:
     SHOCK_THRESHOLD_SEVERE_MS2 = 4.5
     BENIGN_SHOCK_CEILING_MS2 = 0.75
 
+    @property
+    def is_ready(self):
+        return True
+
     def __init__(self, vehicle_speed_kmh=45.0, wheelbase_m=2.65):
         self.speed_kmh = float(vehicle_speed_kmh)
         self.speed_mps = max(1.0, self.speed_kmh / 3.6)

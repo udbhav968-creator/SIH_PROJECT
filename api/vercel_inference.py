@@ -1227,9 +1227,22 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
         except Exception as e:
             input_check = {"available": False, "reason": f"OOD guard error: {e}"}
 
+    if input_check.get("available") and input_check.get("verdict") == "not_road" and std_lum >= 6.5:
+        try:
+            probe_cls = classify_crop(img_np)
+            if probe_cls.get("class_id") in (5, 6) and float(probe_cls.get("confidence", 0.0)) >= 0.72:
+                input_check["verdict"] = "ok"
+                input_check["in_distribution"] = True
+        except Exception:
+            pass
+
     is_non_road = (
         std_lum < 6.5
-        or (input_check.get("available") and input_check.get("verdict") == "not_road")
+        or (
+            input_check.get("available")
+            and input_check.get("verdict") == "not_road"
+            and float(input_check.get("p_not_road") or 0.0) >= 0.75
+        )
     )
     if is_non_road:
         elapsed_ms = round((time.time() - t0) * 1000.0, 2)
@@ -1296,9 +1309,9 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     frame_cls_raw = classify_crop(img_np)
     roi_crop = img_np[int(H * 0.35):, :]
     road_cls_raw = classify_crop(roi_crop) if roi_crop.size > 0 else frame_cls_raw
-    if frame_cls_raw.get("class_id") in (5, 6) and road_cls_raw.get("class_id") in (1, 2, 3):
+    if frame_cls_raw.get("class_id") in (5, 6) and float(frame_cls_raw.get("confidence", 0.0)) < 0.50 and road_cls_raw.get("class_id") in (1, 2, 3) and float(road_cls_raw.get("confidence", 0.0)) >= 0.78:
         frame_cls_raw = road_cls_raw
-    elif frame_cls_raw.get("class_id") == 0 and road_cls_raw.get("class_id") in (1, 2, 3) and road_cls_raw.get("confidence", 0.0) >= 0.45:
+    elif frame_cls_raw.get("class_id") == 0 and float(frame_cls_raw.get("confidence", 0.0)) < 0.55 and road_cls_raw.get("class_id") in (1, 2, 3) and float(road_cls_raw.get("confidence", 0.0)) >= 0.72:
         frame_cls_raw = road_cls_raw
     f_cls = frame_cls_raw.get("class_id")
     f_conf = frame_cls_raw.get("confidence", 0.0)
@@ -1429,20 +1442,26 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                     "fusion_weights": {"mobilenet_v3": 0.55, "dan_dag": 0.45},
                 }
 
-                # Multi-Model Probability Fusion: 55% MobileNet deep CNN feature backbone + 45% DAN-DAG dual attention tournament
-                if "probabilities" in dan_res:
+                # Multi-Model Probability Fusion: 70% MobileNet deep CNN feature backbone + 30% DAN-DAG dual attention tournament
+                if "probabilities" in dan_res and dan_res.get("class_id", 0) != 0:
+                    orig_cid = cls_info.get("class_id", 0)
+                    orig_conf = float(cls_info.get("confidence", 0.0))
                     dan_p = np.asarray(dan_res["probabilities"], dtype=np.float32)
                     mb_p = np.array([float(cls_info.get("probabilities", {}).get(n, 0.0)) for n in CLASS_NAMES], dtype=np.float32)
                     if mb_p.sum() > 0:
                         mb_p = mb_p / mb_p.sum()
                     else:
                         mb_p = np.zeros(len(CLASS_NAMES), dtype=np.float32)
-                        mb_p[cls_info.get("class_id", 0)] = 1.0
+                        mb_p[orig_cid] = 1.0
 
-                    fused_p = 0.55 * mb_p + 0.45 * dan_p
+                    fused_p = 0.70 * mb_p + 0.30 * dan_p
                     fused_p = fused_p / np.maximum(fused_p.sum(), 1e-12)
                     fused_cls = int(np.argmax(fused_p))
                     fused_conf = float(fused_p[fused_cls])
+
+                    if frame_cls_raw.get("class_id") == orig_cid and float(frame_cls_raw.get("confidence", 0.0)) >= 0.70:
+                        fused_cls = orig_cid
+                        fused_conf = max(orig_conf, float(fused_p[orig_cid]))
 
                     cls_info["class_id"] = fused_cls
                     cls_info["confidence"] = round(fused_conf, 4)
@@ -1468,6 +1487,8 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 continue
 
         if prop["source"] == "salient_cavity_detector":
+            if frame_cls_raw["class_id"] == 0 and float(frame_cls_raw.get("confidence", 0.0)) >= 0.65 and float(cls_info.get("confidence", 0.0)) < 0.84:
+                continue
             crop_is_distress = cls_info["class_id"] in (1, 2, 3) and cls_info["confidence"] >= 0.65
             frame_is_distress = frame_cls_raw["class_id"] in (1, 2, 3) and frame_cls_raw["confidence"] >= 0.40
             if not (crop_is_distress or frame_is_distress):
@@ -1486,6 +1507,9 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
                 frame_confirms_pothole = (frame_cls_raw["class_id"] == 2 and frame_cls_raw["confidence"] >= 0.60)
                 if pothole_mask_px < 20 and not frame_confirms_pothole:
                     continue
+
+        if frame_cls_raw["class_id"] == 0 and float(frame_cls_raw.get("confidence", 0.0)) >= 0.75 and float(cls_info.get("confidence", 0.0)) < 0.78:
+            continue
 
         cls_id = cls_info["class_id"]
         if cls_id == 0 or cls_id in (4, 5, 6):
@@ -1716,23 +1740,63 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
             kept.append(d)
         detections = kept
 
-    detections.sort(key=lambda d: (1 if d["class_id"] == 2 else 0, d["surface_area_m2"]), reverse=True)
+    f_cid_v = frame_cls_raw.get("class_id")
+    f_cnf_v = float(frame_cls_raw.get("confidence", 0.0))
+    if f_cid_v in (3, 4, 5, 6) and f_cnf_v >= 0.55:
+        if f_cid_v != 4 or not markings_res.get("found"):
+            detections = [d for d in detections if d.get("class_id") == f_cid_v or float(d.get("confidence", 0.0)) >= 0.85]
+
+    pref_cid_v = f_cid_v if (f_cid_v in (1, 2) and f_cnf_v >= 0.70) else 2
+    detections.sort(key=lambda d: (1 if d["class_id"] == pref_cid_v else 0, d["surface_area_m2"]), reverse=True)
     detections = detections[:4]
 
     frame_level_hazard = None
     if (
         not detections
-        and frame_cls_raw["class_id"] in (3, 4, 5, 6)
-        and frame_cls_raw["confidence"] >= 0.72
-        and input_check.get("verdict") in ("ok", None)
+        and f_cid_v in (3, 4, 5, 6)
+        and f_cnf_v >= MIN_REPORT_CONFIDENCE
+        and (f_cid_v != 4 or not markings_res.get("found"))
+        and input_check.get("verdict") != "not_road"
     ):
         frame_level_hazard = {
-            "class_id": frame_cls_raw["class_id"],
+            "class_id": f_cid_v,
             "class_name": frame_cls_raw["class_name"],
             "confidence": frame_cls_raw["confidence"],
-            "irc_standard_specification": IRC_STANDARDS.get(frame_cls_raw["class_id"], ""),
+            "irc_standard_specification": IRC_STANDARDS.get(f_cid_v, ""),
             "role": "whole-frame opinion of the classifier; not localised, sets no area, depth or cost",
         }
+        sbx = int(W * 0.10)
+        sby = int(H * 0.35)
+        sbw = int(W * 0.80)
+        sbh = int(H * 0.60)
+        s_area = round(min(2.0, float(ipm.calculate_surface_area_sqm(sbx, sby, sbw // 2, sbh // 2))), 3) if f_cid_v == 3 else 0.0
+        detections.append({
+            "bbox_pixels": [sbx, sby, sbw, sbh],
+            "bbox_normalized": [round(sbx / W, 4), round(sby / H, 4), round(sbw / W, 4), round(sbh / H, 4)],
+            "class_id": f_cid_v,
+            "class_name": frame_cls_raw["class_name"],
+            "confidence": round(f_cnf_v, 4),
+            "shannon_entropy_bits": frame_cls_raw["shannon_entropy_bits"],
+            "uncertainty_rating": frame_cls_raw["uncertainty_rating"],
+            "astm_d6433_severity": "MEDIUM" if f_cid_v == 3 else "LOW",
+            "irc_standard_specification": IRC_STANDARDS.get(f_cid_v, ""),
+            "top3_ranked_predictions": frame_cls_raw["top3_ranked_predictions"],
+            "is_distress": True,
+            "distance_meters": 8.0,
+            "surface_area_m2": s_area,
+            "area_method": "corridor_roi_estimate" if f_cid_v == 3 else None,
+            "area_diagnostics": {},
+            "area_is_plausible_single_repair": True if f_cid_v == 3 else None,
+            "needs_manual_survey": False,
+            "depth_cm": 0.0,
+            "depth_estimate": None,
+            "dan_dag": None,
+            "volumetric_m3": 0.0,
+            "morth_tonnage_t": 0.0,
+            "repair_cost_inr": 0.0,
+            "probabilities": frame_cls_raw["probabilities"],
+            "source": "scene_corridor_classifier",
+        })
 
     if detections and seg_out and mask_full is not None:
         mask_full = np.array(mask_full, copy=True)

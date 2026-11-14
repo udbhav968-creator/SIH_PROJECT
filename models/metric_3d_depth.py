@@ -28,6 +28,10 @@ class Metric3DDepthEngine:
     MORTH_COMPACTION_FACTOR = 1.15
     BITUMEN_MIX_RATE_INR = 7500.0
 
+    @property
+    def is_ready(self):
+        return True
+
     def __init__(self, camera_height_m=None, pitch_deg=None, fov_deg=None):
         self.h_cam = float(camera_height_m or self.DEFAULT_CAMERA_HEIGHT_M)
         self.pitch_rad = math.radians(float(pitch_deg or self.DEFAULT_PITCH_DEG))

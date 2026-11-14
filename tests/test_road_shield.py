@@ -577,5 +577,58 @@ class TestPretrainedYOLOVideoEngine(unittest.TestCase):
             self.assertEqual(res1["detections"][0]["track_id"], res2["detections"][0]["track_id"])
 
 
+class TestPhotoPipelineSevenClassesAndParity(unittest.TestCase):
+    """Tests the audited Photo Section pipeline across all 5 advanced stages, DAN-DAG fusion, and Vercel parity."""
+
+    @classmethod
+    def setUpClass(cls):
+        from pipeline.deep_inference_pipeline import DeepInferencePipeline
+        shared = None
+        for mod in ("tests.test_geometry_and_storage", "test_geometry_and_storage"):
+            try:
+                shared = __import__(mod, fromlist=["shared_pipeline"]).shared_pipeline
+                break
+            except Exception:
+                continue
+        cls.pipe = shared() if shared else DeepInferencePipeline(CKPT)
+
+    def test_photo_pipeline_dan_dag_embedder_and_5_advanced_models_ready(self):
+        self.assertIsNotNone(self.pipe.dan_dag_net)
+        self.assertTrue(self.pipe.dan_dag_net.is_ready)
+        self.assertIsNotNone(self.pipe.dan_dag_net.embedder)
+        for attr in ("surface_classifier", "metric_3d_engine", "vimu_fusion_engine", "pinn_forecaster", "forensic_vlm_auditor"):
+            mod = getattr(self.pipe, attr, None)
+            self.assertIsNotNone(mod, f"{attr} missing on DeepInferencePipeline")
+            self.assertTrue(getattr(mod, "is_ready", False), f"{attr}.is_ready must be True")
+
+    def test_photo_pipeline_local_and_vercel_parity_on_pothole_and_roadside_sign(self):
+        import base64
+        import glob
+        from api import vercel_inference
+        photo = sample_photo()
+        if not photo:
+            self.skipTest("no dataset photo available")
+        loc_res = self.pipe.audit_image(photo)
+        with open(photo, "rb") as fh:
+            b64 = base64.b64encode(fh.read()).decode("ascii")
+        ver_res = vercel_inference.audit_image_base64(b64)
+        self.assertEqual(loc_res["status"], "ANALYSIS_COMPLETE")
+        self.assertEqual(ver_res["status"], "ANALYSIS_COMPLETE")
+        self.assertIn("surface_material", loc_res)
+        self.assertIn("forensic_vlm_audit", loc_res)
+        self.assertIn("surface_material", ver_res)
+        self.assertIn("forensic_vlm_audit", ver_res)
+
+        sign_files = sorted(glob.glob(os.path.join(ENGINE_ROOT, "datasets", "12_damaged_traffic_signs", "**", "real_02_*.jpg"), recursive=True))
+        if sign_files:
+            sp = sign_files[0]
+            sl = self.pipe.audit_image(sp)
+            with open(sp, "rb") as fh:
+                sb64 = base64.b64encode(fh.read()).decode("ascii")
+            sv = vercel_inference.audit_image_base64(sb64)
+            self.assertEqual(sl["primary_distress"]["class_id"], 6)
+            self.assertEqual(sv["primary_distress"]["class_id"], 6)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

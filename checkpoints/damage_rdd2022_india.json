@@ -18,5 +18,9 @@
   },
   "deployment_check": {
     "passed": true
+  },
+  "test": {
+    "map50": 0.584,
+    "map50_95": 0.342
   }
 }

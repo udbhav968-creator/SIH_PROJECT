@@ -1,5 +1,5 @@
 {
-  "timestamp_utc": "2026-11-12T07:25:34.632561+00:00",
+  "timestamp_utc": "2026-11-14T09:25:09.370217+00:00",
   "overall_status": "CERTIFIED",
   "level_1_checkpoints": [
     {
@@ -153,33 +153,33 @@
     {
       "name": "Scene C: Foreground Crater",
       "passed": true,
-      "latency_ms": 9239.7,
+      "latency_ms": 7895.4,
       "class_name": "Pothole Cavity",
-      "confidence": 0.9276,
+      "confidence": 0.9298,
       "bbox": [
         10,
         186,
-        620,
+        504,
         252
       ],
-      "surface_area_m2": 2.2928,
-      "repair_cost_inr": 2515.5,
+      "surface_area_m2": 1.8638,
+      "repair_cost_inr": 2083.5,
       "errors": []
     },
     {
       "name": "Real Pothole Road",
       "passed": true,
-      "latency_ms": 6601.2,
+      "latency_ms": 5075.1,
       "class_name": "Pothole Cavity",
-      "confidence": 0.9412,
+      "confidence": 0.9135,
       "bbox": [
-        10,
-        168,
-        620,
-        307
+        0,
+        127,
+        590,
+        318
       ],
-      "surface_area_m2": 3.0,
-      "repair_cost_inr": 3291.0,
+      "surface_area_m2": 5.934,
+      "repair_cost_inr": 6633.0,
       "errors": []
     }
   ],
@@ -201,9 +201,9 @@
     }
   ],
   "level_5_benchmark": {
-    "onnx_vision_latency_ms": 10.1,
-    "onnx_effective_fps": 99.0,
-    "full_pipeline_latency_ms": 4844.9,
+    "onnx_vision_latency_ms": 9.9,
+    "onnx_effective_fps": 101.0,
+    "full_pipeline_latency_ms": 4538.6,
     "onnx_edge_budget_ms": 35.0,
     "passed": true
   }
