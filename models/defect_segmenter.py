@@ -98,15 +98,17 @@ def mask_from_proba(proba, work_shape, orig_shape, thresholds, min_blob_px=12):
         if binary.sum() == 0:
             continue
         if cls == CLASS_POTHOLE:
-            # Cavity basin closing and water puddle hole-filling for potholes (calibrated to preserve distinct defect boundaries)
+            # Cavity basin closing and water puddle hole-filling for potholes (padded border prevents background inversion if (0,0) is foreground)
             kernel_cavity = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
             closed_cavity = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_cavity)
-            h_c, w_c = closed_cavity.shape
-            flood_mask = closed_cavity.copy()
-            ff_fill = np.zeros((h_c + 2, w_c + 2), dtype=np.uint8)
-            cv2.floodFill(flood_mask, ff_fill, (0, 0), 255)
-            flood_inv = cv2.bitwise_not(flood_mask)
-            binary = closed_cavity | (flood_inv // 255)
+            padded = np.pad(closed_cavity, 1, mode="constant", constant_values=0)
+            ff_fill = np.zeros((padded.shape[0] + 2, padded.shape[1] + 2), dtype=np.uint8)
+            cv2.floodFill(padded, ff_fill, (0, 0), 255)
+            interior_holes = (padded[1:-1, 1:-1] == 0).astype(np.uint8)
+            if int(interior_holes.sum()) <= int(0.15 * h * w):
+                binary = closed_cavity | interior_holes
+            else:
+                binary = closed_cavity
 
         n, comp, stats, _cent = cv2.connectedComponentsWithStats(binary, connectivity=8)
         for i in range(1, n):
