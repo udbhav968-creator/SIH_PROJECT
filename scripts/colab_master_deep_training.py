@@ -132,6 +132,11 @@ def stage_civil_engineering_models():
         [sys.executable, "-m", "training.train_civil_real"],
         check=True
     )
+    run_subcommand(
+        "Train 5 Advanced Neural Modules (SurfaceTypeNet, Metric3DDepth, VIMU, PINN-HDM4, ForensicVLM)",
+        [sys.executable, "-m", "training.train_advanced_5_suite"],
+        check=True
+    )
     return round(time.time() - t0, 1)
 
 

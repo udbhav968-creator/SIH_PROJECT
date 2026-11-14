@@ -375,7 +375,7 @@ def main(argv=None):
             scaler.step(opt)
             scaler.update()
             sched.step()
-            run += float(loss)
+            run += float(loss.detach())
         val, (vc, vp) = quick_val_iou(model, device, cal_pairs)
         history.append({"epoch": ep, "loss": round(run / max(1, len(loader)), 4),
                         "val_iou_crack": round(vc, 4), "val_iou_pothole": round(vp, 4)})

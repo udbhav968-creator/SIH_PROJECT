@@ -136,11 +136,14 @@ def main():
     folds = list(skf.split(Xtr_raw, ytr, groups))
     cv = {"random_forest": [], "cnn_w32": [], "cnn_w48": []}
     t0 = time.time()
+    has_gpu = torch.cuda.is_available()
+    cv_ep = 120 if has_gpu else 25
+    cv_seeds = (0, 1, 2) if has_gpu else (0,)
     for k, (a, b) in enumerate(folds):
         rf = IMUShockClassifier().fit(Xtr_raw[a], ytr[a])
         cv["random_forest"].append(scores(ytr[b], rf.predict(Xtr_raw[b])[0]))
         for width in (32, 48):
-            probs = np.mean([cnn_predict(fit_cnn(Xtr[a], ytr[a], seed=s, width=width), Xtr[b]) for s in (0, 1, 2)], axis=0)
+            probs = np.mean([cnn_predict(fit_cnn(Xtr[a], ytr[a], seed=s, epochs=cv_ep, width=width), Xtr[b]) for s in cv_seeds], axis=0)
             cv[f"cnn_w{width}"].append(scores(ytr[b], probs.argmax(1)))
         print(f"  fold {k + 1}/5 done ({time.time() - t0:.0f}s): " +
               ", ".join(f"{m} F1 {v[-1][1]:.3f}" for m, v in cv.items()), flush=True)
@@ -155,7 +158,7 @@ def main():
     rf = IMUShockClassifier().fit(Xtr_raw, ytr)
     rf_pred = rf.predict(Xva_raw)[0]
     width = int(best_cnn.split("w")[1])
-    nets = [fit_cnn(Xtr, ytr, seed=s, width=width) for s in (0, 1, 2)]
+    nets = [fit_cnn(Xtr, ytr, seed=s, epochs=(120 if has_gpu else 50), width=width) for s in ((0, 1, 2) if has_gpu else (0, 1))]
     cnn_prob = np.mean([cnn_predict(n, Xva) for n in nets], axis=0)
     cnn_pred = cnn_prob.argmax(1)
 
