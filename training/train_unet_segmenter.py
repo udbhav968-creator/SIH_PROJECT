@@ -119,7 +119,9 @@ def load_pair(rec):
     if raw is None:
         return None
     img = cv2.resize(cv2.cvtColor(raw, cv2.COLOR_BGR2RGB), (IN_W, IN_H), interpolation=cv2.INTER_AREA)
-    return img, rasterise(rec, IN_W, IN_H)
+    lab = rasterise(rec, IN_W, IN_H)
+    lab[:IN_H // 4, :] = np.where(lab[:IN_H // 4, :] == IGNORE, CLASS_SOUND, lab[:IN_H // 4, :])
+    return img, lab
 
 
 class SegData:
