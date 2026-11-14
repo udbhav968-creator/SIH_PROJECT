@@ -12,11 +12,11 @@ __pycache__
 *.pyc
 requirements-train.txt
 checkpoints/*.joblib
+!checkpoints/advanced_5_models.joblib
 checkpoints/*.onnx
 !checkpoints/deep_vision_mobilenet_v3_large_refit.onnx
 !checkpoints/defect_segmenter_pixel.onnx
 !checkpoints/imu_shock_cnn.onnx
-!checkpoints/cnn_backbone_mobilenetv2.onnx
 !checkpoints/road_shield_detector.onnx
 !checkpoints/damage_rdd2022_india.onnx
 !checkpoints/crosswalk_rdd.onnx
@@ -26,6 +26,8 @@ checkpoints/*.db-*
 checkpoints/int8
 checkpoints/detectors
 checkpoints/al_images
+checkpoints_backups
+checkpoints_backup_*
 runs
 docs
 scratch
