@@ -505,27 +505,28 @@ def _deep_extras(claims, rep):
             else:
                 claims["subsystems"].append(entry)
 
-    yolo_video_entry = {
-        "id": "M_YOLO_VIDEO",
-        "name": "Pretrained-YOLO Video Pipeline & Multi-Object Tracker",
-        "architecture": "YOLOv11n-RDD2022 + YOLOv8n-COCO + YOLOv8n-Crosswalk ONNX Ensemble + ByteTrack IoU Tracker",
-        "role": "High-speed video stream detection of potholes, cracks, traffic vehicles, pedestrians, and crosswalks",
-        "why": "Enables 30+ FPS real-time dashcam inference and persistent tracking without double-counting road distress.",
-        "measured": {
-            "rdd_onnx_present": os.path.exists(os.path.join(CKPT, "damage_rdd2022_india.onnx")),
-            "coco_onnx_present": os.path.exists(os.path.join(CKPT, "road_shield_detector.onnx")),
-            "crosswalk_onnx_present": os.path.exists(os.path.join(CKPT, "crosswalk_rdd.onnx")),
-            "tracker_algorithm": "YOLOMultiObjectTracker (ByteTrack IoU + EMA box smoothing)",
-        },
-        "evidence": "models/yolo_video_engine.py, checkpoints/damage_rdd2022_india.onnx",
-        "reproduce": "python -m unittest tests/test_road_shield.py",
-        "not_claimed": "Video section operates strictly in PRETRAINED_YOLO_ONLY mode; civil repair costing belongs to Photo Section.",
-        "served": True,
-    }
-    if "M_YOLO_VIDEO" in subs:
-        subs["M_YOLO_VIDEO"].update(yolo_video_entry)
-    else:
-        claims["subsystems"].append(yolo_video_entry)
+    if os.path.exists(os.path.join(CKPT, "damage_rdd2022_india.onnx")):
+        yolo_video_entry = {
+            "id": "M_YOLO_VIDEO",
+            "name": "Pretrained-YOLO Video Pipeline & Multi-Object Tracker",
+            "architecture": "YOLOv11n-RDD2022 + YOLOv8n-COCO + YOLOv8n-Crosswalk ONNX Ensemble + ByteTrack IoU Tracker",
+            "role": "High-speed video stream detection of potholes, cracks, traffic vehicles, pedestrians, and crosswalks",
+            "why": "Enables 30+ FPS real-time dashcam inference and persistent tracking without double-counting road distress.",
+            "measured": {
+                "rdd_onnx_present": True,
+                "coco_onnx_present": os.path.exists(os.path.join(CKPT, "road_shield_detector.onnx")),
+                "crosswalk_onnx_present": os.path.exists(os.path.join(CKPT, "crosswalk_rdd.onnx")),
+                "tracker_algorithm": "YOLOMultiObjectTracker (ByteTrack IoU + EMA box smoothing)",
+            },
+            "evidence": "models/yolo_video_engine.py, checkpoints/damage_rdd2022_india.onnx",
+            "reproduce": "python -m unittest tests/test_road_shield.py",
+            "not_claimed": "Video section operates strictly in PRETRAINED_YOLO_ONLY mode; civil repair costing belongs to Photo Section.",
+            "served": True,
+        }
+        if "M_YOLO_VIDEO" in subs:
+            subs["M_YOLO_VIDEO"].update(yolo_video_entry)
+        else:
+            claims["subsystems"].append(yolo_video_entry)
 
 
 if __name__ == "__main__":

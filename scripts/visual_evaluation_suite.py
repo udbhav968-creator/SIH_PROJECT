@@ -65,14 +65,28 @@ def annotate_visual_frame(img_bgr, audit_result, title="Visual Test"):
         # Clean non-colliding index badge #1, #2...
         badge = f"#{idx+1}"
         (tw, th), _ = cv2.getTextSize(badge, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
-        bx_b, by_b = bx, by
-        for (ox, oy, ow, oh) in drawn_badges:
-            if abs(bx_b - ox) < (tw + 12) and abs(by_b - oy) < (th + 10):
-                by_b = min(H - th - 6, by + bh + 2)
+        bw_b, bh_b = tw + 6, th + 6
+        corners = [
+            (bx, by),
+            (bx, min(H - bh_b, by + bh + 1)),
+            (max(0, min(W - bw_b, bx + bw - bw_b)), by),
+            (max(0, min(W - bw_b, bx + bw - bw_b)), min(H - bh_b, by + bh + 1)),
+        ]
+        chosen_x, chosen_y = corners[0]
+        for (cx, cy) in corners:
+            cx_c = max(0, min(W - bw_b, cx))
+            cy_c = max(0, min(H - bh_b, cy))
+            hit = any(not (cx_c + bw_b < ox or cx_c > ox + ow or cy_c + bh_b < oy or cy_c > oy + oh)
+                      for (ox, oy, ow, oh) in drawn_badges)
+            if not hit:
+                chosen_x, chosen_y = cx_c, cy_c
                 break
-        drawn_badges.append((bx_b, by_b, tw + 6, th + 6))
-        cv2.rectangle(canvas, (bx_b, by_b), (bx_b + tw + 6, by_b + th + 6), color, -1)
-        cv2.putText(canvas, badge, (bx_b + 3, by_b + th + 3), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (10, 15, 23), 1, cv2.LINE_AA)
+        else:
+            chosen_x, chosen_y = corners[1]
+            chosen_y = min(H - bh_b, chosen_y + 3)
+        drawn_badges.append((chosen_x, chosen_y, bw_b, bh_b))
+        cv2.rectangle(canvas, (chosen_x, chosen_y), (chosen_x + bw_b, chosen_y + bh_b), color, -1)
+        cv2.putText(canvas, badge, (chosen_x + 3, chosen_y + th + 3), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (10, 15, 23), 1, cv2.LINE_AA)
 
     # Consolidated header banner on top
     if len(road_dets) > 1 and top_y < 1e8:
@@ -115,7 +129,7 @@ def run_visual_verification():
         {
             "id": "02_kaggle_pothole_cavity",
             "name": "Kaggle Real Asphalt Pothole Cavity",
-            "path": os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "real_images", "kaggle_real_pothole_01.jpg"),
+            "path": os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "real_images", "kag_pothole-annotated_2_00001_potholes1.jpg"),
         },
         {
             "id": "03_crack500_fatigue_crack",

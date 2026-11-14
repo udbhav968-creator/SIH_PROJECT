@@ -373,8 +373,22 @@ function draw() {
         ctx.font = "700 11px ui-monospace, monospace";
         const bw = ctx.measureText(badgeText).width + 8;
         const bh = 15;
-        const bx = Math.max(0, Math.min(cv.width - bw, x));
-        const by = Math.max(0, y);
+        let bx = Math.max(0, Math.min(cv.width - bw, x));
+        let by = Math.max(0, y);
+        // Multi-corner collision avoidance: top-left, bottom-left, top-right, bottom-right
+        const corners = [
+          [bx, by],
+          [bx, Math.min(cv.height - bh, y + h + 1)],
+          [Math.max(0, Math.min(cv.width - bw, x + w - bw)), by],
+          [Math.max(0, Math.min(cv.width - bw, x + w - bw)), Math.min(cv.height - bh, y + h + 1)]
+        ];
+        let chosen = corners[0];
+        for (const [cx, cy] of corners) {
+          const hit = drawnLabels.some(dl => cx < dl.x + dl.w && dl.x < cx + bw && cy < dl.y + dl.h && dl.y < cy + bh);
+          if (!hit) { chosen = [cx, cy]; break; }
+        }
+        bx = chosen[0]; by = chosen[1];
+        drawnLabels.push({ x: bx, y: by, w: bw, h: bh });
         ctx.fillStyle = measured ? "rgba(45, 212, 212, 0.9)" : "rgba(240, 169, 43, 0.9)";
         ctx.fillRect(bx, by, bw, bh);
         ctx.fillStyle = "#0a0f17";
@@ -436,11 +450,15 @@ function draw() {
       ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([]);
       ctx.strokeRect(x, y, w, h);
       const label = `▣ ${o.class_name} ${(o.confidence * 100).toFixed(0)}%`;
-      ctx.font = "600 11.5px ui-monospace, monospace";
+      ctx.font = "600 11px ui-monospace, monospace";
       const tw = ctx.measureText(label).width + 8;
-      const ly = Math.min(cv.height - 17, y + h + 1);
-      ctx.fillStyle = color; ctx.fillRect(x, ly, tw, 17);
-      ctx.fillStyle = "#0a0f17"; ctx.fillText(label, x + 4, ly + 12);
+      let ly = y >= 20 ? y - 18 : Math.min(cv.height - 18, y + h + 1);
+      const hits = (yy) => drawnLabels.some(dl => x < dl.x + dl.w && dl.x < x + tw && yy < dl.y + dl.h && dl.y < yy + 18);
+      if (hits(ly)) ly = Math.min(cv.height - 18, y + h + 1);
+      if (hits(ly)) return; // Skip label if it would collide with primary defect badges or header
+      drawnLabels.push({ x: x, y: ly, w: tw, h: 18 });
+      ctx.fillStyle = color; ctx.fillRect(x, ly, tw, 18);
+      ctx.fillStyle = "#0a0f17"; ctx.fillText(label, x + 4, ly + 13);
     });
   }
 

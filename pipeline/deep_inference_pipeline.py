@@ -311,8 +311,7 @@ class DeepInferencePipeline:
             from models import marking_detector
             self._markings = marking_detector.detect_zebra(
                 img_np, roi_top_fraction=self.ROAD_ROI_TOP_FRACTION)
-            self._paint_mask = (marking_detector.paint_mask(img_np, self._markings)
-                                if self._markings.get("found") else None)
+            self._paint_mask = marking_detector.paint_mask(img_np, self._markings)
         except Exception as e:
             print(f"[WARN] marking detection failed: {e}")
             self._markings, self._paint_mask = {"found": False}, None
@@ -962,8 +961,8 @@ class DeepInferencePipeline:
         window[y0:y1, x0:x1] = True
         return window & (mask == seg_cls)
 
-    MIN_COMPONENT_FRACTION = {"crack": 0.0004, "pothole": 0.0002}
-    MIN_COMPONENT_MARGIN = {"crack": 0.0, "pothole": 0.0}
+    MIN_COMPONENT_FRACTION = {"crack": 0.0012, "pothole": 0.004}
+    MIN_COMPONENT_MARGIN = {"crack": 0.0, "pothole": 0.10}
 
     def _component_floor(self, seg_cls):
         """Floor for one class: its calibrated threshold plus that class's margin."""
@@ -1217,7 +1216,7 @@ class DeepInferencePipeline:
     def _can_merge_defects(b1, b2, W, H):
         comb_w = max(b1[0] + b1[2], b2[0] + b2[2]) - min(b1[0], b2[0])
         comb_h = max(b1[1] + b1[3], b2[1] + b2[3]) - min(b1[1], b2[1])
-        if (comb_w * comb_h) > int(0.55 * W * H):
+        if (comb_w * comb_h) > int(0.25 * W * H):
             return False
         xi0, yi0 = max(b1[0], b2[0]), max(b1[1], b2[1])
         xi1, yi1 = min(b1[0] + b1[2], b2[0] + b2[2]), min(b1[1] + b1[3], b2[1] + b2[3])
@@ -1291,10 +1290,10 @@ class DeepInferencePipeline:
         frac_cfg = (self.MIN_COMPONENT_FRACTION.get(t_key, 0.004)
                     if isinstance(self.MIN_COMPONENT_FRACTION, dict)
                     else float(self.MIN_COMPONENT_FRACTION))
-        min_px = max(8, int(float(frac_cfg) * mh * mw * 0.30))
-        active_px = int((sub_pp >= (thresh * 0.85)).sum())
-        min_p_peak = 0.25 if cls_id == 2 else 0.35
-        if (active_px < min_px and float(sub_pp.max()) < min_p_peak) or float(sub_pp.max()) < 0.22:
+        active_px = int((sub_pp >= thresh).sum())
+        min_active = max(18, int(sub_pp.size * 0.025))
+        min_p_peak = 0.45 if cls_id == 2 else 0.50
+        if active_px < min_active or float(sub_pp.max()) < min_p_peak or float(sub_pp.mean()) < 0.08:
             return None
         roi_crop = img_np[int(H * self.ROAD_ROI_TOP_FRACTION):, :]
         if roi_crop.size == 0:
@@ -1352,6 +1351,26 @@ class DeepInferencePipeline:
 
         if float(pred.get("confidence", 0.0)) < self.MIN_REPORT_CONFIDENCE:
             return None
+
+        # Suppress painted road markings (yellow center lines, white lane stripes)
+        paint = getattr(self, "_paint_mask", None)
+        if paint is not None:
+            sub_paint = paint[max(0, by):min(H, by + bh), max(0, bx):min(W, bx + bw)]
+            if sub_paint.size and (float(sub_paint.sum()) / float(sub_paint.size)) > 0.08:
+                return None  # Road traffic marking / painted lane line - NOT a defect!
+
+        # Check crop directly for painted yellow center divider lines on asphalt
+        if crop.ndim == 3 and crop.shape[2] == 3 and crop.size > 0:
+            import cv2 as _cv2
+            c_hsv = _cv2.cvtColor(crop, _cv2.COLOR_RGB2HSV)
+            c_gray = _cv2.cvtColor(crop, _cv2.COLOR_RGB2GRAY)
+            kh = min(25, max(3, (crop.shape[0] // 2) * 2 + 1))
+            kw = min(25, max(3, (crop.shape[1] // 2) * 2 + 1))
+            c_local = _cv2.blur(c_gray, (kw, kh))
+            c_diff = c_gray.astype(float) - c_local.astype(float)
+            c_yel = (c_hsv[:, :, 0] >= 14) & (c_hsv[:, :, 0] <= 34) & (c_hsv[:, :, 1] >= 70) & (c_hsv[:, :, 2] >= 90) & (c_diff >= 12.0)
+            if float(c_yel.mean()) > 0.05:
+                return None  # Painted yellow center lines - NOT a pothole!
 
         if from_segmenter and cls_id not in (1, 2):
             return None
