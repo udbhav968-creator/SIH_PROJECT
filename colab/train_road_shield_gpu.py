@@ -4,7 +4,7 @@ Execute this script in a Google Colab notebook with free T4 / V100 GPU:
     !git clone https://github.com/udbhav968-creator/SIH_PROJECT.git
     %cd SIH_PROJECT
     !pip install -r requirements.txt
-    !python colab/train_road_shield_gpu.py --epochs 65 --batch-size 32
+    !python colab/train_road_shield_gpu.py --epochs 65 --batch-size 64
 """
 
 import argparse
@@ -15,7 +15,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-import joblib
 
 ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ENGINE_ROOT not in sys.path:
@@ -38,10 +37,10 @@ def verify_gpu_environment():
 
 def train_dan_dag_on_gpu(device, epochs=65, batch_size=64):
     print(f"\n[GPU Stage 1/2] Training DAN-DAG Dual Attention Network on {device}...")
-    from training.train_dan_dag import collect_files, grouped_split, embed_items
+    from training.train_cnn_head import collect_files, grouped_split, embed_items
     from models.cnn_embedder import CNNEmbedder
 
-    embedder = CNNEmbedder(backbone="mobilenetv2")
+    embedder = CNNEmbedder(prefer=("mobilenetv2", "resnet50"))
     items = collect_files()
     print(f"  Loaded {len(items)} real road distress images across 7 civil classes.")
 
@@ -49,8 +48,8 @@ def train_dan_dag_on_gpu(device, epochs=65, batch_size=64):
     print(f"  Train: {len(train_items)} | Val: {len(val_items)} | Test: {len(test_items)}")
 
     # Extract embeddings
-    X_train, y_train, P_train, dom_train, _ = embed_items(embedder, train_items, "training")
-    X_test, y_test, P_test, dom_test, _ = embed_items(embedder, test_items, "held-out")
+    X_train, y_train, P_train, dom_train, _, _ = embed_items(embedder, train_items, "training")
+    X_test, y_test, P_test, dom_test, _, _ = embed_items(embedder, test_items, "held-out")
 
     # Move tensors to GPU
     z_t = torch.tensor(X_train, dtype=torch.float32, device=device)
@@ -124,15 +123,24 @@ def train_dan_dag_on_gpu(device, epochs=65, batch_size=64):
     print(f"  Saved GPU model checkpoint -> {out_ckpt}")
     return net
 
+def run_visual_verification_stage():
+    print("\n[GPU Stage 2/2] Running Visual Evaluation Suite on Real Test Frames...")
+    from scripts.visual_evaluation_suite import run_visual_verification
+    saved = run_visual_verification()
+    print(f"  Verified {len(saved)} visual test frames with masks, bounding boxes, and PCI scores.")
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--epochs", type=int, default=65)
     ap.add_argument("--batch-size", type=int, default=64)
+    ap.add_argument("--skip-visual", action="store_true")
     args = ap.parse_args()
 
     device = verify_gpu_environment()
     train_dan_dag_on_gpu(device, epochs=args.epochs, batch_size=args.batch_size)
-    print("\n[COMPLETE] Google Colab GPU training finished successfully.")
+    if not args.skip_visual:
+        run_visual_verification_stage()
+    print("\n[COMPLETE] Google Colab GPU training & visual verification finished successfully.")
 
 if __name__ == "__main__":
     main()

@@ -101,12 +101,12 @@ def run_visual_verification():
         {
             "id": "01_user_upload_multipothole_earthen",
             "name": "User Upload: Waterlogged Earthen Road Potholes",
-            "path": r"C:\Users\Dell\.gemini\antigravity\brain\2e3fd6d0-1829-4630-8460-e1b9f8293d96\.user_uploaded\media_1794667697851_69045724.jpg",
+            "path": os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "real_images", "user_upload_media_1794667697851_69045724.jpg"),
         },
         {
             "id": "02_kaggle_pothole_cavity",
             "name": "Kaggle Real Asphalt Pothole Cavity",
-            "path": os.path.join(ENGINE_ROOT, "datasets", "incoming", "kaggle", "pothole-plain", "My Dataset", "train", "Pothole", "15.pothole.jpeg"),
+            "path": os.path.join(ENGINE_ROOT, "datasets", "02_kaggle_pothole_600", "real_images", "1014639_RS_386_386RS124739_30121_RAW.jpg"),
         },
         {
             "id": "03_crack500_fatigue_crack",

@@ -48,7 +48,9 @@ def _session_options(ort):
 class CNNEmbedder:
     """ImageNet CNN used as a frozen feature extractor."""
 
-    def __init__(self, checkpoints_dir=None, prefer=("resnet50", "mobilenetv2"), batch_size=16):
+    def __init__(self, checkpoints_dir=None, prefer=("resnet50", "mobilenetv2"), batch_size=16, backbone=None):
+        if backbone is not None:
+            prefer = (backbone,) if isinstance(backbone, (tuple, list)) else (backbone,)
         self.load_error = None
         self.runtime_failures = 0
         self.last_runtime_error = None

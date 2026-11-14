@@ -124,20 +124,21 @@ def _train_joint_cam_and_residual_mlp(X_norm, P_norm, fisher_w, y, n_classes, ep
             h2 = self.drop(h2)
             return self.fc3(h2)
 
-    net = JointDANDAGHead()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    net = JointDANDAGHead().to(device)
     counts = np.bincount(y, minlength=n_classes).astype(np.float64)
     inv = np.where(counts > 0, np.sqrt(np.max(counts) / np.maximum(counts, 1.0)), 1.0)
     inv = inv / np.mean(inv)
-    class_weights = torch.tensor(inv, dtype=torch.float32)
+    class_weights = torch.tensor(inv, dtype=torch.float32, device=device)
 
     criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.03)
     opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=2e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs, eta_min=lr * 0.05)
 
-    z_t = torch.tensor(X_norm, dtype=torch.float32)
-    p_t = torch.tensor(P_norm, dtype=torch.float32)
-    f_t = torch.tensor(fisher_w, dtype=torch.float32).unsqueeze(0)
-    y_t = torch.tensor(y, dtype=torch.long)
+    z_t = torch.tensor(X_norm, dtype=torch.float32, device=device)
+    p_t = torch.tensor(P_norm, dtype=torch.float32, device=device)
+    f_t = torch.tensor(fisher_w, dtype=torch.float32, device=device).unsqueeze(0)
+    y_t = torch.tensor(y, dtype=torch.long, device=device)
 
     batch_size = 128
     n_samples = len(y)
@@ -145,7 +146,7 @@ def _train_joint_cam_and_residual_mlp(X_norm, P_norm, fisher_w, y, n_classes, ep
 
     for ep in range(1, epochs + 1):
         net.train()
-        perm = torch.randperm(n_samples)
+        perm = torch.randperm(n_samples, device=device)
         ep_loss = 0.0
         for i in range(0, n_samples, batch_size):
             idx = perm[i : i + batch_size]
