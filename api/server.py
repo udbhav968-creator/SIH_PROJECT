@@ -529,7 +529,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200 if r["ready"] else 503, r)
             return
 
-        if path in ["/", "/api/v1/health"]:
+        if path in ["/", "/api/v1/health", "/api/health"]:
             self._send_json(200, {
                 "service": "ROAD-SHIELD AI Engine",
                 "status": "ONLINE",
@@ -561,8 +561,19 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                                          if getattr(getattr(deep_pipeline, "segmenter", None), "is_ready", False)
                                          else "NOT_TRAINED"),
                     "urban_traffic_net": "READY_FORMULA_BASED",
+                    "pretrained_yolo_video_engine": "LOADED (YOLOv11n-RDD2022 + YOLOv8n-COCO + YOLOv8n-Crosswalk)",
+                    "advanced_5_neural_civil_suite": "LOADED (SurfaceTypeNet + Metric3D + VIMU + PINN-HDM4 + ForensicVLM)",
                 },
             })
+            return
+
+        if path in ("/api/v1/video/yolo-models", "/api/v1/video/yolo-status"):
+            try:
+                from models.yolo_video_engine import get_yolo_video_engine
+                yolo_eng = get_yolo_video_engine()
+                self._send_json(200, yolo_eng.describe())
+            except Exception as e:
+                self._send_json(500, {"error": f"Failed to load YOLO models manifest: {e}"})
             return
 
         if path == "/api/v1/maps/status":

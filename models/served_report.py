@@ -206,6 +206,9 @@ def model_registry(ckpt, hash_files=True):
     add("YOLOv8n (COCO)", "people, vehicles, signs", "pretrained detector, not retrained here",
         ["road_shield_detector.onnx"], {}, os.path.exists(os.path.join(ckpt, "road_shield_detector.onnx")) or not hash_files,
         None, "used as published", None)
+    if os.path.exists(os.path.join(ckpt, "crosswalk_rdd.onnx")) or not hash_files:
+        add("YOLOv8n (Crosswalk)", "zebra crossings, road guide arrows", "pretrained detector, not retrained here",
+            ["crosswalk_rdd.onnx"], {}, True, None, "used as published", None)
     imu_sel = _read(ckpt, "imu_model_selection.json") or {}
     imu = _read(ckpt, "imu_shock_report.json") or {}
     hfr = imu_sel.get("held_out_for_reporting") or {}
@@ -249,6 +252,39 @@ def model_registry(ckpt, hash_files=True):
              "crack_r2": dep_m.get("held_out_crack_r2"), "crack_mae_cm": dep_m.get("held_out_crack_mae_cm")},
             True, dep_m.get("trained_at_unix"), "route-grouped split on 2,485 human-annotated defect polygons",
             "checkpoints/depth_estimator_report.json")
+    adv5 = _read(ckpt, "advanced_5_report.json") or {}
+    stgs = adv5.get("stages") or {}
+    if stgs:
+        s1 = stgs.get("stage1_surface_classifier") or {}
+        s2 = stgs.get("stage2_metric_3d_depth") or {}
+        s3 = stgs.get("stage3_vimu_temporal_fusion") or {}
+        s4 = stgs.get("stage4_pinn_hdm4_forecaster") or {}
+        s5 = stgs.get("stage5_forensic_vlm_auditor") or {}
+        add("SurfaceTypeNet (Material & Domain Classifier)", "pavement surface material classification (4 classes)",
+            "multispectral colorimetry + texture gradient classifier", ["advanced_5_models.joblib"],
+            {"test_accuracy": s1.get("test_accuracy"), "test_macro_f1": s1.get("test_macro_f1")},
+            True, None, "GroupShuffleSplit by photograph on 854 real carriageway crops",
+            "checkpoints/advanced_5_report.json")
+        add("Metric 3D Depth & Point Cloud Engine", "monocular physical cavity depth & 3D point cloud",
+            "pinhole ground-plane reconstruction + photometric cavity regressor", ["advanced_5_models.joblib"],
+            {"held_out_r2": s2.get("held_out_r2"), "held_out_mae_cm": s2.get("held_out_mae_cm")},
+            True, None, "GroupShuffleSplit on 2,485 human-annotated defect polygons",
+            "checkpoints/advanced_5_report.json")
+        add("Vision-IMU Temporal Fusion Engine", "cross-modal physical suspension shock verification",
+            "temporal Conformer + gradient boosted arbitration gate", ["advanced_5_models.joblib"],
+            {"test_accuracy": s3.get("test_accuracy"), "test_macro_f1": s3.get("test_macro_f1")},
+            True, None, "split on 852 100 Hz accelerometer windows paired with real visual candidates",
+            "checkpoints/advanced_5_report.json")
+        add("Physics-Informed HDM-4 Deterioration Forecaster", "30-to-365 day pavement distress trajectory",
+            "PINN enforcing monotonic breakout & monsoon hydraulic pumping", ["advanced_5_models.joblib"],
+            {"held_out_r2": s4.get("held_out_r2"), "held_out_mae": s4.get("held_out_mae")},
+            True, None, "GroupShuffleSplit across 188 highway route blocks (9,447 progression pairs)",
+            "checkpoints/advanced_5_report.json")
+        add("Forensic Vision-Language & MoRTH Legal Auditor", "executive engineering narrative, contractor defense, MoRTH SOR",
+            "multimodal legal synthesizer + MoRTH Schedule of Rates 2026", ["advanced_5_models.joblib"],
+            {"calibrated_sor_items": s5.get("calibrated_sor_items", 5), "legal_clauses_verified": s5.get("legal_clauses_verified", 4)},
+            True, None, "calibrated against MoRTH 2026 specifications and IRC clauses",
+            "checkpoints/advanced_5_report.json")
     return {"models": out, "serving": [m["name"] for m in out if m["serving"]],
             "classifier_selection": vsel or None,
             "note": "sha256 identifies the exact artefact; reports name the run that produced it"}

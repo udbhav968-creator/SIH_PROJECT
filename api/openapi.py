@@ -41,6 +41,28 @@ def spec():
         "paths": {
             "/api/v1/health": {"get": {"summary": "Liveness and which models loaded", "tags": ["system"],
                                        "responses": {"200": _json(OBJ)}}},
+            "/api/health": {"get": {"summary": "Liveness and health check alias", "tags": ["system"],
+                                    "responses": {"200": _json(OBJ)}}},
+            "/api/v1/video/yolo-models": {"get": {"summary": "Manifest and state of pretrained YOLO ONNX models",
+                                                  "tags": ["video"], "responses": {"200": _json(OBJ)}}},
+            "/api/v1/video/yolo-status": {"get": {"summary": "Pretrained YOLO video engine descriptor",
+                                                  "tags": ["video"], "responses": {"200": _json(OBJ)}}},
+            "/api/v1/video/yolo-detect": {"post": {
+                "summary": "Detect road damage, vehicles, pedestrians, and crosswalks using only pretrained YOLO ONNX models",
+                "tags": ["video"],
+                "requestBody": _body({
+                    "image_base64": {**STR, "description": "video frame image in base64"},
+                    "frame_index": INT, "timestamp_s": NUM, "conf_threshold": NUM,
+                    "session_id": STR, "reset_tracker": {"type": "boolean"},
+                    "include_coco": {"type": "boolean"}, "include_damage": {"type": "boolean"},
+                    "include_crosswalk": {"type": "boolean"}}, ["image_base64"]),
+                "responses": {"200": _json(OBJ), "400": ERR}}},
+            "/api/v1/video/yolo-ingest": {"post": {
+                "summary": "Process a video clip exclusively with pretrained YOLO detectors and multi-object tracker",
+                "tags": ["video"],
+                "requestBody": _body({
+                    "video_path": STR, "sample_every_s": NUM, "max_frames": INT, "conf_threshold": NUM}, ["video_path"]),
+                "responses": {"200": _json(OBJ), "400": ERR}}},
             "/api/v1/ready": {"get": {"summary": "Readiness: 200 only when the classifier and segmenter are loaded",
                                       "tags": ["system"],
                                       "responses": {"200": _json(OBJ, "ready"),

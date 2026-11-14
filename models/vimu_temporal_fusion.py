@@ -67,6 +67,7 @@ class VIMUTemporalFusionEngine:
 
         return {
             "peak_vertical_shock_ms2": round(peak_shock, 3),
+            "peak_vertical_g": round(peak_shock / self.GRAVITY_MS2, 3),
             "rms_vertical_shock_ms2": round(rms_shock, 3),
             "shock_energy": round(variance_shock, 3),
             "lateral_sway_ms2": round(lat_sway, 3),
@@ -105,6 +106,7 @@ class VIMUTemporalFusionEngine:
             return {
                 "physical_verification_status": "ANTICIPATED_HAZARD_AHEAD",
                 "verification_confidence": round(vis_conf, 4),
+                "fusion_confidence": round(vis_conf, 4),
                 "is_physically_verified": True,
                 "imu_sensor_attached": False,
                 "imu_corroborated": False,
@@ -175,6 +177,7 @@ class VIMUTemporalFusionEngine:
         return {
             "physical_verification_status": status,
             "verification_confidence": round(float(fused_conf), 4),
+            "fusion_confidence": round(float(fused_conf), 4),
             "is_physically_verified": is_verified,
             "imu_sensor_attached": True,
             "imu_corroborated": bool(is_verified and dist_m <= 3.5),

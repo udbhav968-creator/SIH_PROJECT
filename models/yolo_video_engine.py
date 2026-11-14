@@ -221,6 +221,17 @@ class YOLOVideoEngine:
     def is_ready(self) -> bool:
         return bool(self.coco_detector.is_ready or self.damage_detector.is_ready)
 
+    def describe(self) -> Dict[str, Any]:
+        models = self.active_models_manifest()
+        return {
+            "pipeline_mode": "PRETRAINED_YOLO_ONLY",
+            "ready": self.is_ready,
+            "active_models_count": len(models),
+            "models": models,
+            "active_tracker_sessions": len(self.trackers),
+            "tracker_algorithm": "YOLOMultiObjectTracker (ByteTrack IoU + EMA box smoothing)",
+        }
+
     def active_models_manifest(self) -> List[Dict[str, Any]]:
         models = []
         if self.damage_detector and self.damage_detector.is_ready:

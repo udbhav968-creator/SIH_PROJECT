@@ -654,6 +654,10 @@ function render(d, ms) {
           </tr></tfoot>
         </table></div>
       ` : ""}
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+        <button id="btnDownloadAuditJson" type="button" class="btn" style="font-size:12px;padding:6px 12px">⬇ Download Complete Audit JSON</button>
+        <button id="btnPrintAuditBrief" type="button" class="btn primary" style="font-size:12px;padding:6px 12px" onclick="window.print()">🖨 Print / Export PDF Audit</button>
+      </div>
     </div>` : ""}
 
     ${dets.length > 1 ? `<div class="card" style="margin-top:14px">
@@ -739,6 +743,17 @@ function render(d, ms) {
           : (d.imu_shock_telemetry?.reason || "No IMU window supplied — the fusion gate reports unavailable rather than deriving one from the vision output.")
       }</p>
     </div>`;
+
+  const btnDl = el("btnDownloadAuditJson");
+  if (btnDl) {
+    btnDl.onclick = () => {
+      const blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `road_shield_audit_${(d.corridor_id || "NH44").replace(/[^a-zA-Z0-9_-]/g, "_")}_${Date.now()}.json`;
+      a.click();
+    };
+  }
 }
 
 /* ------------------------------------------------------- add to map ---- */

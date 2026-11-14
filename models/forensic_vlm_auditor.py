@@ -126,7 +126,24 @@ class ForensicVLMAuditor:
         rural_grade_rate = float(sor_rates.get("rural_grading_per_sqm", 38.00))
 
         sor_items = []
-        if bitumen_ok and area_m2 > 0:
+        if pd.get("needs_manual_survey"):
+            sor_items.append({
+                "item_code": "IRC-SP16-2.1",
+                "description": "Geotechnical & visual corridor survey for large-scale pavement distress (IRC:82 / IRC:37)",
+                "unit": "survey_lot",
+                "quantity": 1.0,
+                "unit_rate_inr": 1200.00,
+                "amount_inr": 1200.00,
+            })
+            sor_items.append({
+                "item_code": "MoRTH-112.1",
+                "description": "Traffic control, barricading, warning drums, and safety signage during survey",
+                "unit": "lump_sum",
+                "quantity": 1.0,
+                "unit_rate_inr": 850.0,
+                "amount_inr": 850.0,
+            })
+        elif bitumen_ok and area_m2 > 0:
             sor_items.append({
                 "item_code": "MoRTH-500.4.1",
                 "description": "Application of tack coat with bitumen emulsion (VG-30) on clean prepared road surface",
@@ -139,9 +156,9 @@ class ForensicVLMAuditor:
                 "item_code": "MoRTH-500.5.2",
                 "description": "Providing and laying Bituminous Concrete (BC) hot-mix patching with paver & vibratory roller",
                 "unit": "Tonne",
-                "quantity": tonnage_t,
+                "quantity": max(0.01, tonnage_t),
                 "unit_rate_inr": bc_rate,
-                "amount_inr": round(tonnage_t * bc_rate, 2) if cost_inr <= 0 else cost_inr,
+                "amount_inr": round(max(0.01, tonnage_t) * bc_rate, 2) if cost_inr <= 0 else cost_inr,
             })
             sor_items.append({
                 "item_code": "MoRTH-112.1",
@@ -167,6 +184,40 @@ class ForensicVLMAuditor:
                 "quantity": round(area_m2 * (depth_cm / 100.0) * 1.30, 2),
                 "unit_rate_inr": 620.00,
                 "amount_inr": round(area_m2 * (depth_cm / 100.0) * 1.30 * 620.00, 2),
+            })
+        elif surf_code == "interlocking_concrete_paver" and area_m2 > 0:
+            sor_items.append({
+                "item_code": "IRC-SP63-9.1",
+                "description": "Lifting distressed blocks, regrading 50mm bedding sand, and vibro-compaction relaying",
+                "unit": "sq.m",
+                "quantity": round(area_m2, 2),
+                "unit_rate_inr": 380.00,
+                "amount_inr": round(area_m2 * 380.00, 2),
+            })
+            sor_items.append({
+                "item_code": "MoRTH-112.1",
+                "description": "Traffic safety signs and pedestrian safety barricades during block relaying",
+                "unit": "lump_sum",
+                "quantity": 1.0,
+                "unit_rate_inr": 850.00,
+                "amount_inr": 850.00,
+            })
+        elif surf_code == "rigid_cement_concrete" and area_m2 > 0:
+            sor_items.append({
+                "item_code": "MoRTH-602.8",
+                "description": "High-early-strength polymer-modified epoxy concrete mortar stitch and dowel anchoring",
+                "unit": "sq.m",
+                "quantity": round(area_m2, 2),
+                "unit_rate_inr": 680.00,
+                "amount_inr": round(area_m2 * 680.00, 2),
+            })
+            sor_items.append({
+                "item_code": "MoRTH-112.1",
+                "description": "Traffic control, barricading, warning drums, and safety signage",
+                "unit": "lump_sum",
+                "quantity": 1.0,
+                "unit_rate_inr": 850.00,
+                "amount_inr": 850.00,
             })
 
         total_sor_inr = round(sum(it["amount_inr"] for it in sor_items), 2)

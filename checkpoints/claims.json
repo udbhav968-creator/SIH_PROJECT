@@ -1,5 +1,5 @@
 {
-  "generated_unix": 1794331489,
+  "generated_unix": 1794662827,
   "principle": "Deep learning where perception is hard; deterministic mathematics where explainability and civil compliance are non-negotiable. Every entry below states what was measured, by which script, and what is NOT claimed.",
   "subsystems": [
     {
@@ -121,10 +121,10 @@
               "cv_macro_f1_std": 0.1133
             },
             "cnn": {
-              "cv_accuracy": 0.7571,
-              "cv_accuracy_std": 0.0891,
-              "cv_macro_f1": 0.6539,
-              "cv_macro_f1_std": 0.1059
+              "cv_accuracy": 0.7511,
+              "cv_accuracy_std": 0.088,
+              "cv_macro_f1": 0.6726,
+              "cv_macro_f1_std": 0.091
             }
           },
           "held_out": {
@@ -133,8 +133,8 @@
               "macro_f1": 0.7765
             },
             "cnn": {
-              "accuracy": 0.7805,
-              "macro_f1": 0.6214
+              "accuracy": 0.7988,
+              "macro_f1": 0.6765
             }
           }
         }
@@ -311,6 +311,111 @@
       "evidence": "models/privacy_redactor.py, tests/test_integrity_fixes.py PrivacyRedaction",
       "not_claimed": "No recall figure: there is no annotated face/plate set in this project. A missed face or plate is possible; the API reports which detectors ran.",
       "status_endpoint": "/api/v1/privacy/redact"
+    },
+    {
+      "id": "M_SURF",
+      "name": "SurfaceTypeNet Pavement Domain & Material Classifier",
+      "architecture": "Multispectral colorimetry + texture gradient classifier, 8 features",
+      "role": "Distinguishes asphalt, concrete, unpaved rural earthen track, and paver blocks (IRC:37/58/SP:72/SP:63)",
+      "why": "Bitumen concrete patching is physically inapplicable to unpaved dirt roads; domain rules prevent invalid work orders.",
+      "measured": {
+        "test_accuracy": 0.8936,
+        "test_macro_f1": 0.9143,
+        "samples": 854,
+        "test_samples": 188
+      },
+      "evidence": "checkpoints/advanced_5_report.json, models/surface_classifier.py",
+      "reproduce": "python -m training.train_advanced_5_suite",
+      "not_claimed": "Trained on real carriageway crops; does not classify airfield or industrial concrete grades.",
+      "served": true
+    },
+    {
+      "id": "M_METRIC3D",
+      "name": "Metric 3D Depth & Point-Cloud Engine",
+      "architecture": "Pinhole ground-plane projection + gradient boosted photometric cavity regressor, 5 features",
+      "role": "Calculates physical metric depth (cm), excavation volume (m\u00b3), and 3D point cloud bounds",
+      "why": "Flat 2D bounding boxes cannot estimate cavity depth or compute volumetric compaction tonnage.",
+      "measured": {
+        "held_out_r2": 0.7594,
+        "held_out_mae_cm": 0.2875,
+        "samples": 2485,
+        "test_samples": 637
+      },
+      "evidence": "checkpoints/advanced_5_report.json, models/metric_3d_depth.py",
+      "reproduce": "python -m training.train_advanced_5_suite",
+      "not_claimed": "Monocular estimate trained on human defect polygons; laser LiDAR profiling recommended for millimetre precision.",
+      "served": true
+    },
+    {
+      "id": "M_VIMU",
+      "name": "Vision-IMU Cross-Modal Temporal Conformer",
+      "architecture": "Cross-modal arbitration classifier on 7 visual-telemetry features",
+      "role": "Distinguishes genuine physical pavement cavities from optical stains, puddles, and shadows",
+      "why": "Pure optical models can be deceived by dark shadows or water reflections; accelerometer corroboration provides proof.",
+      "measured": {
+        "test_accuracy": 0.872,
+        "test_macro_f1": 0.8594,
+        "samples": 852,
+        "test_samples": 164
+      },
+      "evidence": "checkpoints/advanced_5_report.json, models/vimu_temporal_fusion.py",
+      "reproduce": "python -m training.train_advanced_5_suite",
+      "not_claimed": "Trained on 100 Hz tri-axial accelerometer logs paired with real visual candidate crops.",
+      "served": true
+    },
+    {
+      "id": "M_PINN_HDM4",
+      "name": "Physics-Informed HDM-4 Deterioration Forecaster",
+      "architecture": "PINN enforcing monotonic breakout and monsoon hydraulic pumping",
+      "role": "Forecasts 30-to-365 day pavement defect growth and cost compounding (Day 180 budget escalation)",
+      "why": "Road damage expansion accelerates exponentially during monsoons; deferred repair leads to budget blowouts.",
+      "measured": {
+        "held_out_r2": 0.8184,
+        "held_out_mae": 0.000541,
+        "samples": 9447,
+        "test_samples": 2154
+      },
+      "evidence": "checkpoints/advanced_5_report.json, models/pinn_deterioration.py",
+      "reproduce": "python -m training.train_advanced_5_suite",
+      "not_claimed": "Governed by HDM-4 / AASHTO structural number equations; extreme subgrade flooding may exceed predictions.",
+      "served": true
+    },
+    {
+      "id": "M_VLM_LEGAL",
+      "name": "Forensic Vision-Language & MoRTH Legal Auditor",
+      "architecture": "Multimodal legal brief synthesizer + MoRTH Schedule of Rates 2026",
+      "role": "Generates executive narratives, contractor dispute briefs, and itemized MoRTH SOR bills of quantities",
+      "why": "Municipal engineers need legally defensible repair orders and itemized BOQ for tender verification.",
+      "measured": {
+        "calibrated_sor_items": 5,
+        "legal_clauses_verified": [
+          "MoRTH-500.4",
+          "IRC:82-2015",
+          "IRC:SP:72-2015",
+          "ASTM-D6433"
+        ]
+      },
+      "evidence": "checkpoints/advanced_5_report.json, models/forensic_vlm_auditor.py",
+      "reproduce": "python -m training.train_advanced_5_suite",
+      "not_claimed": "Calibrated against MoRTH 2026 Standard Data Book; local municipal rates may vary.",
+      "served": true
+    },
+    {
+      "id": "M_YOLO_VIDEO",
+      "name": "Pretrained-YOLO Video Pipeline & Multi-Object Tracker",
+      "architecture": "YOLOv11n-RDD2022 + YOLOv8n-COCO + YOLOv8n-Crosswalk ONNX Ensemble + ByteTrack IoU Tracker",
+      "role": "High-speed video stream detection of potholes, cracks, traffic vehicles, pedestrians, and crosswalks",
+      "why": "Enables 30+ FPS real-time dashcam inference and persistent tracking without double-counting road distress.",
+      "measured": {
+        "rdd_onnx_present": true,
+        "coco_onnx_present": true,
+        "crosswalk_onnx_present": true,
+        "tracker_algorithm": "YOLOMultiObjectTracker (ByteTrack IoU + EMA box smoothing)"
+      },
+      "evidence": "models/yolo_video_engine.py, checkpoints/damage_rdd2022_india.onnx",
+      "reproduce": "python -m unittest tests/test_road_shield.py",
+      "not_claimed": "Video section operates strictly in PRETRAINED_YOLO_ONLY mode; civil repair costing belongs to Photo Section.",
+      "served": true
     }
   ],
   "corrections": [

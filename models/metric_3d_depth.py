@@ -167,11 +167,16 @@ class Metric3DDepthEngine:
             effective_area_m2 = round(max(0.01, min(2.5, effective_area_m2)), 4)
             volume_m3 = round(effective_area_m2 * (nominal_depth_cm / 100.0) * 0.40, 5)
 
-        # 3D Point-Cloud coordinates of defect center
+        # 3D Point-Cloud coordinates of defect center and physical ground-plane extent
         center_y_px = by + bh / 2.0
         X_m = round((centroid_x - cx) * dist_m / fx, 2)
         Y_m = round((center_y_px - cy) * dist_m / fy, 2)
         Z_m = round(dist_m, 2)
+        half_w_m = max(0.05, (bw * m_per_px_x) / 2.0)
+        half_l_m = max(0.05, (bh * m_per_px_y) / 2.0)
+        x_extent_m = [round(X_m - half_w_m, 2), round(X_m + half_w_m, 2)]
+        z_extent_m = [round(max(1.0, Z_m - half_l_m), 2), round(Z_m + half_l_m, 2)]
+        max_metric_depth_cm = round(float(min(depth_high_cm, nominal_depth_cm * 1.22)), 1)
 
         # ASTM D6433 Severity
         if nominal_depth_cm >= 5.0 or effective_area_m2 >= 0.50:
@@ -182,10 +187,18 @@ class Metric3DDepthEngine:
             astm_severity = "LOW"
 
         # Automotive Chassis Clearance & Strike Hazard
-        # Standard Indian passenger sedan clearance = 165 mm; low sports sedans = 135 mm
+        # Standard Indian passenger sedan tire sidewall pinch threshold = 65 mm; undercarriage = 135 mm
         cavity_depth_mm = nominal_depth_cm * 10.0
         rim_strike_risk = bool(cavity_depth_mm >= 50.0 and dist_m <= 12.0)
         suspension_bottom_risk = bool(cavity_depth_mm >= 75.0)
+        if suspension_bottom_risk:
+            risk_level = "CRITICAL_UNDERCARRIAGE_STRIKE_RISK"
+        elif rim_strike_risk:
+            risk_level = "WHEEL_RIM_IMPACT_RISK"
+        else:
+            risk_level = "LOW_CLEARANCE_SAFE"
+        hazard_score = int(min(100, max(5, round(cavity_depth_mm * 0.95 + (15.0 if rim_strike_risk else 0.0)))))
+        clearance_deficit_mm = round(max(0.0, cavity_depth_mm - 65.0), 1)
 
         # MoRTH Bitumen Tonnage and Repair Cost
         compacted_tonnage = round(volume_m3 * self.ASPHALT_DENSITY_T_M3 * self.MORTH_COMPACTION_FACTOR, 4)
@@ -193,17 +206,28 @@ class Metric3DDepthEngine:
 
         return {
             "depth_cm": nominal_depth_cm,
+            "max_metric_depth_cm": max_metric_depth_cm,
             "depth_low_cm": depth_low_cm,
             "depth_high_cm": depth_high_cm,
             "surface_area_m2": effective_area_m2,
             "volume_m3": volume_m3,
             "distance_meters": dist_m,
-            "point_cloud_3d": {"X_m": X_m, "Y_m": Y_m, "Z_m": Z_m, "frame": "vehicle_camera_optical_axis"},
+            "point_cloud_3d": {
+                "X_m": X_m,
+                "Y_m": Y_m,
+                "Z_m": Z_m,
+                "x_extent_m": x_extent_m,
+                "z_extent_m": z_extent_m,
+                "frame": "vehicle_camera_optical_axis",
+            },
             "astm_d6433_severity": astm_severity,
             "automotive_hazard": {
                 "cavity_depth_mm": round(cavity_depth_mm, 1),
                 "wheel_rim_strike_risk": rim_strike_risk,
                 "chassis_bottoming_risk": suspension_bottom_risk,
+                "risk_level": risk_level,
+                "hazard_score": hazard_score,
+                "clearance_deficit_mm": clearance_deficit_mm,
                 "urgency": "CRITICAL" if suspension_bottom_risk else ("HIGH" if rim_strike_risk else "ROUTINE"),
             },
             "morth_tonnage_t": compacted_tonnage,

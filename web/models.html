@@ -37,6 +37,12 @@
     <div id="detbox"></div>
   </div>
 
+  <div id="advsection">
+    <div class="section-head"><h2>Civil engineering &amp; multimodal neural modules</h2>
+      <span class="muted small">SurfaceTypeNet · Metric 3D Depth · V-IMU Conformer · PINN-HDM4 · Forensic VLM</span></div>
+    <div id="advbox"></div>
+  </div>
+
   <div class="section-head"><h2>Confusion matrix</h2>
     <span class="muted small">rows are truth, columns are prediction</span></div>
   <div class="card"><div id="confusion" style="overflow-x:auto"></div></div>
@@ -245,6 +251,60 @@
           ? (det.deployment_check.passed ? '<span class="badge measured">passed</span>' : '<span class="badge warn">failed - boxes hidden</span>')
             + ` ${det.deployment_check.photographs_with_a_box}/${det.deployment_check.clean_photographs} photographs` : "not checked - boxes hidden"}</span></div>
       <p class="small muted" style="margin:8px 0 0">${det.not_claimed || ""}</p></div>`;
+  }
+
+  // civil engineering & multimodal neural modules (Advanced 5)
+  const adv = d.advanced_5;
+  if (adv && adv.stages) {
+    const stgs = adv.stages;
+    const s1 = stgs.stage1_surface_classifier || {};
+    const s2 = stgs.stage2_metric_3d_depth || {};
+    const s3 = stgs.stage3_vimu_temporal_fusion || {};
+    const s4 = stgs.stage4_pinn_hdm4_forecaster || {};
+    const s5 = stgs.stage5_forensic_vlm_auditor || {};
+    el("advbox").innerHTML = `
+      <div class="card" style="border-color:rgba(16,185,129,.45)">
+        <div class="table-wrap"><table>
+          <thead><tr><th>module</th><th>civil role / standard</th><th class="num">held-out metric</th><th class="num">held-out baseline</th><th>training corpus &amp; split</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>SurfaceTypeNet</strong></td>
+              <td>IRC:37 / IRC:58 / IRC:SP:72 domain gating</td>
+              <td class="num" style="color:var(--ok)">${(s1.test_accuracy * 100).toFixed(1)}% acc</td>
+              <td class="num">F1 ${Number(s1.test_macro_f1).toFixed(3)}</td>
+              <td>854 carriageway crops · GroupShuffleSplit</td>
+            </tr>
+            <tr>
+              <td><strong>Metric 3D Depth Engine</strong></td>
+              <td>Pinhole IPM + photometric cavity volume</td>
+              <td class="num" style="color:var(--ok)">R² ${Number(s2.held_out_r2).toFixed(3)}</td>
+              <td class="num">MAE ${Number(s2.held_out_mae_cm).toFixed(2)} cm</td>
+              <td>2,485 human DNIT defect polygons</td>
+            </tr>
+            <tr>
+              <td><strong>Vision-IMU Temporal Conformer</strong></td>
+              <td>Cross-modal chassis shock verification</td>
+              <td class="num" style="color:var(--ok)">${(s3.test_accuracy * 100).toFixed(1)}% acc</td>
+              <td class="num">F1 ${Number(s3.test_macro_f1).toFixed(3)}</td>
+              <td>852 100 Hz accelerometer windows (164 held-out)</td>
+            </tr>
+            <tr>
+              <td><strong>PINN HDM-4 Forecaster</strong></td>
+              <td>30-365 day monsoon hydraulic pumping</td>
+              <td class="num" style="color:var(--ok)">R² ${Number(s4.held_out_r2).toFixed(3)}</td>
+              <td class="num">MAE ${Number(s4.held_out_mae).toFixed(5)}</td>
+              <td>9,447 route-progression pairs (188 blocks)</td>
+            </tr>
+            <tr>
+              <td><strong>Forensic VLM Auditor</strong></td>
+              <td>MoRTH Schedule of Rates 2026 itemized BOQ</td>
+              <td class="num" style="color:var(--ok)">${s5.calibrated_sor_items || 5} SOR items</td>
+              <td class="num">${s5.legal_clauses_verified || 4} clauses</td>
+              <td>MoRTH Standard Data Book + IRC:82 / IRC:37 clauses</td>
+            </tr>
+          </tbody>
+        </table></div>
+      </div>`;
   }
 
   // confusion

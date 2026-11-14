@@ -230,6 +230,16 @@ class handler(BaseHTTPRequestHandler):
                 self._send(500, {"error": f"Pretrained YOLO video frame detection failed: {e}"})
                 return
 
+        if path in ("/api/v1/video/yolo-models", "/api/v1/video/yolo-status"):
+            try:
+                from models.yolo_video_engine import get_yolo_video_engine
+                yolo_eng = get_yolo_video_engine()
+                self._send(200, yolo_eng.describe())
+                return
+            except Exception as e:
+                self._send(500, {"error": f"Failed to load YOLO models manifest: {e}"})
+                return
+
         if path in ("/api/v1/mlops/overview", "/api/v1/mlops/versions", "/api/v1/mlops/runs",
                     "/api/v1/mlops/drift", "/api/v1/mlops/al/queue", "/api/v1/mlops/gate",
                     "/api/v1/models/registry"):
@@ -328,7 +338,8 @@ class handler(BaseHTTPRequestHandler):
                               ("pci_model_report.json", "pci"),
                               ("deterioration_model_report.json", "deterioration"),
                               ("depth_estimator_report.json", "depth_estimator"),
-                              ("dan_dag_report.json", "dan_dag")):
+                              ("dan_dag_report.json", "dan_dag"),
+                              ("advanced_5_report.json", "advanced_5")):
                 r = read_json(name)
                 if r:
                     out[key] = r
