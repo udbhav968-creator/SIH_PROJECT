@@ -43,13 +43,17 @@ class PhysicsInformedHDM4Forecaster:
         Calculates physical breakout rate k_eff combining traffic fatigue and
         monsoon hydraulic pore-pressure pumping.
         """
-        esal_100k = max(0.0, float(esal_trucks)) / 100000.0
+        esal_val = float(esal_trucks if esal_trucks is not None else 12500.0)
+        rain_val = float(rain_mm if rain_mm is not None else 850.0)
+        area_val = float(initial_area_m2 if initial_area_m2 is not None else 0.45)
+        age_val = max(0.5, min(25.0, float(pavement_age_yr if pavement_age_yr is not None else 3.5)))
+
+        esal_100k = max(0.0, esal_val) / 100000.0
         esal_term = esal_100k * 0.00045
         snc_damping = 4.0 / self.snc
-        rain_1000mm = max(0.0, float(rain_mm)) / 1000.0
+        rain_1000mm = max(0.0, rain_val) / 1000.0
         rain_term = rain_1000mm * 0.00065
-        monsoon_multiplier = 1.0 + (max(0.0, float(rain_mm) - 200.0) / 1200.0) * 0.75
-        age_val = max(0.5, min(25.0, float(pavement_age_yr)))
+        monsoon_multiplier = 1.0 + (max(0.0, rain_val - 200.0) / 1200.0) * 0.75
 
         k_eff = (self.BASE_EXPANSION_RATE_DAY + (esal_term + rain_term) * snc_damping) * monsoon_multiplier * (1.0 + 0.012 * (age_val - 3.5))
         if self._trained_regressor is not None:
@@ -58,7 +62,7 @@ class PhysicsInformedHDM4Forecaster:
                     esal_100k,
                     rain_1000mm,
                     self.snc,
-                    float(initial_area_m2),
+                    area_val,
                     age_val,
                 ]], dtype=np.float32)
                 ml_k = float(self._trained_regressor.predict(feat_vec)[0])
@@ -74,10 +78,13 @@ class PhysicsInformedHDM4Forecaster:
         Returns:
             dict containing trajectory curves for area, depth, bitumen mass, and repair cost.
         """
-        a0 = max(0.02, min(5.0, float(init_area_m2)))
-        d0 = max(1.5, min(10.0, float(depth_cm)))
+        a0 = max(0.02, min(5.0, float(init_area_m2 if init_area_m2 is not None else 0.45)))
+        d0 = max(1.5, min(10.0, float(depth_cm if depth_cm is not None else 4.5)))
+        esal_val = float(esal_trucks if esal_trucks is not None else 12500.0)
+        rain_val = float(rain_mm if rain_mm is not None else 850.0)
+        age_val = float(pavement_age_yr if pavement_age_yr is not None else 3.5)
 
-        k_daily = self.compute_daily_breakout_velocity(esal_trucks, rain_mm, a0, pavement_age_yr=pavement_age_yr)
+        k_daily = self.compute_daily_breakout_velocity(esal_val, rain_val, a0, pavement_age_yr=age_val)
 
         area_curve = {}
         depth_curve = {}
@@ -110,7 +117,7 @@ class PhysicsInformedHDM4Forecaster:
         cost_180d = cost_curve[180]
         cost_saved_immediate = max(0.0, cost_180d - cost_today)
         roi_ratio = round((cost_180d / max(1.0, cost_today)), 2)
-        monsoon_mult = round(1.0 + (max(0.0, float(rain_mm) - 200.0) / 400.0) * 0.75, 2)
+        monsoon_mult = round(1.0 + (max(0.0, rain_val - 200.0) / 400.0) * 0.75, 2)
 
         trajectory_days = {
             "0": {"area_m2": round(a0, 2), "depth_cm": round(d0, 1), "tonnage_t": tonnage_today, "cost_inr": cost_today}
@@ -128,7 +135,7 @@ class PhysicsInformedHDM4Forecaster:
             "trained_checkpoint_loaded": bool(self._trained_regressor is not None),
             "logistic_carrying_capacity_m2": A_max,
             "daily_breakout_rate_k": round(k_daily, 5),
-            "hydraulic_pumping_active": bool(float(rain_mm) >= 300.0),
+            "hydraulic_pumping_active": bool(rain_val >= 300.0),
             "physics_loss_terms": {
                 "monsoon_hydraulic_pumping_factor": monsoon_mult,
                 "snc_damping": round(4.0 / self.snc, 2),

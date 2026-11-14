@@ -119,7 +119,14 @@ class SurfaceTypeClassifier:
         img = np.asarray(img_rgb, dtype=np.uint8)
         if img.ndim == 2:
             img = np.stack([img] * 3, axis=-1)
+        elif img.ndim == 3 and img.shape[2] == 4:
+            img = img[:, :, :3]
+        elif img.ndim != 3 or img.shape[2] < 3:
+            return dict(self.classes[0], confidence=0.50, features={}, warning="Invalid image shape")
+
         H, W = img.shape[:2]
+        if H < 4 or W < 4:
+            return dict(self.classes[0], confidence=0.50, features={}, warning="Image too small")
 
         y0 = int(H * np.clip(roi_top_fraction, 0.20, 0.60))
         road_roi = img[y0:, :]

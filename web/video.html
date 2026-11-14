@@ -200,6 +200,7 @@
       <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; align-items:center; justify-content:space-between;">
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn primary" id="btnLoadDemo" type="button">▶ Load &amp; Run Sample Dashcam Video</button>
+          <button class="btn" id="btnWebcam" type="button" style="border-color:#10b981; color:#34d399;">📹 Start Live WebCam</button>
           <button class="btn" id="btnPlayPause" type="button" disabled>Pause</button>
           <button class="btn" id="btnStepFrame" type="button" disabled>Step +1 Frame</button>
           <button class="btn" id="btnResetTracker" type="button">Reset Tracker IDs</button>
@@ -367,7 +368,9 @@ const offCtx = offscreen.getContext("2d");
 let sessionId = "yolo_vid_" + Date.now();
 let isPlaying = false;
 let isBusy = false;
-let playbackMode = "none"; // "video" | "demo_frames"
+let playbackMode = "none"; // "video" | "demo_frames" | "webcam"
+let webcamStream = null;
+let webcamStartTime = 0;
 let demoFrames = [];
 let demoIdx = 0;
 let frameCounter = 0;
@@ -618,6 +621,36 @@ async function stepUploadedVideoLoop() {
   }
 }
 
+// Loop for live WebCam / USB Camera stream
+async function stepWebcamLoop() {
+  if (!isPlaying || playbackMode !== "webcam") return;
+  if (!isBusy && videoEl.videoWidth > 0) {
+    isBusy = true;
+    try {
+      const vw = videoEl.videoWidth || 640;
+      const vh = videoEl.videoHeight || 480;
+      const scale = Math.min(1, 640 / Math.max(vw, vh));
+      offscreen.width = Math.max(1, Math.round(vw * scale));
+      offscreen.height = Math.max(1, Math.round(vh * scale));
+      offCtx.drawImage(videoEl, 0, 0, offscreen.width, offscreen.height);
+      const b64 = offscreen.toDataURL("image/jpeg", 0.78);
+      const tSec = Math.max(0, (Date.now() - webcamStartTime) / 1000.0);
+      frameCounter += 1;
+      const res = await detectFrameOnServer(b64, frameCounter, tSec, false);
+      lastResult = res;
+      renderFrameAndBoxes(videoEl, res, tSec, 0);
+      updateTelemetryUI(res);
+    } catch (e) {
+      console.error("YOLO webcam frame error:", e);
+    } finally {
+      isBusy = false;
+    }
+  }
+  if (isPlaying && playbackMode === "webcam") {
+    setTimeout(() => { requestAnimationFrame(stepWebcamLoop); }, 80);
+  }
+}
+
 // Loop for built-in Sample Dashcam Video stream
 async function stepDemoFramesLoop() {
   if (!isPlaying || playbackMode !== "demo_frames" || !demoFrames.length) return;
@@ -725,12 +758,64 @@ document.getElementById("btnLoadDemo").addEventListener("click", async () => {
   }
 });
 
+// Live WebCam / USB Camera button
+document.getElementById("btnWebcam").addEventListener("click", async () => {
+  const btn = document.getElementById("btnWebcam");
+  if (webcamStream) {
+    webcamStream.getTracks().forEach(t => t.stop());
+    webcamStream = null;
+    isPlaying = false;
+    playbackMode = "none";
+    btn.textContent = "📹 Start Live WebCam";
+    btn.style.borderColor = "#10b981";
+    btn.style.color = "#34d399";
+    document.getElementById("btnPlayPause").disabled = true;
+    document.getElementById("btnStepFrame").disabled = true;
+    document.getElementById("seekBar").disabled = true;
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Connecting Camera…";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "environment" }
+    });
+    webcamStream = stream;
+    videoEl.srcObject = stream;
+    videoEl.src = "";
+    await videoEl.play();
+
+    playbackMode = "webcam";
+    webcamStartTime = Date.now();
+    sessionId = "yolo_webcam_" + Date.now();
+    frameCounter = 0;
+    timelineRows = [];
+    renderTimelineTable();
+
+    isPlaying = true;
+    btn.disabled = false;
+    btn.textContent = "⏹ Stop Live WebCam";
+    btn.style.borderColor = "#ef4444";
+    btn.style.color = "#f87171";
+    document.getElementById("btnPlayPause").disabled = false;
+    document.getElementById("btnPlayPause").textContent = "Pause";
+    document.getElementById("btnStepFrame").disabled = true;
+    document.getElementById("seekBar").disabled = true;
+    stepWebcamLoop();
+  } catch (err) {
+    alert("Camera permission denied or camera device unavailable: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "📹 Start Live WebCam";
+  }
+});
+
 // Play / Pause button
 document.getElementById("btnPlayPause").addEventListener("click", () => {
   const btn = document.getElementById("btnPlayPause");
   if (isPlaying) {
     isPlaying = false;
-    if (playbackMode === "video") videoEl.pause();
+    if (playbackMode === "video" || playbackMode === "webcam") videoEl.pause();
     btn.textContent = "Play";
   } else {
     isPlaying = true;
@@ -740,6 +825,9 @@ document.getElementById("btnPlayPause").addEventListener("click", () => {
       stepUploadedVideoLoop();
     } else if (playbackMode === "demo_frames") {
       stepDemoFramesLoop();
+    } else if (playbackMode === "webcam") {
+      videoEl.play();
+      stepWebcamLoop();
     }
   }
 });

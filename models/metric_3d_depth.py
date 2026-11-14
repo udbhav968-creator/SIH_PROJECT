@@ -45,10 +45,12 @@ class Metric3DDepthEngine:
         self._trained_regressor = (bundle.get("metric_3d_depth") or {}).get("regressor")
 
     def _resolve_intrinsics(self, H, W):
-        fx = (W / 2.0) / math.tan(self.fov_rad / 2.0)
+        safe_w = max(1.0, float(W))
+        safe_h = max(1.0, float(H))
+        fx = (safe_w / 2.0) / max(1e-4, math.tan(self.fov_rad / 2.0))
         fy = fx
-        cx = W / 2.0
-        cy = H / 2.0
+        cx = safe_w / 2.0
+        cy = safe_h / 2.0
         return fx, fy, cx, cy
 
     def compute_ground_depth_map(self, H, W, roi_top_fraction=0.35):
@@ -85,8 +87,24 @@ class Metric3DDepthEngine:
         Returns:
             dict containing metric 3D point cloud depth, volume, and hazard metrics.
         """
-        H, W = gray_img.shape[:2]
-        bx, by, bw, bh = bbox_pixels
+        img_arr = np.asarray(gray_img)
+        if img_arr.ndim == 3:
+            import cv2
+            if img_arr.shape[2] == 4:
+                img_arr = cv2.cvtColor(img_arr[:, :, :3], cv2.COLOR_RGB2GRAY)
+            else:
+                img_arr = cv2.cvtColor(img_arr, cv2.COLOR_RGB2GRAY)
+        elif img_arr.ndim != 2:
+            img_arr = np.zeros((32, 32), dtype=np.uint8)
+
+        H, W = img_arr.shape[:2]
+        if H < 4 or W < 4:
+            H, W = max(4, H), max(4, W)
+            resized = np.zeros((H, W), dtype=np.uint8)
+            img_arr = resized
+        gray_img = img_arr
+
+        bx, by, bw, bh = bbox_pixels if bbox_pixels and len(bbox_pixels) == 4 else [0, 0, W, H]
         bx = max(0, min(W - 1, int(bx)))
         by = max(0, min(H - 1, int(by)))
         bw = max(2, min(W - bx, int(bw)))

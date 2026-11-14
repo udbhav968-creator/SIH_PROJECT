@@ -39,6 +39,7 @@ class ForensicVLMAuditor:
             dict containing executive_narrative, contractor_dispute_brief,
             morth_sor_line_items, and audit_metadata.
         """
+        audit_state = audit_state or {}
         pd = audit_state.get("primary_distress") or {}
         cname = pd.get("class_name", "Sound Pavement")
         cid = pd.get("class_id", 0)

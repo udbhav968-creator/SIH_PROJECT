@@ -48,7 +48,7 @@ class VIMUTemporalFusionEngine:
         except Exception:
             return None
 
-        if arr.ndim != 2 or arr.shape[1] < 3:
+        if arr.ndim != 2 or arr.shape[1] < 3 or arr.shape[0] == 0:
             return None
 
         # Remove gravity baseline from vertical axis
