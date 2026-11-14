@@ -401,13 +401,23 @@ class YOLOVideoEngine:
         tracker = self.get_tracker(session_id=session_id, reset=reset_tracker)
         tracked = tracker.update(raw_detections, frame_index=frame_index)
 
-        # Compute forward metric distance (m) & Time-To-Collision (TTC at 45 km/h = 12.5 m/s) per tracked box
+        # Compute forward metric distance (m) via pinhole camera ground-plane projection
+        # & Time-To-Collision (TTC at 45 km/h = 12.5 m/s) per tracked box
+        import math
         speed_mps = 12.5
+        h_cam = 1.45
+        pitch_rad = math.radians(18.4)
+        fov_rad = math.radians(68.0)
+        fy = (max(1.0, float(w)) / 2.0) / math.tan(fov_rad / 2.0)
+        cy = float(h) / 2.0
         closest_hazard_m = None
         for d in tracked:
             bn = d.get("bbox_normalized") or [0.0, 0.5, 0.1, 0.1]
             y_bottom = min(1.0, max(0.36, float(bn[1]) + float(bn[3])))
-            dist_m = round(float(np.clip(2.0 + (1.0 - y_bottom) * 32.0, 2.2, 38.0)), 1)
+            y_px = y_bottom * float(h)
+            alpha_y = math.atan((y_px - cy) / max(1.0, fy))
+            ray_angle = max(0.035, pitch_rad + alpha_y)
+            dist_m = round(float(np.clip(h_cam / math.tan(ray_angle), 1.8, 42.0)), 1)
             ttc_s = round(dist_m / speed_mps, 2)
             d["distance_m"] = dist_m
             d["ttc_seconds"] = ttc_s
@@ -425,13 +435,22 @@ class YOLOVideoEngine:
             "total": len(tracked),
         }
 
-        # Dynamic Video PCI (0..100) from Pretrained YOLOv11n-RDD2022 detections
-        deduct = (
-            frame_counts["potholes"] * 18.5
-            + frame_counts["cracks"] * 8.5
-            + sum(float((d.get("bbox_normalized") or [0, 0, 0, 0])[2]) * float((d.get("bbox_normalized") or [0, 0, 0, 0])[3]) * 120.0 for d in tracked if d.get("is_distress"))
+        # Dynamic Video PCI (0..100) using ASTM D6433 log-density deduct curves on Pretrained YOLOv11n-RDD2022 boxes
+        pot_area_frac = sum(
+            float((d.get("bbox_normalized") or [0, 0, 0, 0])[2]) * float((d.get("bbox_normalized") or [0, 0, 0, 0])[3])
+            for d in tracked if "pothole" in d["class_name"].lower()
         )
-        video_pci_score = round(max(12.0, min(100.0, 100.0 - deduct)), 1)
+        crk_area_frac = sum(
+            float((d.get("bbox_normalized") or [0, 0, 0, 0])[2]) * float((d.get("bbox_normalized") or [0, 0, 0, 0])[3])
+            for d in tracked if "crack" in d["class_name"].lower()
+        )
+        pot_density_pct = min(100.0, pot_area_frac * 180.0 + frame_counts["potholes"] * 1.8)
+        crk_density_pct = min(100.0, crk_area_frac * 160.0 + frame_counts["cracks"] * 1.2)
+        pot_deduct = (14.5 * math.log1p(pot_density_pct * 3.2)) if pot_density_pct > 0 else 0.0
+        crk_deduct = (8.2 * math.log1p(crk_density_pct * 2.5)) if crk_density_pct > 0 else 0.0
+        q_multi = 1.0 - 0.065 * (1 if (pot_deduct > 2.0 and crk_deduct > 2.0) else 0)
+        cdv = max(pot_deduct, crk_deduct, (pot_deduct + crk_deduct) * q_multi)
+        video_pci_score = round(max(8.0, min(100.0, 100.0 - cdv)), 1)
         if video_pci_score >= 85.0:
             corridor_condition = "GOOD"
         elif video_pci_score >= 65.0:

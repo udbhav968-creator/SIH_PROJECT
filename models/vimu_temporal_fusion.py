@@ -105,18 +105,20 @@ class VIMUTemporalFusionEngine:
         imu_feats = self.extract_imu_features(imu_series) if imu_series is not None else None
 
         if imu_feats is None:
-            # Camera-only preview: defect is ahead, vehicle has not yet traversed it
+            # Camera-only inspection: no 100 Hz accelerometer telemetry was supplied
             return {
                 "physical_verification_status": "ANTICIPATED_HAZARD_AHEAD",
                 "verification_confidence": round(vis_conf, 4),
                 "is_physically_verified": True,
+                "imu_sensor_attached": False,
+                "imu_corroborated": False,
                 "time_to_impact_sec": ttc_sec,
                 "vehicle_speed_kmh": self.speed_kmh,
                 "imu_telemetry": None,
                 "trained_checkpoint_loaded": bool(self._trained_classifier is not None),
                 "audit_verdict": (
-                    f"Defect located {dist_m:.1f} m ahead (TTC: {ttc_sec}s at {self.speed_kmh:.0f} km/h). "
-                    "Physical wheel traversal shock pending."
+                    f"Optical-only detection ({dist_m:.1f} m ahead, TTC: {ttc_sec}s at {self.speed_kmh:.0f} km/h). "
+                    "No 100 Hz IMU accelerometer telemetry supplied with this frame."
                 ),
             }
 
@@ -178,6 +180,8 @@ class VIMUTemporalFusionEngine:
             "physical_verification_status": status,
             "verification_confidence": round(float(fused_conf), 4),
             "is_physically_verified": is_verified,
+            "imu_sensor_attached": True,
+            "imu_corroborated": bool(is_verified and dist_m <= 3.5),
             "time_to_impact_sec": ttc_sec,
             "vehicle_speed_kmh": self.speed_kmh,
             "imu_telemetry": imu_feats,

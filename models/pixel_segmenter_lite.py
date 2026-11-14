@@ -112,7 +112,7 @@ def load():
     if _SESSION is None and available():
         import onnxruntime as ort
         _SESSION = (ort.InferenceSession(ONNX_PATH, providers=["CPUExecutionProvider"]),
-                    json.load(open(META_PATH, encoding="utf-8")))
+                    json.loads(__import__("pathlib").Path(META_PATH).read_text(encoding="utf-8")))
     return _SESSION or (None, None)
 
 

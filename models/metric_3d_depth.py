@@ -151,9 +151,22 @@ class Metric3DDepthEngine:
             volume_m3 = round(effective_area_m2 * (nominal_depth_cm / 100.0) * 0.60, 5)
 
         else:  # Crack (Longitudinal / Transverse / Alligator)
-            nominal_depth_cm = 2.0
-            depth_low_cm = 1.0
-            depth_high_cm = 3.5
+            cavity_vals = patch_gray[sub_mask] if sub_mask.any() else patch_gray.flatten()
+            cavity_p25 = float(np.percentile(cavity_vals, 25)) if cavity_vals.size else rim_intensity
+            relative_darkness = max(0.0, min(1.0, (rim_intensity - cavity_p25) / (rim_intensity + 1e-4)))
+            std_norm = float(np.std(patch_gray)) / 64.0
+            area_frac = float((bw * bh) / max(1.0, float(H * W)))
+            nominal_depth_cm = float(1.1 + relative_darkness * 2.4 + min(1.2, std_norm * 0.9))
+            if self._trained_regressor is not None:
+                try:
+                    feat_vec = np.array([[relative_darkness, std_norm, dist_m / 20.0, area_frac, 0.0]], dtype=np.float32)
+                    ml_depth = float(self._trained_regressor.predict(feat_vec)[0])
+                    nominal_depth_cm = 0.60 * nominal_depth_cm + 0.40 * ml_depth
+                except Exception:
+                    pass
+            nominal_depth_cm = round(float(np.clip(nominal_depth_cm, 0.8, 5.0)), 1)
+            depth_low_cm = round(max(0.6, nominal_depth_cm * 0.60), 1)
+            depth_high_cm = round(min(6.0, nominal_depth_cm * 1.50), 1)
             effective_area_m2 = float(sub_mask.sum()) * m_per_px_x * m_per_px_y if sub_mask.any() else (bw * m_per_px_x) * (bh * m_per_px_y) * 0.25
             effective_area_m2 = round(max(0.01, min(2.5, effective_area_m2)), 4)
             volume_m3 = round(effective_area_m2 * (nominal_depth_cm / 100.0) * 0.40, 5)

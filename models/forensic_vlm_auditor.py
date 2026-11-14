@@ -100,23 +100,35 @@ class ForensicVLMAuditor:
             )
 
         # 2. Contractor Dispute Defense Brief (Legal / Contractual Defensibility)
+        imu_attached = bool(vimu.get("imu_sensor_attached") or vimu.get("imu_telemetry"))
         if surf_code == "unpaved_rural_earthen_dirt":
             dispute_brief = (
                 "CONTRACTUAL JURISDICTION NOTICE: This road section is an unsealed rural earthen corridor under IRC:SP:72. "
                 "Any contractor claim billing for hot-mix asphalt (MoRTH Cl. 500) must be rejected on technical grounds. "
                 "Payment authorized exclusively under PMGSY Item 8.2 (Earthen road grading and rolling)."
             )
+        elif imu_attached:
+            dispute_brief = (
+                f"LEGAL AUDIT DISPUTE BRIEF (DUAL-SENSOR CORROBORATED): The defect at {corridor_id} ({ch_str}) represents an "
+                f"actionable pavement failure under MoRTH Clause 500.4. Physical verification status: [{vimu_status}]. "
+                f"Corroborating 100 Hz IMU telemetry: {vimu_verdict} "
+                f"Photometric homography and 3D metric integration defensibly establish excavation footprint ({area_m2:.3f} m², "
+                f"{depth_cm:.1f} cm depth). Under HDM-4 lifecycle physics, deferral compounds structural damage at {esc_mult}."
+            )
         else:
             dispute_brief = (
-                f"LEGAL AUDIT DISPUTE BRIEF: The defect at {corridor_id} ({ch_str}) represents an actionable pavement failure "
-                f"under MoRTH Clause 500.4. Physical verification status: [{vimu_status}]. "
-                f"Corroborating telemetry: {vimu_verdict} "
-                f"Photometric homography and 3D metric integration defensibly establish excavation footprint ({area_m2:.3f} m², "
-                f"{depth_cm:.1f} cm depth). Under HDM-4 lifecycle physics, deferral compounds structural damage at {esc_mult}. "
-                "Contractor dispute claiming optical artifact or sub-threshold distress is legally unviable."
+                f"OPTICAL ENGINEERING BRIEF (CAMERA-ONLY INSPECTION): The defect at {corridor_id} ({ch_str}) is flagged as an "
+                f"actionable pavement distress under MoRTH Clause 500.4 based on monocular homography and segmentation "
+                f"({area_m2:.3f} m² footprint, {depth_cm:.1f} cm photometric depth estimate). "
+                f"Sensor note: {vimu_verdict} Under HDM-4 lifecycle physics, deferral compounds structural damage at {esc_mult}."
             )
 
-        # 3. MoRTH Schedule of Rates (SOR) Line Items
+        # 3. MoRTH Schedule of Rates (SOR) Line Items (using calibrated checkpoint rates when loaded)
+        sor_rates = self._sor_rates or {}
+        tack_rate = float(sor_rates.get("tack_coat_vg30_per_sqm", 48.50))
+        bc_rate = float(sor_rates.get("bc_section_508_per_tonne", 7500.00))
+        rural_grade_rate = float(sor_rates.get("rural_grading_per_sqm", 38.00))
+
         sor_items = []
         if bitumen_ok and area_m2 > 0:
             sor_items.append({
@@ -124,16 +136,16 @@ class ForensicVLMAuditor:
                 "description": "Application of tack coat with bitumen emulsion (VG-30) on clean prepared road surface",
                 "unit": "sq.m",
                 "quantity": round(area_m2 * 1.15, 2),
-                "unit_rate_inr": 48.50,
-                "amount_inr": round(area_m2 * 1.15 * 48.50, 2),
+                "unit_rate_inr": tack_rate,
+                "amount_inr": round(area_m2 * 1.15 * tack_rate, 2),
             })
             sor_items.append({
                 "item_code": "MoRTH-500.5.2",
                 "description": "Providing and laying Bituminous Concrete (BC) hot-mix patching with paver & vibratory roller",
                 "unit": "Tonne",
                 "quantity": tonnage_t,
-                "unit_rate_inr": 7500.0,
-                "amount_inr": cost_inr,
+                "unit_rate_inr": bc_rate,
+                "amount_inr": round(tonnage_t * bc_rate, 2) if cost_inr <= 0 else cost_inr,
             })
             sor_items.append({
                 "item_code": "MoRTH-112.1",
@@ -149,8 +161,8 @@ class ForensicVLMAuditor:
                 "description": "Scarifying and grading earthen/gravel road surface to restore transverse camber (3.5m width)",
                 "unit": "sq.m",
                 "quantity": round(max(15.0, area_m2 * 3.0), 1),
-                "unit_rate_inr": 38.00,
-                "amount_inr": round(max(15.0, area_m2 * 3.0) * 38.00, 2),
+                "unit_rate_inr": rural_grade_rate,
+                "amount_inr": round(max(15.0, area_m2 * 3.0) * rural_grade_rate, 2),
             })
             sor_items.append({
                 "item_code": "PMGSY-8.3.4",

@@ -42,25 +42,28 @@ class PhysicsInformedHDM4Forecaster:
             except Exception:
                 self._trained_regressor = None
 
-    def compute_daily_breakout_velocity(self, esal_trucks, rain_mm, initial_area_m2):
+    def compute_daily_breakout_velocity(self, esal_trucks, rain_mm, initial_area_m2, pavement_age_yr=3.5):
         """
         Calculates physical breakout rate k_eff combining traffic fatigue and
         monsoon hydraulic pore-pressure pumping.
         """
-        esal_term = (max(0.0, float(esal_trucks)) / 1000.0) * 0.00045
+        esal_100k = max(0.0, float(esal_trucks)) / 100000.0
+        esal_term = esal_100k * 0.00045
         snc_damping = 4.0 / self.snc
-        rain_term = (max(0.0, float(rain_mm)) / 100.0) * 0.00065
-        monsoon_multiplier = 1.0 + (max(0.0, float(rain_mm) - 200.0) / 400.0) * 0.75
+        rain_1000mm = max(0.0, float(rain_mm)) / 1000.0
+        rain_term = rain_1000mm * 0.00065
+        monsoon_multiplier = 1.0 + (max(0.0, float(rain_mm) - 200.0) / 1200.0) * 0.75
+        age_val = max(0.5, min(25.0, float(pavement_age_yr)))
 
-        k_eff = (self.BASE_EXPANSION_RATE_DAY + (esal_term + rain_term) * snc_damping) * monsoon_multiplier
+        k_eff = (self.BASE_EXPANSION_RATE_DAY + (esal_term + rain_term) * snc_damping) * monsoon_multiplier * (1.0 + 0.012 * (age_val - 3.5))
         if self._trained_regressor is not None:
             try:
                 feat_vec = np.array([[
-                    max(0.0, float(esal_trucks)) / 1000.0,
-                    max(0.0, float(rain_mm)) / 100.0,
+                    esal_100k,
+                    rain_1000mm,
                     self.snc,
                     float(initial_area_m2),
-                    3.5,
+                    age_val,
                 ]], dtype=np.float32)
                 ml_k = float(self._trained_regressor.predict(feat_vec)[0])
                 k_eff = 0.70 * k_eff + 0.30 * ml_k
@@ -78,7 +81,7 @@ class PhysicsInformedHDM4Forecaster:
         a0 = max(0.02, min(5.0, float(init_area_m2)))
         d0 = max(1.5, min(10.0, float(depth_cm)))
 
-        k_daily = self.compute_daily_breakout_velocity(esal_trucks, rain_mm, a0)
+        k_daily = self.compute_daily_breakout_velocity(esal_trucks, rain_mm, a0, pavement_age_yr=pavement_age_yr)
 
         area_curve = {}
         depth_curve = {}

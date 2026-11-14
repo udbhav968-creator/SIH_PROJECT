@@ -649,6 +649,38 @@ class TestPhotoPipelineSevenClassesAndParity(unittest.TestCase):
             self.assertIn("distance_m", det)
             self.assertIn("ttc_seconds", det)
 
+    def test_advanced_5_models_feature_parity_and_honesty(self):
+        """Verifies all 5 advanced models execute without silent dimension-mismatch exceptions."""
+        from models.surface_classifier import SurfaceTypeClassifier
+        from models.metric_3d_depth import Metric3DDepthEngine
+        from models.vimu_temporal_fusion import VIMUTemporalFusionEngine
+        from models.pinn_deterioration import PhysicsInformedHDM4Forecaster
+
+        sc = SurfaceTypeClassifier()
+        self.assertIsNotNone(sc._trained_model)
+        probs = sc._trained_model.predict_proba(np.zeros((1, 8), dtype=np.float32))
+        self.assertEqual(probs.shape[0], 1)
+
+        m3d = Metric3DDepthEngine()
+        self.assertIsNotNone(m3d._trained_regressor)
+        d_pred = float(m3d._trained_regressor.predict(np.array([[0.35, 0.22, 0.25, 0.04, 1.0]], dtype=np.float32))[0])
+        self.assertGreater(d_pred, 0.5)
+
+        vimu = VIMUTemporalFusionEngine()
+        self.assertIsNotNone(vimu._trained_classifier)
+        no_imu = vimu.fuse_detection({"class_id": 2, "confidence": 0.9, "distance_meters": 3.0, "depth_cm": 5.0}, imu_series=None)
+        self.assertFalse(no_imu["imu_sensor_attached"])
+        self.assertFalse(no_imu["imu_corroborated"])
+
+        pinn = PhysicsInformedHDM4Forecaster()
+        self.assertIsNotNone(pinn._trained_regressor)
+        k_pred = float(pinn._trained_regressor.predict(np.array([[2.5, 1.2, 3.8, 0.45, 4.0]], dtype=np.float32))[0])
+        self.assertGreater(k_pred, 0.0005)
+        self.assertLess(k_pred, 0.020)
+        k_low = pinn.compute_daily_breakout_velocity(50000.0, 200.0, 0.2, pavement_age_yr=1.5)
+        k_high = pinn.compute_daily_breakout_velocity(450000.0, 1800.0, 1.2, pavement_age_yr=9.0)
+        self.assertGreater(k_high, k_low, "Higher traffic ESAL and monsoon rain must increase breakout rate without ceiling saturation")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

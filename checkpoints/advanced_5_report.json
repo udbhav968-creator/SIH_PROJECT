@@ -1,28 +1,49 @@
 {
-  "version": "2026.11-deep-calibrated",
-  "trained_at": "2026-11-14T10:27:21Z",
-  "elapsed_seconds": 5.61,
+  "version": "2026.11-real-data-grounded",
+  "trained_at": "2026-11-14T12:12:47Z",
+  "elapsed_seconds": 96.53,
   "checkpoint_path": "checkpoints/advanced_5_models.joblib",
   "stages": {
     "stage1_surface_classifier": {
-      "samples": 630,
-      "test_accuracy": 1.0,
-      "test_macro_f1": 1.0
+      "samples": 854,
+      "train_samples": 666,
+      "test_samples": 188,
+      "class_counts": {
+        "0": 298,
+        "1": 109,
+        "2": 114,
+        "3": 333
+      },
+      "split_strategy": "GroupShuffleSplit by source photograph (zero leakage, zero synthetic rows)",
+      "test_accuracy": 0.8936,
+      "test_macro_f1": 0.9143
     },
     "stage2_metric_3d_depth": {
-      "samples": 640,
-      "held_out_r2": 0.9859,
-      "held_out_mae_cm": 0.214
+      "samples": 2485,
+      "pothole_polygons": 564,
+      "crack_polygons": 1921,
+      "train_samples": 1848,
+      "test_samples": 637,
+      "split_strategy": "GroupShuffleSplit by highway route block on real DNIT polygons",
+      "held_out_r2": 0.7594,
+      "held_out_mae_cm": 0.2875
     },
     "stage3_vimu_temporal_fusion": {
       "samples": 852,
-      "test_accuracy": 0.984,
-      "test_macro_f1": 0.9822
+      "train_windows": 688,
+      "held_out_val_windows": 164,
+      "split_strategy": "Official imu_shock_100hz_train.npz (688) / imu_shock_100hz_val.npz (164) with zero visual label leakage",
+      "test_accuracy": 0.872,
+      "test_macro_f1": 0.8594
     },
     "stage4_pinn_hdm4_forecaster": {
-      "samples": 1200,
-      "held_out_r2": 1.0,
-      "held_out_mae": 0.0
+      "samples": 9447,
+      "route_blocks": 199,
+      "train_samples": 7293,
+      "test_samples": 2154,
+      "split_strategy": "GroupShuffleSplit by highway route block on real DNIT progression pairs",
+      "held_out_r2": 0.8184,
+      "held_out_mae": 0.000541
     },
     "stage5_forensic_vlm_auditor": {
       "calibrated_sor_items": 5,

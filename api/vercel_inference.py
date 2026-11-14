@@ -1199,7 +1199,17 @@ def _box_iou(b1, b2):
     inter = max(0, xB - xA) * max(0, yB - yA)
     return inter / max(1e-6, b1[2] * b1[3] + b2[2] * b2[3] - inter)
 
-def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=None, longitude=None):
+def audit_image_base64(
+    image_b64,
+    corridor_id="NH-44",
+    device_id=None,
+    latitude=None,
+    longitude=None,
+    imu_series=None,
+    traffic_esal=None,
+    rain_mm=None,
+    pavement_age_yr=None,
+):
     import numpy as np
     from models import camera_calibration as cam_cal
     from models.ipm_homography_engine import IPMHomographyEngine
@@ -1960,19 +1970,29 @@ def audit_image_base64(image_b64, corridor_id="NH-44", device_id=None, latitude=
     # Advanced Model Stage 3: Vision-IMU Cross-Modal Temporal Verification
     from models.vimu_temporal_fusion import VIMUTemporalFusionEngine
     vimu_eng = VIMUTemporalFusionEngine()
-    vimu_fusion_res = vimu_eng.fuse_detection(primary_distress, imu_series=None)
+    vimu_fusion_res = vimu_eng.fuse_detection(primary_distress, imu_series=imu_series)
 
     # Advanced Model Stage 4: Physics-Informed HDM-4 Lifecycle Trajectory
     from models.pinn_deterioration import PhysicsInformedHDM4Forecaster
     pinn_forecast = None
     if primary_distress.get("is_distress"):
         pinn_eng = PhysicsInformedHDM4Forecaster()
+        pcu_eq = float(traffic_analysis.get("pcu_equivalent", 0.0)) if isinstance(traffic_analysis, dict) else 0.0
+        has_water = any(d.get("class_id") == 3 for d in detections)
+        resolved_esal = float(traffic_esal) if traffic_esal is not None else round(140000.0 + pcu_eq * 35000.0, 1)
+        resolved_rain = float(rain_mm) if rain_mm is not None else (1650.0 if has_water else 850.0)
+        resolved_age = float(pavement_age_yr) if pavement_age_yr is not None else round(max(1.5, min(12.0, (100.0 - pci_res["pci_score"]) / 11.0)), 1)
         pinn_forecast = pinn_eng.forecast_trajectory(
             init_area_m2=max(0.04, primary_distress.get("surface_area_m2", 0.0)),
             depth_cm=max(2.0, primary_distress.get("depth_cm", 4.0)),
-            esal_trucks=250000.0,
-            rain_mm=1200.0,
-            pavement_age_yr=5.0,
+            esal_trucks=resolved_esal,
+            rain_mm=resolved_rain,
+            pavement_age_yr=resolved_age,
+        )
+        pinn_forecast["environmental_parameters_source"] = (
+            "caller_supplied"
+            if (traffic_esal is not None or rain_mm is not None or pavement_age_yr is not None)
+            else "scene_derived_from_detected_traffic_pcu_and_moisture"
         )
 
     # Advanced Model Stage 5: Forensic Vision-Language Report Generation
