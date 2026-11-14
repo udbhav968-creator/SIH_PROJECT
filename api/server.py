@@ -667,6 +667,7 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 ("depth_estimator", os.path.join(CKPT_DIR, "depth_estimator_report.json")),
                 ("deep_vision", os.path.join(CKPT_DIR, "deep_vision_report.json")),
                 ("dan_dag", os.path.join(CKPT_DIR, "dan_dag_report.json")),
+                ("advanced_5", os.path.join(CKPT_DIR, "advanced_5_report.json")),
             )
             for name, path_ in reports:
                 if os.path.exists(path_):
