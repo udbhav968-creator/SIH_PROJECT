@@ -1,0 +1,47 @@
+name: ROAD-SHIELD Continuous Training & Deployment CI/CD
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  continuous-training-and-verification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Execute Continuous Training & Drift Audit
+        run: |
+          python -m mlops.continuous_training_pipeline
+
+      - name: Run Core Test Suite
+        run: |
+          python -m unittest tests/test_multi_defect_and_multi_zebra_verification.py
+          python -m unittest tests/test_deep_edge_cases.py
+          python -m unittest tests/test_road_shield.py
+
+      - name: Evaluate Statistical Quality Gates
+        run: |
+          python -m mlops.ci_check
+
+      - name: Archive Visual Inspection Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-verification-reports
+          path: reports/visual_verification/

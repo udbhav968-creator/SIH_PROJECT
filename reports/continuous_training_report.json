@@ -1,0 +1,70 @@
+{
+  "timestamp_iso": "2026-11-14T17:11:16Z",
+  "status": "CERTIFIED",
+  "ingest_stats": {
+    "valid_incoming": 44320,
+    "rejected_incoming": 0
+  },
+  "drift_stats": {
+    "drift_score": 0.042,
+    "drift_triggered": false
+  },
+  "visual_verification": {
+    "images_verified": 5,
+    "directory": "reports/visual_verification",
+    "samples": [
+      {
+        "test_id": "01_user_upload_multipothole_earthen",
+        "name": "User Upload: Waterlogged Earthen Road Potholes",
+        "image_path": "C:\\Users\\Dell\\Downloads\\SIH_PROJECT\\reports\\visual_verification\\01_user_upload_multipothole_earthen.png",
+        "distress_count": 8,
+        "primary_distress": "Pothole Cavity",
+        "primary_conf": 0.9077,
+        "surface": "Flexible Bituminous Pavement (Asphalt)",
+        "pci": 47.1
+      },
+      {
+        "test_id": "02_kaggle_pothole_cavity",
+        "name": "Kaggle Real Asphalt Pothole Cavity",
+        "image_path": "C:\\Users\\Dell\\Downloads\\SIH_PROJECT\\reports\\visual_verification\\02_kaggle_pothole_cavity.png",
+        "distress_count": 22,
+        "primary_distress": "Pothole Cavity",
+        "primary_conf": 0.9074,
+        "surface": "Interlocking Concrete Block Pavement (ICBP)",
+        "pci": 35.7
+      },
+      {
+        "test_id": "03_crack500_fatigue_crack",
+        "name": "CRACK500 Longitudinal & Alligator Fatigue Cracking",
+        "image_path": "C:\\Users\\Dell\\Downloads\\SIH_PROJECT\\reports\\visual_verification\\03_crack500_fatigue_crack.png",
+        "distress_count": 0,
+        "primary_distress": "Normal Road / Sound Pavement",
+        "primary_conf": null,
+        "surface": "Flexible Bituminous Pavement (Asphalt)",
+        "pci": 100.0
+      },
+      {
+        "test_id": "04_missing_zebra_crossing",
+        "name": "MoRTH Class 4: Missing Pedestrian Zebra Crossing",
+        "image_path": "C:\\Users\\Dell\\Downloads\\SIH_PROJECT\\reports\\visual_verification\\04_missing_zebra_crossing.png",
+        "distress_count": 1,
+        "primary_distress": "Missing Zebra Crossing",
+        "primary_conf": 0.8749,
+        "surface": "Interlocking Concrete Block Pavement (ICBP)",
+        "pci": 100.0
+      },
+      {
+        "test_id": "05_damaged_traffic_sign",
+        "name": "MoRTH Class 6: Damaged Regulatory Traffic Sign",
+        "image_path": "C:\\Users\\Dell\\Downloads\\SIH_PROJECT\\reports\\visual_verification\\05_damaged_traffic_sign.png",
+        "distress_count": 0,
+        "primary_distress": "Non-Road Scene (Rejected by OOD Guard)",
+        "primary_conf": 0.9801,
+        "surface": "Interlocking Concrete Block Pavement (ICBP)",
+        "pci": 100.0
+      }
+    ]
+  },
+  "gates_passed": true,
+  "elapsed_seconds": 41.9
+}

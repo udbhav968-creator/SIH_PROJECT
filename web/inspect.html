@@ -334,7 +334,19 @@ function draw() {
 
   const drawnLabels = [];   // shared by every layer, so no label is drawn over another
   if (el("showBox").checked) {
-    roadDets.forEach(d => {
+    const isMultiCluster = roadDets.length > 1;
+    let avgConf = 0;
+    let topBoxY = Infinity;
+    let topBoxX = 0;
+    let dominantClass = "Pothole";
+
+    if (isMultiCluster) {
+      const sumConf = roadDets.reduce((acc, d) => acc + (d.confidence || 0), 0);
+      avgConf = Math.round((sumConf / roadDets.length) * 100);
+      dominantClass = (roadDets[0].class_name || "").split(" ")[0] || "Pothole";
+    }
+
+    roadDets.forEach((d, idx) => {
       const b = d.bbox_pixels;
       const bn = d.bbox_normalized;
       if (!b && !bn) return;
@@ -349,25 +361,67 @@ function draw() {
       ctx.setLineDash(measured ? [] : [7, 5]);   // dashed = estimated area
       ctx.strokeRect(x, y, w, h);
       ctx.setLineDash([]);
-      // A model probability is never certainty: 0.996 is shown as "≥99%", not "100%".
-      const pct = d.confidence >= 0.995 ? "≥99" : (d.confidence * 100).toFixed(0);
-      const label = `${(d.class_name || "").split(" ")[0]} ${pct}%`;
-      ctx.font = "600 12px ui-monospace, monospace";
-      const tw = ctx.measureText(label).width + 10;
-      let tagX = Math.max(0, Math.min(cv.width - tw, x));
-      let tagY = Math.max(0, y - 19);
-      for (const dl of drawnLabels) {
-        if (Math.abs(tagX - dl.x) < (tw + 10) && Math.abs(tagY - dl.y) < 22) {
-          tagY = Math.min(cv.height - 20, y + h + 2);
-          break;
-        }
+
+      if (y < topBoxY) {
+        topBoxY = y;
+        topBoxX = x;
       }
-      drawnLabels.push({ x: tagX, y: tagY, w: tw, h: 19 });
-      ctx.fillStyle = measured ? "#2dd4d4" : "#f0a92b";
-      ctx.fillRect(tagX, tagY, tw, 19);
-      ctx.fillStyle = "#0a0f17";
-      ctx.fillText(label, tagX + 5, tagY + 14);
+
+      if (isMultiCluster) {
+        // Individual box badge: clean minimal number (#1, #2...) matching table row below
+        const badgeText = `#${idx + 1}`;
+        ctx.font = "700 11px ui-monospace, monospace";
+        const bw = ctx.measureText(badgeText).width + 8;
+        const bh = 15;
+        const bx = Math.max(0, Math.min(cv.width - bw, x));
+        const by = Math.max(0, y);
+        ctx.fillStyle = measured ? "rgba(45, 212, 212, 0.9)" : "rgba(240, 169, 43, 0.9)";
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = "#0a0f17";
+        ctx.fillText(badgeText, bx + 4, by + 11);
+      } else {
+        // Single defect: full label
+        const pct = d.confidence >= 0.995 ? "≥99" : (d.confidence * 100).toFixed(0);
+        const label = `${(d.class_name || "").split(" ")[0]} ${pct}%`;
+        ctx.font = "600 12px ui-monospace, monospace";
+        const tw = ctx.measureText(label).width + 10;
+        let tagX = Math.max(0, Math.min(cv.width - tw, x));
+        let tagY = Math.max(0, y - 19);
+        for (const dl of drawnLabels) {
+          if (Math.abs(tagX - dl.x) < (tw + 10) && Math.abs(tagY - dl.y) < 22) {
+            tagY = Math.min(cv.height - 20, y + h + 2);
+            break;
+          }
+        }
+        drawnLabels.push({ x: tagX, y: tagY, w: tw, h: 19 });
+        ctx.fillStyle = measured ? "#2dd4d4" : "#f0a92b";
+        ctx.fillRect(tagX, tagY, tw, 19);
+        ctx.fillStyle = "#0a0f17";
+        ctx.fillText(label, tagX + 5, tagY + 14);
+      }
     });
+
+    // If multiple defects, draw the single consolidated header banner above the topmost cavity without overlap
+    if (isMultiCluster && topBoxY !== Infinity) {
+      const topBanner = `${dominantClass}s (${roadDets.length} cavities) • Avg ${avgConf}%`;
+      ctx.font = "700 12.5px ui-monospace, monospace";
+      const bw = ctx.measureText(topBanner).width + 14;
+      const bh = 22;
+      let bx = Math.max(6, Math.min(cv.width - bw - 6, topBoxX));
+      let by = Math.max(4, topBoxY - bh - 4);
+      if (by < 4) by = Math.min(cv.height - bh - 4, topBoxY + 4);
+      drawnLabels.push({ x: bx, y: by, w: bw, h: bh });
+      ctx.fillStyle = "#0a0f17";
+      ctx.shadowColor = "rgba(0,0,0,0.6)";
+      ctx.shadowBlur = 6;
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "#2dd4d4";
+      ctx.lineWidth = 1.8;
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.fillStyle = "#2dd4d4";
+      ctx.fillText(topBanner, bx + 7, by + 15);
+    }
   }
   // Bounding boxes from object detector
   // thin outline and a "▣" tag, so they read differently from the mask boxes.
