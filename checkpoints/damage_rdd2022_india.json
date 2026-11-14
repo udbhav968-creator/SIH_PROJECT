@@ -1,0 +1,22 @@
+{
+  "model_name": "YOLOv11n_RDD2022_Pretrained",
+  "input_size": 512,
+  "classes": [
+    "D00_Longitudinal_Crack",
+    "D10_Transverse_Crack",
+    "D20_Alligator_Crack",
+    "D40_Pothole"
+  ],
+  "raw_names": {
+    "0": "longitudinal_crack",
+    "1": "transverse_crack",
+    "2": "alligator_crack",
+    "3": "pothole"
+  },
+  "artefact_check": {
+    "passed": true
+  },
+  "deployment_check": {
+    "passed": true
+  }
+}

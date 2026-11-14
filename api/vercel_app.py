@@ -25,7 +25,8 @@ def _served_report():
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
     ".js": "application/javascript; charset=utf-8", ".json": "application/json",
-    ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
+    ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon",
+    ".mp4": "video/mp4", ".webm": "video/webm",
 }
 PAGE_ROUTES = {
     "/": "index.html", "/inspect": "inspect.html", "/video": "video.html",
@@ -202,6 +203,32 @@ class handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     self._send(400, {"error": f"Redaction failed: {e}"})
                     return
+
+        if path == "/api/v1/video/yolo-detect":
+            body = self._json_body()
+            frame_b64 = body.get("image_base64") or body.get("frame_base64")
+            if not frame_b64:
+                self._send(400, {"error": "Missing image_base64 or frame_base64 payload"})
+                return
+            try:
+                from models.yolo_video_engine import get_yolo_video_engine
+                yolo_eng = get_yolo_video_engine()
+                res = yolo_eng.detect_frame(
+                    image_input=frame_b64,
+                    frame_index=int(body.get("frame_index", body.get("frame_idx", 0))),
+                    timestamp_s=float(body.get("timestamp_s", 0.0)),
+                    conf_threshold=float(body.get("conf_threshold", 0.25)),
+                    session_id=str(body.get("session_id", "default_yolo_video")),
+                    reset_tracker=bool(body.get("reset_tracker", False)),
+                    include_coco=bool(body.get("include_coco", True)),
+                    include_damage=bool(body.get("include_damage", True)),
+                    include_crosswalk=bool(body.get("include_crosswalk", True)),
+                )
+                self._send(200, res)
+                return
+            except Exception as e:
+                self._send(500, {"error": f"Pretrained YOLO video frame detection failed: {e}"})
+                return
 
         if path in ("/api/v1/mlops/overview", "/api/v1/mlops/versions", "/api/v1/mlops/runs",
                     "/api/v1/mlops/drift", "/api/v1/mlops/al/queue", "/api/v1/mlops/gate",

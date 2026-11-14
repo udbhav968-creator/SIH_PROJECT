@@ -1,5 +1,5 @@
 {
-  "timestamp_utc": "2026-11-11T07:59:26.073189+00:00",
+  "timestamp_utc": "2026-11-12T07:25:34.632561+00:00",
   "overall_status": "CERTIFIED",
   "level_1_checkpoints": [
     {
@@ -153,7 +153,7 @@
     {
       "name": "Scene C: Foreground Crater",
       "passed": true,
-      "latency_ms": 7959.1,
+      "latency_ms": 9239.7,
       "class_name": "Pothole Cavity",
       "confidence": 0.9276,
       "bbox": [
@@ -169,7 +169,7 @@
     {
       "name": "Real Pothole Road",
       "passed": true,
-      "latency_ms": 5941.9,
+      "latency_ms": 6601.2,
       "class_name": "Pothole Cavity",
       "confidence": 0.9412,
       "bbox": [
@@ -201,9 +201,9 @@
     }
   ],
   "level_5_benchmark": {
-    "onnx_vision_latency_ms": 9.8,
-    "onnx_effective_fps": 102.0,
-    "full_pipeline_latency_ms": 4349.2,
+    "onnx_vision_latency_ms": 10.1,
+    "onnx_effective_fps": 99.0,
+    "full_pipeline_latency_ms": 4844.9,
     "onnx_edge_budget_ms": 35.0,
     "passed": true
   }

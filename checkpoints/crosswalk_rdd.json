@@ -1,0 +1,18 @@
+{
+  "model_name": "YOLOv8n_Crosswalk_Pretrained",
+  "input_size": 416,
+  "classes": [
+    "crosswalk",
+    "guide_arrows"
+  ],
+  "raw_names": {
+    "0": "crosswalk",
+    "1": "guide_arrows"
+  },
+  "artefact_check": {
+    "passed": true
+  },
+  "deployment_check": {
+    "passed": true
+  }
+}

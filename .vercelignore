@@ -18,6 +18,8 @@ checkpoints/*.onnx
 !checkpoints/imu_shock_cnn.onnx
 !checkpoints/cnn_backbone_mobilenetv2.onnx
 !checkpoints/road_shield_detector.onnx
+!checkpoints/damage_rdd2022_india.onnx
+!checkpoints/crosswalk_rdd.onnx
 checkpoints/*.pt
 checkpoints/*.db
 checkpoints/*.db-*

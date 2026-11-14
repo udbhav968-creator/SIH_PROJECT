@@ -1,159 +1,812 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Video ingest — ROAD-SHIELD</title>
-<meta name="description" content="Dashcam footage sampled by ground distance and deduplicated against the fleet ledger.">
-<meta name="theme-color" content="#0a0f17">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 4 5.5v6c0 4.8 3.3 8.9 8 10 4.7-1.1 8-5.2 8-10v-6z' fill='%23f0a92b'/%3E%3Cpath d='M10.2 17.5 11.2 7h1.6l1 10.5' fill='none' stroke='%230a0f17' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
-<meta property="og:site_name" content="ROAD-SHIELD">
-<meta property="og:title" content="ROAD-SHIELD · AI road quality assessment">
-<meta property="og:description" content="A road photograph in, a measured, costed and sealed repair order out.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
-<link rel="stylesheet" href="/web/app.css">
-</head>
-<body data-page="video">
-<div class="wrap">
-  <div class="section-head" style="margin-top:6px">
-    <h1 style="font-size:1.9rem">Video ingest</h1>
-    <span class="muted small">dashcam footage sampled by ground distance, deduplicated into the ledger</span>
-  </div>
-
-  <div class="split">
-    <div>
-      <div class="card">
-        <div class="label">run a video through the pipeline</div>
-        <p class="small muted" style="margin:0 0 12px">
-          The server reads the file from its own filesystem. Pushing a
-          multi-hundred-megabyte dashcam file through a JSON body is the wrong
-          shape for the problem — in a fleet deployment the bus uploads to object
-          storage and this endpoint is handed the key.
-        </p>
-        <div class="field"><label for="path">Video path on the server</label>
-          <input id="path" placeholder="/path/to/dashcam.mp4"></div>
-        <div class="grid c2">
-          <div class="field"><label for="bus">Bus ID</label><input id="bus" value="KA01F1234"></div>
-          <div class="field"><label for="every">Sample every … metres</label>
-            <input id="every" type="number" step="1" value="8"></div>
-          <div class="field"><label for="maxf">Max frames</label>
-            <input id="maxf" type="number" value="120"></div>
-          <div class="field"><label for="dev">Calibration profile</label>
-            <select id="dev"><option value="">none — assumed mount</option></select></div>
-        </div>
-        <div class="field">
-          <label for="gps">GPS track (JSON: <span class="mono">[{"t":0,"lat":..,"lon":..}, …]</span>)</label>
-          <textarea id="gps" rows="4" placeholder='[{"t":0,"lat":12.9716,"lon":77.5946},{"t":30,"lat":12.9750,"lon":77.5946}]'></textarea>
-        </div>
-        <div style="display:flex;gap:9px;flex-wrap:wrap">
-          <button id="probe">Probe file</button>
-          <button class="primary" id="run">Ingest</button>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:16px">
-        <div class="label">how frames are chosen</div>
-        <p class="small" style="margin:0 0 9px"><strong style="color:var(--white)">By distance, not by frame.</strong>
-          At 40 km/h a bus covers 11 m every second. Sampling every frame spends
-          95% of the compute on near-identical views; sampling every N frames
-          either misses defects in slow traffic or floods the ledger at speed.
-          With a GPS track, frames are chosen to be roughly the set distance apart
-          on the ground.</p>
-        <p class="small" style="margin:0"><strong style="color:var(--white)">Then hashed.</strong>
-          Consecutive frames of the same defect look alike, so each candidate is
-          perceptually hashed against the last twelve accepted frames and skipped
-          if it is a near-duplicate — before the expensive inference runs.</p>
-      </div>
-    </div>
-
-    <div id="out">
-      <div class="card"><div class="label">no run yet</div>
-        <p class="small muted" style="margin:0">
-          Give a path to a video file the server can read. Without a GPS track the
-          frames are still analysed, but nothing is located or deduplicated — and
-          the result says so rather than inventing a position.</p></div>
-    </div>
-  </div>
-</div>
-
+<title>Pretrained YOLO Video Studio — ROAD-SHIELD</title>
+<link rel="stylesheet" href="/web/site.css">
 <script src="/web/config.js"></script>
+<style>
+  .yolo-badge-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 14px 0 20px 0;
+    padding: 12px 16px;
+    background: var(--bg-raised, #111827);
+    border: 1px solid var(--line, #1f2937);
+    border-left: 4px solid #10b981;
+    border-radius: 6px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .yolo-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono, monospace);
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+  .yolo-chip.dmg {
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+  .yolo-chip.cw {
+    background: rgba(6, 182, 212, 0.12);
+    color: #22d3ee;
+    border-color: rgba(6, 182, 212, 0.3);
+  }
+  .video-studio-grid {
+    display: grid;
+    grid-template-columns: 1.65fr 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 960px) {
+    .video-studio-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .dropzone-box {
+    border: 2px dashed var(--line, #374151);
+    border-radius: 8px;
+    padding: 18px;
+    text-align: center;
+    background: rgba(17, 24, 39, 0.55);
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    margin-bottom: 14px;
+  }
+  .dropzone-box:hover, .dropzone-box.dragover {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.06);
+  }
+  .viewport-wrap {
+    position: relative;
+    background: #050811;
+    border: 1px solid var(--line, #1f2937);
+    border-radius: 8px;
+    overflow: hidden;
+    aspect-ratio: 16 / 9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #yoloCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+  }
+  .controls-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--bg-raised, #111827);
+    border: 1px solid var(--line, #1f2937);
+    border-radius: 6px;
+  }
+  .kpi-grid-6 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .kpi-card {
+    background: var(--bg-raised, #111827);
+    border: 1px solid var(--line, #1f2937);
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .kpi-card .k-num {
+    font-family: var(--mono, monospace);
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .kpi-card .k-lbl {
+    font-size: 11px;
+    color: var(--ink-dim, #9ca3af);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 3px;
+  }
+  .det-pill-list {
+    max-height: 250px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .det-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--line, #1f2937);
+    border-left: 3px solid #10b981;
+    border-radius: 4px;
+    font-size: 12.5px;
+  }
+  .progress- scrubber {
+    width: 100%;
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/">ROAD-SHIELD <small>nahar-system · v2.1</small></a>
+    <nav class="nav">
+      <a href="/">Overview</a>
+      <a href="/inspect">Inspect</a>
+      <a href="/video" class="active">Video</a>
+      <a href="/corridor">Corridor</a>
+      <a href="/works">Works</a>
+      <a href="/mlops">MLOps</a>
+      <a href="/models">Models</a>
+      <a href="/data">Data</a>
+      <a href="/system">System</a>
+      <a href="/api-docs">API</a>
+    </nav>
+    <div class="env-pill"><span class="dot" id="envDot"></span><span id="envText">checking…</span></div>
+  </div>
+</header>
+
+<main class="page">
+  <span class="kicker">Pure Pretrained YOLO Video Pipeline · Multi-Object ByteTrack/IoU Tracking</span>
+  <h1>Pretrained YOLO Video Studio</h1>
+  <p class="lead">
+    Upload or drop any dashcam video (<code>.mp4</code>, <code>.webm</code>, <code>.mov</code>) or launch the built-in NH-44 dashcam stream.
+    This section executes <strong>only the pretrained YOLO ONNX detectors</strong> for high-speed frame-by-frame bounding-box detection and persistent multi-frame object tracking.
+  </p>
+
+  <div class="yolo-badge-bar">
+    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+      <strong style="font-size:12.5px; text-transform:uppercase; letter-spacing:0.05em;">Active Pretrained Weights:</strong>
+      <span class="yolo-chip dmg">YOLOv11n-RDD2022 (512×512 · Pothole, Alligator/Longitudinal/Transverse Crack)</span>
+      <span class="yolo-chip">YOLOv8n-COCO (640×640 · Car, Bus, Truck, Motorcycle, Person, Signs)</span>
+      <span class="yolo-chip cw">YOLOv8n-Crosswalk (416×416 · Zebra Crosswalk, Guide Arrows)</span>
+    </div>
+    <span class="mono muted" id="engineModeTag">PIPELINE: PRETRAINED_YOLO_ONLY</span>
+  </div>
+
+  <!-- Upload & Controls Row -->
+  <div class="video-studio-grid">
+    <!-- Left Column: Video Viewport + Upload + Playback Controls -->
+    <div>
+      <div class="dropzone-box" id="videoDropzone" onclick="document.getElementById('videoFileInput').click()">
+        <input type="file" id="videoFileInput" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo,video/*" style="display:none">
+        <div style="font-weight:600; font-size:14.5px; margin-bottom:4px;">
+          Drop Dashcam Video Here or <span style="color:#10b981; text-decoration:underline;">Browse Video File</span>
+        </div>
+        <div class="muted" style="font-size:12px;">
+          Supports <code>.mp4</code>, <code>.webm</code>, <code>.mov</code> — runs live Pretrained YOLO inference directly on video frames
+        </div>
+      </div>
+
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; align-items:center; justify-content:space-between;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn primary" id="btnLoadDemo" type="button">▶ Load &amp; Run Sample Dashcam Video</button>
+          <button class="btn" id="btnPlayPause" type="button" disabled>Pause</button>
+          <button class="btn" id="btnStepFrame" type="button" disabled>Step +1 Frame</button>
+          <button class="btn" id="btnResetTracker" type="button">Reset Tracker IDs</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; font-size:12px;">
+          <label for="confSlider" class="muted">YOLO Conf:</label>
+          <input type="range" id="confSlider" min="0.15" max="0.60" step="0.05" value="0.25" style="width:90px;">
+          <span class="mono" id="confVal">0.25</span>
+        </div>
+      </div>
+
+      <!-- Hidden HTML5 video element for user-uploaded videos -->
+      <video id="hiddenVideo" playsinline muted crossorigin="anonymous" style="display:none;"></video>
+
+      <!-- Synchronized YOLO Canvas Viewport -->
+      <div class="viewport-wrap">
+        <canvas id="yoloCanvas" width="800" height="450"></canvas>
+      </div>
+
+      <!-- Timeline Scrubber & Layer Toggles -->
+      <div class="controls-bar">
+        <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:220px;">
+          <span class="mono" id="timeDisplay" style="font-size:12px; min-width:95px;">00:00.0 / 00:00.0</span>
+          <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1" style="flex:1;" disabled>
+        </div>
+        <div style="display:flex; gap:12px; font-size:12px; align-items:center;">
+          <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+            <input type="checkbox" id="chkDamage" checked> <span style="color:#f87171;">Road Damage</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+            <input type="checkbox" id="chkCoco" checked> <span style="color:#10b981;">Traffic/COCO</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+            <input type="checkbox" id="chkCrosswalk" checked> <span style="color:#22d3ee;">Crosswalk</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Live Tracker Telemetry & Active Frame Detections -->
+    <div>
+      <div class="kpi-grid-6">
+        <div class="kpi-card">
+          <div class="k-num" id="kpiPotholes" style="color:#ef4444;">0</div>
+          <div class="k-lbl">Unique Potholes</div>
+        </div>
+        <div class="kpi-card">
+          <div class="k-num" id="kpiCracks" style="color:#f59e0b;">0</div>
+          <div class="k-lbl">Unique Cracks</div>
+        </div>
+        <div class="kpi-card">
+          <div class="k-num" id="kpiCrosswalks" style="color:#22d3ee;">0</div>
+          <div class="k-lbl">Crosswalks</div>
+        </div>
+        <div class="kpi-card">
+          <div class="k-num" id="kpiVehicles" style="color:#10b981;">0</div>
+          <div class="k-lbl">Unique Vehicles</div>
+        </div>
+        <div class="kpi-card">
+          <div class="k-num" id="kpiPedestrians" style="color:#ec4899;">0</div>
+          <div class="k-lbl">Pedestrians</div>
+        </div>
+        <div class="kpi-card">
+          <div class="k-num" id="kpiLatency">0 ms</div>
+          <div class="k-lbl" id="kpiFps">Pretrained YOLO Latency</div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0;">Current Frame YOLO Boxes</h3>
+          <span class="mono muted" id="frameBoxCount" style="font-size:12px;">0 boxes</span>
+        </div>
+        <div class="det-pill-list" id="liveBoxList">
+          <div class="muted" style="font-size:12.5px; padding:12px 0;">
+            Click <strong>Load &amp; Run Sample Dashcam Video</strong> or drop a video file to start real-time Pretrained YOLO detection.
+          </div>
+        </div>
+      </div>
+
+      <!-- Server-Side Batch File Ingestion Option -->
+      <details class="panel" style="padding:12px 16px;">
+        <summary style="cursor:pointer; font-weight:600; font-size:13px;">
+          Batch Server File Ingestion (<code>POST /api/v1/video/yolo-ingest</code>)
+        </summary>
+        <div style="margin-top:12px;">
+          <label for="serverVideoPath">Server Video Path (or <code>demo</code>)</label>
+          <input id="serverVideoPath" value="demo" placeholder="demo or /path/to/dashcam.mp4">
+          <div class="row" style="margin-top:8px;">
+            <div>
+              <label for="everyS">Sample interval (s)</label>
+              <input id="everyS" type="number" value="0.4" min="0.1" step="0.1">
+            </div>
+            <div>
+              <label for="maxF">Max frames</label>
+              <input id="maxF" type="number" value="40" min="1" max="500">
+            </div>
+          </div>
+          <div class="btn-row" style="margin-top:10px;">
+            <button class="btn primary" id="btnBatchIngest" type="button">Run Pretrained YOLO Batch Ingest</button>
+          </div>
+          <div id="batchMsg" class="muted" style="font-size:12px; margin-top:8px;"></div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- Frame-by-Frame Detection Log Table -->
+  <section style="margin-top:28px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h2 style="margin:0;">Pretrained YOLO Frame Detection Timeline</h2>
+      <span class="mono muted" id="timelineCountLabel" style="font-size:12px;">0 frames analysed</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="num">Frame</th>
+            <th class="num">Time (s)</th>
+            <th>Primary Detection</th>
+            <th>YOLO Weight Source</th>
+            <th class="num">Conf</th>
+            <th class="num">Potholes</th>
+            <th class="num">Cracks</th>
+            <th class="num">Vehicles</th>
+            <th class="num">Crosswalks</th>
+            <th class="num">Pedestrians</th>
+            <th class="num">Latency</th>
+          </tr>
+        </thead>
+        <tbody id="timelineBody">
+          <tr><td colspan="11" class="muted">No video frames processed yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="foot-inner">
+    <span>ROAD-SHIELD · Dedicated Pretrained YOLO Video Pipeline (YOLOv11n-RDD2022 + YOLOv8n-COCO + YOLOv8n-Crosswalk)</span>
+    <span><a href="/inspect">Single-image deep audit →</a></span>
+  </div>
+</footer>
+
 <script src="/web/app.js"></script>
 <script>
-(async () => {
-  const r = await API.get("/api/v1/calibration/profiles");
-  if (r.ok) (r.data.profiles || []).forEach(p => {
-    const o = document.createElement("option");
-    o.value = p.device_id; o.textContent = p.device_id;
-    el("dev").appendChild(o);
-  });
-})();
+RS.initEnv();
 
-el("probe").addEventListener("click", async () => {
-  const r = await API.post("/api/v1/video/probe", { video_path: el("path").value });
-  el("out").innerHTML = r.ok
-    ? `<div class="card"><div class="label">file</div>
-        ${Object.entries(r.data).map(([k, v]) => `<div class="kv"><span>${k}</span><span>${v}</span></div>`).join("")}</div>`
-    : errorCard(r.data.error || `HTTP ${r.status}`);
+const canvas = document.getElementById("yoloCanvas");
+const ctx = canvas.getContext("2d");
+const videoEl = document.getElementById("hiddenVideo");
+const offscreen = document.createElement("canvas");
+const offCtx = offscreen.getContext("2d");
+
+let sessionId = "yolo_vid_" + Date.now();
+let isPlaying = false;
+let isBusy = false;
+let playbackMode = "none"; // "video" | "demo_frames"
+let demoFrames = [];
+let demoIdx = 0;
+let frameCounter = 0;
+let timelineRows = [];
+let lastResult = null;
+
+const confSlider = document.getElementById("confSlider");
+const confVal = document.getElementById("confVal");
+confSlider.addEventListener("input", () => {
+  confVal.textContent = Number(confSlider.value).toFixed(2);
 });
 
-el("run").addEventListener("click", async () => {
-  let gps = null;
-  const raw = el("gps").value.trim();
-  if (raw) {
-    try { gps = JSON.parse(raw); }
-    catch { el("out").innerHTML = errorCard("GPS track is not valid JSON"); return; }
+// Draw welcome placeholder on canvas
+function drawPlaceholder(msg) {
+  ctx.fillStyle = "#070b14";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "#1e293b";
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
   }
-  setLoading(el("out"), true, "decoding and analysing…");
-  const payload = {
-    video_path: el("path").value,
-    bus_id: el("bus").value,
-    sample_every_m: parseFloat(el("every").value),
-    max_frames: parseInt(el("maxf").value, 10),
-  };
-  if (gps) payload.gps_track = gps;
-  if (el("dev").value) payload.device_id = el("dev").value;
+  for (let y = 0; y < canvas.height; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+  ctx.fillStyle = "#10b981";
+  ctx.font = "bold 16px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("PRETRAINED YOLO VIDEO ENGINE READY", canvas.width / 2, canvas.height / 2 - 12);
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "13px sans-serif";
+  ctx.fillText(msg || "Drop a video file (.mp4 / .webm) above or click 'Load & Run Sample Dashcam Video'", canvas.width / 2, canvas.height / 2 + 16);
+  ctx.textAlign = "left";
+}
+drawPlaceholder();
 
-  const r = await API.post("/api/v1/video/ingest", payload);
-  if (!r.ok) {
-    el("out").innerHTML = errorCard(r.data.error || `HTTP ${r.status}`, r.data.note);
+// Render frame image + YOLO bounding boxes + HUD overlay
+function renderFrameAndBoxes(imgSource, res, timestampS, durationS) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(imgSource, 0, 0, canvas.width, canvas.height);
+
+  const dets = (res && res.detections) ? res.detections : [];
+  for (const d of dets) {
+    const norm = d.bbox_normalized || [0, 0, 0, 0];
+    const bx = norm[0] * canvas.width;
+    const by = norm[1] * canvas.height;
+    const bw = norm[2] * canvas.width;
+    const bh = norm[3] * canvas.height;
+    const color = d.color || "#10b981";
+
+    // Translucent fill
+    ctx.fillStyle = color + "22";
+    ctx.fillRect(bx, by, bw, bh);
+
+    // Crisp bounding box
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(bx, by, bw, bh);
+
+    // Corner brackets
+    const cLen = Math.min(12, bw * 0.25, bh * 0.25);
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(bx, by + cLen); ctx.lineTo(bx, by); ctx.lineTo(bx + cLen, by);
+    ctx.moveTo(bx + bw - cLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cLen);
+    ctx.moveTo(bx, by + bh - cLen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + cLen, by + bh);
+    ctx.moveTo(bx + bw - cLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - cLen);
+    ctx.stroke();
+
+    // Label banner
+    const tid = d.track_id ? `#${d.track_id} ` : "";
+    const confPct = Math.round((d.confidence || 0) * 100);
+    const label = `${tid}${d.class_name} ${confPct}%`;
+    ctx.font = "bold 12px monospace";
+    const tw = ctx.measureText(label).width + 12;
+    const th = 20;
+    const ly = Math.max(th, by);
+    ctx.fillStyle = color;
+    ctx.fillRect(bx, ly - th, tw, th);
+    ctx.fillStyle = "#050811";
+    ctx.fillText(label, bx + 6, ly - 5);
+  }
+
+  // Top-left HUD overlay
+  ctx.fillStyle = "rgba(5, 8, 17, 0.82)";
+  ctx.fillRect(10, 10, 335, 62);
+  ctx.strokeStyle = "rgba(16, 185, 129, 0.45)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 335, 62);
+
+  ctx.fillStyle = "#10b981";
+  ctx.font = "bold 11.5px monospace";
+  ctx.fillText("MODE: PRETRAINED YOLO ENSEMBLE (ONNX)", 20, 28);
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "11.5px monospace";
+  const lat = res ? `${res.latency_ms}ms (${res.fps_estimate} FPS)` : "—";
+  ctx.fillText(`FRAME #${frameCounter} | T=${timestampS.toFixed(2)}s | ${lat}`, 20, 45);
+  const trk = (res && res.tracker_summary) ? res.tracker_summary : {};
+  ctx.fillText(`BOXES: ${dets.length} | UNIQUE TRACKS: ${trk.total_unique_tracks || 0}`, 20, 62);
+
+  // Update time display & scrubber
+  const dur = durationS || 0;
+  document.getElementById("timeDisplay").textContent = `${formatTime(timestampS)} / ${formatTime(dur)}`;
+  if (dur > 0) {
+    document.getElementById("seekBar").value = Math.min(100, (timestampS / dur) * 100);
+  }
+}
+
+function formatTime(sec) {
+  const s = Math.max(0, Number(sec) || 0);
+  const m = Math.floor(s / 60);
+  const rem = (s % 60).toFixed(1).padStart(4, "0");
+  return `${String(m).padStart(2, "0")}:${rem}`;
+}
+
+function updateTelemetryUI(res) {
+  if (!res) return;
+  const ts = res.tracker_summary || {};
+  document.getElementById("kpiPotholes").textContent = ts.unique_potholes || 0;
+  document.getElementById("kpiCracks").textContent = ts.unique_cracks || 0;
+  document.getElementById("kpiCrosswalks").textContent = ts.unique_crosswalks || 0;
+  document.getElementById("kpiVehicles").textContent = ts.unique_vehicles || 0;
+  document.getElementById("kpiPedestrians").textContent = ts.unique_pedestrians || 0;
+  document.getElementById("kpiLatency").textContent = `${Math.round(res.latency_ms || 0)} ms`;
+  document.getElementById("kpiFps").textContent = `Pretrained YOLO (~${res.fps_estimate || 0} FPS)`;
+
+  const dets = res.detections || [];
+  document.getElementById("frameBoxCount").textContent = `${dets.length} box${dets.length === 1 ? "" : "es"}`;
+  const listEl = document.getElementById("liveBoxList");
+  if (dets.length === 0) {
+    listEl.innerHTML = `<div class="muted" style="font-size:12px; padding:8px 0;">No objects/distress above threshold in frame #${res.frame_index}.</div>`;
+  } else {
+    listEl.innerHTML = dets.map(d => `
+      <div class="det-item" style="border-left-color:${d.color || '#10b981'}">
+        <div>
+          <strong class="mono" style="color:${d.color || '#10b981'}">#${d.track_id}</strong>
+          <strong style="margin-left:4px;">${RS.esc(d.class_name)}</strong>
+          <span class="muted" style="font-size:11px; margin-left:6px;">[${RS.esc(d.source_model)}]</span>
+        </div>
+        <div class="mono" style="font-size:12px;">
+          ${Math.round((d.confidence || 0) * 100)}% · seen ${d.frames_seen || 1}f
+        </div>
+      </div>
+    `).join("");
+  }
+
+  // Prepend to timeline table
+  const fc = res.frame_counts || {};
+  const topD = dets[0];
+  timelineRows.unshift({
+    frame_index: res.frame_index,
+    timestamp_s: res.timestamp_s,
+    primary: topD ? `#${topD.track_id} ${topD.class_name}` : "Clear Roadway",
+    source: topD ? topD.source_model : "YOLOv8n/v11n",
+    conf: topD ? `${Math.round(topD.confidence * 100)}%` : "—",
+    potholes: fc.potholes || 0,
+    cracks: fc.cracks || 0,
+    vehicles: fc.vehicles || 0,
+    crosswalks: fc.crosswalks || 0,
+    pedestrians: fc.pedestrians || 0,
+    latency: `${res.latency_ms} ms`,
+    is_defect: (fc.potholes || 0) + (fc.cracks || 0) > 0,
+  });
+  timelineRows = timelineRows.slice(0, 60);
+  renderTimelineTable();
+}
+
+function renderTimelineTable() {
+  document.getElementById("timelineCountLabel").textContent = `${timelineRows.length} recent frames shown`;
+  const tbody = document.getElementById("timelineBody");
+  if (!timelineRows.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="muted">No video frames processed yet.</td></tr>`;
     return;
   }
-  const d = r.data;
-  el("out").innerHTML = `
-    <div class="card accent">
-      <div class="label">${d.video.path} · ${d.video.duration_s}s @ ${d.video.fps} fps</div>
-      <div class="grid c2" style="margin-top:8px">
-        <div><div class="label">frames analysed</div><div class="stat sm">${d.frames_analysed}</div>
-          <div class="stat-sub">of ${d.video.frame_count} decoded</div></div>
-        <div><div class="label">defect frames</div>
-          <div class="stat sm" style="color:var(--warn)">${d.defect_frames}</div>
-          <div class="stat-sub">${d.unique_defects_after_dedup != null
-            ? d.unique_defects_after_dedup + " unique after dedup" : "not deduplicated — no GPS"}</div></div>
-      </div>
-      <div class="rule" style="margin:13px 0"></div>
-      <div class="kv"><span>Sampling</span><span>${d.sampling.mode}
-        ${d.sampling.sample_every_m ? "· " + d.sampling.sample_every_m + " m" : "· " + d.sampling.sample_every_s + " s"}</span></div>
-      <div class="kv"><span>Skipped as near-duplicates</span><span>${d.frames_skipped_as_near_duplicates}</span></div>
-      <div class="kv"><span>GPS fixes</span><span>${d.gps.fixes}</span></div>
-      <div class="kv"><span>Time per analysed frame</span><span>${d.ms_per_analysed_frame} ms</span></div>
-      <div class="kv"><span>Total</span><span>${d.seconds_elapsed} s</span></div>
-      ${d.gps.note ? `<p class="small" style="margin:10px 0 0;color:var(--warn)">${d.gps.note}</p>` : ""}
-    </div>
-    <div class="card" style="margin-top:14px">
-      <div class="label">frames${d.detections_truncated_to ? ` · first ${d.detections_truncated_to}` : ""}</div>
-      <div class="table-wrap"><table>
-        <thead><tr><th class="num">t</th><th>class</th><th class="num">conf</th>
-          <th class="num">area m²</th><th>position</th></tr></thead>
-        <tbody>${d.detections.map(x => `<tr>
-          <td class="num">${x.timestamp_s}s</td>
-          <td>${(x.class_name || "—").slice(0, 24)}</td>
-          <td class="num">${x.confidence ? (x.confidence * 100).toFixed(0) + "%" : "—"}</td>
-          <td class="num">${fmt.num(x.area_m2, 3)}</td>
-          <td class="mono small">${x.lat != null ? x.lat.toFixed(5) + ", " + x.lon.toFixed(5) : "—"}</td>
-        </tr>`).join("")}</tbody></table></div>
-    </div>`;
+  tbody.innerHTML = timelineRows.map(r => `
+    <tr>
+      <td class="num mono">#${r.frame_index}</td>
+      <td class="num mono">${Number(r.timestamp_s).toFixed(2)}s</td>
+      <td><span class="tag ${r.is_defect ? 'bad' : 'ok'}">${RS.esc(r.primary)}</span></td>
+      <td class="mono" style="font-size:11.5px;">${RS.esc(r.source)}</td>
+      <td class="num mono">${r.conf}</td>
+      <td class="num mono">${r.potholes}</td>
+      <td class="num mono">${r.cracks}</td>
+      <td class="num mono">${r.vehicles}</td>
+      <td class="num mono">${r.crosswalks}</td>
+      <td class="num mono">${r.pedestrians}</td>
+      <td class="num mono">${r.latency}</td>
+    </tr>
+  `).join("");
+}
+
+// Send a single frame to /api/v1/video/yolo-detect
+async function detectFrameOnServer(dataUrl, frameIdx, timestampS, resetTracker = false) {
+  return await RS.call("POST", "/api/v1/video/yolo-detect", {
+    image_base64: dataUrl,
+    frame_index: frameIdx,
+    timestamp_s: timestampS,
+    conf_threshold: Number(confSlider.value),
+    session_id: sessionId,
+    reset_tracker: resetTracker,
+    include_damage: document.getElementById("chkDamage").checked,
+    include_coco: document.getElementById("chkCoco").checked,
+    include_crosswalk: document.getElementById("chkCrosswalk").checked,
+  });
+}
+
+// Loop for HTML5 <video> file upload
+async function stepUploadedVideoLoop() {
+  if (!isPlaying || playbackMode !== "video") return;
+  if (videoEl.paused || videoEl.ended) {
+    isPlaying = false;
+    document.getElementById("btnPlayPause").textContent = "Play";
+    return;
+  }
+  if (!isBusy) {
+    isBusy = true;
+    try {
+      const vw = videoEl.videoWidth || 640;
+      const vh = videoEl.videoHeight || 360;
+      const scale = Math.min(1, 640 / Math.max(vw, vh));
+      offscreen.width = Math.max(1, Math.round(vw * scale));
+      offscreen.height = Math.max(1, Math.round(vh * scale));
+      offCtx.drawImage(videoEl, 0, 0, offscreen.width, offscreen.height);
+      const b64 = offscreen.toDataURL("image/jpeg", 0.78);
+      const tSec = videoEl.currentTime || 0;
+      frameCounter += 1;
+      const res = await detectFrameOnServer(b64, frameCounter, tSec, false);
+      lastResult = res;
+      renderFrameAndBoxes(videoEl, res, tSec, videoEl.duration || 0);
+      updateTelemetryUI(res);
+    } catch (e) {
+      console.error("YOLO frame error:", e);
+    } finally {
+      isBusy = false;
+    }
+  }
+  if (isPlaying && playbackMode === "video") {
+    requestAnimationFrame(stepUploadedVideoLoop);
+  }
+}
+
+// Loop for built-in Sample Dashcam Video stream
+async function stepDemoFramesLoop() {
+  if (!isPlaying || playbackMode !== "demo_frames" || !demoFrames.length) return;
+  if (!isBusy) {
+    isBusy = true;
+    try {
+      const item = demoFrames[demoIdx % demoFrames.length];
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = item.data_url;
+      });
+      frameCounter += 1;
+      const tSec = (demoIdx % demoFrames.length) * 0.2;
+      const dur = demoFrames.length * 0.2;
+      const res = await detectFrameOnServer(item.data_url, frameCounter, tSec, frameCounter === 1);
+      lastResult = res;
+      renderFrameAndBoxes(img, res, tSec, dur);
+      updateTelemetryUI(res);
+      demoIdx = (demoIdx + 1) % demoFrames.length;
+    } catch (e) {
+      console.error("Demo YOLO frame error:", e);
+    } finally {
+      isBusy = false;
+    }
+  }
+  if (isPlaying && playbackMode === "demo_frames") {
+    setTimeout(stepDemoFramesLoop, 80);
+  }
+}
+
+// Load user video file into HTML5 <video>
+function loadUserVideoFile(file) {
+  if (!file) return;
+  isPlaying = false;
+  playbackMode = "video";
+  sessionId = "yolo_vid_" + Date.now();
+  frameCounter = 0;
+  timelineRows = [];
+  renderTimelineTable();
+
+  const url = URL.createObjectURL(file);
+  videoEl.src = url;
+  videoEl.load();
+  videoEl.onloadeddata = () => {
+    document.getElementById("btnPlayPause").disabled = false;
+    document.getElementById("btnStepFrame").disabled = false;
+    document.getElementById("seekBar").disabled = false;
+    document.getElementById("btnPlayPause").textContent = "Pause";
+    isPlaying = true;
+    videoEl.play();
+    stepUploadedVideoLoop();
+  };
+}
+
+// File input & drag-and-drop listeners
+document.getElementById("videoFileInput").addEventListener("change", (ev) => {
+  if (ev.target.files && ev.target.files[0]) {
+    loadUserVideoFile(ev.target.files[0]);
+  }
+});
+
+const dz = document.getElementById("videoDropzone");
+dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("dragover"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
+dz.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dz.classList.remove("dragover");
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    loadUserVideoFile(e.dataTransfer.files[0]);
+  }
+});
+
+// Load & Run Sample Dashcam Video button
+document.getElementById("btnLoadDemo").addEventListener("click", async () => {
+  const btn = document.getElementById("btnLoadDemo");
+  btn.disabled = true;
+  btn.textContent = "Loading NH-44 Dashcam Stream…";
+  try {
+    if (!demoFrames.length) {
+      const resp = await fetch("/web/samples/demo_dashcam_frames.json");
+      const data = await resp.json();
+      demoFrames = data.frames || [];
+    }
+    videoEl.pause();
+    playbackMode = "demo_frames";
+    demoIdx = 0;
+    frameCounter = 0;
+    sessionId = "yolo_demo_" + Date.now();
+    timelineRows = [];
+    renderTimelineTable();
+
+    document.getElementById("btnPlayPause").disabled = false;
+    document.getElementById("btnStepFrame").disabled = false;
+    document.getElementById("seekBar").disabled = false;
+    document.getElementById("btnPlayPause").textContent = "Pause";
+    isPlaying = true;
+    stepDemoFramesLoop();
+  } catch (e) {
+    alert("Failed to load sample dashcam stream: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "▶ Load & Run Sample Dashcam Video";
+  }
+});
+
+// Play / Pause button
+document.getElementById("btnPlayPause").addEventListener("click", () => {
+  const btn = document.getElementById("btnPlayPause");
+  if (isPlaying) {
+    isPlaying = false;
+    if (playbackMode === "video") videoEl.pause();
+    btn.textContent = "Play";
+  } else {
+    isPlaying = true;
+    btn.textContent = "Pause";
+    if (playbackMode === "video") {
+      videoEl.play();
+      stepUploadedVideoLoop();
+    } else if (playbackMode === "demo_frames") {
+      stepDemoFramesLoop();
+    }
+  }
+});
+
+// Step +1 Frame button
+document.getElementById("btnStepFrame").addEventListener("click", async () => {
+  isPlaying = false;
+  document.getElementById("btnPlayPause").textContent = "Play";
+  if (playbackMode === "video") {
+    videoEl.pause();
+    videoEl.currentTime = Math.min(videoEl.duration || 0, (videoEl.currentTime || 0) + 0.25);
+    await new Promise(r => setTimeout(r, 120));
+    isPlaying = true;
+    await stepUploadedVideoLoop();
+    isPlaying = false;
+  } else if (playbackMode === "demo_frames" && demoFrames.length) {
+    isPlaying = true;
+    await stepDemoFramesLoop();
+    isPlaying = false;
+  }
+});
+
+// Reset Tracker IDs button
+document.getElementById("btnResetTracker").addEventListener("click", () => {
+  sessionId = "yolo_vid_" + Date.now();
+  frameCounter = 0;
+  timelineRows = [];
+  renderTimelineTable();
+  document.getElementById("kpiPotholes").textContent = "0";
+  document.getElementById("kpiCracks").textContent = "0";
+  document.getElementById("kpiCrosswalks").textContent = "0";
+  document.getElementById("kpiVehicles").textContent = "0";
+  document.getElementById("kpiPedestrians").textContent = "0";
+});
+
+// Seekbar listener
+document.getElementById("seekBar").addEventListener("input", (e) => {
+  const pct = Number(e.target.value) / 100;
+  if (playbackMode === "video" && videoEl.duration) {
+    videoEl.currentTime = pct * videoEl.duration;
+  } else if (playbackMode === "demo_frames" && demoFrames.length) {
+    demoIdx = Math.floor(pct * (demoFrames.length - 1));
+  }
+});
+
+// Server-side batch ingest button
+document.getElementById("btnBatchIngest").addEventListener("click", async () => {
+  const pathVal = document.getElementById("serverVideoPath").value.trim() || "demo";
+  const msgEl = document.getElementById("batchMsg");
+  msgEl.textContent = "Running Pretrained YOLO batch video ingestion…";
+  try {
+    const r = await RS.call("POST", "/api/v1/video/yolo-ingest", {
+      video_path: pathVal,
+      sample_every_s: Number(document.getElementById("everyS").value) || 0.4,
+      max_frames: Number(document.getElementById("maxF").value) || 40,
+      conf_threshold: Number(confSlider.value) || 0.25,
+      mode: "yolo_only"
+    });
+    const ts = r.tracker_summary || {};
+    msgEl.textContent = `Analysed ${r.frames_analysed} frames in ${r.seconds_elapsed}s (${r.ms_per_analysed_frame} ms/frame) — Unique Potholes: ${ts.unique_potholes || 0}, Cracks: ${ts.unique_cracks || 0}, Vehicles: ${ts.unique_vehicles || 0}.`;
+    if (r.detections && r.detections.length) {
+      timelineRows = r.detections.map(d => ({
+        frame_index: d.frame_index,
+        timestamp_s: d.timestamp_s,
+        primary: d.class_name || "Clear Roadway",
+        source: d.source_model || "YOLOv8n/v11n",
+        conf: d.confidence ? `${Math.round(d.confidence * 100)}%` : "—",
+        potholes: d.potholes || 0,
+        cracks: d.cracks || 0,
+        vehicles: d.vehicles || 0,
+        crosswalks: d.crosswalks || 0,
+        pedestrians: d.pedestrians || 0,
+        latency: `${d.latency_ms || r.ms_per_analysed_frame} ms`,
+        is_defect: d.is_defect,
+      }));
+      renderTimelineTable();
+      document.getElementById("kpiPotholes").textContent = ts.unique_potholes || 0;
+      document.getElementById("kpiCracks").textContent = ts.unique_cracks || 0;
+      document.getElementById("kpiCrosswalks").textContent = ts.unique_crosswalks || 0;
+      document.getElementById("kpiVehicles").textContent = ts.unique_vehicles || 0;
+      document.getElementById("kpiPedestrians").textContent = ts.unique_pedestrians || 0;
+      document.getElementById("kpiLatency").textContent = `${r.ms_per_analysed_frame} ms`;
+    }
+  } catch (e) {
+    msgEl.textContent = "Error: " + e.message;
+  }
 });
 </script>
 </body>

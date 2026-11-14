@@ -304,6 +304,7 @@ STATIC_TYPES = {
     ".js": "application/javascript; charset=utf-8", ".json": "application/json",
     ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg",
     ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
+    ".mp4": "video/mp4", ".webm": "video/webm",
 }
 
 def get_session_tracker(session_id="default", reset=False):
@@ -1575,8 +1576,53 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": f"Deep pipeline audit failed: {str(e)}"})
             return
 
-        if path == "/api/v1/video/ingest":
+        if path == "/api/v1/video/yolo-detect":
+            frame_b64 = body.get("image_base64") or body.get("frame_base64")
+            if not frame_b64:
+                self._send_json(400, {"error": "Missing image_base64 or frame_base64 payload"})
+                return
+            try:
+                from models.yolo_video_engine import get_yolo_video_engine
+                yolo_eng = get_yolo_video_engine()
+                res = yolo_eng.detect_frame(
+                    image_input=frame_b64,
+                    frame_index=int(body.get("frame_index", body.get("frame_idx", 0))),
+                    timestamp_s=float(body.get("timestamp_s", 0.0)),
+                    conf_threshold=float(body.get("conf_threshold", 0.25)),
+                    session_id=str(body.get("session_id", "default_yolo_video")),
+                    reset_tracker=bool(body.get("reset_tracker", False)),
+                    include_coco=bool(body.get("include_coco", True)),
+                    include_damage=bool(body.get("include_damage", True)),
+                    include_crosswalk=bool(body.get("include_crosswalk", True)),
+                )
+                self._send_json(200, res)
+            except Exception as e:
+                self._send_json(500, {"error": f"Pretrained YOLO video frame detection failed: {str(e)}"})
+            return
+
+        if path in ("/api/v1/video/ingest", "/api/v1/video/yolo-ingest"):
+            video_b64 = body.get("video_base64")
             src = body.get("video_path") or body.get("path")
+            temp_video_path = None
+            if video_b64:
+                try:
+                    import base64 as _b64
+                    raw_v = str(video_b64).strip()
+                    if "," in raw_v and raw_v.startswith("data:"):
+                        raw_v = raw_v.split(",", 1)[1]
+                    v_bytes = _b64.b64decode(raw_v)
+                    ext = os.path.splitext(str(body.get("filename") or "uploaded.mp4"))[1] or ".mp4"
+                    os.makedirs(WRITABLE_DIR, exist_ok=True)
+                    temp_video_path = os.path.join(WRITABLE_DIR, f"upload_{int(time.time()*1000)}{ext}")
+                    with open(temp_video_path, "wb") as vf:
+                        vf.write(v_bytes)
+                    src = temp_video_path
+                except Exception as e:
+                    self._send_json(400, {"error": f"Failed to decode uploaded video_base64: {e}"})
+                    return
+            elif src in ("demo", "sample", "web/samples/demo_dashcam_yolo.mp4"):
+                src = os.path.join(ENGINE_ROOT, "web", "samples", "demo_dashcam_yolo.mp4")
+
             if not src:
                 self._send_json(400, {
                     "error": "video_path is required",
@@ -1590,7 +1636,22 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
             if not os.path.isfile(src):
                 self._send_json(404, {"error": f"no such video: {src}"})
                 return
+
+            use_yolo_only = (path == "/api/v1/video/yolo-ingest") or (body.get("mode") == "yolo_only") or bool(body.get("yolo_only", False))
             try:
+                if use_yolo_only:
+                    from models.yolo_video_engine import get_yolo_video_engine
+                    yolo_eng = get_yolo_video_engine()
+                    summary = yolo_eng.ingest_video(
+                        src,
+                        sample_every_s=float(body.get("sample_every_s", 0.5)),
+                        max_frames=int(body.get("max_frames", 120)),
+                        conf_threshold=float(body.get("conf_threshold", 0.25)),
+                    )
+                    summary["bus_id"] = body.get("bus_id", "UNKNOWN")
+                    self._send_json(200, summary)
+                    return
+
                 from pipeline.video_ingest import VideoIngestor
                 ing = VideoIngestor(deep_pipeline, fleet_dedup_engine,
                                     traffic=MLOPS.traffic if MLOPS is not None else None)
@@ -1610,6 +1671,12 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, summary)
             except Exception as e:
                 self._send_json(500, {"error": str(e)})
+            finally:
+                if temp_video_path and os.path.exists(temp_video_path):
+                    try:
+                        os.remove(temp_video_path)
+                    except Exception:
+                        pass
             return
 
         if path == "/api/v1/video/probe":

@@ -551,5 +551,31 @@ class TestDANDAGDeepNetwork(unittest.TestCase):
         self.assertEqual(len(pred["dan_channel"]["top_attended_channels"]), 6)
 
 
+class TestPretrainedYOLOVideoEngine(unittest.TestCase):
+    """Tests for the dedicated Pretrained-YOLO Video Engine & Multi-Object Tracker."""
+
+    def test_pretrained_yolo_video_engine_loads_all_three_onnx_models(self):
+        from models.yolo_video_engine import get_yolo_video_engine
+        eng = get_yolo_video_engine()
+        self.assertTrue(eng.is_ready)
+        manifest = eng.active_models_manifest()
+        ids = {m["id"] for m in manifest}
+        self.assertIn("yolo11n_rdd2022", ids)
+        self.assertIn("yolov8n_coco", ids)
+        self.assertIn("yolov8n_crosswalk", ids)
+
+    def test_pretrained_yolo_frame_detection_and_tracking(self):
+        from models.yolo_video_engine import get_yolo_video_engine
+        eng = get_yolo_video_engine()
+        img = sample_photo()
+        res1 = eng.detect_frame(img, frame_index=0, timestamp_s=0.0, session_id="unit_test_yolo", reset_tracker=True)
+        self.assertEqual(res1["pipeline_mode"], "PRETRAINED_YOLO_ONLY")
+        self.assertIn("detections", res1)
+        self.assertIn("tracker_summary", res1)
+        res2 = eng.detect_frame(img, frame_index=1, timestamp_s=0.2, session_id="unit_test_yolo", reset_tracker=False)
+        if res1["detections"] and res2["detections"]:
+            self.assertEqual(res1["detections"][0]["track_id"], res2["detections"][0]["track_id"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
