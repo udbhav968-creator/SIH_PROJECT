@@ -107,6 +107,27 @@ def check_environment():
     return True
 
 
+def backup_existing_checkpoints(backup_dir=None):
+    """Automatically backs up all existing checkpoints and reports so previous results are never lost."""
+    if not os.path.isdir(CKPT_DIR):
+        return None
+    files = [f for f in os.listdir(CKPT_DIR) if os.path.isfile(os.path.join(CKPT_DIR, f))]
+    if not files:
+        return None
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    target = backup_dir or os.path.join(ENGINE_ROOT, "checkpoints_backups", f"ckpt_backup_{timestamp}")
+    os.makedirs(target, exist_ok=True)
+    count = 0
+    for f in files:
+        src = os.path.join(CKPT_DIR, f)
+        dst = os.path.join(target, f)
+        shutil.copy2(src, dst)
+        count += 1
+    print(f"\n  [SAFETY BACKUP] Automatically backed up {count} existing checkpoints/reports to:", flush=True)
+    print(f"                  {target}\n", flush=True)
+    return target
+
+
 def stage_dataset_preparation(skip_fetch=False):
     banner("STAGE 2: DATASET PREPARATION & RARE CLASS BALANCING")
     t0 = time.time()
@@ -361,11 +382,16 @@ def main():
     parser.add_argument("--skip", type=str, default="", help="Comma-separated stages to skip")
     parser.add_argument("--ood-dir", type=str, default=None, help="Directory containing ImageNet sample images for OOD training")
     parser.add_argument("--fetch-ood", action="store_true", help="Download ImageNet sample images if not found locally")
+    parser.add_argument("--no-backup", action="store_true", help="Disable automatic checkpoint backup before training")
+    parser.add_argument("--backup-dir", type=str, default=None, help="Custom directory to store existing checkpoint backup")
     args = parser.parse_args()
 
     skip_stages = set(s.strip().lower() for s in args.skip.split(",") if s.strip())
 
     check_environment()
+    if not args.no_backup:
+        backup_existing_checkpoints(backup_dir=args.backup_dir)
+
     timings = {}
 
     if "dataset" not in skip_stages:
