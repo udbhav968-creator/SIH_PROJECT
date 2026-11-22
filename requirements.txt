@@ -18,3 +18,4 @@ joblib>=1.3.0
 onnxruntime>=1.17
 # Encrypted bus-to-server packets (edge/crypto.py) and the bus agent's offline queue.
 cryptography>=41
+pyyaml>=6.0   # tests/test_score_by_source.py imports yaml
