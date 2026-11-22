@@ -1653,6 +1653,97 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": f"detect/everything failed: {str(e)}"})
             return
 
+        if path == "/api/v1/detect/video":
+            # A video in -> every road object detected across sampled frames and
+            # COUNTED ONCE per tracked object. Same honest rules as the image path:
+            # road-damage boxes are an unverified candidate (candidate_damage).
+            video_b64 = body.get("video_base64")
+            if not video_b64:
+                self._send_json(400, {"error": "Missing video_base64 payload"})
+                return
+            tmp_path = None
+            try:
+                import base64 as _b64, tempfile as _tf, os as _os
+                from pipeline.detect_everything import analyze_video
+                raw = str(video_b64).strip()
+                if raw.startswith("data:") and "," in raw:
+                    raw = raw.split(",", 1)[1]
+                ext = _os.path.splitext(str(body.get("filename") or "clip.mp4"))[1] or ".mp4"
+                fd, tmp_path = _tf.mkstemp(suffix=ext)
+                with _os.fdopen(fd, "wb") as fh:
+                    fh.write(_b64.b64decode(raw))
+                r = analyze_video(
+                    tmp_path,
+                    conf=float(body.get("conf_threshold", 0.25)),
+                    sample_every_s=float(body.get("sample_every_s", 0.5)),
+                    max_frames=int(body.get("max_frames", 300)),
+                    candidate_damage=bool(body.get("candidate_damage", True)),
+                    save_sample_frames=int(body.get("sample_frames", 3)),
+                )
+                samples = []
+                for sf in r.get("sample_frames", []):
+                    png = sf.pop("annotated_png", None)
+                    if png:
+                        sf["annotated_image_base64"] = "data:image/png;base64," + _b64.b64encode(png).decode("ascii")
+                    samples.append(sf)
+                r["sample_frames"] = samples
+                self._send_json(200, r)
+            except Exception as e:
+                self._send_json(500, {"error": f"detect/video failed: {str(e)}"})
+            finally:
+                if tmp_path:
+                    try:
+                        import os as _os2
+                        _os2.remove(tmp_path)
+                    except Exception:
+                        pass
+            return
+
+        if path == "/api/v1/detect/video-audit":
+            # The full /inspect audit (area, depth, PCI, MoRTH cost) run frame by
+            # frame over a clip, aggregated into a corridor report.
+            video_b64 = body.get("video_base64")
+            if not video_b64:
+                self._send_json(400, {"error": "Missing video_base64 payload"})
+                return
+            tmp_path = None
+            try:
+                import base64 as _b64, tempfile as _tf, os as _os
+                from pipeline.detect_everything import analyze_video_deep
+                raw = str(video_b64).strip()
+                if raw.startswith("data:") and "," in raw:
+                    raw = raw.split(",", 1)[1]
+                ext = _os.path.splitext(str(body.get("filename") or "clip.mp4"))[1] or ".mp4"
+                fd, tmp_path = _tf.mkstemp(suffix=ext)
+                with _os.fdopen(fd, "wb") as fh:
+                    fh.write(_b64.b64decode(raw))
+                r = analyze_video_deep(
+                    tmp_path, deep_pipeline,
+                    conf=float(body.get("conf_threshold", 0.25)),
+                    sample_every_s=float(body.get("sample_every_s", 1.5)),
+                    max_frames=int(body.get("max_frames", 8)),
+                    candidate_damage=bool(body.get("candidate_damage", True)),
+                    corridor_id=str(body.get("corridor", "VIDEO")),
+                )
+                for f in r.get("unique_defects", []):
+                    png = f.pop("annotated_png", None)
+                    if png:
+                        f["annotated_image_base64"] = "data:image/png;base64," + _b64.b64encode(png).decode("ascii")
+                # per-frame findings keep only the numbers (drop the heavy images)
+                for f in r.get("findings", []):
+                    f.pop("annotated_png", None)
+                self._send_json(200, r)
+            except Exception as e:
+                self._send_json(500, {"error": f"detect/video-audit failed: {str(e)}"})
+            finally:
+                if tmp_path:
+                    try:
+                        import os as _os2
+                        _os2.remove(tmp_path)
+                    except Exception:
+                        pass
+            return
+
         if path in ("/api/v1/video/ingest", "/api/v1/video/yolo-ingest"):
             video_b64 = body.get("video_base64")
             src = body.get("video_path") or body.get("path")

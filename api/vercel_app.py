@@ -276,6 +276,13 @@ class handler(BaseHTTPRequestHandler):
                                  "hint": "run the engine (python -m api.server) or connect a hosted engine; see docs/DEPLOY_LIVE_ENGINE.md"})
                 return
 
+        if path in ("/api/v1/detect/video", "/api/v1/detect/video-audit"):
+            # Video decoding + multi-frame inference is too heavy for a serverless
+            # function; it runs on the engine. Return a clear 503 rather than fail.
+            self._send(503, {"error": "video analysis is not available on this serverless deployment",
+                             "hint": "run the engine (python -m api.server) or connect a hosted engine; see docs/DEPLOY_LIVE_ENGINE.md"})
+            return
+
         if path in ("/api/v1/video/yolo-models", "/api/v1/video/yolo-status"):
             try:
                 from models.yolo_video_engine import get_yolo_video_engine
