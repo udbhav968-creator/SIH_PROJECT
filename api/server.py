@@ -577,6 +577,17 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": f"Failed to load YOLO models manifest: {e}"})
             return
 
+        if path == "/api/v1/detect/models":
+            # The detectors behind the Detect-everything page, with each one's
+            # verification status, so the UI can show what is verified vs candidate.
+            try:
+                from models.yolo_video_engine import YOLOVideoEngine
+                eng = YOLOVideoEngine(candidate_damage=True)
+                self._send_json(200, {"models": eng.active_models_manifest()})
+            except Exception as e:
+                self._send_json(500, {"error": f"Failed to load detector manifest: {e}"})
+            return
+
         if path == "/api/v1/maps/status":
             self._send_json(200, google_maps_service.get_service_status())
             return

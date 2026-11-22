@@ -50,6 +50,8 @@
     </p>
   </div>
 
+  <div id="models"></div>
+
   <div class="tabs">
     <button id="tabImage" class="on" onclick="setTab('image')">Image</button>
     <button id="tabVideo" onclick="setTab('video')">Video</button>
@@ -67,8 +69,8 @@
         </div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;align-items:center">
           <label class="small muted" style="display:flex;gap:8px;align-items:center;margin:0">
-            Confidence <input type="range" id="conf" min="0.05" max="0.6" step="0.05" value="0.25" style="width:auto">
-            <span id="confv" class="mono">0.25</span>
+            Confidence <input type="range" id="conf" min="0.05" max="0.6" step="0.05" value="0.3" style="width:auto">
+            <span id="confv" class="mono">0.30</span>
           </label>
           <label class="small muted" style="display:flex;gap:6px;align-items:center;margin:0">
             <input type="checkbox" id="cand" checked style="width:auto"> show candidate damage
@@ -192,6 +194,27 @@ function renderVideo(r) {
 }
 
 function readFile(f, cb) { const rd = new FileReader(); rd.onload = function(){ cb(rd.result); }; rd.readAsDataURL(f); }
+
+/* models panel -- shows every detector behind this page and its status */
+async function loadModels() {
+  const r = await API.get("/api/v1/detect/models");
+  if (!r.ok || !r.data || !r.data.models) return;
+  const cards = r.data.models.map(function(m){
+    const verified = m.verification !== "candidate_unverified";
+    const badge = verified ? '<span class="badge measured">verified</span>'
+                           : '<span class="badge estimate">candidate &middot; ' + (m.gate_blocked_by||"ungated") + '</span>';
+    const cls = (m.classes||[]).slice(0,6).join(", ") + ((m.classes||[]).length>6 ? ", &hellip;" : "");
+    return '<div class="count-cell" style="text-align:left">'
+      + '<div style="display:flex;align-items:center;gap:8px;justify-content:space-between">'
+      + '<strong style="font-size:13px">' + (m.name||m.id) + '</strong>' + badge + '</div>'
+      + '<div class="small muted" style="margin-top:4px">' + (m.classes||[]).length + ' classes &middot; ' + (m.backend||"") + '</div>'
+      + '<div class="small muted" style="margin-top:2px">' + cls + '</div></div>';
+  }).join("");
+  el("models").innerHTML = '<div class="card" style="margin-bottom:16px"><div class="label">models in this pipeline &middot; '
+    + r.data.models.length + ' active</div><div class="count-grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">'
+    + cards + '</div></div>';
+}
+loadModels();
 
 /* image wiring */
 el("dz").onclick = function(){ el("file").click(); };

@@ -231,6 +231,15 @@ class handler(BaseHTTPRequestHandler):
                 self._send(500, {"error": f"Pretrained YOLO video frame detection failed: {e}"})
                 return
 
+        if path == "/api/v1/detect/models":
+            try:
+                from models.yolo_video_engine import YOLOVideoEngine
+                eng = YOLOVideoEngine(candidate_damage=True)
+                self._send(200, {"models": eng.active_models_manifest()})
+            except Exception as e:
+                self._send(503, {"error": f"detector manifest unavailable: {e}"})
+            return
+
         if path == "/api/v1/detect/everything":
             # Same contract as the engine: one image in -> every road object
             # detected, boxed and counted. Road-damage boxes are an unverified
