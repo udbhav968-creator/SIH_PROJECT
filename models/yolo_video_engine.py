@@ -197,7 +197,7 @@ class YOLOVideoEngine:
     without running the heavy 22-model civil audit pipeline.
     """
 
-    def __init__(self, checkpoints_dir: Optional[str] = None):
+    def __init__(self, checkpoints_dir: Optional[str] = None, candidate_damage: Optional[bool] = None):
         self.ckpt_dir = checkpoints_dir or CKPT_DIR
         self.coco_detector = ONNXObjectDetector(
             checkpoints_dir=self.ckpt_dir,
@@ -214,6 +214,16 @@ class YOLOVideoEngine:
             class_names=["Zebra Crosswalk", "Road Guide Arrow"],
             conf_threshold=0.25,
         ) if os.path.exists(cw_path) else None
+
+        # When the road-damage detector has not passed its verification gate, its
+        # boxes are hidden by default. Setting candidate_damage=True (or the env
+        # var ROAD_SHIELD_CANDIDATE_DAMAGE=1) shows them as an explicitly-labelled
+        # UNVERIFIED CANDIDATE: every such box carries verification_status so no
+        # claim of validation is ever made. The served/trustworthy path is
+        # unaffected — is_ready on the detector stays False until the gate passes.
+        if candidate_damage is None:
+            candidate_damage = os.environ.get("ROAD_SHIELD_CANDIDATE_DAMAGE", "") in ("1", "true", "True")
+        self.candidate_damage = bool(candidate_damage)
 
         self.trackers: Dict[str, YOLOMultiObjectTracker] = {}
 
@@ -234,13 +244,16 @@ class YOLOVideoEngine:
 
     def active_models_manifest(self) -> List[Dict[str, Any]]:
         models = []
-        if self.damage_detector and self.damage_detector.is_ready:
+        if self.damage_detector and self._damage_participates():
+            verified = self.damage_detector.is_ready
             models.append({
                 "id": "yolo11n_rdd2022",
                 "name": ((getattr(self.damage_detector, "meta", None) or {}).get("model_name") or "Road Damage Detector (RDD2022)"),
                 "backend": self.damage_detector.backend,
                 "input_resolution": f"{self.damage_detector.input_size}x{self.damage_detector.input_size}",
                 "classes": ["Pothole", "Alligator Crack", "Longitudinal Crack", "Transverse Crack"],
+                "verification": "verified" if verified else "candidate_unverified",
+                "gate_blocked_by": None if verified else getattr(self.damage_detector, "blocked_by", None),
             })
         if self.coco_detector and self.coco_detector.is_ready:
             models.append({
@@ -326,9 +339,27 @@ class YOLOVideoEngine:
             self.trackers[session_id] = YOLOMultiObjectTracker()
         return self.trackers[session_id]
 
+    def _damage_participates(self) -> bool:
+        """Does the road-damage detector contribute boxes to a frame? True when it
+        passed its gate (verified), or when candidate mode is on and its weights
+        are loaded (unverified candidate)."""
+        dmg = self.damage_detector
+        if not dmg:
+            return False
+        if dmg.is_ready:
+            return True
+        return bool(self.candidate_damage and getattr(dmg, "weights_loaded", False))
+
     def _detect_road_damage(self, img_rgb: np.ndarray, conf_threshold: float) -> List[Dict[str, Any]]:
-        if not self.damage_detector or not self.damage_detector.is_ready:
+        if not self._damage_participates():
             return []
+        # candidate = weights loaded but verification gate not passed
+        candidate = not self.damage_detector.is_ready
+        gate = getattr(self.damage_detector, "blocked_by", None) if candidate else None
+        prev_verifying = getattr(self.damage_detector, "verifying", False)
+        if candidate:
+            # existing escape hatch so the raw session can run; restored in finally
+            self.damage_detector.verifying = True
         from models.onnx_object_detector import decode_output, letterbox, nms, unletterbox, xywh_to_xyxy
 
         arr = np.asarray(img_rgb, dtype=np.uint8)
@@ -339,7 +370,12 @@ class YOLOVideoEngine:
 
         if self.damage_detector._session is not None:
             raw = self.damage_detector._session.run(None, {self.damage_detector._input_name: blob})[0].copy()
+            if candidate:
+                self.damage_detector.verifying = prev_verifying
         else:
+            if candidate:
+                self.damage_detector.verifying = prev_verifying
+                return self.damage_detector.detect_candidate(img_rgb, conf_threshold=conf_threshold)
             return self.damage_detector.detect(img_rgb, conf_threshold=conf_threshold)
 
         # Apply RDD2022 inverse class-frequency prior balancing [D00, D10, D20, D40]
@@ -383,6 +419,10 @@ class YOLOVideoEngine:
                 "color": color,
                 "source_model": "YOLOv11n-RDD2022",
             })
+        if candidate:
+            for d in out:
+                d["verification_status"] = "candidate_unverified"
+                d["gate_blocked_by"] = gate
         return out
 
     def detect_frame(
@@ -429,7 +469,7 @@ class YOLOVideoEngine:
         raw_detections: List[Dict[str, Any]] = []
 
         # 1. Pretrained YOLOv11n Road Damage Detector (RDD2022)
-        if include_damage and self.damage_detector and self.damage_detector.is_ready:
+        if include_damage and self._damage_participates():
             dmg_conf = max(0.075, float(conf_threshold) * 0.35)
             raw_detections.extend(self._detect_road_damage(img_rgb, conf_threshold=dmg_conf))
 

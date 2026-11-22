@@ -358,6 +358,32 @@ def build():
           + ("The clean-road check is recorded as failed." if det_dp.get("passed") is False
              else "The clean-road check has not been run (it runs only after the artefact check passes)."))
         w("")
+    w("## Detect everything (image & video)")
+    w("")
+    w("One entry point takes an **image or a video** and returns every road object detected, boxed and counted: "
+      "potholes, cracks, zebra crossings, road arrows, people, cars, buses, trucks, motorcycles, bicycles, traffic "
+      "lights and stop signs. It adds no new model — it fuses three pretrained detectors already in the repository "
+      "(road damage, COCO scene/traffic, crosswalk) through `pipeline/detect_everything.py`, and for video a "
+      "lightweight IoU tracker counts each object once across frames.")
+    w("")
+    w("```python")
+    w("from pipeline.detect_everything import analyze_image, analyze_video")
+    w("analyze_image('road.jpg')['counts']   # {'potholes': 1, 'cracks': 1, 'persons': 4, 'buses': 1, 'total': 7}")
+    w("analyze_video('drive.mp4')['unique_counts']")
+    w("```")
+    w("")
+    w("| Where | How |")
+    w("|---|---|")
+    w("| API | `POST /api/v1/detect/everything` (engine and Vercel serverless) → counts, boxes, annotated PNG |")
+    w("| Web UI | `/detect` — drag-and-drop an image, live boxes and counts (served by the engine or Vercel) |")
+    w("| Honesty | road-damage boxes are shown only as an **unverified candidate** (drawn dashed, "
+      "`verification_status`); the served gate stays closed until `scripts/verify_rdd_detector.py` passes |")
+    w("")
+    w("The COCO and crosswalk detectors are pretrained and used as published. The road-damage detector has **not** "
+      "passed its verification gate, so by default its boxes stay hidden; `candidate_damage=True` shows them, always "
+      "labelled unverified, never claimed as validated. See `docs/DETECTION_PIPELINE.md` for the full contract and "
+      "the steps to graduate the detector to `verified`.")
+    w("")
     w("## How the numbers are kept honest")
     w("")
     w("- **Split by source photograph**, never by file: an augmented copy can never sit on the other side of the "

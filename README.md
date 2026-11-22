@@ -108,6 +108,24 @@ Normal road, crack and pothole carry almost all test images. The four rare class
 
 **Retrained detector: why its boxes are hidden.** The exported ONNX file scores mAP@0.5 0.422 on the test split against 0.401 for the trained network, a gap of 0.0211; the rule, fixed before the run, allows 0.02. The serving decoder itself passed its part of the check (94.4% recall and 98.7% precision against the trained network on 100 photographs). Scoring the trained network under the same settings gave 0.400, so the settings do not explain the gap. The cause has not been found and the rule was not loosened. The clean-road check has not been run (it runs only after the artefact check passes).
 
+## Detect everything (image & video)
+
+One entry point takes an **image or a video** and returns every road object detected, boxed and counted: potholes, cracks, zebra crossings, road arrows, people, cars, buses, trucks, motorcycles, bicycles, traffic lights and stop signs. It adds no new model — it fuses three pretrained detectors already in the repository (road damage, COCO scene/traffic, crosswalk) through `pipeline/detect_everything.py`, and for video a lightweight IoU tracker counts each object once across frames.
+
+```python
+from pipeline.detect_everything import analyze_image, analyze_video
+analyze_image('road.jpg')['counts']   # {'potholes': 1, 'cracks': 1, 'persons': 4, 'buses': 1, 'total': 7}
+analyze_video('drive.mp4')['unique_counts']
+```
+
+| Where | How |
+|---|---|
+| API | `POST /api/v1/detect/everything` (engine and Vercel serverless) → counts, boxes, annotated PNG |
+| Web UI | `/detect` — drag-and-drop an image, live boxes and counts (served by the engine or Vercel) |
+| Honesty | road-damage boxes are shown only as an **unverified candidate** (drawn dashed, `verification_status`); the served gate stays closed until `scripts/verify_rdd_detector.py` passes |
+
+The COCO and crosswalk detectors are pretrained and used as published. The road-damage detector has **not** passed its verification gate, so by default its boxes stay hidden; `candidate_damage=True` shows them, always labelled unverified, never claimed as validated. See `docs/DETECTION_PIPELINE.md` for the full contract and the steps to graduate the detector to `verified`.
+
 ## How the numbers are kept honest
 
 - **Split by source photograph**, never by file: an augmented copy can never sit on the other side of the split from its original.
@@ -202,7 +220,7 @@ Main API endpoints (full reference at `/api-docs`): `POST /api/v1/pipeline/deep-
 | `deploy/` | the Hugging Face Space that hosts the public live engine |
 | `docs/` | system design and the claims-vs-repository audit |
 | `docs/project/` | the 10-page project report and the 10-slide deck (PDF and editable source) |
-| `tests/` | 395 tests: models, pipeline, REST API, integrity fixes, Vercel entry point |
+| `tests/` | 404 tests: models, pipeline, REST API, integrity fixes, Vercel entry point |
 
 ## Visual Evaluation Suite
 

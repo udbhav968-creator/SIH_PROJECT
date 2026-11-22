@@ -124,6 +124,36 @@ class RoadDamageDetector(ONNXObjectDetector):
             })
         return out
 
+    @property
+    def weights_loaded(self):
+        """True when the detector weights are in memory, independent of the
+        verification gate. ``is_ready`` stays the trustworthy signal (the gate
+        must pass); this only reports that the artefact loaded."""
+        return (self._session is not None) or (self._cv_net is not None)
+
+    def detect_candidate(self, image_rgb, conf_threshold=None, keep_classes=None):
+        """Run the detector even when its verification gate has NOT passed, and
+        label every box as an unverified candidate. This makes no validated
+        claim: each detection carries ``verification_status='candidate_unverified'``
+        and the name of the check still outstanding (``gate_blocked_by``). The
+        normal ``detect()`` / served path still refuses a blocked model; this is
+        only for an explicit, clearly-labelled preview the operator opts into."""
+        if not self.weights_loaded:
+            return []
+        gate = self.blocked_by
+        prev = getattr(self, 'verifying', False)
+        self.verifying = True  # existing escape hatch: lets detect() run the body
+        try:
+            dets = self.detect(image_rgb, conf_threshold=conf_threshold,
+                               keep_classes=keep_classes)
+        finally:
+            self.verifying = prev
+        for d in dets:
+            d['verification_status'] = 'candidate_unverified'
+            d['gate_blocked_by'] = gate
+        return dets
+
+
     def describe(self):
         base = super().describe()
         base.update({"model": "YOLOv8 fine-tuned on RDD2022 India", "classes": self.labels,

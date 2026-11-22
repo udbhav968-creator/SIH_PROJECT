@@ -1613,6 +1613,46 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": f"Pretrained YOLO video frame detection failed: {str(e)}"})
             return
 
+        if path == "/api/v1/detect/everything":
+            # One call: an image in -> every road object detected, boxed and counted.
+            # Fuses the road-damage, COCO and crosswalk detectors. Pothole/crack
+            # boxes are shown as an UNVERIFIED CANDIDATE (candidate_damage, default
+            # on) and carry verification_status; set candidate_damage=false to hide
+            # them until the detector passes scripts/verify_rdd_detector.py.
+            frame_b64 = body.get("image_base64") or body.get("frame_base64")
+            if not frame_b64:
+                self._send_json(400, {"error": "Missing image_base64 or frame_base64 payload"})
+                return
+            try:
+                import base64 as _b64
+                from pipeline.detect_everything import analyze_image
+                candidate = body.get("candidate_damage", True)
+                annotate = bool(body.get("annotate", True))
+                r = analyze_image(
+                    frame_b64,
+                    conf=float(body.get("conf_threshold", 0.25)),
+                    candidate_damage=bool(candidate),
+                    draw=annotate,
+                )
+                resp = {
+                    "mode": "image",
+                    "image_size": r["image_size"],
+                    "counts": r["counts"],
+                    "summary": r["summary"],
+                    "detections": r["detections"],
+                    "models_active": r["models_active"],
+                    "damage_verification": r["damage_verification"],
+                    "latency_ms": r.get("latency_ms"),
+                }
+                if annotate and r.get("annotated_png"):
+                    resp["annotated_image_base64"] = (
+                        "data:image/png;base64," + _b64.b64encode(r["annotated_png"]).decode("ascii")
+                    )
+                self._send_json(200, resp)
+            except Exception as e:
+                self._send_json(500, {"error": f"detect/everything failed: {str(e)}"})
+            return
+
         if path in ("/api/v1/video/ingest", "/api/v1/video/yolo-ingest"):
             video_b64 = body.get("video_base64")
             src = body.get("video_path") or body.get("path")

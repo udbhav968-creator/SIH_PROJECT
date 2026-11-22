@@ -57,6 +57,19 @@ def spec():
                     "include_coco": {"type": "boolean"}, "include_damage": {"type": "boolean"},
                     "include_crosswalk": {"type": "boolean"}}, ["image_base64"]),
                 "responses": {"200": _json(OBJ), "400": ERR}}},
+            "/api/v1/detect/everything": {"post": {
+                "summary": "One image in -> every road object detected, boxed and counted "
+                           "(potholes, cracks, zebra crossings, people, vehicles, traffic lights, signs). "
+                           "Pothole/crack boxes are returned as an unverified candidate (verification_status) "
+                           "unless the detector has passed scripts/verify_rdd_detector.py.",
+                "tags": ["detection"],
+                "requestBody": _body({
+                    "image_base64": {**STR, "description": "image in base64 (data URI accepted)"},
+                    "conf_threshold": NUM,
+                    "candidate_damage": {"type": "boolean", "description": "show unverified road-damage boxes (default true)"},
+                    "annotate": {"type": "boolean", "description": "include an annotated PNG in the response (default true)"}},
+                    ["image_base64"]),
+                "responses": {"200": _json(OBJ), "400": ERR, "500": ERR}}},
             "/api/v1/video/yolo-ingest": {"post": {
                 "summary": "Process a video clip exclusively with pretrained YOLO detectors and multi-object tracker",
                 "tags": ["video"],

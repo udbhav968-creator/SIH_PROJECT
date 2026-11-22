@@ -46,6 +46,15 @@
       }
     },
     {
+      "src": "/detect",
+      "dest": "/web/detect_everything.html",
+      "headers": {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "CDN-Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store"
+      }
+    },
+    {
       "src": "/inspect",
       "dest": "/web/inspect.html",
       "headers": {

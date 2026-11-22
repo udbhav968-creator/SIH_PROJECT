@@ -30,6 +30,7 @@ STATIC_TYPES = {
 }
 PAGE_ROUTES = {
     "/": "index.html", "/inspect": "inspect.html", "/video": "video.html",
+    "/detect": "detect_everything.html",
     "/corridor": "corridor.html", "/works": "works.html", "/report": "report.html",
     "/order": "order.html", "/mlops": "mlops.html", "/models": "models.html",
     "/data": "data.html", "/system": "system.html", "/architecture": "architecture.html",
@@ -228,6 +229,51 @@ class handler(BaseHTTPRequestHandler):
                 return
             except Exception as e:
                 self._send(500, {"error": f"Pretrained YOLO video frame detection failed: {e}"})
+                return
+
+        if path == "/api/v1/detect/everything":
+            # Same contract as the engine: one image in -> every road object
+            # detected, boxed and counted. Road-damage boxes are an unverified
+            # candidate (candidate_damage). On a serverless function this can hit
+            # memory/size limits; if a model cannot load we return 503 with a
+            # clear "run the engine" message rather than a half-answer.
+            body = self._json_body()
+            frame_b64 = body.get("image_base64") or body.get("frame_base64")
+            if not frame_b64:
+                self._send(400, {"error": "Missing image_base64 or frame_base64 payload"})
+                return
+            try:
+                import base64 as _b64
+                from pipeline.detect_everything import analyze_image
+                annotate = bool(body.get("annotate", True))
+                r = analyze_image(
+                    frame_b64,
+                    conf=float(body.get("conf_threshold", 0.25)),
+                    candidate_damage=bool(body.get("candidate_damage", True)),
+                    draw=annotate,
+                )
+                resp = {
+                    "mode": "image",
+                    "image_size": r["image_size"],
+                    "counts": r["counts"],
+                    "summary": r["summary"],
+                    "detections": r["detections"],
+                    "models_active": r["models_active"],
+                    "damage_verification": r["damage_verification"],
+                }
+                if annotate and r.get("annotated_png"):
+                    resp["annotated_image_base64"] = (
+                        "data:image/png;base64," + _b64.b64encode(r["annotated_png"]).decode("ascii")
+                    )
+                self._send(200, resp)
+                return
+            except MemoryError:
+                self._send(503, {"error": "detect/everything ran out of memory on this serverless function",
+                                 "hint": "run the engine (python -m api.server) or connect a hosted engine; see docs/DEPLOY_LIVE_ENGINE.md"})
+                return
+            except Exception as e:
+                self._send(503, {"error": f"detect/everything is not available on this serverless deployment: {e}",
+                                 "hint": "run the engine (python -m api.server) or connect a hosted engine; see docs/DEPLOY_LIVE_ENGINE.md"})
                 return
 
         if path in ("/api/v1/video/yolo-models", "/api/v1/video/yolo-status"):
