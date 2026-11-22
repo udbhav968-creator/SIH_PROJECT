@@ -210,11 +210,81 @@ def _png_bytes(img: Image.Image) -> bytes:
 # --------------------------------------------------------------------------- #
 # Image
 # --------------------------------------------------------------------------- #
+def _iou_xywh(a, b):
+    ax1, ay1, aw, ah = a; bx1, by1, bw, bh = b
+    ax2, ay2, bx2, by2 = ax1 + aw, ay1 + ah, bx1 + bw, by1 + bh
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    union = aw * ah + bw * bh - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _nms_merge(dets, iou_thr=0.55):
+    """Per-class non-max suppression over normalized [x,y,w,h] boxes, so the same
+    object found in overlapping tiles (or tile + full frame) collapses to one box."""
+    out = []
+    by_class: Dict[str, List[Dict[str, Any]]] = {}
+    for d in dets:
+        by_class.setdefault(d.get("class_name", "?"), []).append(d)
+    for cls, group in by_class.items():
+        group = sorted(group, key=lambda d: d.get("confidence", 0.0), reverse=True)
+        kept = []
+        for d in group:
+            db = d.get("bbox_normalized") or [0, 0, 0, 0]
+            if all(_iou_xywh(db, k.get("bbox_normalized") or [0, 0, 0, 0]) < iou_thr for k in kept):
+                kept.append(d)
+        out.extend(kept)
+    return out
+
+
+def _detect_tiled(eng, img_rgb, conf, grid=2, overlap=0.2):
+    """Slice the image into a grid of overlapping tiles, detect on each tile plus
+    the full frame, map every box back to full-image coordinates, and NMS-merge.
+    Finds many more small/distant defects than a single full-frame pass, without
+    retraining. Boxes keep their candidate/verified tagging."""
+    H, W = img_rgb.shape[:2]
+    all_dets: List[Dict[str, Any]] = []
+
+    # full-frame pass first (large objects: cars, buses that a tile would cut)
+    full = eng.detect_frame(img_rgb, conf_threshold=conf, session_id="tile-full", reset_tracker=True)
+    all_dets.extend(_clean(full.get("detections", [])))
+
+    g = max(1, int(grid))
+    if g > 1:
+        tw, th = W / g, H / g
+        ox_overlap, oy_overlap = tw * overlap, th * overlap
+        for gy in range(g):
+            for gx in range(g):
+                x0 = max(0, int(gx * tw - ox_overlap)); y0 = max(0, int(gy * th - oy_overlap))
+                x1 = min(W, int((gx + 1) * tw + ox_overlap)); y1 = min(H, int((gy + 1) * th + oy_overlap))
+                if x1 - x0 < 32 or y1 - y0 < 32:
+                    continue
+                tile = np.ascontiguousarray(img_rgb[y0:y1, x0:x1])
+                tH, tW = tile.shape[:2]
+                r = eng.detect_frame(tile, conf_threshold=conf, session_id=f"tile-{gx}-{gy}", reset_tracker=True)
+                for d in _clean(r.get("detections", [])):
+                    bn = d.get("bbox_normalized") or [0, 0, 0, 0]
+                    # tile-normalized -> full-image-normalized
+                    fx = (x0 + bn[0] * tW) / W
+                    fy = (y0 + bn[1] * tH) / H
+                    fw = (bn[2] * tW) / W
+                    fh = (bn[3] * tH) / H
+                    d["bbox_normalized"] = [round(fx, 4), round(fy, 4), round(fw, 4), round(fh, 4)]
+                    d["bbox_pixels"] = [int(x0 + bn[0] * tW), int(y0 + bn[1] * tH), int(bn[2] * tW), int(bn[3] * tH)]
+                    all_dets.append(d)
+
+    return _nms_merge(all_dets, iou_thr=0.5)
+
+
 def analyze_image(
     image_input: Any,
     conf: float = 0.25,
     candidate_damage: bool = True,
     draw: bool = True,
+    tiled: bool = False,
+    tile_grid: int = 0,
     engine: Optional[YOLOVideoEngine] = None,
 ) -> Dict[str, Any]:
     """Detect every road object in one image.
@@ -226,11 +296,18 @@ def analyze_image(
     """
     eng = engine or _engine(candidate_damage)
     img_rgb = eng.decode_image(image_input)
-    res = eng.detect_frame(
-        img_rgb, frame_index=0, timestamp_s=0.0, conf_threshold=conf,
-        session_id=f"img-{time.time_ns()}", reset_tracker=True,
-    )
-    dets = _clean(res.get("detections", []))
+    H, W = img_rgb.shape[:2]
+    if tiled:
+        grid = int(tile_grid) if tile_grid else (3 if max(H, W) > 1200 else 2)
+        dets = _detect_tiled(eng, img_rgb, conf, grid=grid)
+        res = {"image_width": W, "image_height": H,
+               "models_active": eng.active_models_manifest(), "latency_ms": None}
+    else:
+        res = eng.detect_frame(
+            img_rgb, frame_index=0, timestamp_s=0.0, conf_threshold=conf,
+            session_id=f"img-{time.time_ns()}", reset_tracker=True,
+        )
+        dets = _clean(res.get("detections", []))
     counts = _friendly_counts(dets)
     dmg = eng.damage_detector
     if dmg and dmg.is_ready:

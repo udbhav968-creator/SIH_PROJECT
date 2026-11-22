@@ -260,6 +260,8 @@ class handler(BaseHTTPRequestHandler):
                     conf=float(body.get("conf_threshold", 0.25)),
                     candidate_damage=bool(body.get("candidate_damage", True)),
                     draw=annotate,
+                    tiled=bool(body.get("tiled", False)),
+                    tile_grid=int(body.get("tile_grid", 0)),
                 )
                 resp = {
                     "mode": "image",

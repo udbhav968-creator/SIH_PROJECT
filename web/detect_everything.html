@@ -75,6 +75,9 @@
           <label class="small muted" style="display:flex;gap:6px;align-items:center;margin:0">
             <input type="checkbox" id="cand" checked style="width:auto"> show candidate damage
           </label>
+          <label class="small muted" style="display:flex;gap:6px;align-items:center;margin:0" title="Slices the image into overlapping tiles so many small/distant potholes are found, not just a few coarse ones. Slower.">
+            <input type="checkbox" id="tiled" style="width:auto"> fine detection (tiled)
+          </label>
         </div>
         <div class="actions">
           <button class="primary" id="run" disabled>Analyse image</button>
@@ -226,7 +229,8 @@ el("conf").oninput = function(e){ el("confv").textContent = (+e.target.value).to
 el("clear").onclick = function(){ imgData = null; el("run").disabled = true; el("file").value=""; el("out").innerHTML = ""; };
 el("run").onclick = async function(){
   setLoading(el("run"), true, "Analysing\u2026");
-  const r = await API.post("/api/v1/detect/everything", { image_base64: imgData, conf_threshold:+el("conf").value, candidate_damage: el("cand").checked, annotate:true });
+  if (el("tiled").checked) setLoading(el("run"), true, "Fine detection\u2026 (slower)");
+  const r = await API.post("/api/v1/detect/everything", { image_base64: imgData, conf_threshold:+el("conf").value, candidate_damage: el("cand").checked, annotate:true, tiled: el("tiled").checked });
   setLoading(el("run"), false, "Analyse image");
   if (engineUnavailable(r)) { el("out").innerHTML = errorCard("The live engine isn't connected.", "Run \u201cpython -m api.server\u201d and open this page from it, or connect a hosted engine."); return; }
   if (!r.ok) { el("out").innerHTML = errorCard("Analysis failed.", (r.data&&r.data.error)||("status "+r.status)); return; }
