@@ -220,7 +220,7 @@ WEB_DIR = os.path.join(ENGINE_ROOT, "web")
 
 PAGE_ROUTES = {
     "/": "index.html",
-    "/inspect": "inspect.html",
+    "/inspect": "inspect.html", "/detect": "detect_everything.html",
     "/corridor": "corridor.html",
     "/report": "report.html",
     "/order": "order.html",
