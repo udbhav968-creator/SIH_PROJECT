@@ -1745,6 +1745,37 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                 # per-frame findings keep only the numbers (drop the heavy images)
                 for f in r.get("findings", []):
                     f.pop("annotated_png", None)
+
+                # (1) turn each unique defect into a SEALED work order in the ledger
+                if bool(body.get("issue_work_orders", True)):
+                    corridor = str(body.get("corridor", "VIDEO"))
+                    issued, budget = [], 0.0
+                    for ud in r.get("unique_defects", []):
+                        dl, dh = ud.get("depth_low_cm"), ud.get("depth_high_cm")
+                        depth_cm = ((dl + dh) / 2.0) if (dl is not None and dh is not None) else (dl or dh or 0.0)
+                        try:
+                            wo = dispatch_agent.generate_work_order(
+                                corridor_id=corridor, latitude=None, longitude=None,
+                                distress_class=ud.get("class_name") or "Pothole Cavity",
+                                area_sqm=float(ud.get("surface_area_m2") or 0.0),
+                                depth_cm=float(depth_cm or 0.0),
+                                pci_score=float(ud.get("pci_score") if ud.get("pci_score") is not None else 100))
+                        except Exception as e:
+                            ud["work_order_error"] = str(e); continue
+                        try:
+                            defect_store.save_work_order(
+                                order_id=wo.get("work_order_id"), defect_id=None, payload=wo,
+                                seal_sha256=wo.get("sha256_cryptographic_seal"),
+                                status=wo.get("dispatch_status", "ISSUED"))
+                        except Exception:
+                            pass
+                        ud["work_order"] = {k: wo.get(k) for k in (
+                            "work_order_id", "priority", "dispatch_status", "allocated_budget_inr",
+                            "sla_hours", "sha256_cryptographic_seal", "seal_algorithm")}
+                        budget += float(wo.get("allocated_budget_inr") or 0.0)
+                        issued.append(ud["work_order"]["work_order_id"])
+                    r["work_orders_issued"] = len(issued)
+                    r["work_orders_total_budget_inr"] = round(budget, 1)
                 self._send_json(200, r)
             except Exception as e:
                 self._send_json(500, {"error": f"detect/video-audit failed: {str(e)}"})
@@ -1755,6 +1786,66 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
                         _os2.remove(tmp_path)
                     except Exception:
                         pass
+            return
+
+        if path == "/api/v1/detect/video-mp4":
+            # (2) annotated video out: a boxed .mp4 of the whole clip, base64.
+            video_b64 = body.get("video_base64")
+            if not video_b64:
+                self._send_json(400, {"error": "Missing video_base64 payload"})
+                return
+            tmp_in = tmp_out = None
+            try:
+                import base64 as _b64, tempfile as _tf, os as _os
+                from pipeline.detect_everything import analyze_video_annotated
+                raw = str(video_b64).strip()
+                if raw.startswith("data:") and "," in raw:
+                    raw = raw.split(",", 1)[1]
+                fd, tmp_in = _tf.mkstemp(suffix=".mp4")
+                with _os.fdopen(fd, "wb") as fh:
+                    fh.write(_b64.b64decode(raw))
+                tmp_out = _tf.mktemp(suffix=".mp4")
+                meta = analyze_video_annotated(
+                    tmp_in, tmp_out, conf=float(body.get("conf_threshold", 0.3)),
+                    candidate_damage=bool(body.get("candidate_damage", True)),
+                    max_seconds=float(body.get("max_seconds", 20)))
+                with open(tmp_out, "rb") as fh:
+                    mp4 = fh.read()
+                meta.pop("out_path", None)
+                meta["video_base64"] = "data:video/mp4;base64," + _b64.b64encode(mp4).decode("ascii")
+                self._send_json(200, meta)
+            except Exception as e:
+                self._send_json(500, {"error": f"detect/video-mp4 failed: {str(e)}"})
+            finally:
+                for p in (tmp_in, tmp_out):
+                    if p:
+                        try:
+                            import os as _o; _o.remove(p)
+                        except Exception:
+                            pass
+            return
+
+        if path == "/api/v1/detect/audit-all":
+            # (3) audit EVERY detected defect in one image, each with its own measured
+            # area, depth interval, PCI and cost.
+            frame_b64 = body.get("image_base64") or body.get("frame_base64")
+            if not frame_b64:
+                self._send_json(400, {"error": "Missing image_base64 payload"})
+                return
+            try:
+                import base64 as _b64
+                from pipeline.detect_everything import audit_image_multi
+                r = audit_image_multi(
+                    frame_b64, deep_pipeline,
+                    conf=float(body.get("conf_threshold", 0.3)),
+                    candidate_damage=bool(body.get("candidate_damage", True)),
+                    max_defects=int(body.get("max_defects", 12)))
+                png = r.pop("annotated_png", None)
+                if png:
+                    r["annotated_image_base64"] = "data:image/png;base64," + _b64.b64encode(png).decode("ascii")
+                self._send_json(200, r)
+            except Exception as e:
+                self._send_json(500, {"error": f"detect/audit-all failed: {str(e)}"})
             return
 
         if path in ("/api/v1/video/ingest", "/api/v1/video/yolo-ingest"):

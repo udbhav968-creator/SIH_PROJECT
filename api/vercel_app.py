@@ -287,7 +287,7 @@ class handler(BaseHTTPRequestHandler):
                                  "hint": "run the engine (python -m api.server) or connect a hosted engine; see docs/DEPLOY_LIVE_ENGINE.md"})
                 return
 
-        if path in ("/api/v1/detect/video", "/api/v1/detect/video-audit"):
+        if path in ("/api/v1/detect/video", "/api/v1/detect/video-audit", "/api/v1/detect/video-mp4", "/api/v1/detect/audit-all"):
             # Video decoding + multi-frame inference is too heavy for a serverless
             # function; it runs on the engine. Return a clear 503 rather than fail.
             self._send(503, {"error": "video analysis is not available on this serverless deployment",

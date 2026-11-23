@@ -17,7 +17,7 @@
 const ENGINE_PATHS = new Set([
   "/api/v1/pipeline/deep-audit", "/api/v1/vision/analyze-photo", "/api/v1/vision/analyze-custom-photo",
   "/api/v1/video/yolo-detect", "/api/v1/video/yolo-ingest",
-  "/api/v1/detect/everything", "/api/v1/detect/video", "/api/v1/detect/video-audit", "/api/v1/detect/models",
+  "/api/v1/detect/everything", "/api/v1/detect/video", "/api/v1/detect/video-audit", "/api/v1/detect/models", "/api/v1/detect/video-mp4", "/api/v1/detect/audit-all",
   "/api/v1/privacy/redact", "/api/v1/detect/vision", "/api/v1/vision/predict", "/api/v1/detect/objects",
   "/api/v1/pedestrian/detect", "/api/v1/telemetry/imu",
   "/api/v1/fleet/telemetry", "/api/v1/gis/map-data", "/api/v1/ledger/defects", "/api/v1/fleet/live",

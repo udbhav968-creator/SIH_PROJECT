@@ -78,6 +78,9 @@
           <label class="small muted" style="display:flex;gap:6px;align-items:center;margin:0" title="Slices the image into overlapping tiles so many small/distant potholes are found, not just a few coarse ones. Slower.">
             <input type="checkbox" id="tiled" style="width:auto"> fine detection (tiled)
           </label>
+          <label class="small muted" style="display:flex;gap:6px;align-items:center;margin:0" title="Audit EVERY detected defect: each gets its own area, depth, PCI and cost. Slower.">
+            <input type="checkbox" id="auditall" style="width:auto"> deep audit (every defect)
+          </label>
         </div>
         <div class="actions">
           <button class="primary" id="run" disabled>Analyse image</button>
@@ -107,6 +110,7 @@
         </div>
         <div class="actions">
           <button class="primary" id="vrun" disabled>Analyse video</button>
+          <button id="vmp4" disabled>Download boxed .mp4</button>
           <button id="vclear">Clear</button>
         </div>
         <p class="small muted" style="margin:10px 0 0">Video analysis runs on the engine. On the hosted site this needs the live engine; large clips may exceed a serverless limit.</p>
@@ -227,7 +231,33 @@ el("file").onchange = function(e){ if (e.target.files[0]) readFile(e.target.file
   el("dz").classList.toggle("drag", ev==="dragover"); if (ev==="drop" && e.dataTransfer.files[0]) { el("file").files = e.dataTransfer.files; el("file").dispatchEvent(new Event("change")); } }); });
 el("conf").oninput = function(e){ el("confv").textContent = (+e.target.value).toFixed(2); };
 el("clear").onclick = function(){ imgData = null; el("run").disabled = true; el("file").value=""; el("out").innerHTML = ""; };
+function renderAuditAll(r) {
+  const rows = (r.defects||[]).map(function(d){
+    const badge = d.measurement === "measured reference" ? '<span class="badge measured">measured</span>' : '<span class="badge estimate">scaled estimate</span>';
+    return '<div class="card" style="margin-top:10px"><div class="label">#' + d.index + ' &middot; ' + (d.class_name||"defect") + ' &middot; ' + Math.round((d.detector_confidence||0)*100) + '%</div>'
+      + '<div class="kv"><span>Area</span><span>' + (d.surface_area_m2!=null?d.surface_area_m2+" m\u00b2":"\u2014") + ' ' + badge + '</span></div>'
+      + '<div class="kv"><span>Depth</span><span>' + interval2(d.depth_low_cm, d.depth_high_cm, " cm") + ' <span class="badge estimate">estimate</span></span></div>'
+      + '<div class="kv"><span>Repair cost</span><span>\u20b9' + interval2(d.repair_cost_low_inr, d.repair_cost_high_inr, "") + '</span></div></div>';
+  }).join("");
+  el("out").innerHTML =
+    '<div class="card"><div class="label">per-defect audit &middot; ' + (r.defect_count||0) + ' defects</div>'
+    + (r.annotated_image_base64 ? '<img class="result-img" src="' + r.annotated_image_base64 + '" alt="annotated">' : "")
+    + '<div class="grid c3" style="margin-top:10px">'
+    + '<div><div class="stat sm">' + (r.defect_count||0) + '</div><div class="stat-sub">defects audited</div></div>'
+    + '<div><div class="stat sm">' + (r.frame_pci!=null?r.frame_pci:"\u2014") + '</div><div class="stat-sub">frame PCI</div></div>'
+    + '<div><div class="stat sm">\u20b9' + interval2(r.total_cost_low_inr, r.total_cost_high_inr, "") + '</div><div class="stat-sub">total cost (estimate)</div></div></div>'
+    + '<p class="small muted" style="margin:10px 0 0">' + (r.note||"") + '</p></div>' + rows;
+}
+
 el("run").onclick = async function(){
+  if (el("auditall").checked) {
+    setLoading(el("run"), true, "Auditing every defect\u2026 (slower)");
+    const ra = await API.post("/api/v1/detect/audit-all", { image_base64: imgData, conf_threshold:+el("conf").value, candidate_damage: el("cand").checked });
+    setLoading(el("run"), false, "Analyse image");
+    if (engineUnavailable(ra)) { el("out").innerHTML = errorCard("The live engine isn't connected.", "Run \u201cpython -m api.server\u201d and open this page from it."); return; }
+    if (!ra.ok) { el("out").innerHTML = errorCard("Audit failed.", (ra.data&&ra.data.error)||("status "+ra.status)); return; }
+    renderAuditAll(ra.data); return;
+  }
   setLoading(el("run"), true, "Analysing\u2026");
   if (el("tiled").checked) setLoading(el("run"), true, "Fine detection\u2026 (slower)");
   const r = await API.post("/api/v1/detect/everything", { image_base64: imgData, conf_threshold:+el("conf").value, candidate_damage: el("cand").checked, annotate:true, tiled: el("tiled").checked });
@@ -239,12 +269,21 @@ el("run").onclick = async function(){
 
 /* video wiring */
 el("vdz").onclick = function(){ el("vfile").click(); };
-el("vfile").onchange = function(e){ const f = e.target.files[0]; if (f) { vidName = f.name; readFile(f, function(d){ vidData = d; el("vrun").disabled = false;
+el("vfile").onchange = function(e){ const f = e.target.files[0]; if (f) { vidName = f.name; readFile(f, function(d){ vidData = d; el("vrun").disabled = false; el("vmp4").disabled = false;
   el("out").innerHTML = '<div class="card"><div class="label">ready</div><video class="result-img" src="' + d + '" controls></video><p class="small muted" style="margin:10px 0 0">Press <strong>Analyse video</strong>.</p></div>'; }); } };
 ["dragover","dragleave","drop"].forEach(function(ev){ el("vdz").addEventListener(ev, function(e){ e.preventDefault();
   el("vdz").classList.toggle("drag", ev==="dragover"); if (ev==="drop" && e.dataTransfer.files[0]) { el("vfile").files = e.dataTransfer.files; el("vfile").dispatchEvent(new Event("change")); } }); });
 el("every").oninput = function(e){ el("everyv").textContent = (+e.target.value).toFixed(2)+"s"; };
-el("vclear").onclick = function(){ vidData = null; el("vrun").disabled = true; el("vfile").value=""; el("out").innerHTML = ""; };
+el("vclear").onclick = function(){ vidData = null; el("vrun").disabled = true; el("vmp4").disabled = true; el("vfile").value=""; el("out").innerHTML = ""; };
+el("vmp4").onclick = async function(){
+  if (!vidData) return;
+  setLoading(el("vmp4"), true, "Rendering boxed video\u2026");
+  const r = await API.post("/api/v1/detect/video-mp4", { video_base64: vidData, filename: vidName, conf_threshold: Math.max(0.3, +el("every").value*0+0.3), candidate_damage: el("vcand").checked, max_seconds: 20 });
+  setLoading(el("vmp4"), false, "Download boxed .mp4");
+  if (engineUnavailable(r) || !r.ok) { el("out").innerHTML = errorCard("Boxed video failed.", (r.data&&r.data.error)||"needs the live engine"); return; }
+  const a = document.createElement("a"); a.href = r.data.video_base64; a.download = "road_shield_boxed.mp4"; a.click();
+  el("out").innerHTML = '<div class="card"><div class="label">boxed video ready</div><video class="result-img" src="' + r.data.video_base64 + '" controls></video><p class="small muted" style="margin:10px 0 0">' + (r.data.frames_written||0) + ' frames boxed. Download started.</p></div>';
+};
 function interval2(lo, hi, unit) {
   if (lo == null && hi == null) return "&mdash;";
   if (lo == null) return hi + unit; if (hi == null) return lo + unit;
@@ -261,6 +300,8 @@ function renderVideoDeep(r) {
       + '<div class="kv"><span>Depth interval</span><span>' + interval2(f.depth_low_cm, f.depth_high_cm, " cm") + ' <span class="badge estimate">estimate</span></span></div>'
       + '<div class="kv"><span>PCI at this defect</span><span>' + (f.pci_score!=null?f.pci_score:"&mdash;") + ' &middot; ' + (f.pci_rating||"") + '</span></div>'
       + '<div class="kv"><span>Repair cost</span><span>&#8377;' + interval2(f.repair_cost_low_inr, f.repair_cost_high_inr, "") + ' <span class="badge estimate">estimate</span></span></div>'
+      + (f.work_order ? '<div class="kv"><span>Work order</span><span class="mono" style="font-size:11px">' + f.work_order.work_order_id + ' &middot; ' + f.work_order.priority + '</span></div>'
+          + '<div class="kv"><span>Seal (SHA-256)</span><span class="mono" style="font-size:10px">' + String(f.work_order.sha256_cryptographic_seal||"").slice(0,24) + '\u2026</span></div>' : "")
       + '</div>';
   }).join("");
   el("out").innerHTML =
@@ -270,6 +311,7 @@ function renderVideoDeep(r) {
     + '<div><div class="stat sm">' + (r.worst_pci!=null?r.worst_pci:"&mdash;") + '</div><div class="stat-sub">worst PCI in clip</div></div>'
     + '<div><div class="stat sm">&#8377;' + interval2(r.total_cost_low_inr, r.total_cost_high_inr, "") + '</div><div class="stat-sub">total repair cost (estimate)</div></div>'
     + '</div>'
+    + (r.work_orders_issued ? '<p class="small" style="margin:12px 0 0"><span class="badge measured">' + r.work_orders_issued + ' sealed work orders issued</span> &middot; budget &#8377;' + Math.round(r.work_orders_total_budget_inr||0) + ' &middot; stored in the ledger (held, no GPS)</p>' : "")
     + '<p class="small muted" style="margin:12px 0 0">Each physical defect is counted and costed <strong>once</strong>: same-class boxes overlapping across consecutive sampled frames are merged, and the largest (most defensible) measurement is kept. '
     + 'Area is measured from the segmentation mask; depth and cost are estimates with a range. Road-damage boxes are <span class="badge estimate">candidate</span>.</p></div>'
     + (defects || '<div class="card" style="margin-top:14px"><p class="small muted" style="margin:0">No measurable road defect found in the sampled frames.</p></div>');

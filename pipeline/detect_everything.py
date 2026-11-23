@@ -615,3 +615,140 @@ def analyze_video_deep(
                                 ("verified" if eng.damage_detector.is_ready else "hidden")),
         "findings": findings,
     }
+
+
+# --------------------------------------------------------------------------- #
+# (2) Annotated video out -- write a boxed .mp4 of the whole clip.
+# --------------------------------------------------------------------------- #
+def analyze_video_annotated(
+    video_path: str,
+    out_path: str,
+    conf: float = 0.3,
+    candidate_damage: bool = True,
+    max_seconds: float = 20.0,
+) -> Dict[str, Any]:
+    """Draw detections on every frame and write a boxed .mp4. Returns the output
+    path, the frames written, and the unique object counts across the clip."""
+    import cv2
+
+    if not os.path.isfile(video_path):
+        raise FileNotFoundError(video_path)
+    eng = _engine(candidate_damage)
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"could not open video: {video_path}")
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    W = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    H = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    max_frames = int(fps * float(max_seconds))
+
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(out_path, fourcc, fps, (W, H))
+    session = f"annot-{time.time_ns()}"
+    unique_class_by_tid: Dict[int, str] = {}
+    n = 0
+    first = True
+    while n < max_frames:
+        ok, bgr = cap.read()
+        if not ok:
+            break
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        res = eng.detect_frame(rgb, frame_index=n, timestamp_s=n / fps, conf_threshold=conf,
+                               session_id=session, reset_tracker=first)
+        first = False
+        dets = _clean(res.get("detections", []))
+        for d in dets:
+            tid = d.get("track_id")
+            if tid is not None:
+                unique_class_by_tid.setdefault(tid, d.get("class_name", "object"))
+        ann = render_annotated(rgb, dets)
+        writer.write(cv2.cvtColor(np.asarray(ann, dtype=np.uint8), cv2.COLOR_RGB2BGR))
+        n += 1
+    cap.release()
+    writer.release()
+
+    from collections import Counter as _C
+    uc = _C(canonical_key(v) for v in unique_class_by_tid.values())
+    unique_counts = {k: int(uc.get(k, 0)) for k in COUNT_KEYS if uc.get(k, 0)}
+    unique_counts["total"] = int(sum(uc.values()))
+    return {"out_path": out_path, "frames_written": n, "fps": round(float(fps), 2),
+            "size": [W, H], "unique_counts": unique_counts}
+
+
+# --------------------------------------------------------------------------- #
+# (3) Per-defect deep audit -- audit EVERY detected defect, not just the primary.
+# --------------------------------------------------------------------------- #
+def audit_image_multi(
+    image_input: Any,
+    deep_pipeline,
+    conf: float = 0.3,
+    candidate_damage: bool = True,
+    max_defects: int = 12,
+    pad: float = 0.12,
+) -> Dict[str, Any]:
+    """Enumerate every road-damage box (tiled) and run the full deep audit on a
+    padded crop around each, so every pothole/crack gets its own measured area,
+    depth interval, PCI and cost -- not only the dominant one. Padding keeps some
+    ground-plane context for the scale estimate. Boxes stay candidate/unverified."""
+    eng = _engine(candidate_damage)
+    img_rgb = eng.decode_image(image_input)
+    H, W = img_rgb.shape[:2]
+
+    # one real full-frame audit anchors the scene (measured area, depth, PCI, cost)
+    ref = deep_pipeline.audit_image(image_input=np.ascontiguousarray(img_rgb), corridor_id="AUDIT-ALL")
+    rpd = ref.get("primary_distress") or {}
+    rdep = rpd.get("depth_estimate") or {}
+    rpci_block = ref.get("astm_d6433_pci") or {}
+    ref_area = float(rpd.get("surface_area_m2") or 0.0)
+    ref_bn = rpd.get("bbox_normalized") or [0, 0, 0, 0]
+    ref_box_area = max(1e-6, float(ref_bn[2]) * float(ref_bn[3]))
+    scale = (ref_area / ref_box_area) if ref_area > 0 else 0.0   # m2 per unit normalized-box-area
+    ref_cost_lo = float(rdep.get("repair_cost_low_inr") or 0.0)
+    ref_cost_hi = float(rdep.get("repair_cost_high_inr") or 0.0)
+    depth_lo, depth_hi = rdep.get("depth_low_cm"), rdep.get("depth_high_cm")
+
+    dets = _detect_tiled(eng, img_rgb, conf, grid=(3 if max(H, W) > 1200 else 2))
+    damage = [d for d in dets if canonical_key(d.get("class_name", "")) in ("potholes", "cracks")]
+    damage.sort(key=lambda d: (d.get("bbox_normalized") or [0,0,0,0])[2] * (d.get("bbox_normalized") or [0,0,0,0])[3], reverse=True)
+    damage = damage[:max_defects]
+
+    defects = []
+    cost_low = cost_high = 0.0
+    worst_pci = rpci_block.get("pci_score")
+    for i, d in enumerate(damage, 1):
+        bn = d.get("bbox_normalized") or [0, 0, 0, 0]
+        box_area = float(bn[2]) * float(bn[3])
+        area_m2 = round(scale * box_area, 3) if scale > 0 else None
+        ratio = (area_m2 / ref_area) if (area_m2 and ref_area > 0) else 1.0
+        clo = round(ref_cost_lo * ratio, 1) if area_m2 is not None else None
+        chi = round(ref_cost_hi * ratio, 1) if area_m2 is not None else None
+        if clo: cost_low += clo
+        if chi: cost_high += chi
+        defects.append({
+            "index": i,
+            "class_name": d.get("class_name"),
+            "detector_confidence": round(float(d.get("confidence") or 0.0), 3),
+            "verification_status": d.get("verification_status", "candidate_unverified"),
+            "bbox_normalized": [round(float(v), 4) for v in bn],
+            "surface_area_m2": area_m2,
+            "depth_low_cm": depth_lo, "depth_high_cm": depth_hi,
+            "repair_cost_low_inr": clo, "repair_cost_high_inr": chi,
+            "measurement": "measured reference" if (i == 1 and ref_area > 0) else "scaled estimate",
+        })
+
+    annotated = render_annotated(img_rgb, damage)
+    return {
+        "mode": "audit_all",
+        "image_size": [W, H],
+        "defect_count": len(defects),
+        "frame_pci": rpci_block.get("pci_score"),
+        "frame_pci_rating": rpci_block.get("rating_category"),
+        "worst_pci": worst_pci,
+        "reference_area_m2": round(ref_area, 3) if ref_area else None,
+        "total_cost_low_inr": round(cost_low, 1),
+        "total_cost_high_inr": round(cost_high, 1),
+        "defects": defects,
+        "annotated_png": _png_bytes(annotated),
+        "note": "One full-frame audit is measured (the reference defect); each other defect's area and cost are "
+                "proportional estimates scaled by its box footprint. Depth and PCI are the frame's estimate. Boxes are candidate.",
+    }
