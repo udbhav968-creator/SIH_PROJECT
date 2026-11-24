@@ -147,3 +147,116 @@ class TestAnalyzeVideo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNMSAndTiled(unittest.TestCase):
+    def test_nms_merges_overlapping_same_class(self):
+        from pipeline.detect_everything import _nms_merge, _iou_xywh
+        a = {"class_name": "Pothole", "confidence": 0.9, "bbox_normalized": [0.1, 0.1, 0.2, 0.2]}
+        b = {"class_name": "Pothole", "confidence": 0.5, "bbox_normalized": [0.11, 0.11, 0.2, 0.2]}  # overlaps a
+        c = {"class_name": "Pothole", "confidence": 0.8, "bbox_normalized": [0.7, 0.7, 0.1, 0.1]}    # disjoint
+        out = _nms_merge([a, b, c], iou_thr=0.5)
+        self.assertEqual(len(out), 2)                    # b suppressed by a
+        self.assertIn(a, out); self.assertIn(c, out)
+        self.assertGreater(_iou_xywh([0, 0, 0.2, 0.2], [0.05, 0.05, 0.2, 0.2]), 0.3)
+
+    def test_nms_keeps_different_classes(self):
+        from pipeline.detect_everything import _nms_merge
+        a = {"class_name": "Pothole", "confidence": 0.9, "bbox_normalized": [0.1, 0.1, 0.2, 0.2]}
+        b = {"class_name": "Car", "confidence": 0.9, "bbox_normalized": [0.1, 0.1, 0.2, 0.2]}
+        self.assertEqual(len(_nms_merge([a, b], iou_thr=0.5)), 2)
+
+    def test_tiled_finds_at_least_as_many(self):
+        from pipeline.detect_everything import analyze_image, _engine
+        imgs = _pothole_images(1)
+        if not imgs:
+            self.skipTest("no dataset images")
+        eng = _engine(True)
+        normal = analyze_image(imgs[0], conf=0.3, draw=False, tiled=False, engine=eng)["counts"]["total"]
+        tiled = analyze_image(imgs[0], conf=0.3, draw=False, tiled=True, engine=eng)["counts"]["total"]
+        self.assertGreaterEqual(tiled, normal)
+
+
+class TestAuditImageMulti(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from pipeline.deep_inference_pipeline import DeepInferencePipeline
+        cls.dp = DeepInferencePipeline()
+
+    def test_per_defect_fields(self):
+        from pipeline.detect_everything import audit_image_multi
+        imgs = _pothole_images(1)
+        if not imgs:
+            self.skipTest("no dataset images")
+        r = audit_image_multi(imgs[0], self.dp, conf=0.3, max_defects=6)
+        self.assertEqual(r["mode"], "audit_all")
+        self.assertGreaterEqual(r["defect_count"], 0)
+        self.assertIn("annotated_png", r)
+        self.assertTrue(r["annotated_png"][:8] == b"\x89PNG\r\n\x1a\n")
+        for d in r["defects"]:
+            self.assertIn(d["measurement"], ("measured reference", "scaled estimate"))
+            self.assertIn("surface_area_m2", d)
+        if r["defects"]:
+            self.assertEqual(r["defects"][0]["measurement"], "measured reference")
+
+    def test_blank_image_is_safe(self):
+        import numpy as np
+        from pipeline.detect_everything import audit_image_multi
+        blank = np.full((300, 400, 3), 128, np.uint8)
+        r = audit_image_multi(blank, self.dp, conf=0.3)
+        self.assertEqual(r["defect_count"], 0)
+        self.assertEqual(r["total_cost_low_inr"], 0.0)
+
+
+class TestAnnotatedVideoAndWorkOrders(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        imgs = _pothole_images(3)
+        if not imgs:
+            cls.clip = None
+            return
+        import cv2, tempfile, numpy as np
+        from PIL import Image
+        cls.tmp = tempfile.mkdtemp()
+        cls.clip = os.path.join(cls.tmp, "c.mp4")
+        W, H = 480, 320
+        vw = cv2.VideoWriter(cls.clip, cv2.VideoWriter_fourcc(*"mp4v"), 10.0, (W, H))
+        for p in imgs:
+            fr = np.asarray(Image.open(p).convert("RGB").resize((W, H)))
+            for _ in range(8):
+                vw.write(cv2.cvtColor(fr, cv2.COLOR_RGB2BGR))
+        vw.release()
+
+    def test_annotated_video_out(self):
+        if not self.clip:
+            self.skipTest("no dataset images")
+        import tempfile, os as _os
+        from pipeline.detect_everything import analyze_video_annotated
+        out = os.path.join(self.tmp, "boxed.mp4")
+        meta = analyze_video_annotated(self.clip, out, conf=0.3, max_seconds=5)
+        self.assertGreater(meta["frames_written"], 0)
+        self.assertTrue(_os.path.isfile(out) and _os.path.getsize(out) > 0)
+
+    def test_video_defects_to_sealed_work_orders(self):
+        if not self.clip:
+            self.skipTest("no dataset images")
+        from pipeline.detect_everything import analyze_video_deep
+        from pipeline.deep_inference_pipeline import DeepInferencePipeline
+        from models.morth_dispatch_agent import MoRTHDispatchAgent, check_seal
+        dp = DeepInferencePipeline()
+        agent = MoRTHDispatchAgent()
+        r = analyze_video_deep(self.clip, dp, sample_every_s=1.0, max_frames=4, candidate_damage=True)
+        issued = 0
+        for ud in r["unique_defects"]:
+            dl, dh = ud.get("depth_low_cm"), ud.get("depth_high_cm")
+            depth = ((dl + dh) / 2.0) if (dl is not None and dh is not None) else (dl or dh or 0.0)
+            wo = agent.generate_work_order(
+                corridor_id="VIDEO", latitude=None, longitude=None,
+                distress_class=ud["class_name"], area_sqm=ud["surface_area_m2"],
+                depth_cm=float(depth), pci_score=float(ud["pci_score"] if ud["pci_score"] is not None else 100))
+            self.assertIn("work_order_id", wo)
+            self.assertTrue(wo.get("sha256_cryptographic_seal"))
+            self.assertEqual(wo.get("dispatch_status"), "HELD_NO_GPS")   # video has no GPS
+            self.assertTrue(check_seal(wo))                               # seal verifies
+            issued += 1
+        self.assertGreaterEqual(issued, 0)

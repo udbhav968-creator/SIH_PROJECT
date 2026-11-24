@@ -2266,10 +2266,21 @@ def start_server(port=8000, host="0.0.0.0"):
     print(f"ROAD-SHIELD AI Engine running on http://127.0.0.1:{port}")
     print(f"CORS: enabled (all origins)")
     print(f"{'=' * 70}\n")
+    import time as _time
+    _started = _time.time()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\n[AI Server] Shutting down...")
+        if _time.time() - _started < 1.5:
+            # Not a real Ctrl+C: some Windows terminals deliver a stray interrupt
+            # when a command is pasted into a blocking console app. Tell the user
+            # how to launch it so it stays up, instead of dying silently.
+            print("\n[AI Server] Received an immediate interrupt (likely a pasted-command quirk on Windows).")
+            print("[AI Server] To keep it running, launch it in its own window:")
+            print('    Start-Process python -ArgumentList "-m","api.server" -WorkingDirectory "%s"'
+                  % os.getcwd())
+        else:
+            print("\n[AI Server] Shutting down...")
         httpd.server_close()
 
 if __name__ == "__main__":
