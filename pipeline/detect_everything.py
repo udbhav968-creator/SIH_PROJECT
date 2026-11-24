@@ -101,6 +101,26 @@ def _clean(obj: Any) -> Any:
     return obj
 
 
+# Small/thin objects score lower than cars or people, so distant traffic lights,
+# signs, zebra crossings and arrows get their own, lower confidence floor; big
+# objects keep the user's threshold so cars/potholes don't flood with false boxes.
+SMALL_CLASS_FLOOR = 0.18
+_SMALL_KEYS = {"traffic_lights", "stop_signs", "zebra_crossings", "road_arrows"}
+
+
+def _apply_class_floor(detections, user_conf):
+    """Keep a detection if it clears the user's confidence for a big object, or the
+    lower SMALL_CLASS_FLOOR for a small traffic-control / crossing class."""
+    out = []
+    for d in detections:
+        c = float(d.get("confidence", 0.0))
+        key = canonical_key(d.get("class_name", ""))
+        floor = SMALL_CLASS_FLOOR if key in _SMALL_KEYS else user_conf
+        if c >= floor:
+            out.append(d)
+    return out
+
+
 def _friendly_counts(detections: List[Dict[str, Any]]) -> Dict[str, int]:
     c = Counter(canonical_key(d.get("class_name", ""), d.get("category", "")) for d in detections)
     counts = {k: int(c.get(k, 0)) for k in COUNT_KEYS if c.get(k, 0)}
@@ -297,17 +317,19 @@ def analyze_image(
     eng = engine or _engine(candidate_damage)
     img_rgb = eng.decode_image(image_input)
     H, W = img_rgb.shape[:2]
+    eff = min(conf, SMALL_CLASS_FLOOR)   # retrieve small objects, then floor per class
     if tiled:
         grid = int(tile_grid) if tile_grid else (3 if max(H, W) > 1200 else 2)
-        dets = _detect_tiled(eng, img_rgb, conf, grid=grid)
+        dets = _detect_tiled(eng, img_rgb, eff, grid=grid)
         res = {"image_width": W, "image_height": H,
                "models_active": eng.active_models_manifest(), "latency_ms": None}
     else:
         res = eng.detect_frame(
-            img_rgb, frame_index=0, timestamp_s=0.0, conf_threshold=conf,
+            img_rgb, frame_index=0, timestamp_s=0.0, conf_threshold=eff,
             session_id=f"img-{time.time_ns()}", reset_tracker=True,
         )
         dets = _clean(res.get("detections", []))
+    dets = _apply_class_floor(dets, conf)
     counts = _friendly_counts(dets)
     dmg = eng.damage_detector
     if dmg and dmg.is_ready:
@@ -388,10 +410,10 @@ def analyze_video(
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             res = eng.detect_frame(
                 rgb, frame_index=frame_idx, timestamp_s=frame_idx / fps,
-                conf_threshold=conf, session_id=session, reset_tracker=first,
+                conf_threshold=min(conf, SMALL_CLASS_FLOOR), session_id=session, reset_tracker=first,
             )
             first = False
-            dets = _clean(res.get("detections", []))
+            dets = _apply_class_floor(_clean(res.get("detections", [])), conf)
             for d in dets:
                 tid = d.get("track_id")
                 if tid is not None:

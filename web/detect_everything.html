@@ -108,6 +108,11 @@
             <input type="checkbox" id="vdeep" style="width:auto"> deep audit (area · depth · PCI · cost)
           </label>
         </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px" title="Clip-level location makes sealed work orders dispatchable instead of held">
+          <input id="vcorridor" placeholder="corridor / road (e.g. NH-44)" style="flex:1;min-width:140px">
+          <input id="vlat" placeholder="lat (optional)" style="width:120px">
+          <input id="vlon" placeholder="lon (optional)" style="width:120px">
+        </div>
         <div class="actions">
           <button class="primary" id="vrun" disabled>Analyse video</button>
           <button id="vmp4" disabled>Download boxed .mp4</button>
@@ -311,7 +316,12 @@ function renderVideoDeep(r) {
     + '<div><div class="stat sm">' + (r.worst_pci!=null?r.worst_pci:"&mdash;") + '</div><div class="stat-sub">worst PCI in clip</div></div>'
     + '<div><div class="stat sm">&#8377;' + interval2(r.total_cost_low_inr, r.total_cost_high_inr, "") + '</div><div class="stat-sub">total repair cost (estimate)</div></div>'
     + '</div>'
-    + (r.work_orders_issued ? '<p class="small" style="margin:12px 0 0"><span class="badge measured">' + r.work_orders_issued + ' sealed work orders issued</span> &middot; budget &#8377;' + Math.round(r.work_orders_total_budget_inr||0) + ' &middot; stored in the ledger (held, no GPS)</p>' : "")
+    + ((r.work_orders_issued || r.work_orders_updated) ? '<p class="small" style="margin:12px 0 0"><span class="badge measured">'
+        + (r.work_orders_issued||0) + ' new work orders</span>'
+        + (r.work_orders_updated ? ' &middot; ' + r.work_orders_updated + ' updated (same clip re-run \u2014 deduplicated)' : '')
+        + ' &middot; budget &#8377;' + Math.round(r.work_orders_total_budget_inr||0)
+        + ' &middot; ' + (r.work_orders_dispatchable ? '<span class="badge measured">READY FOR DISPATCH</span> (clip-level GPS)' : 'held (no GPS \u2014 add corridor/lat/lon above)')
+        + '</p>' : "")
     + '<p class="small muted" style="margin:12px 0 0">Each physical defect is counted and costed <strong>once</strong>: same-class boxes overlapping across consecutive sampled frames are merged, and the largest (most defensible) measurement is kept. '
     + 'Area is measured from the segmentation mask; depth and cost are estimates with a range. Road-damage boxes are <span class="badge estimate">candidate</span>.</p></div>'
     + (defects || '<div class="card" style="margin-top:14px"><p class="small muted" style="margin:0">No measurable road defect found in the sampled frames.</p></div>');
@@ -322,7 +332,8 @@ el("vrun").onclick = async function(){
   setLoading(el("vrun"), true, deep ? "Deep auditing\u2026 (slower)" : "Analysing video\u2026");
   const path = deep ? "/api/v1/detect/video-audit" : "/api/v1/detect/video";
   const body = deep
-    ? { video_base64: vidData, filename: vidName, sample_every_s: Math.max(1, +el("every").value), candidate_damage: el("vcand").checked, max_frames: 8 }
+    ? { video_base64: vidData, filename: vidName, sample_every_s: Math.max(1, +el("every").value), candidate_damage: el("vcand").checked, max_frames: 8,
+        corridor: (el("vcorridor").value||"VIDEO"), latitude: (el("vlat").value||null), longitude: (el("vlon").value||null), issue_work_orders: true }
     : { video_base64: vidData, filename: vidName, sample_every_s:+el("every").value, candidate_damage: el("vcand").checked, sample_frames:4 };
   const r = await API.post(path, body);
   setLoading(el("vrun"), false, "Analyse video");

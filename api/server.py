@@ -1748,34 +1748,60 @@ class RoadShieldAPIHandler(BaseHTTPRequestHandler):
 
                 # (1) turn each unique defect into a SEALED work order in the ledger
                 if bool(body.get("issue_work_orders", True)):
+                    import hashlib as _hl
                     corridor = str(body.get("corridor", "VIDEO"))
-                    issued, budget = [], 0.0
+                    # optional clip-level GPS: if given, orders become dispatchable
+                    # (READY_FOR_DISPATCH) instead of HELD_NO_GPS. It is one point for
+                    # the whole clip, so it is labelled approximate, not per-defect.
+                    lat = body.get("latitude"); lon = body.get("longitude")
+                    lat = float(lat) if lat not in (None, "") else None
+                    lon = float(lon) if lon not in (None, "") else None
+                    issued, updated, budget = [], 0, 0.0
                     for ud in r.get("unique_defects", []):
                         dl, dh = ud.get("depth_low_cm"), ud.get("depth_high_cm")
                         depth_cm = ((dl + dh) / 2.0) if (dl is not None and dh is not None) else (dl or dh or 0.0)
+                        # deterministic id: same corridor+class+area+first-seen -> same ticket,
+                        # so re-running the same clip UPDATES the order instead of duplicating it.
+                        sig = "%s|%s|%.2f|%.1f" % (corridor, ud.get("class_name"),
+                                                   float(ud.get("surface_area_m2") or 0.0),
+                                                   float(ud.get("first_seen_s") or ud.get("timestamp_s") or 0.0))
+                        det_id = "VID-" + _hl.sha1(sig.encode()).hexdigest()[:12]
+                        already = None
+                        try:
+                            already = defect_store.get_work_order(det_id)
+                        except Exception:
+                            already = None
                         try:
                             wo = dispatch_agent.generate_work_order(
-                                corridor_id=corridor, latitude=None, longitude=None,
+                                corridor_id=corridor, latitude=lat, longitude=lon,
                                 distress_class=ud.get("class_name") or "Pothole Cavity",
                                 area_sqm=float(ud.get("surface_area_m2") or 0.0),
                                 depth_cm=float(depth_cm or 0.0),
                                 pci_score=float(ud.get("pci_score") if ud.get("pci_score") is not None else 100))
                         except Exception as e:
                             ud["work_order_error"] = str(e); continue
+                        wo["work_order_id"] = det_id                 # stable id for dedup
+                        wo["latitude"] = lat; wo["longitude"] = lon
+                        wo["location_precision"] = "clip-level (video, single point)" if (lat is not None) else "none (video)"
                         try:
                             defect_store.save_work_order(
-                                order_id=wo.get("work_order_id"), defect_id=None, payload=wo,
+                                order_id=det_id, defect_id=None, payload=wo,
                                 seal_sha256=wo.get("sha256_cryptographic_seal"),
                                 status=wo.get("dispatch_status", "ISSUED"))
                         except Exception:
                             pass
                         ud["work_order"] = {k: wo.get(k) for k in (
                             "work_order_id", "priority", "dispatch_status", "allocated_budget_inr",
-                            "sla_hours", "sha256_cryptographic_seal", "seal_algorithm")}
+                            "sla_hours", "sha256_cryptographic_seal", "seal_algorithm", "location_precision")}
                         budget += float(wo.get("allocated_budget_inr") or 0.0)
-                        issued.append(ud["work_order"]["work_order_id"])
+                        if already:
+                            updated += 1
+                        else:
+                            issued.append(det_id)
                     r["work_orders_issued"] = len(issued)
+                    r["work_orders_updated"] = updated          # re-run dedup: these already existed
                     r["work_orders_total_budget_inr"] = round(budget, 1)
+                    r["work_orders_dispatchable"] = (lat is not None)
                 self._send_json(200, r)
             except Exception as e:
                 self._send_json(500, {"error": f"detect/video-audit failed: {str(e)}"})
