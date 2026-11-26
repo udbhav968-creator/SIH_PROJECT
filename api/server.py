@@ -1,4 +1,4 @@
-﻿"""
+"""
 ROAD-SHIELD AI Engine - HTTP API server.
 
 A small multi-threaded REST server (stdlib http.server, no framework) that
@@ -82,7 +82,7 @@ from models.imu_shock_classifier import load_served_imu_model
 imu_model, imu_backend = load_served_imu_model(CKPT_DIR)
 if imu_model is None:
     imu_model = IMUShockClassifier()
-print("  âœ“ IMU shock classifier", f"loaded ({imu_backend})" if imu_model.is_ready else "NOT TRAINED YET (run training/train_imu.py)")
+print("  ✓ IMU shock classifier", f"loaded ({imu_backend})" if imu_model.is_ready else "NOT TRAINED YET (run training/train_imu.py)")
 
 bayesian_gate = BayesianFusionGate(prior_pothole_prob=0.05, decision_threshold_log_odds=1.8)
 from models.camera_calibration import DEFAULT_PROFILE as _DEFAULT_CALIB
@@ -102,7 +102,7 @@ automotive_telematics = AutomotiveTelematicsEngine(checkpoints_dir=CKPT_DIR)
 traffic_net = UrbanTrafficNet()
 alpr_tracker = ALPRIncidentTracker()
 deep_pipeline = DeepInferencePipeline(CKPT_DIR)
-print("  âœ“ Deep inference pipeline initialized.")
+print("  ✓ Deep inference pipeline initialized.")
 
 from pipeline.defect_store import DefectStore
 defect_store = DefectStore(os.path.join(WRITABLE_DIR, "road_shield.db"))
@@ -195,10 +195,10 @@ if SEED_DEMO and not fleet_dedup_engine.defect_registry:
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-101", 12.9750, 77.5980, "Waterlogging / Flooding Hazard", 35.0, 5.20, enrich_location=False)
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-308", 12.9680, 77.5910, "Missing Zebra Crossing", 60.0, 3.40, enrich_location=False)
     fleet_dedup_engine.ingest_fleet_detection("BUS-KA01-204", 12.9800, 77.6050, "Damaged Traffic Sign", 55.0, 0.80, enrich_location=False)
-    print(f"  âœ“ Fleet ledger seeded with 5 DEMO reports (ROAD_SHIELD_SEED_DEMO=1) "
+    print(f"  ✓ Fleet ledger seeded with 5 DEMO reports (ROAD_SHIELD_SEED_DEMO=1) "
           f"-> {defect_store.db_path}")
 else:
-    print(f"  âœ“ Fleet ledger loaded: {len(fleet_dedup_engine.defect_registry)} defects "
+    print(f"  ✓ Fleet ledger loaded: {len(fleet_dedup_engine.defect_registry)} defects "
           f"from {defect_store.db_path}")
 
 active_feedback_counter = 0
@@ -220,7 +220,7 @@ WEB_DIR = os.path.join(ENGINE_ROOT, "web")
 
 PAGE_ROUTES = {
     "/": "index.html",
-    "/inspect": "inspect.html", "/detect": "detect_everything.html", "/live": "live.html",`r`n    "/sw.js":"sw.js","/manifest.webmanifest":"manifest.webmanifest","/icon.svg":"icon.svg",
+    "/inspect": "inspect.html", "/detect": "detect_everything.html", "/live": "live.html",
     "/corridor": "corridor.html",
     "/report": "report.html",
     "/order": "order.html",
@@ -253,7 +253,7 @@ PUBLIC = os.environ.get("ROAD_SHIELD_PUBLIC") == "1"
 if PUBLIC and not os.environ.get("ROAD_SHIELD_API_KEY"):
     import secrets as _secrets
     os.environ["ROAD_SHIELD_API_KEY"] = _secrets.token_urlsafe(32)
-    print("  âœ“ Public demo: write endpoints locked (no ROAD_SHIELD_API_KEY was set, so a random one is in use)")
+    print("  ✓ Public demo: write endpoints locked (no ROAD_SHIELD_API_KEY was set, so a random one is in use)")
 DATASETS_ROOT = os.path.realpath(os.path.join(ENGINE_ROOT, "datasets"))
 PATH_KEYS = ("image_base64", "image_path", "before_image_base64", "after_image_base64", "before_base64",
              "after_base64", "frame_base64", "vehicle_image_base64", "video_path", "path", "directory_path")
@@ -2312,4 +2312,3 @@ def start_server(port=8000, host="0.0.0.0"):
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
     start_server(port=port)
-
