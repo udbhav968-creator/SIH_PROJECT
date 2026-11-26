@@ -158,6 +158,7 @@ const PAGES = [
   { href: "/",             id: "home",         label: "Overview",     group: "product" },
   { href: "/inspect",      id: "inspect",      label: "Inspection",   group: "product" },
   { href: "/detect",       id: "detect",       label: "Detect",       group: "product" },
+  { href: "/live",         id: "live",         label: "Live",         group: "product" },
   { href: "/video",        id: "video",        label: "Video",        group: "product" },
   { href: "/corridor",     id: "corridor",     label: "Road map",     group: "product" },
   { href: "/works",        id: "works",        label: "Works",        group: "product" },

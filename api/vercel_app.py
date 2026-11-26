@@ -30,7 +30,7 @@ STATIC_TYPES = {
 }
 PAGE_ROUTES = {
     "/": "index.html", "/inspect": "inspect.html", "/video": "video.html",
-    "/detect": "detect_everything.html",
+    "/detect": "detect_everything.html", "/live": "live.html",
     "/corridor": "corridor.html", "/works": "works.html", "/report": "report.html",
     "/order": "order.html", "/mlops": "mlops.html", "/models": "models.html",
     "/data": "data.html", "/system": "system.html", "/architecture": "architecture.html",
