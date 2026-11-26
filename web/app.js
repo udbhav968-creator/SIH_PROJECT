@@ -1,4 +1,4 @@
-﻿/* PWA install */
+/* PWA install */
 (function(){try{
  var l=document.createElement("link");l.rel="manifest";l.href="/manifest.webmanifest";document.head.appendChild(l);
  var m=document.createElement("meta");m.name="theme-color";m.content="#0e141f";document.head.appendChild(m);
