@@ -32,6 +32,8 @@ ENV OPENBLAS_NUM_THREADS=2 \
     MKL_NUM_THREADS=2 \
     PYTHONUNBUFFERED=1
 
+ENV ROAD_SHIELD_PUBLIC=1 ROAD_SHIELD_WRITABLE_DIR=/tmp/road_shield
+
 EXPOSE 8000
 
 # Fails the healthcheck if the models did not load, not merely if the port is open:
@@ -40,4 +42,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request,sys; \
 sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready',timeout=8).status==200 else 1)"
 
-CMD ["python", "-m", "api.server"]
+CMD ["sh", "-c", "python -m api.server ${PORT:-8000}"]
