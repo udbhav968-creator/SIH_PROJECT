@@ -1,0 +1,12 @@
+﻿{
+  "name": "ROAD-SHIELD — AI Road Inspection",
+  "short_name": "ROAD-SHIELD",
+  "start_url": "/detect",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0e141f",
+  "theme_color": "#0e141f",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

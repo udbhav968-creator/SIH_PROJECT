@@ -1,3 +1,10 @@
+﻿/* PWA install */
+(function(){try{
+ var l=document.createElement("link");l.rel="manifest";l.href="/manifest.webmanifest";document.head.appendChild(l);
+ var m=document.createElement("meta");m.name="theme-color";m.content="#0e141f";document.head.appendChild(m);
+ var i=document.createElement("link");i.rel="icon";i.href="/icon.svg";document.head.appendChild(i);
+ if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("/sw.js",{scope:"/"}).catch(function(){});});}
+}catch(e){}})();
 /* ============================================================================
    Shared runtime for every ROAD-SHIELD page.
 
@@ -201,7 +208,7 @@ function buildNav() {
        </div>` +
     `</div>` +
     `<span class="spacer"></span>` +
-    `<span class="status-pill" id="healthPill" role="status"><span class="led"></span><span id="healthText">checking…</span></span>` +
+    `<span class="status-pill" id="healthPill" role="status"><span class="led"></span><span id="healthText">checkingâ€¦</span></span>` +
     `<button class="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="navSheet">${icon("menu", 20)}</button>`;
 
   const sheet = document.createElement("div");
@@ -253,7 +260,7 @@ function renderPill() {
   if (!pill) return;
   const h = lastHealth;
   const show = (main, detail) => {
-    text.innerHTML = `${main}${detail ? `<span class="pill-detail"> · ${detail}</span>` : ""}`;
+    text.innerHTML = `${main}${detail ? `<span class="pill-detail"> Â· ${detail}</span>` : ""}`;
   };
   if (!h || !h.ok || h.data.status !== "ONLINE") {
     pill.className = "status-pill offline"; show("site offline"); return;
@@ -267,10 +274,10 @@ function renderPill() {
   }
   const states = {
     none:     ["neutral", "recorded results", "no live engine connected"],
-    unknown:  ["neutral", "connecting…", "live engine"],
-    online:   ["online",  "live engine", API.engineDegraded ? "online · segmenter not loaded" : "online"],
+    unknown:  ["neutral", "connectingâ€¦", "live engine"],
+    online:   ["online",  "live engine", API.engineDegraded ? "online Â· segmenter not loaded" : "online"],
     starting: ["waking",  "engine starting", "loading models"],
-    waking:   ["waking",  API.engineSleeps ? "engine waking" : "connecting…", API.engineSleeps ? "about 1–2 min" : "live engine"],
+    waking:   ["waking",  API.engineSleeps ? "engine waking" : "connectingâ€¦", API.engineSleeps ? "about 1â€“2 min" : "live engine"],
     offline:  ["offline", "engine offline", "recorded results"],
   };
   const [cls, main, detail] = states[API.engineUrl ? API.engineState : "none"] || states.unknown;
@@ -319,7 +326,7 @@ function buildFooter() {
   const f = document.createElement("footer");
   f.className = "site";
   f.innerHTML =
-    `<div><strong>ROAD-SHIELD</strong> · SIH 2026 · SIH26124 · Bharat Electronics Limited</div>` +
+    `<div><strong>ROAD-SHIELD</strong> Â· SIH 2026 Â· SIH26124 Â· Bharat Electronics Limited</div>` +
     `<div class="foot-links">${PAGES.filter(p => p.group === "evidence").map(p => `<a href="${p.href}">${p.label}</a>`).join("")}</div>` +
     `<div class="mono small">every figure on this site is produced by code in this repository</div>`;
   document.body.appendChild(f);
@@ -329,19 +336,19 @@ function buildFooter() {
 const fmt = {
   /** Indian-format rupees. */
   inr(v) {
-    if (v == null || isNaN(v)) return "—";
-    return "₹" + Number(v).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+    if (v == null || isNaN(v)) return "â€”";
+    return "â‚¹" + Number(v).toLocaleString("en-IN", { maximumFractionDigits: 0 });
   },
   num(v, dp = 2) {
-    if (v == null || isNaN(v)) return "—";
+    if (v == null || isNaN(v)) return "â€”";
     return Number(v).toFixed(dp);
   },
   pct(v, dp = 1) {
-    if (v == null || isNaN(v)) return "—";
+    if (v == null || isNaN(v)) return "â€”";
     return (Number(v) * 100).toFixed(dp) + "%";
   },
   when(unix) {
-    if (!unix) return "—";
+    if (!unix) return "â€”";
     return new Date(unix * 1000).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
   },
 
@@ -356,8 +363,8 @@ const fmt = {
    */
   provenance(kind) {
     const map = {
-      segmentation_mask: ["measured", "measured · mask"],
-      bounding_box_estimate: ["estimate", "estimate · box"],
+      segmentation_mask: ["measured", "measured Â· mask"],
+      bounding_box_estimate: ["estimate", "estimate Â· box"],
       calibrated: ["measured", "calibrated camera"],
       default: ["estimate", "assumed mount"],
     };
@@ -366,12 +373,12 @@ const fmt = {
   },
 };
 
-/** Render an interval as "central (low – high)". Used everywhere a depth or
+/** Render an interval as "central (low â€“ high)". Used everywhere a depth or
  *  cost estimate appears, so a range is never silently collapsed to a point. */
 function interval(central, low, high, unit = "") {
-  if (central == null) return "—";
+  if (central == null) return "â€”";
   if (low == null || high == null) return `${central}${unit}`;
-  return `${central}${unit} <span class="muted small">(${low} – ${high}${unit})</span>`;
+  return `${central}${unit} <span class="muted small">(${low} â€“ ${high}${unit})</span>`;
 }
 
 function setApiBase(url) {
@@ -383,7 +390,7 @@ window.setApiBase = setApiBase;
 
 function el(id) { return document.getElementById(id); }
 
-function setLoading(node, on, text = "working…") {
+function setLoading(node, on, text = "workingâ€¦") {
   if (!node) return;
   node.innerHTML = on ? `<div class="card loading-card"><span class="spinner"></span><span>${text}</span></div>` : "";
 }
@@ -437,3 +444,4 @@ function exifGps(buf) {
   }
   return null;
 }
+
